@@ -1,0 +1,14 @@
+{
+  "name": "sentinelops",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A real-time incident and operations management platform.",
+  "author": "jui-dev",
+  "license": "MIT",
+  "packageManager": "pnpm@11.25.0",
+  "engines": {
+    "node": ">=20.11.0",
+    "pnpm": ">=11"
+  },
+  "scripts": {}
+}

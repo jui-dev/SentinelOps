@@ -1,0 +1,64 @@
+# Dependencies
+node_modules/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Build output
+.next/
+dist/
+build/
+out/
+coverage/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# TypeScript
+*.tsbuildinfo
+
+# Tool caches
+.turbo/
+.cache/
+.eslintcache
+.nyc_output/
+
+# Framework/platform
+.vercel/
+
+# Databases
+*.sqlite
+*.sqlite3
+*.db
+
+# Secrets & credentials
+*.pem
+*.key
+*.p12
+*.pfx
+certificates/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
