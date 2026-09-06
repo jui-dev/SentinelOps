@@ -13,6 +13,11 @@ build/
 out/
 coverage/
 
+# Generated code
+# Prisma Client is generated from apps/api/prisma/schema.prisma. The schema,
+# the migrations, and prisma.config.ts are version controlled; this output is not.
+apps/api/src/generated/
+
 # Logs
 logs/
 *.log

@@ -1,0 +1,26 @@
+// SentinelOps database schema.
+//
+// Stage 2.1 is infrastructure only. This schema intentionally declares no
+// models: the first migration will be created in a later stage, alongside the
+// first real SentinelOps domain model. Adding a placeholder model here purely
+// to force a migration would pollute the schema and the migration history.
+//
+// Since Prisma 7 the connection URL lives in prisma.config.ts (datasource.url),
+// not in this block.
+
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+
+  // The API is ESM ("type": "module") and is compiled by tsc under
+  // module/moduleResolution: nodenext, where relative imports must carry a
+  // .js extension — the same convention used throughout src/. A generated
+  // client importing with ".ts" specifiers would not compile.
+  moduleFormat           = "esm"
+  generatedFileExtension = "ts"
+  importFileExtension    = "js"
+}

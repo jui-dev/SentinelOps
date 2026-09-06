@@ -10,5 +10,9 @@
     "node": ">=20.11.0",
     "pnpm": ">=11"
   },
-  "scripts": {}
+  "scripts": {
+    "db:up": "docker compose -f docker/docker-compose.yml --env-file .env up -d",
+    "db:down": "docker compose -f docker/docker-compose.yml --env-file .env down",
+    "db:logs": "docker compose -f docker/docker-compose.yml --env-file .env logs -f postgres"
+  }
 }

@@ -131,9 +131,10 @@ are plain folders, not packages. No packages exist under `packages/` yet.
 | Node.js | >= 20.11.0 (repo targets 22 — see `.nvmrc`) |
 | pnpm | >= 11 (pinned to 11.25.0 via `packageManager`) |
 | Git | Any recent version |
+| Docker | Any recent version, with Compose v2 (runs PostgreSQL locally) |
 
-Later stages will additionally require Docker, PostgreSQL, and Redis. They are **not**
-needed yet.
+Docker is now required — PostgreSQL runs in a local container, so nothing needs to be
+installed on the host. See [Database](#database). Redis is **not** needed yet.
 
 Enabling pnpm through Corepack will match the pinned version automatically:
 
@@ -176,6 +177,76 @@ pnpm test     # run the test suites
 Copy `.env.example` to `.env` and replace the placeholders. `.env` files are ignored by
 Git — real secrets must never be committed. When adding a new variable, add a placeholder
 to `.env.example` so other developers know it is required.
+
+---
+
+## Database
+
+PostgreSQL runs in a local Docker container; nothing is installed on the host.
+
+```bash
+pnpm db:up      # start PostgreSQL in the background
+pnpm db:logs    # follow the PostgreSQL logs
+pnpm db:down    # stop and remove the container (data is kept)
+```
+
+The container is defined in [`docker/docker-compose.yml`](docker/docker-compose.yml) and
+reads `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, and `POSTGRES_PORT` from the
+workspace-root `.env`. Data lives in the named volume `sentinelops-postgres-data` and
+survives `pnpm db:down`. To discard it deliberately:
+
+```bash
+docker volume rm sentinelops-postgres-data
+```
+
+### Prisma
+
+The schema is [`apps/api/prisma/schema.prisma`](apps/api/prisma/schema.prisma). CLI
+behaviour — including loading the root `.env`, which Prisma 7 no longer does
+automatically — is configured in [`apps/api/prisma.config.ts`](apps/api/prisma.config.ts).
+
+Prisma Client is generated into `apps/api/src/generated/prisma`, which is **ignored by
+Git**. Generate it after cloning and whenever the schema changes:
+
+```bash
+cp .env.example .env                              # DATABASE_URL must be set first
+pnpm --filter @sentinelops/api prisma:generate
+```
+
+`pnpm --filter @sentinelops/api build` runs the generator itself, so a build never uses a
+stale client.
+
+### Migration workflow
+
+```text
+edit apps/api/prisma/schema.prisma
+        |
+        v
+pnpm --filter @sentinelops/api prisma:migrate --name <migration-name>
+        |    creates the migration, applies it, regenerates the client
+        v
+pnpm --filter @sentinelops/api prisma:status
+```
+
+| Script | Command | Purpose |
+| --- | --- | --- |
+| `prisma:migrate` | `prisma migrate dev` | Create and apply a migration in development |
+| `prisma:status` | `prisma migrate status` | Show which migrations are applied |
+| `prisma:generate` | `prisma generate` | Regenerate Prisma Client |
+| `prisma:studio` | `prisma studio` | Browse the database |
+
+> **No migrations exist yet, by design.** The schema deliberately declares no models. The
+> first migration will be created alongside the first real SentinelOps domain model, so
+> the migration history begins with meaningful state instead of a placeholder. Until then
+> `prisma:status` reports `No migration found in prisma/migrations` — that is the
+> expected result, not a failure.
+
+### Health endpoints
+
+| Endpoint | Meaning |
+| --- | --- |
+| `GET /api/v1/health` | Liveness — is the process running? Never touches the database. |
+| `GET /api/v1/health/ready` | Readiness — process **and** database. `503` when PostgreSQL is unreachable. |
 
 ---
 

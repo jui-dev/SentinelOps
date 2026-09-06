@@ -1,0 +1,42 @@
+# Local development infrastructure for SentinelOps.
+#
+# Compose resolves its default .env relative to this directory, so always run it
+# through the root package scripts, which pass the workspace-root .env explicitly:
+#
+#   pnpm db:up      start PostgreSQL in the background
+#   pnpm db:down    stop and remove the container (the volume is kept)
+#   pnpm db:logs    follow the PostgreSQL logs
+#
+# Every value below is read from the root .env — no credentials live in this file.
+# There is deliberately no restart policy: this is development infrastructure with
+# an explicit lifecycle driven by the scripts above.
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: sentinelops-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: ${POSTGRES_DB:-sentinelops}
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      # postgres:18 sets PGDATA=/var/lib/postgresql/18/docker and declares its
+      # volume at /var/lib/postgresql — mounting the pre-18 /var/lib/postgresql/data
+      # path here would leave the data directory outside the volume.
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-sentinelops}',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  postgres-data:
+    name: sentinelops-postgres-data

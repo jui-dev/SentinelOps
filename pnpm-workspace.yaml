@@ -4,3 +4,7 @@ packages:
 
 allowBuilds:
   unrs-resolver: false
+  # Prisma's CLI and schema engine need their install scripts to unpack the
+  # engine binaries used by `prisma migrate` / `prisma generate`.
+  "@prisma/engines": true
+  prisma: true
