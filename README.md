@@ -180,6 +180,74 @@ to `.env.example` so other developers know it is required.
 
 ---
 
+## Configuration
+
+The API validates its environment once at startup and exposes it as structured
+configuration domains. Application code consumes those domains rather than environment
+variable names, so a variable is spelled out in exactly one place.
+
+### Validated variables
+
+The schema is [`apps/api/src/config/env.validation.ts`](apps/api/src/config/env.validation.ts).
+
+| Variable | Rules | Default |
+| --- | --- | --- |
+| `NODE_ENV` | One of `development`, `test`, `production` | `development` |
+| `PORT` | Integer, 1–65535 | `3001` |
+| `DATABASE_URL` | Required. A `postgres://` or `postgresql://` URL | — |
+
+**Validation is fail-fast.** An invalid or missing value aborts startup before the HTTP
+server binds, naming every offending variable at once:
+
+```text
+Error: Config validation error: PORT: Invalid input: expected number, received NaN
+```
+
+Because `DATABASE_URL` is required, **`cp .env.example .env` is a prerequisite** for
+`start`, `start:dev`, and `test:e2e` — not just for Prisma. Unit tests (`pnpm test`) do not
+need it.
+
+### Configuration domains
+
+Domains are declared in [`apps/api/src/config/configuration.ts`](apps/api/src/config/configuration.ts).
+
+| Domain | Value | Type |
+| --- | --- | --- |
+| `app.port` | Port the API listens on | `number` |
+| `app.environment` | Active environment | `'development' \| 'test' \| 'production'` |
+| `database.url` | PostgreSQL connection string | `string` |
+
+Prefer injecting a domain by token — the values are typed, so there is no name to mistype
+and no cast to get wrong:
+
+```ts
+constructor(
+  @Inject(databaseConfig.KEY)
+  dbConfig: ConfigType<typeof databaseConfig>,
+) {
+  // dbConfig.url is a string, inferred from the schema
+}
+```
+
+`ConfigService.get('app.port')` also works and is available for ad-hoc reads, but the dot
+path is unchecked and its return type is asserted rather than inferred. Prefer the token.
+
+Only `app` and `database` exist. A domain is added when the infrastructure behind it does.
+
+### Application vs. container configuration
+
+`PORT`, `NODE_ENV`, and `DATABASE_URL` are the **application's** configuration and are the
+only variables it validates. `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, and
+`POSTGRES_PORT` are **Docker Compose's** configuration for the local container —
+`DATABASE_URL` already carries the host, port, credentials, and database name, so the API
+does not read them. Keep the two in sync in `.env`; the API will not check that for you.
+
+`REDIS_URL` and `JWT_SECRET` are placeholders for systems that do not exist yet. They are
+deliberately not validated — requiring them would fail the boot over unused
+infrastructure.
+
+---
+
 ## Database
 
 PostgreSQL runs in a local Docker container; nothing is installed on the host.

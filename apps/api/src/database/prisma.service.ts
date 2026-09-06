@@ -1,12 +1,14 @@
 import {
+  Inject,
   Injectable,
   Logger,
   type OnModuleDestroy,
   type OnModuleInit,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import type { ConfigType } from '@nestjs/config';
 import { PrismaPg } from '@prisma/adapter-pg';
 
+import { databaseConfig } from '../config/configuration.js';
 import { PrismaClient } from '../generated/prisma/client.js';
 
 @Injectable()
@@ -16,14 +18,18 @@ export class PrismaService
 {
   private readonly logger = new Logger(PrismaService.name);
 
-  constructor(config: ConfigService) {
+  constructor(
+    // The `database` domain rather than ConfigService: the URL is already
+    // validated at startup and typed here, so there is no name to mistype and
+    // no getOrThrow to guard a value that could never have reached this point.
+    @Inject(databaseConfig.KEY)
+    dbConfig: ConfigType<typeof databaseConfig>,
+  ) {
     // Prisma 7 removed the Rust query engine, so a driver adapter is required
     // for every database and the connection string is handed to the adapter
     // rather than declared in schema.prisma.
     super({
-      adapter: new PrismaPg({
-        connectionString: config.getOrThrow<string>('DATABASE_URL'),
-      }),
+      adapter: new PrismaPg({ connectionString: dbConfig.url }),
     });
   }
 
