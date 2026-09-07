@@ -13,7 +13,7 @@ describe('AppController (e2e)', () => {
 
     app = moduleFixture.createNestApplication();
     // Mirrors the global prefix applied in main.ts.
-    app.setGlobalPrefix('api/v1');
+    app.setGlobalPrefix('/api/v1');
     await app.init();
   });
 

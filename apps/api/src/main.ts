@@ -5,7 +5,11 @@ import { appConfig } from './config/configuration.js';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  app.setGlobalPrefix('api/v1');
+  // The leading slash is load-bearing. Nest passes this prefix straight to
+  // `app.use(prefix, notFoundHandler)`, and Express 5 never matches a path
+  // without it — unmatched routes would bypass the exception filter entirely
+  // and fall through to Express's default HTML error page.
+  app.setGlobalPrefix('/api/v1');
   // Lets Nest run onModuleDestroy on SIGINT/SIGTERM, so Prisma disconnects
   // from PostgreSQL cleanly instead of leaving the connection to time out.
   app.enableShutdownHooks();

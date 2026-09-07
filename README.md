@@ -316,6 +316,96 @@ pnpm --filter @sentinelops/api prisma:status
 | `GET /api/v1/health` | Liveness — is the process running? Never touches the database. |
 | `GET /api/v1/health/ready` | Readiness — process **and** database. `503` when PostgreSQL is unreachable. |
 
+Both return their body unwrapped: `{"status":"ok"}` and
+`{"status":"ok","database":"up"}`. The `503` carries the standard [API error
+response](#api-error-responses) like every other error — the readiness signal is
+the status code, which is what a probe reads.
+
+---
+
+## API conventions
+
+These apply to every endpoint. They are wired once in
+[`apps/api/src/common/common.module.ts`](apps/api/src/common/common.module.ts) as
+`APP_PIPE` and `APP_FILTER` providers, so importing `AppModule` — as every
+end-to-end test does — brings the real behaviour with it.
+
+### Successful responses are not wrapped
+
+A handler returns the resource itself. There is no `{ data: … }` envelope: the
+status code already signals success, and an envelope taxes every client call and
+every test to reserve space for metadata only collection endpoints need. When
+collections arrive they will declare their own shape explicitly:
+
+```jsonc
+{ "items": [ /* … */ ], "page": { "cursor": "…", "hasMore": true } }
+```
+
+### API error responses
+
+Every non-2xx response — validation failure, thrown exception, unknown route,
+unhandled crash — has one shape, defined in
+[`api-error.contract.ts`](apps/api/src/common/api-error.contract.ts) and built
+only by `AllExceptionsFilter`:
+
+```jsonc
+{
+  "statusCode": 400,
+  "error": "Bad Request",
+  "message": "Request validation failed",
+  "code": "INCIDENT_ALREADY_RESOLVED", // optional, only when the thrower sets one
+  "details": [                         // optional, only for field-level failures
+    { "field": "responders.0.email", "message": "Invalid email address" }
+  ],
+  "requestId": "0f9c1e2a-…",
+  "timestamp": "2026-09-07T10:15:00.000Z",
+  "path": "/api/v1/incidents"
+}
+```
+
+| Rule | Why |
+| --- | --- |
+| `message` is **always** a string | Nest's own bodies alternate between `string` and `string[]`. Field-level information lives in `details`, whose element shape is stable. |
+| Unexpected errors return a generic `500` | Anything that is not an `HttpException` is masked as `Internal server error`. The real error and stack are logged, so a driver error never reaches a client. |
+| `requestId` is always present | Returned in the body and in the `X-Request-Id` header, and logged with every `5xx` — it is the join key between a client-visible failure and the server-side stack trace. |
+| `code` is optional | Set through Nest's `HttpExceptionOptions.errorCode`. Nothing sets one yet; it exists so adding machine-readable codes later is additive. |
+
+A caller may supply `X-Request-Id` and it is echoed back, but only when it is
+short and unremarkable — the value reaches a response header and the log, so
+anything else is replaced with a generated id.
+
+### Request validation
+
+Validation uses NestJS 12's built-in `StandardSchemaValidationPipe` with Zod 4 —
+the same Zod already validating the environment, and **no additional
+dependency**. Nest 12 depends on `@standard-schema/spec` directly and accepts a
+schema on the parameter decorators, so a Zod schema is usable as-is;
+`class-validator` and `class-transformer` are deliberately not installed.
+
+Schema and inferred type live together, next to the module that owns them:
+
+```ts
+export const createIncidentSchema = z.object({
+  title: z.string().min(1).max(200),
+  severity: z.enum(['low', 'medium', 'high', 'critical']),
+});
+export type CreateIncident = z.infer<typeof createIncidentSchema>;
+
+@Post()
+create(@Body({ schema: createIncidentSchema }) body: CreateIncident) { … }
+```
+
+The pipe is global but **opt-in**: a parameter that declares no `schema` is
+passed through untouched. `@Query()` and `@Param()` take a schema the same way.
+Two behaviours worth knowing, because they replace `ValidationPipe` options:
+`z.object()` strips unknown keys by default (use `.strict()` to reject them
+instead), and coercion belongs in the schema — `z.coerce.number()` on a query
+parameter works exactly as `PORT` does in the environment schema.
+
+Failures produce the contract above with one `details` entry per invalid field,
+addressed by a dotted path (`responders.0.email`). Only each issue's message and
+path are returned; the submitted value is never echoed back.
+
 ---
 
 ## Documentation

@@ -37,10 +37,11 @@ export class HealthController {
         error instanceof Error ? error.stack : String(error),
       );
 
-      throw new ServiceUnavailableException({
-        status: 'error',
-        database: 'down',
-      });
+      // The 503 body is composed by AllExceptionsFilter like every other error
+      // response. The readiness signal is carried by the status code, which is
+      // what a load balancer or probe reads; the diagnostic detail is in the
+      // log line above, which is where an operator looks.
+      throw new ServiceUnavailableException('Database is not reachable');
     }
 
     return { status: 'ok', database: 'up' };
