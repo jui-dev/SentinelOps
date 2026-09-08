@@ -2,6 +2,7 @@ import { Module, StandardSchemaValidationPipe } from '@nestjs/common';
 import type { MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { APP_FILTER, APP_PIPE } from '@nestjs/core';
 
+import { HttpLoggerMiddleware } from '../logger/http-logger.middleware.js';
 import { AllExceptionsFilter } from './all-exceptions.filter.js';
 import { RequestIdMiddleware } from './request-id.middleware.js';
 import { validationExceptionFactory } from './validation-exception.factory.js';
@@ -33,11 +34,20 @@ import { validationExceptionFactory } from './validation-exception.factory.js';
 })
 export class CommonModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
+    // Both middlewares in a single `apply()` call, because order is only
+    // guaranteed within one call — across separate calls or separate modules it
+    // follows registration order, which is not something this wiring should
+    // depend on. RequestIdMiddleware must run first: it establishes the
+    // AsyncLocalStorage context that the HTTP logger's correlation id comes
+    // from, and the logger's `finish` handler is registered inside it.
+    //
     // Express 5's own wildcard syntax, written out rather than left as '*'.
     // Nest would auto-convert '*' to this, but only after logging a
     // legacy-route deprecation warning on every boot once a global prefix is
     // set — the path it converts is '/api/v1/*', not the bare all-wildcard it
     // stays quiet about.
-    consumer.apply(RequestIdMiddleware).forRoutes('{*path}');
+    consumer
+      .apply(RequestIdMiddleware, HttpLoggerMiddleware)
+      .forRoutes('{*path}');
   }
 }

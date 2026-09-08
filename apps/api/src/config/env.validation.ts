@@ -1,3 +1,4 @@
+import { LOG_LEVELS } from '@nestjs/common';
 import { z } from 'zod';
 
 /**
@@ -27,6 +28,20 @@ export const envSchema = z.object({
   // Required with no default: there is no sensible connection string to guess,
   // and a wrong one fails slowly and confusingly at the first query.
   DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
+  // The minimum level to emit; every level at or above it is enabled.
+  //
+  // Optional rather than defaulted, here and for LOG_FORMAT below, because the
+  // sensible default depends on NODE_ENV and a Zod `.default()` cannot read a
+  // sibling field. The derivation lives in the `logging` configuration factory,
+  // which sees the whole parsed environment — so it stays in exactly one place
+  // rather than being split between a default here and a fallback there.
+  //
+  // Taken from Nest's own LOG_LEVELS so this enum cannot drift from the levels
+  // the logger actually supports.
+  LOG_LEVEL: z.enum(LOG_LEVELS).optional(),
+  // `json` for machine-parseable one-line entries, `pretty` for the colourised
+  // human format.
+  LOG_FORMAT: z.enum(['json', 'pretty']).optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

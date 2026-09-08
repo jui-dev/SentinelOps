@@ -43,8 +43,37 @@ export const databaseConfig = registerAs('database', () => {
 });
 
 /**
- * Every configuration domain, in the shape `ConfigModule.forRoot` expects.
- * Deliberately limited to `app` and `database` — a domain is added when the
- * infrastructure behind it actually exists.
+ * Resolves the two logging knobs, defaulting each from NODE_ENV when it is not
+ * set explicitly.
+ *
+ * The defaults encode an intent per environment rather than one compromise
+ * shared by all three: production ships machine-parseable lines at `log` and
+ * above; development stays human-readable and includes `debug`; tests emit only
+ * `warn` and above, so per-request logging does not bury the assertion output.
+ *
+ * An explicit LOG_LEVEL or LOG_FORMAT always wins — including in tests, which
+ * is how a spec asserts against JSON output.
  */
-export const configurations = [appConfig, databaseConfig];
+export const loggingConfig = registerAs('logging', () => {
+  const env = readEnv();
+
+  const level =
+    env.LOG_LEVEL ??
+    (env.NODE_ENV === 'production'
+      ? 'log'
+      : env.NODE_ENV === 'test'
+        ? 'warn'
+        : 'debug');
+
+  const format =
+    env.LOG_FORMAT ?? (env.NODE_ENV === 'production' ? 'json' : 'pretty');
+
+  return { level, format };
+});
+
+/**
+ * Every configuration domain, in the shape `ConfigModule.forRoot` expects.
+ * Deliberately limited to the infrastructure that actually exists — a domain is
+ * added when the thing behind it does.
+ */
+export const configurations = [appConfig, databaseConfig, loggingConfig];

@@ -7,6 +7,7 @@ import {
   REQUEST_ID_HEADER,
   REQUEST_ID_RESPONSE_HEADER,
 } from './api-error.contract.js';
+import { runWithRequestContext } from './request-context.js';
 
 /**
  * A caller-supplied id is echoed into a response header and into log lines, so
@@ -40,6 +41,12 @@ export class RequestIdMiddleware implements NestMiddleware {
     req.headers[REQUEST_ID_HEADER] = requestId;
     res.setHeader(REQUEST_ID_RESPONSE_HEADER, requestId);
 
-    next();
+    // The id is also published as ambient context, so a logger can correlate a
+    // line without being handed the Request. Established here rather than in a
+    // second middleware to keep generation and context entry atomic: there is
+    // no window in which the header is set but a log line would come out
+    // uncorrelated. `run` invokes its callback synchronously, so this behaves
+    // exactly as calling `next()` directly did.
+    runWithRequestContext({ requestId }, next);
   }
 }

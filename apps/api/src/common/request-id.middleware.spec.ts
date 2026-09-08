@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 
 import { REQUEST_ID_HEADER } from './api-error.contract.js';
+import { getRequestId } from './request-context.js';
 import { RequestIdMiddleware } from './request-id.middleware.js';
 
 const UUID =
@@ -56,6 +57,24 @@ describe('RequestIdMiddleware', () => {
       run();
 
       expect(next).toHaveBeenCalledOnce();
+    });
+
+    it('should publish the id as ambient context for the rest of the chain', () => {
+      // What lets a logger correlate a line without being handed the Request.
+      let seen: string | undefined;
+      next.mockImplementation(() => {
+        seen = getRequestId();
+      });
+
+      const requestId = run();
+
+      expect(seen).toBe(requestId);
+    });
+
+    it('should not leave the context set once the chain returns', () => {
+      run();
+
+      expect(getRequestId()).toBeUndefined();
     });
   });
 

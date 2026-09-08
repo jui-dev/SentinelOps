@@ -197,18 +197,30 @@ export class AllExceptionsFilter implements ExceptionFilter {
    * unhandled errors — if it does not log them, nothing does. 5xx carries the
    * stack; 4xx is ordinary client behaviour and is left at debug so routine
    * mistakes do not fill the log.
+   *
+   * This is the *diagnostic* record — what went wrong. The matching lifecycle
+   * record (method, duration, status) comes from HttpLoggerMiddleware, which
+   * logs every request whether it failed or not. Two lines for one failure is
+   * intended: they answer different questions and share a requestId, so they
+   * join.
+   *
+   * The status and path travel as structured params rather than interpolated
+   * into the message, so they are queryable fields in JSON output. requestId is
+   * deliberately not passed: AppLogger contributes it from the ambient context,
+   * which is the same value in every path where the middleware ran.
    */
   private log(exception: unknown, body: ApiErrorResponse): void {
-    const prefix = `${body.requestId} ${body.statusCode} ${body.path}`;
+    const params = { statusCode: body.statusCode, path: body.path };
 
     if (body.statusCode >= HttpStatus.INTERNAL_SERVER_ERROR) {
       this.logger.error(
-        `${prefix} — ${exception instanceof Error ? exception.message : String(exception)}`,
+        exception instanceof Error ? exception.message : String(exception),
         exception instanceof Error ? exception.stack : undefined,
+        params,
       );
       return;
     }
 
-    this.logger.debug(`${prefix} — ${body.message}`);
+    this.logger.debug(body.message, params);
   }
 }

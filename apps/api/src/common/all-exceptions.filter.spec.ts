@@ -245,21 +245,47 @@ describe('AllExceptionsFilter', () => {
   });
 
   describe('logging', () => {
+    /**
+     * This filter emits the *diagnostic* record — what went wrong and why. The
+     * matching lifecycle record (method, duration, status) comes from
+     * HttpLoggerMiddleware, which logs every request whether it failed or not.
+     * Two lines for one failure is intended: they answer different questions
+     * and share a requestId, so they join.
+     */
     it('should log 5xx with the stack', () => {
       const error = new Error('boom');
 
       capture(error);
 
       expect(errorLog).toHaveBeenCalledOnce();
-      expect(errorLog.mock.calls[0][0]).toContain(REQUEST_ID);
-      expect(errorLog.mock.calls[0][0]).toContain('boom');
+      expect(errorLog.mock.calls[0][0]).toBe('boom');
       expect(errorLog.mock.calls[0][1]).toBe(error.stack);
+    });
+
+    it('should log the status and path as structured params', () => {
+      // Queryable fields in JSON output rather than an interpolated string.
+      capture(new Error('boom'));
+
+      expect(errorLog.mock.calls[0][2]).toEqual({
+        statusCode: 500,
+        path: PATH,
+      });
+    });
+
+    it('should not pass the request id itself', () => {
+      // AppLogger contributes it from the ambient context, so passing it here
+      // would duplicate the field and let the two sources disagree.
+      capture(new Error('boom'));
+
+      expect(errorLog.mock.calls[0][2]).not.toHaveProperty('requestId');
+      expect(String(errorLog.mock.calls[0][0])).not.toContain(REQUEST_ID);
     });
 
     it('should log a thrown non-Error without crashing', () => {
       capture('a bare string');
 
       expect(errorLog).toHaveBeenCalledOnce();
+      expect(errorLog.mock.calls[0][0]).toBe('a bare string');
       expect(errorLog.mock.calls[0][1]).toBeUndefined();
     });
 
@@ -274,6 +300,16 @@ describe('AllExceptionsFilter', () => {
 
       expect(errorLog).not.toHaveBeenCalled();
       expect(debugLog).toHaveBeenCalledOnce();
+    });
+
+    it('should log 4xx detail with structured params', () => {
+      capture(new NotFoundException('Incident not found'));
+
+      expect(debugLog.mock.calls[0][0]).toBe('Incident not found');
+      expect(debugLog.mock.calls[0][1]).toEqual({
+        statusCode: 404,
+        path: PATH,
+      });
     });
   });
 

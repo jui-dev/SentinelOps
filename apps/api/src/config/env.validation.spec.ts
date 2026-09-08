@@ -66,6 +66,47 @@ describe('envSchema', () => {
     });
   });
 
+  describe('LOG_LEVEL', () => {
+    it.each([['verbose'], ['debug'], ['log'], ['warn'], ['error'], ['fatal']])(
+      'should accept %s',
+      (level) => {
+        expect(
+          envSchema.safeParse({ ...valid(), LOG_LEVEL: level }).success,
+        ).toBe(true);
+      },
+    );
+
+    it('should reject a level the logger does not support', () => {
+      expect(
+        issueFor({ ...valid(), LOG_LEVEL: 'trace' }, 'LOG_LEVEL'),
+      ).toBeDefined();
+    });
+
+    it('should be omitted from the output when unset', () => {
+      // Optional rather than defaulted: the default depends on NODE_ENV and is
+      // derived in the logging configuration factory instead.
+      expect(envSchema.parse(valid())).not.toHaveProperty('LOG_LEVEL');
+    });
+  });
+
+  describe('LOG_FORMAT', () => {
+    it.each([['json'], ['pretty']])('should accept %s', (format) => {
+      expect(
+        envSchema.safeParse({ ...valid(), LOG_FORMAT: format }).success,
+      ).toBe(true);
+    });
+
+    it('should reject an unknown format', () => {
+      expect(
+        issueFor({ ...valid(), LOG_FORMAT: 'logfmt' }, 'LOG_FORMAT'),
+      ).toBeDefined();
+    });
+
+    it('should be omitted from the output when unset', () => {
+      expect(envSchema.parse(valid())).not.toHaveProperty('LOG_FORMAT');
+    });
+  });
+
   describe('defaults', () => {
     it('should default NODE_ENV to development', () => {
       expect(envSchema.parse(valid()).NODE_ENV).toBe('development');

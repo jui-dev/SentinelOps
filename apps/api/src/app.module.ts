@@ -7,6 +7,7 @@ import { ROOT_ENV_FILE } from './config/env.js';
 import { envSchema } from './config/env.validation.js';
 import { DatabaseModule } from './database/database.module.js';
 import { HealthModule } from './health/health.module.js';
+import { LoggerModule } from './logger/logger.module.js';
 
 @Module({
   imports: [
@@ -21,6 +22,9 @@ import { HealthModule } from './health/health.module.js';
       // Exposes the validated values as the `app.*` and `database.*` domains.
       load: configurations,
     }),
+    // Ahead of CommonModule, whose middleware and exception filter both log:
+    // the logger is infrastructure everything else assumes.
+    LoggerModule,
     // Establishes the API-wide request and error conventions before any
     // feature module is loaded.
     CommonModule,
