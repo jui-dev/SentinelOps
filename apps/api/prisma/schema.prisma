@@ -1,9 +1,23 @@
 // SentinelOps database schema.
 //
-// Stage 2.1 is infrastructure only. This schema intentionally declares no
-// models: the first migration will be created in a later stage, alongside the
-// first real SentinelOps domain model. Adding a placeholder model here purely
-// to force a migration would pollute the schema and the migration history.
+// The core domain: an organization to own data, a user to act, and a membership
+// that binds them with a role. Everything added later — teams, services,
+// incidents, audit entries — hangs off these three.
+//
+// Conventions every later model follows:
+//
+//   * Tables and columns are snake_case via @@map/@map, so raw SQL and psql read
+//     naturally without quoting every identifier.
+//   * Ids are UUIDv7 in native Postgres `uuid` columns: 16 bytes rather than a
+//     36-character string, and time-ordered, so primary-key inserts stay local
+//     in the btree instead of scattering across it.
+//   * Every timestamp is @db.Timestamptz(3). Prisma maps DateTime to `timestamp`
+//     WITHOUT time zone by default, which is a footgun worth spelling out of.
+//   * String columns are plain `text`. Length limits live in the Zod schemas at
+//     the request boundary, which is where this project already validates —
+//     duplicating them here means two places to change and a migration to widen.
+//   * Tenant-owned tables carry organizationId. Enforcement of that scoping
+//     arrives with the first read path; the convention starts here.
 //
 // Since Prisma 7 the connection URL lives in prisma.config.ts (datasource.url),
 // not in this block.
@@ -23,4 +37,110 @@ generator client {
   moduleFormat           = "esm"
   generatedFileExtension = "ts"
   importFileExtension    = "js"
+}
+
+/// The initial organization-level membership role, and an authorization extension
+/// point. Deliberately coarse: Postgres makes adding an enum value trivial and
+/// removing one painful, so this starts narrow.
+///
+/// This does not commit the eventual authorization model to any shape. A later stage
+/// may introduce dedicated Role, Permission, or RolePermission structures that read
+/// this value, supersede it, or migrate it away — nothing here should constrain that.
+enum Role {
+  OWNER
+  ADMIN
+  MEMBER
+
+  @@map("role")
+}
+
+/// The tenancy root. Every domain table added from here on carries an organizationId.
+///
+/// Soft-deleted rather than removed: destroying a tenant would destroy its incident
+/// history, which is the thing an operations platform exists to retain.
+model Organization {
+  id String @id @default(uuid(7)) @db.Uuid
+  name String
+  /// URL-safe identifier, so a route can address an organization without exposing
+  /// its id.
+  slug String @unique
+
+  createdAt DateTime  @default(now()) @db.Timestamptz(3) @map("created_at")
+  updatedAt DateTime  @updatedAt @db.Timestamptz(3) @map("updated_at")
+  /// Set by the ordinary application delete, which is an UPDATE and therefore
+  /// leaves memberships and every historical relationship intact. Reads filter on
+  /// `deleted_at IS NULL`; that filtering arrives with the first read path.
+  deletedAt DateTime? @db.Timestamptz(3) @map("deleted_at")
+
+  memberships Membership[]
+
+  @@map("organizations")
+}
+
+/// A person. Global rather than tenant-scoped: one identity, one login, and a
+/// Membership per organization they belong to.
+///
+/// Deliberately carries no credentials. passwordHash, emailVerifiedAt, and sessions
+/// belong to the authentication stage and are additive from here.
+///
+/// Soft-deleted rather than removed: a departed responder must still resolve as the
+/// author of past incidents and comments.
+model User {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// Stored lowercase. Postgres unique indexes are case-sensitive, so normalisation
+  /// happens at the Zod boundary rather than by adding the citext extension.
+  email String @unique
+  /// The human-readable display identity for this actor — what an incident timeline,
+  /// an assignment, or an audit entry renders instead of a uuid. Deliberately a
+  /// single field: this is actor identity, not a user profile. Avatars, titles, time
+  /// zones, contact methods, and notification preferences are not part of this stage.
+  name String
+
+  createdAt DateTime  @default(now()) @db.Timestamptz(3) @map("created_at")
+  updatedAt DateTime  @updatedAt @db.Timestamptz(3) @map("updated_at")
+  deletedAt DateTime? @db.Timestamptz(3) @map("deleted_at")
+
+  memberships Membership[]
+
+  @@map("users")
+}
+
+/// Binds a user to an organization with a capacity — the question every future
+/// authorization check asks. Not a pure join table: it carries a role and its own
+/// timestamps, which is why it is an explicit model.
+///
+/// A surrogate id rather than a composite key, so a later audit record or invitation
+/// can reference one specific grant, and so a membership has a REST identity.
+///
+/// Hard lifecycle, unlike its two parents: revoking access must actually remove the
+/// grant. A soft-deleted membership that a future authorization check forgets to
+/// filter is a security hole, not a data-loss risk — and the record of what someone
+/// did lives in incidents and audit entries, not in the grant that permitted it.
+///
+/// The `onDelete: Cascade` below is referential integrity for a *physical* row
+/// deletion (an erasure request, a local reset), not the ordinary lifecycle. The
+/// ordinary delete of an organization or user writes `deleted_at` and touches no
+/// foreign key, so memberships survive it.
+model Membership {
+  id             String @id @default(uuid(7)) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  userId         String @map("user_id") @db.Uuid
+  role           Role   @default(MEMBER)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3) @map("created_at")
+  updatedAt DateTime @updatedAt @db.Timestamptz(3) @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// One capacity per user per organization: nobody is both ADMIN and MEMBER.
+  @@unique([organizationId, userId])
+  /// Postgres does not index foreign keys automatically. This serves "which
+  /// organizations does this user belong to" — the lookup every authenticated
+  /// request will make — and turns the cascade from `users` into an index scan.
+  ///
+  /// organization_id needs no index of its own: it is the leading column of the
+  /// composite unique above, which already serves prefix lookups and that cascade.
+  @@index([userId])
+  @@map("memberships")
 }

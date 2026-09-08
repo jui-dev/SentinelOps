@@ -313,11 +313,8 @@ pnpm --filter @sentinelops/api prisma:status
 | `prisma:generate` | `prisma generate` | Regenerate Prisma Client |
 | `prisma:studio` | `prisma studio` | Browse the database |
 
-> **No migrations exist yet, by design.** The schema deliberately declares no models. The
-> first migration will be created alongside the first real SentinelOps domain model, so
-> the migration history begins with meaningful state instead of a placeholder. Until then
-> `prisma:status` reports `No migration found in prisma/migrations` — that is the
-> expected result, not a failure.
+The migration history begins at `init_core_domain`, which creates the core domain
+described below. There is deliberately no placeholder migration before it.
 
 ### Health endpoints
 
@@ -330,6 +327,106 @@ Both return their body unwrapped: `{"status":"ok"}` and
 `{"status":"ok","database":"up"}`. The `503` carries the standard [API error
 response](#api-error-responses) like every other error — the readiness signal is
 the status code, which is what a probe reads.
+
+---
+
+## Data model
+
+The core domain is three tables: an organization to own data, a user to act, and a
+membership binding them with a role. Teams, services, incidents, and audit entries all
+hang off these.
+
+```
+┌────────────────────┐                          ┌────────────────────┐
+│   organizations    │                          │       users        │
+│────────────────────│                          │────────────────────│
+│ id      uuid  PK   │                          │ id      uuid  PK   │
+│ name    text       │                          │ email   text  UQ   │
+│ slug    text  UQ   │                          │ name    text       │
+│ created_at         │                          │ created_at         │
+│ updated_at         │                          │ updated_at         │
+│ deleted_at  NULL   │                          │ deleted_at  NULL   │
+└─────────┬──────────┘                          └─────────┬──────────┘
+          │ 1                                             │ 1
+          │        ┌──────────────────────────┐           │
+          └───────<│       memberships        │>──────────┘
+             N     │──────────────────────────│      N
+                   │ id               uuid PK │
+                   │ organization_id  uuid FK │
+                   │ user_id          uuid FK │
+                   │ role             role    │
+                   │ created_at / updated_at  │
+                   │ UQ(organization_id,      │
+                   │    user_id)              │
+                   └──────────────────────────┘
+```
+
+### One identity, many organizations
+
+A `User` is **global, not tenant-scoped**: one row per person, one globally unique email,
+one login. Belonging to an organization is a `Membership`, and a person may hold a
+different role in each. `@@unique([organizationId, userId])` means a user has exactly one
+capacity per organization — nobody is both `ADMIN` and `MEMBER`.
+
+`Role` is `OWNER`, `ADMIN`, `MEMBER`. It is the **initial coarse organization-level role
+and an authorization extension point**, not a commitment to the eventual authorization
+model — a later stage may add dedicated role or permission structures that read it,
+supersede it, or migrate it away. Nothing enforces it yet; it is data.
+
+### Deletion: two different mechanisms
+
+| Entity | Application lifecycle | Physical `DELETE` |
+| --- | --- | --- |
+| `Organization` | **Soft** — set `deleted_at` | Cascades to memberships |
+| `User` | **Soft** — set `deleted_at` | Cascades to memberships |
+| `Membership` | **Hard** — the row is removed | n/a |
+
+The **ordinary** delete of an organization or user writes `deleted_at`. That is an
+`UPDATE`, touches no foreign key, and therefore **preserves memberships and every
+historical relationship** — which is the point: a departed responder must still resolve as
+the author of a past incident.
+
+`ON DELETE CASCADE` is referential integrity for a **physical** row deletion — an erasure
+request, a local reset. It is the exceptional path, not the normal one.
+
+Membership is hard-deleted because revoking access must actually revoke it: a soft-deleted
+grant that some future authorization check forgets to filter is a security hole, not a
+data-loss risk.
+
+Reads must filter on `deleted_at IS NULL`. That filtering is **not** built yet — there are
+no read paths — and arrives with the first query.
+
+### Conventions every later table follows
+
+| Convention | Reason |
+| --- | --- |
+| snake_case tables and columns via `@@map` / `@map` | Raw SQL and `psql` read naturally without quoting every identifier. |
+| `@default(uuid(7))` in `@db.Uuid` columns | 16 bytes rather than a 36-character string, and time-ordered, so primary-key inserts stay local in the btree. |
+| `@db.Timestamptz(3)` on every timestamp | Prisma maps `DateTime` to `timestamp` **without** time zone by default. |
+| Plain `text` for strings | Length limits live in the Zod schemas at the request boundary, where this project already validates. |
+| Tenant-owned tables carry `organizationId` | The isolation convention. Enforcement arrives with the first read path. |
+
+Only `memberships.user_id` is separately indexed. `organization_id` needs no index of its
+own — it is the leading column of the composite unique, which already serves prefix lookups
+and the cascade from `organizations`.
+
+### Integration tests
+
+Constraints, cascades, and column types are properties of the database, so they are tested
+against a real one:
+
+```bash
+pnpm db:up
+pnpm --filter @sentinelops/api test:integration
+```
+
+This suite is **opt-in and separate** — `pnpm test` and `pnpm run test:e2e` need no
+database and are unaffected.
+
+It runs against a **dedicated** database named by `TEST_DATABASE_URL` (see
+`.env.example`), created and migrated automatically on first run. Because the suite
+truncates tables between tests, it refuses to start unless that database's name ends in
+`_test` **and** differs from `DATABASE_URL`'s, and it never falls back to `DATABASE_URL`.
 
 ---
 
