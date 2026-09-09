@@ -59,18 +59,18 @@ enum Role {
 /// Soft-deleted rather than removed: destroying a tenant would destroy its incident
 /// history, which is the thing an operations platform exists to retain.
 model Organization {
-  id String @id @default(uuid(7)) @db.Uuid
+  id   String @id @default(uuid(7)) @db.Uuid
   name String
   /// URL-safe identifier, so a route can address an organization without exposing
   /// its id.
   slug String @unique
 
-  createdAt DateTime  @default(now()) @db.Timestamptz(3) @map("created_at")
-  updatedAt DateTime  @updatedAt @db.Timestamptz(3) @map("updated_at")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
   /// Set by the ordinary application delete, which is an UPDATE and therefore
   /// leaves memberships and every historical relationship intact. Reads filter on
   /// `deleted_at IS NULL`; that filtering arrives with the first read path.
-  deletedAt DateTime? @db.Timestamptz(3) @map("deleted_at")
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(3)
 
   memberships Membership[]
 
@@ -80,27 +80,38 @@ model Organization {
 /// A person. Global rather than tenant-scoped: one identity, one login, and a
 /// Membership per organization they belong to.
 ///
-/// Deliberately carries no credentials. passwordHash, emailVerifiedAt, and sessions
-/// belong to the authentication stage and are additive from here.
+/// Carries the password credential and nothing else about authentication. Email
+/// verification and password reset both need mail delivery, which does not exist,
+/// so emailVerifiedAt is not here yet — it is additive when verification arrives.
 ///
 /// Soft-deleted rather than removed: a departed responder must still resolve as the
 /// author of past incidents and comments.
 model User {
-  id String @id @default(uuid(7)) @db.Uuid
+  id           String  @id @default(uuid(7)) @db.Uuid
   /// Stored lowercase. Postgres unique indexes are case-sensitive, so normalisation
   /// happens at the Zod boundary rather than by adding the citext extension.
-  email String @unique
+  email        String  @unique
   /// The human-readable display identity for this actor — what an incident timeline,
   /// an assignment, or an audit entry renders instead of a uuid. Deliberately a
   /// single field: this is actor identity, not a user profile. Avatars, titles, time
   /// zones, contact methods, and notification preferences are not part of this stage.
-  name String
+  name         String
+  /// Argon2id PKC-encoded hash — algorithm, parameters, and salt travel inside the
+  /// string, so rehashing at stronger parameters later needs no schema change.
+  ///
+  /// Nullable, for two reasons. A user invited to an organization exists before
+  /// choosing a password, and a federated identity may never have one at all. Login
+  /// treats null exactly as it treats a wrong password: one indistinguishable 401.
+  ///
+  /// Never selected except by the login lookup, and never mapped into a response.
+  passwordHash String? @map("password_hash")
 
-  createdAt DateTime  @default(now()) @db.Timestamptz(3) @map("created_at")
-  updatedAt DateTime  @updatedAt @db.Timestamptz(3) @map("updated_at")
-  deletedAt DateTime? @db.Timestamptz(3) @map("deleted_at")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(3)
 
-  memberships Membership[]
+  memberships   Membership[]
+  refreshTokens RefreshToken[]
 
   @@map("users")
 }
@@ -127,8 +138,8 @@ model Membership {
   userId         String @map("user_id") @db.Uuid
   role           Role   @default(MEMBER)
 
-  createdAt DateTime @default(now()) @db.Timestamptz(3) @map("created_at")
-  updatedAt DateTime @updatedAt @db.Timestamptz(3) @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -143,4 +154,48 @@ model Membership {
   /// composite unique above, which already serves prefix lookups and that cascade.
   @@index([userId])
   @@map("memberships")
+}
+
+/// One issued refresh token. A row per token rather than per session, because
+/// rotation means a session is a *chain* of tokens: every refresh revokes the
+/// presented token and inserts its successor.
+///
+/// Hard lifecycle. These are credentials, not history — an expired or revoked row
+/// is reaped, not preserved, and nothing references one after it dies.
+model RefreshToken {
+  id     String @id @default(uuid(7)) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+
+  /// SHA-256 of the opaque token, hex encoded. The token itself is never stored,
+  /// so a database disclosure yields nothing a client can present.
+  ///
+  /// SHA-256 rather than Argon2, which would be wrong twice over: the token is 256
+  /// bits from a CSPRNG, so there is no low-entropy guess for a slow hash to
+  /// frustrate, and lookup happens *by* this value — which needs to be
+  /// deterministic and indexable, exactly what a per-row salt destroys.
+  tokenHash String @unique @map("token_hash")
+
+  /// Shared by every token descended from one login, and the reason reuse
+  /// detection works: a token replayed after the legitimate client has rotated
+  /// past it kills the whole lineage rather than leaving both parties working.
+  ///
+  /// Not a foreign key — the family has no row of its own. Making it one would
+  /// mean a sessions table this stage has no other use for.
+  familyId String @map("family_id") @db.Uuid
+
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(3)
+  /// Set on rotation, on logout, and on every token in a family when reuse is
+  /// detected. A revoked row is kept until it expires precisely so that replaying
+  /// it can be *noticed*; deleting it on rotation would make reuse look like an
+  /// unknown token.
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Serves the cascade from users, and revoking every session a person holds.
+  @@index([userId])
+  /// Serves reuse detection, which revokes an entire family in one statement.
+  @@index([familyId])
+  @@map("refresh_tokens")
 }

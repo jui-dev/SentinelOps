@@ -1,6 +1,8 @@
 import {
   getRequestId,
+  getRequestUser,
   runWithRequestContext,
+  setRequestUser,
 } from './request-context.js';
 
 describe('request context', () => {
@@ -104,9 +106,79 @@ describe('request context', () => {
         return getRequestId();
       });
 
-    await expect(Promise.all([observe('slow'), observe('fast')])).resolves.toEqual([
-      'slow',
-      'fast',
-    ]);
+    await expect(
+      Promise.all([observe('slow'), observe('fast')]),
+    ).resolves.toEqual(['slow', 'fast']);
+  });
+
+  describe('the authenticated user', () => {
+    it('should be absent until the guard records one', () => {
+      runWithRequestContext({ requestId: 'req-1' }, () => {
+        expect(getRequestUser()).toBeUndefined();
+      });
+    });
+
+    it('should be readable after being set', () => {
+      runWithRequestContext({ requestId: 'req-1' }, () => {
+        setRequestUser('user-1');
+
+        expect(getRequestUser()).toBe('user-1');
+      });
+    });
+
+    it('should mutate the existing context rather than opening a new one', () => {
+      // A guard writes the user id and returns; the handler that runs
+      // afterwards must still see it. Opening a scope here would end it at the
+      // guard's own return.
+      runWithRequestContext({ requestId: 'req-1' }, () => {
+        setRequestUser('user-1');
+
+        return Promise.resolve().then(() => {
+          expect(getRequestUser()).toBe('user-1');
+          expect(getRequestId()).toBe('req-1');
+        });
+      });
+    });
+
+    it('should survive an await', async () => {
+      await runWithRequestContext({ requestId: 'req-1' }, async () => {
+        setRequestUser('user-1');
+        await new Promise((resolve) => setTimeout(resolve, 1));
+
+        expect(getRequestUser()).toBe('user-1');
+      });
+    });
+
+    it('should not throw outside a request', () => {
+      // A unit test constructs a guard with no middleware ahead of it. That is
+      // not a failure worth throwing over.
+      expect(() => setRequestUser('user-1')).not.toThrow();
+      expect(getRequestUser()).toBeUndefined();
+    });
+
+    it('should not bleed between concurrent contexts', async () => {
+      const observe = (requestId: string, userId: string) =>
+        runWithRequestContext({ requestId }, async () => {
+          setRequestUser(userId);
+          await new Promise((resolve) =>
+            setTimeout(resolve, requestId === 'slow' ? 10 : 1),
+          );
+
+          return getRequestUser();
+        });
+
+      await expect(
+        Promise.all([
+          observe('slow', 'user-slow'),
+          observe('fast', 'user-fast'),
+        ]),
+      ).resolves.toEqual(['user-slow', 'user-fast']);
+    });
+
+    it('should accept a user supplied at context creation', () => {
+      runWithRequestContext({ requestId: 'req-1', userId: 'user-1' }, () => {
+        expect(getRequestUser()).toBe('user-1');
+      });
+    });
   });
 });

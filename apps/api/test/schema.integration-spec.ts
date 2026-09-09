@@ -91,7 +91,9 @@ describe('core domain schema (integration)', () => {
     it('should reject a duplicate user email', async () => {
       await aUser('ada@example.com');
 
-      await expect(aUser('ada@example.com')).rejects.toSatisfy(isUniqueViolation);
+      await expect(aUser('ada@example.com')).rejects.toSatisfy(
+        isUniqueViolation,
+      );
     });
 
     it('should reject a second membership for the same user and organization', async () => {
@@ -253,11 +255,16 @@ describe('core domain schema (integration)', () => {
       >(
         `SELECT column_name, data_type FROM information_schema.columns
          WHERE table_schema = 'public'
-           AND column_name IN ('created_at', 'updated_at', 'deleted_at')`,
+           AND column_name IN (
+             'created_at', 'updated_at', 'deleted_at', 'expires_at', 'revoked_at'
+           )`,
       );
 
-      // Three tables x created_at/updated_at, plus deleted_at on two of them.
-      expect(columns).toHaveLength(8);
+      // organizations, users, memberships: created_at/updated_at each (6),
+      // plus deleted_at on organizations and users (2). refresh_tokens adds
+      // created_at, expires_at, and revoked_at (3) and has no updated_at,
+      // because a credential is issued and revoked rather than edited.
+      expect(columns).toHaveLength(11);
       for (const column of columns) {
         expect(column.data_type).toBe('timestamp with time zone');
       }
@@ -283,7 +290,9 @@ describe('core domain schema (integration)', () => {
       expect(updated.updatedAt.getTime()).toBeGreaterThan(
         organization.updatedAt.getTime(),
       );
-      expect(updated.createdAt.getTime()).toBe(organization.createdAt.getTime());
+      expect(updated.createdAt.getTime()).toBe(
+        organization.createdAt.getTime(),
+      );
     });
   });
 });

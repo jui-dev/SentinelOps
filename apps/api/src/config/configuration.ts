@@ -25,12 +25,23 @@ import { envSchema } from './env.validation.js';
  */
 const readEnv = () => envSchema.parse(process.env);
 
+/**
+ * Splits the comma-separated CORS_ORIGIN into a list, tolerating the spaces a
+ * human leaves after each comma and dropping empty entries from a trailing one.
+ */
+const parseOrigins = (value: string): string[] =>
+  value
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0);
+
 export const appConfig = registerAs('app', () => {
   const env = readEnv();
 
   return {
     port: env.PORT,
     environment: env.NODE_ENV,
+    corsOrigins: parseOrigins(env.CORS_ORIGIN),
   };
 });
 
@@ -72,8 +83,40 @@ export const loggingConfig = registerAs('logging', () => {
 });
 
 /**
+ * Authentication settings: how an access token is signed and for how long, how
+ * long a refresh token survives, and the attributes of the cookie carrying it.
+ *
+ * `cookieSecure` is derived from NODE_ENV rather than configured, on the same
+ * reasoning as the logging defaults above. A flag that must be false on
+ * localhost and true everywhere else is a consequence, not a knob, and exposing
+ * it invites a production deployment that switches it off to make something
+ * work.
+ *
+ * `cookiePath` is scoped to the auth routes so the refresh token is not
+ * attached to every ordinary API call. It is deliberately the whole `/auth`
+ * subtree rather than `/auth/refresh`, because logout needs the cookie too.
+ */
+export const authConfig = registerAs('auth', () => {
+  const env = readEnv();
+
+  return {
+    jwtSecret: env.JWT_SECRET,
+    jwtIssuer: env.JWT_ISSUER,
+    accessTtlSeconds: env.JWT_ACCESS_TTL_SECONDS,
+    refreshTtlDays: env.REFRESH_TOKEN_TTL_DAYS,
+    cookieSecure: env.NODE_ENV === 'production',
+    cookiePath: '/api/v1/auth',
+  };
+});
+
+/**
  * Every configuration domain, in the shape `ConfigModule.forRoot` expects.
  * Deliberately limited to the infrastructure that actually exists — a domain is
  * added when the thing behind it does.
  */
-export const configurations = [appConfig, databaseConfig, loggingConfig];
+export const configurations = [
+  appConfig,
+  databaseConfig,
+  loggingConfig,
+  authConfig,
+];

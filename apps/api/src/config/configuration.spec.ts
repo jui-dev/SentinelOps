@@ -1,5 +1,6 @@
 import {
   appConfig,
+  authConfig,
   configurations,
   databaseConfig,
   loggingConfig,
@@ -7,6 +8,7 @@ import {
 
 const DATABASE_URL =
   'postgresql://postgres:password@localhost:5432/sentinelops';
+const JWT_SECRET = 'a-test-signing-key-of-at-least-32-characters';
 
 describe('configuration', () => {
   beforeEach(() => {
@@ -15,6 +17,7 @@ describe('configuration', () => {
     vi.stubEnv('NODE_ENV', 'test');
     vi.stubEnv('PORT', '3001');
     vi.stubEnv('DATABASE_URL', DATABASE_URL);
+    vi.stubEnv('JWT_SECRET', JWT_SECRET);
   });
 
   afterEach(() => {
@@ -23,7 +26,11 @@ describe('configuration', () => {
 
   describe('appConfig', () => {
     it('should expose the app domain', () => {
-      expect(appConfig()).toEqual({ port: 3001, environment: 'test' });
+      expect(appConfig()).toEqual({
+        port: 3001,
+        environment: 'test',
+        corsOrigins: ['http://localhost:3000'],
+      });
     });
 
     it('should expose the port as a number, not the raw string', () => {
@@ -36,7 +43,23 @@ describe('configuration', () => {
       vi.stubEnv('PORT', undefined);
       vi.stubEnv('NODE_ENV', undefined);
 
-      expect(appConfig()).toEqual({ port: 3001, environment: 'development' });
+      expect(appConfig()).toEqual({
+        port: 3001,
+        environment: 'development',
+        corsOrigins: ['http://localhost:3000'],
+      });
+    });
+
+    it('should split CORS_ORIGIN into a list, trimming the spaces', () => {
+      vi.stubEnv(
+        'CORS_ORIGIN',
+        'http://localhost:3000, https://app.example.com,',
+      );
+
+      expect(appConfig().corsOrigins).toEqual([
+        'http://localhost:3000',
+        'https://app.example.com',
+      ]);
     });
 
     it('should be registered under the app token', () => {
@@ -64,14 +87,11 @@ describe('configuration', () => {
       ['production', 'log', 'json'],
       ['test', 'warn', 'pretty'],
       ['development', 'debug', 'pretty'],
-    ])(
-      'should derive the defaults for %s',
-      (environment, level, format) => {
-        vi.stubEnv('NODE_ENV', environment);
+    ])('should derive the defaults for %s', (environment, level, format) => {
+      vi.stubEnv('NODE_ENV', environment);
 
-        expect(loggingConfig()).toEqual({ level, format });
-      },
-    );
+      expect(loggingConfig()).toEqual({ level, format });
+    });
 
     it('should let an explicit LOG_LEVEL win over the derived default', () => {
       vi.stubEnv('NODE_ENV', 'production');
@@ -92,9 +112,52 @@ describe('configuration', () => {
     });
   });
 
+  describe('authConfig', () => {
+    it('should expose the auth domain', () => {
+      // NODE_ENV is 'test' from the stub above, so the cookie is not secure.
+      expect(authConfig()).toEqual({
+        jwtSecret: JWT_SECRET,
+        jwtIssuer: 'sentinelops',
+        accessTtlSeconds: 900,
+        refreshTtlDays: 30,
+        cookieSecure: false,
+        cookiePath: '/api/v1/auth',
+      });
+    });
+
+    it('should expose the TTLs as numbers, not the raw strings', () => {
+      vi.stubEnv('JWT_ACCESS_TTL_SECONDS', '600');
+      vi.stubEnv('REFRESH_TOKEN_TTL_DAYS', '7');
+
+      expect(authConfig().accessTtlSeconds).toBe(600);
+      expect(authConfig().refreshTtlDays).toBe(7);
+    });
+
+    it.each([
+      ['production', true],
+      ['development', false],
+      ['test', false],
+    ])('should derive cookieSecure for %s', (environment, secure) => {
+      // Derived rather than configured: a flag that must be false on localhost
+      // and true everywhere else is a consequence, not a knob.
+      vi.stubEnv('NODE_ENV', environment);
+
+      expect(authConfig().cookieSecure).toBe(secure);
+    });
+
+    it('should be registered under the auth token', () => {
+      expect(authConfig.KEY).toBe('CONFIGURATION(auth)');
+    });
+  });
+
   describe('configurations', () => {
-    it('should register exactly the app, database, and logging domains', () => {
-      expect(configurations).toEqual([appConfig, databaseConfig, loggingConfig]);
+    it('should register exactly the app, database, logging, and auth domains', () => {
+      expect(configurations).toEqual([
+        appConfig,
+        databaseConfig,
+        loggingConfig,
+        authConfig,
+      ]);
     });
   });
 });

@@ -1,6 +1,9 @@
 import type { ConfigType } from '@nestjs/config';
 
-import { runWithRequestContext } from '../common/request-context.js';
+import {
+  runWithRequestContext,
+  setRequestUser,
+} from '../common/request-context.js';
 import type { loggingConfig } from '../config/configuration.js';
 import { AppLogger, levelsFrom } from './app.logger.js';
 import { REDACTED } from './redact.js';
@@ -8,8 +11,12 @@ import { REDACTED } from './redact.js';
 type LoggingConfig = ConfigType<typeof loggingConfig>;
 
 describe('AppLogger', () => {
-  const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
-  const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+  const stdout = vi
+    .spyOn(process.stdout, 'write')
+    .mockImplementation(() => true);
+  const stderr = vi
+    .spyOn(process.stderr, 'write')
+    .mockImplementation(() => true);
 
   /**
    * Builds a logger directly from a config object, matching how the other
@@ -71,7 +78,10 @@ describe('AppLogger', () => {
     });
 
     it('should not let a param displace a framework field', () => {
-      loggerFor().log('the real message', { message: 'impostor', level: 'fatal' });
+      loggerFor().log('the real message', {
+        message: 'impostor',
+        level: 'fatal',
+      });
 
       expect(lastJson()).toMatchObject({
         message: 'the real message',
@@ -139,11 +149,53 @@ describe('AppLogger', () => {
 
       expect(lastJson()).toMatchObject({ requestId: 'explicit' });
     });
+
+    it('should attach the authenticated userId once the guard sets one', () => {
+      // A domain service logs without knowing this field exists; the ambient
+      // context supplies it.
+      runWithRequestContext({ requestId: 'req-1' }, () => {
+        setRequestUser('user-1');
+        loggerFor().log('after authentication');
+      });
+
+      expect(lastJson()).toMatchObject({
+        requestId: 'req-1',
+        userId: 'user-1',
+      });
+    });
+
+    it('should omit userId before the guard runs', () => {
+      // Every public route and every failed authentication logs from here. An
+      // absent field is the honest representation of "nobody was authenticated".
+      runWithRequestContext({ requestId: 'req-1' }, () => {
+        loggerFor().log('before authentication');
+      });
+
+      expect(lastJson()).not.toHaveProperty('userId');
+    });
+
+    it('should omit userId outside a request', () => {
+      loggerFor().log('outside a request');
+
+      expect(lastJson()).not.toHaveProperty('userId');
+    });
+
+    it('should let an explicit userId win over the ambient one', () => {
+      runWithRequestContext({ requestId: 'req-1' }, () => {
+        setRequestUser('ambient-user');
+        loggerFor().log('acting on behalf', { userId: 'explicit-user' });
+      });
+
+      expect(lastJson()).toMatchObject({ userId: 'explicit-user' });
+    });
   });
 
   describe('redaction', () => {
     it('should mask sensitive params', () => {
-      loggerFor().log('login', { email: 'ada@example.com', password: 'hunter2' });
+      loggerFor().log('login', {
+        email: 'ada@example.com',
+        password: 'hunter2',
+      });
 
       const written = stdout.mock.calls[0][0] as string;
 

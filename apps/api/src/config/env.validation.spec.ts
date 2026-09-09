@@ -2,9 +2,22 @@ import { envSchema } from './env.validation.js';
 
 const DATABASE_URL =
   'postgresql://postgres:password@localhost:5432/sentinelops';
+const JWT_SECRET = 'a-test-signing-key-of-at-least-32-characters';
 
 /** The minimum valid environment: everything else in the schema has a default. */
-const valid = () => ({ DATABASE_URL });
+const valid = () => ({ DATABASE_URL, JWT_SECRET });
+
+/** What the schema produces from `valid()` alone, defaults included. */
+const defaults = {
+  NODE_ENV: 'development',
+  PORT: 3001,
+  DATABASE_URL,
+  JWT_SECRET,
+  JWT_ISSUER: 'sentinelops',
+  JWT_ACCESS_TTL_SECONDS: 900,
+  REFRESH_TOKEN_TTL_DAYS: 30,
+  CORS_ORIGIN: 'http://localhost:3000',
+};
 
 /** The first issue Zod reports for `key`, or undefined when `key` validated. */
 const issueFor = (env: Record<string, unknown>, key: string) => {
@@ -23,8 +36,9 @@ describe('envSchema', () => {
           NODE_ENV: 'production',
           PORT: '8080',
           DATABASE_URL,
+          JWT_SECRET,
         }),
-      ).toEqual({ NODE_ENV: 'production', PORT: 8080, DATABASE_URL });
+      ).toEqual({ ...defaults, NODE_ENV: 'production', PORT: 8080 });
     });
 
     it('should coerce PORT from a string to a number', () => {
@@ -40,13 +54,15 @@ describe('envSchema', () => {
         'postgres://u:p@localhost:5432/db',
         'postgresql://u:p@localhost:5432/db',
       ]) {
-        expect(envSchema.safeParse({ DATABASE_URL: url }).success).toBe(true);
+        expect(
+          envSchema.safeParse({ ...valid(), DATABASE_URL: url }).success,
+        ).toBe(true);
       }
     });
 
     it('should ignore variables it does not declare', () => {
-      // POSTGRES_* belongs to Docker Compose and REDIS_URL/JWT_SECRET to systems
-      // that do not exist yet. None of them may fail the boot.
+      // POSTGRES_* belongs to Docker Compose and REDIS_URL to a system that
+      // does not exist yet. None of them may fail the boot.
       const result = envSchema.safeParse({
         ...valid(),
         POSTGRES_USER: 'postgres',
@@ -54,15 +70,10 @@ describe('envSchema', () => {
         POSTGRES_DB: 'sentinelops',
         POSTGRES_PORT: '5432',
         REDIS_URL: 'redis://localhost:6379',
-        JWT_SECRET: 'replace-with-a-secure-random-secret',
       });
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual({
-        NODE_ENV: 'development',
-        PORT: 3001,
-        DATABASE_URL,
-      });
+      expect(result.data).toEqual(defaults);
     });
   });
 
@@ -116,8 +127,17 @@ describe('envSchema', () => {
       expect(envSchema.parse(valid()).PORT).toBe(3001);
     });
 
-    it('should not default DATABASE_URL', () => {
+    it('should not default DATABASE_URL or JWT_SECRET', () => {
       expect(envSchema.safeParse({}).success).toBe(false);
+    });
+
+    it('should default the authentication knobs', () => {
+      expect(envSchema.parse(valid())).toMatchObject({
+        JWT_ISSUER: 'sentinelops',
+        JWT_ACCESS_TTL_SECONDS: 900,
+        REFRESH_TOKEN_TTL_DAYS: 30,
+        CORS_ORIGIN: 'http://localhost:3000',
+      });
     });
   });
 
@@ -189,8 +209,69 @@ describe('envSchema', () => {
     expect(result.success).toBe(false);
     expect(result.error?.issues.map((issue) => issue.path[0]).sort()).toEqual([
       'DATABASE_URL',
+      'JWT_SECRET',
       'NODE_ENV',
       'PORT',
     ]);
+  });
+
+  describe('JWT_SECRET', () => {
+    it('should reject a missing value', () => {
+      expect(issueFor({ DATABASE_URL }, 'JWT_SECRET')).toBeDefined();
+    });
+
+    it('should reject a secret shorter than 32 characters', () => {
+      // A short secret is a guessable secret, and a guessable signing key is
+      // indistinguishable from having no authentication at all.
+      expect(
+        issueFor({ ...valid(), JWT_SECRET: 'a'.repeat(31) }, 'JWT_SECRET'),
+      ).toBeDefined();
+    });
+
+    it('should accept a secret of exactly 32 characters', () => {
+      expect(
+        envSchema.safeParse({ ...valid(), JWT_SECRET: 'a'.repeat(32) }).success,
+      ).toBe(true);
+    });
+  });
+
+  describe('token lifetimes', () => {
+    it('should coerce the TTLs from strings to numbers', () => {
+      const env = envSchema.parse({
+        ...valid(),
+        JWT_ACCESS_TTL_SECONDS: '600',
+        REFRESH_TOKEN_TTL_DAYS: '7',
+      });
+
+      expect(env.JWT_ACCESS_TTL_SECONDS).toBe(600);
+      expect(env.REFRESH_TOKEN_TTL_DAYS).toBe(7);
+    });
+
+    it.each([
+      ['JWT_ACCESS_TTL_SECONDS', '0'],
+      ['JWT_ACCESS_TTL_SECONDS', '-1'],
+      ['JWT_ACCESS_TTL_SECONDS', '1.5'],
+      ['REFRESH_TOKEN_TTL_DAYS', '0'],
+      ['REFRESH_TOKEN_TTL_DAYS', 'nope'],
+    ])('should reject %s=%s', (key, value) => {
+      expect(issueFor({ ...valid(), [key]: value }, key)).toBeDefined();
+    });
+  });
+
+  describe('CORS_ORIGIN', () => {
+    it('should accept a comma-separated list', () => {
+      expect(
+        envSchema.parse({
+          ...valid(),
+          CORS_ORIGIN: 'http://localhost:3000,https://app.example.com',
+        }).CORS_ORIGIN,
+      ).toBe('http://localhost:3000,https://app.example.com');
+    });
+
+    it('should reject an empty value', () => {
+      expect(
+        issueFor({ ...valid(), CORS_ORIGIN: '' }, 'CORS_ORIGIN'),
+      ).toBeDefined();
+    });
   });
 });

@@ -2,7 +2,7 @@ import { ConsoleLogger, Inject, Injectable, LOG_LEVELS } from '@nestjs/common';
 import type { LogLevel } from '@nestjs/common';
 import type { ConfigType } from '@nestjs/config';
 
-import { getRequestId } from '../common/request-context.js';
+import { getRequestId, getRequestUser } from '../common/request-context.js';
 import { loggingConfig } from '../config/configuration.js';
 import { redact } from './redact.js';
 
@@ -33,6 +33,12 @@ export const levelsFrom = (minimum: LogLevel): LogLevel[] =>
  * funnel every level method passes through, in both output formats, so
  * overriding it applies correlation and redaction to every line the process
  * emits — including ones written by code that never considered either.
+ *
+ * Correlation means two ambient fields, both taken from the request context:
+ * `requestId` from the moment the request arrived, and `userId` from the
+ * moment the guard verified one. Neither is passed by a caller, so every line a
+ * domain service logs is attributable without that service knowing either
+ * value exists.
  */
 @Injectable()
 export class AppLogger extends ConsoleLogger {
@@ -67,11 +73,20 @@ export class AppLogger extends ConsoleLogger {
     params?: Record<string, any>,
   ): void {
     const requestId = getRequestId();
+    const userId = getRequestUser();
 
-    // Spread first so a caller-supplied requestId is not silently overwritten
-    // by the ambient one — they are the same value in every normal path, and
-    // where they differ the caller was explicit and should win.
-    const merged = { ...(requestId ? { requestId } : {}), ...params };
+    // Spread first so a caller-supplied value is not silently overwritten by
+    // the ambient one — they are the same in every normal path, and where they
+    // differ the caller was explicit and should win.
+    //
+    // userId is absent on anything logged before the guard runs, which includes
+    // every public route and every failed authentication. An absent field is
+    // the honest representation of "nobody was authenticated".
+    const merged = {
+      ...(requestId ? { requestId } : {}),
+      ...(userId ? { userId } : {}),
+      ...params,
+    };
 
     super.printMessages(
       // Non-objects, the overwhelmingly common case, pass through untouched.

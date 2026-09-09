@@ -5,6 +5,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 
+import { Public } from '../auth/public.decorator.js';
 import { PrismaService } from '../database/prisma.service.js';
 
 @Controller('health')
@@ -16,7 +17,12 @@ export class HealthController {
   /**
    * Liveness — is the application process running? Deliberately touches no
    * infrastructure, so a database outage never marks the process as dead.
+   *
+   * Public: a load balancer's probe carries no credentials, and an
+   * authenticated health check is a health check that reports the wrong thing
+   * when authentication is what broke.
    */
+  @Public()
   @Get()
   getHealth(): { status: string } {
     return { status: 'ok' };
@@ -27,6 +33,7 @@ export class HealthController {
    * The probe query runs on every request rather than reading cached state, so
    * the response always reflects the database's current reachability.
    */
+  @Public()
   @Get('ready')
   async getReadiness(): Promise<{ status: string; database: string }> {
     try {

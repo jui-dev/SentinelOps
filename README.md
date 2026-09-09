@@ -9,21 +9,27 @@ unfold, and turning the result into reviewable operational records.
 
 ## Project status
 
-> **Pre-development.** This repository currently contains only its foundation: workspace
-> configuration, tooling defaults, and licensing. No application code exists yet.
+> **Early development.** The backend's foundations are in place and tested. There is no
+> product yet: no incidents, no services, no teams, and no user interface.
 
-Nothing described as **planned** below has been implemented. Each piece will be introduced
-deliberately in a later stage, and this README will be updated as capabilities actually
-land.
+Anything still described as **planned** below has not been built. Each piece is introduced
+deliberately, and this README is updated as capabilities actually land.
 
 **What exists today**
 
-- pnpm workspace configuration
-- Root package manifest with pinned Node and pnpm versions
-- Git hygiene: `.gitignore`, `.gitattributes`, `.nvmrc`
-- Environment variable template (`.env.example`)
-- MIT license
-- Empty, reserved directories for the structure described below
+- A NestJS API on Express 5, with typed configuration, a single error contract, request
+  validation, structured logging, and request correlation
+- PostgreSQL via Prisma 7, with the core domain schema and its migrations
+- Authentication: registration, login, refresh with rotation, logout, and a global guard
+- A Next.js frontend scaffold, untouched beyond its default page
+- Unit, end-to-end, and integration test suites
+
+**What does not exist yet**
+
+- Authorization: `Role` is stored and returned, but nothing enforces it
+- Any tenant-scoped resource: no organizations, teams, services, or incidents API
+- Rate limiting on authentication, which waits for Redis
+- Continuous integration, and container images for the applications
 
 ---
 
@@ -82,11 +88,14 @@ area — it is not part of the request path, and nothing is required to live the
 
 ## Planned capabilities
 
-None of the following are built yet. This is the intended scope, not a feature list.
+The intended scope, not a feature list. Only the item marked below is built.
 
-- **Multi-organization architecture** — tenant isolation across organizations
-- **Authentication and authorization** — user identity and session handling
-- **Role-based access control** — roles and granular permissions
+- **Multi-organization architecture** — tenant isolation across organizations. The schema
+  carries `organizationId`; nothing enforces the scoping yet
+- **Authentication** — ✅ registration, login, refresh with rotation, logout, and a global
+  guard. See [Authentication](#authentication)
+- **Authorization and role-based access control** — roles and granular permissions.
+  `Role` is stored and returned; nothing reads it
 - **Team management** — teams and membership
 - **Service catalog** — the systems being monitored and who owns them
 - **Incident lifecycle management** — open, acknowledge, escalate, resolve
@@ -104,11 +113,11 @@ None of the following are built yet. This is the intended scope, not a feature l
 
 ## Repository structure
 
-All directories below are currently **empty placeholders** held by `.gitkeep` files.
-
 ```
 sentinelops/
-├── apps/              # Deployable applications (planned: web, api)
+├── apps/
+│   ├── api/           # NestJS backend
+│   └── web/           # Next.js frontend (scaffold)
 ├── packages/          # Shared internal packages, introduced when genuinely needed
 ├── docker/            # Container definitions and local dev compose files
 ├── infrastructure/    # Infrastructure-as-code and deployment configuration
@@ -120,7 +129,8 @@ sentinelops/
 ```
 
 Only `apps/*` and `packages/*` are registered as pnpm workspaces. The other directories
-are plain folders, not packages. No packages exist under `packages/` yet.
+are plain folders, not packages. No packages exist under `packages/` yet, and
+`infrastructure/`, `docs/`, and `.github/` are still empty.
 
 ---
 
@@ -148,29 +158,38 @@ If you use `nvm`, `nvm use` will pick up the version in `.nvmrc`.
 
 ## Setup
 
-> **Intended future workflow.** None of the `pnpm dev`, `build`, `lint`, or `test`
-> commands below exist yet — the root `scripts` block is intentionally empty until there
-> is something to orchestrate. Only `git clone`, `pnpm install`, and copying the
-> environment file do anything today, and `pnpm install` currently resolves no packages
-> because the workspace is empty.
+> The root `scripts` block still holds only the database commands. There is no workspace-wide
+> `dev`, `build`, `lint`, or `test` orchestration yet — each application is driven through
+> `pnpm --filter` until there is enough to orchestrate.
 
 ```bash
 # Clone the repository
 git clone <repository-url>
 cd sentinelops
-
-# Install dependencies (resolves nothing yet — no packages defined)
 pnpm install
 
-# Create your local environment file from the template
+# Create your local environment file from the template, then set JWT_SECRET
 cp .env.example .env
+node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
 
-# Planned, once applications are added:
-pnpm dev      # run web and api in development
-pnpm build    # build all workspace packages
-pnpm lint     # lint the workspace
-pnpm test     # run the test suites
+# Start PostgreSQL and apply migrations
+pnpm db:up
+pnpm --filter @sentinelops/api prisma:migrate
+
+# Run the API
+pnpm --filter @sentinelops/api start:dev
+
+# Checks
+pnpm --filter @sentinelops/api typecheck
+pnpm --filter @sentinelops/api lint
+pnpm --filter @sentinelops/api test              # unit, no database
+pnpm --filter @sentinelops/api test:e2e          # no database
+pnpm --filter @sentinelops/api test:integration  # needs pnpm db:up
 ```
+
+The API refuses to boot without a `JWT_SECRET` of at least 32 characters. That is
+deliberate: a defaulted signing key is a key every deployment that forgot to set one
+shares.
 
 ### Environment variables
 
@@ -197,6 +216,11 @@ The schema is [`apps/api/src/config/env.validation.ts`](apps/api/src/config/env.
 | `DATABASE_URL` | Required. A `postgres://` or `postgresql://` URL | — |
 | `LOG_LEVEL` | One of `verbose`, `debug`, `log`, `warn`, `error`, `fatal` | Derived from `NODE_ENV` |
 | `LOG_FORMAT` | One of `json`, `pretty` | Derived from `NODE_ENV` |
+| `JWT_SECRET` | Required. At least 32 characters | — |
+| `JWT_ISSUER` | Non-empty. Stamped as `iss` and required to match on verification | `sentinelops` |
+| `JWT_ACCESS_TTL_SECONDS` | Positive integer | `900` |
+| `REFRESH_TOKEN_TTL_DAYS` | Positive integer | `30` |
+| `CORS_ORIGIN` | Comma-separated browser origins allowed to send credentials | `http://localhost:3000` |
 
 **Validation is fail-fast.** An invalid or missing value aborts startup before the HTTP
 server binds, naming every offending variable at once:
@@ -205,9 +229,12 @@ server binds, naming every offending variable at once:
 Error: Config validation error: PORT: Invalid input: expected number, received NaN
 ```
 
-Because `DATABASE_URL` is required, **`cp .env.example .env` is a prerequisite** for
-`start`, `start:dev`, and `test:e2e` — not just for Prisma. Unit tests (`pnpm test`) do not
-need it.
+Because `DATABASE_URL` and `JWT_SECRET` are required, **`cp .env.example .env` is a
+prerequisite** for `start`, `start:dev`, and `test:e2e` — not just for Prisma. Unit tests
+(`pnpm test`) do not need it.
+
+The token lifetimes are seconds and whole days rather than `"15m"` strings, so they are
+validated as numbers here — like `PORT` — instead of being parsed at the point of use.
 
 ### Configuration domains
 
@@ -220,6 +247,18 @@ Domains are declared in [`apps/api/src/config/configuration.ts`](apps/api/src/co
 | `database.url` | PostgreSQL connection string | `string` |
 | `logging.level` | Minimum level to emit | `LogLevel` |
 | `logging.format` | Output format | `'json' \| 'pretty'` |
+| `app.corsOrigins` | Origins allowed to send credentialed requests | `string[]` |
+| `auth.jwtSecret` | Access token signing key | `string` |
+| `auth.jwtIssuer` | The `iss` claim, signed and verified | `string` |
+| `auth.accessTtlSeconds` | Access token lifetime | `number` |
+| `auth.refreshTtlDays` | Refresh token lifetime | `number` |
+| `auth.cookieSecure` | Whether the refresh cookie is `Secure` | `boolean` |
+| `auth.cookiePath` | Path the refresh cookie is scoped to | `string` |
+
+`auth.cookieSecure` is **derived** from `NODE_ENV` rather than configured, on the same
+reasoning as the logging defaults: a flag that must be false on localhost and true
+everywhere else is a consequence, not a knob, and exposing it invites a production
+deployment that switches it off to make something work.
 
 Prefer injecting a domain by token — the values are typed, so there is no name to mistype
 and no cast to get wrong:
@@ -334,7 +373,7 @@ the status code, which is what a probe reads.
 
 The core domain is three tables: an organization to own data, a user to act, and a
 membership binding them with a role. Teams, services, incidents, and audit entries all
-hang off these.
+hang off these. A fourth table, `refresh_tokens`, holds sessions rather than domain data.
 
 ```
 ┌────────────────────┐                          ┌────────────────────┐
@@ -343,23 +382,44 @@ hang off these.
 │ id      uuid  PK   │                          │ id      uuid  PK   │
 │ name    text       │                          │ email   text  UQ   │
 │ slug    text  UQ   │                          │ name    text       │
-│ created_at         │                          │ created_at         │
-│ updated_at         │                          │ updated_at         │
-│ deleted_at  NULL   │                          │ deleted_at  NULL   │
+│ created_at         │                          │ password_hash NULL │
+│ updated_at         │                          │ created_at         │
+│ deleted_at  NULL   │                          │ updated_at         │
+│                    │                          │ deleted_at  NULL   │
 └─────────┬──────────┘                          └─────────┬──────────┘
           │ 1                                             │ 1
           │        ┌──────────────────────────┐           │
-          └───────<│       memberships        │>──────────┘
-             N     │──────────────────────────│      N
+          └───────<│       memberships        │>──────────┤
+             N     │──────────────────────────│      N    │
+                   │ id               uuid PK │           │
+                   │ organization_id  uuid FK │           │
+                   │ user_id          uuid FK │           │
+                   │ role             role    │           │
+                   │ created_at / updated_at  │           │
+                   │ UQ(organization_id,      │           │
+                   │    user_id)              │           │
+                   └──────────────────────────┘           │
+                                                          │ 1
+                   ┌──────────────────────────┐           │
+                   │      refresh_tokens      │>──────────┘
+                   │──────────────────────────│      N
                    │ id               uuid PK │
-                   │ organization_id  uuid FK │
                    │ user_id          uuid FK │
-                   │ role             role    │
-                   │ created_at / updated_at  │
-                   │ UQ(organization_id,      │
-                   │    user_id)              │
+                   │ token_hash       text UQ │
+                   │ family_id        uuid    │
+                   │ expires_at               │
+                   │ revoked_at        NULL   │
+                   │ created_at               │
                    └──────────────────────────┘
 ```
+
+`users.password_hash` is nullable, and deliberately so: a user invited to an organization
+exists before choosing a password, and a federated identity may never have one. Login
+treats null exactly as it treats a wrong password.
+
+`refresh_tokens` is a row per *token*, not per session, because rotation makes a session a
+chain: every refresh revokes the presented token and inserts its successor. See
+[Authentication](#authentication).
 
 ### One identity, many organizations
 
@@ -512,6 +572,183 @@ parameter works exactly as `PORT` does in the environment schema.
 Failures produce the contract above with one `details` entry per invalid field,
 addressed by a dotted path (`responders.0.email`). Only each issue's message and
 path are returned; the submitted value is never echoed back.
+
+---
+
+## Authentication
+
+Every route is authenticated **by default**. `JwtAuthGuard` is registered as a global
+`APP_GUARD` in [`apps/api/src/auth/auth.module.ts`](apps/api/src/auth/auth.module.ts), so a
+new endpoint is closed unless someone deliberately opens it with `@Public()` — and opening
+one is a visible line in a diff.
+
+Nothing here uses Passport. `@nestjs/jwt` signs and verifies; the guard is forty lines.
+
+### Endpoints
+
+| Route | Auth | Purpose |
+| --- | --- | --- |
+| `POST /api/v1/auth/register` | public | Create an organization, its owner, and a session |
+| `POST /api/v1/auth/login` | public | Exchange credentials for a session |
+| `POST /api/v1/auth/refresh` | public | Rotate the refresh cookie, mint a new access token |
+| `POST /api/v1/auth/logout` | public | End the session, clear the cookie |
+| `GET /api/v1/auth/me` | **required** | The caller and their memberships |
+
+Logout is public on purpose: it authenticates off the refresh cookie, so an expired access
+token must not be able to strand a session. It is idempotent — an unknown or absent cookie
+still returns `204`, revealing nothing.
+
+### Registration creates a tenant
+
+One request creates an `Organization`, a `User`, and a `Membership` with role `OWNER`, in a
+single transaction:
+
+```jsonc
+POST /api/v1/auth/register
+{
+  "email": "ada@example.com",
+  "password": "a sufficiently long passphrase",
+  "name": "Ada Lovelace",
+  "organizationName": "Acme Operations",
+  "organizationSlug": "acme-ops"   // optional; derived from the name when absent
+}
+```
+
+The three rows are meaningless apart — a user with no membership can do nothing in a
+tenant-scoped product — so either all three exist or none do. `OWNER` is not requestable;
+it is a consequence of having created the tenant.
+
+Uniqueness is enforced by the database, not by checking first: a read-then-write check
+races, and two registrations for one address can both find it free. The constraint
+violation is caught and translated instead.
+
+| Situation | Response |
+| --- | --- |
+| Email already registered | `409` `EMAIL_ALREADY_REGISTERED` |
+| Slug already taken | `409` `ORGANIZATION_SLUG_TAKEN` |
+| No slug derivable from the name | `400`, asking for `organizationSlug` |
+
+A taken slug is refused rather than silently suffixed: a caller who typed "Acme" and
+received `acme-2` has a URL they did not choose. A soft-deleted user still owns its unique
+email, so re-registering that address is a `409`; reclaiming addresses is out of scope.
+
+### Two tokens, two transports
+
+| | Access token | Refresh token |
+| --- | --- | --- |
+| Form | JWT, HS256 | 32 random bytes, base64url |
+| Lifetime | 15 minutes | 30 days |
+| Travels in | The JSON response body | An `httpOnly` cookie |
+| Stored | Nowhere on the server | As a SHA-256 hash |
+
+The access token carries **identity only** — `sub`, `iss`, `iat`, `exp`. No email, which
+would go stale; no organization or role, so that revoking a membership takes effect on the
+next request rather than at the next expiry, and switching organizations needs no new
+token. The cost is one indexed membership lookup per scoped request, which is the right
+trade for an operations tool.
+
+The guard reads **no database**. Verifying a signature is arithmetic; a lookup would add a
+query to every authenticated request to catch a user deleted within fifteen minutes. Stated
+plainly: a soft-deleted user keeps working until their access token expires. Revocation
+bites at refresh, which does check.
+
+The refresh cookie is `HttpOnly`, `SameSite=Lax`, `Secure` outside development, and scoped
+to `Path=/api/v1/auth` so it is not attached to ordinary API calls. It is stored only as a
+SHA-256 hash — not Argon2, which would be wrong twice over: the token is 256 bits from a
+CSPRNG, so there is no low-entropy guess for a slow hash to frustrate, and lookup happens
+*by* the hash, which needs to be deterministic.
+
+**CSRF**: `SameSite=Lax` means browsers do not attach the cookie to a cross-site `POST`, and
+`/auth/refresh` is `POST`-only. The API accepts no cross-site form submissions, so a CSRF
+token would add ceremony without changing the threat model. That reasoning depends on the
+cookie policy staying as it is.
+
+### Rotation and reuse detection
+
+Every refresh revokes the presented token and issues its successor in the same **family** —
+a shared id linking every token descended from one login.
+
+| Presented token | Response |
+| --- | --- |
+| Unknown | `401` `INVALID_REFRESH_TOKEN` |
+| Expired | `401` `REFRESH_TOKEN_EXPIRED` |
+| Already rotated away | **The whole family is revoked**, then `401` `REFRESH_TOKEN_REUSED` |
+| Belongs to a soft-deleted user | `401` `INVALID_REFRESH_TOKEN` |
+| Valid | `200`, with a new access token and a rotated cookie |
+
+Reuse detection is why a revoked row is kept until it expires rather than deleted on
+rotation: deleting it would make a replayed token indistinguishable from an unknown one,
+and the theft would go unnoticed. When a stolen token is replayed after the legitimate
+client has rotated past it, killing the family stops both parties rather than leaving the
+thief working. Other sessions belonging to the same user are untouched.
+
+### Passwords
+
+Argon2id via `@node-rs/argon2`, at OWASP's first recommended configuration: 19 MiB of
+memory, two passes, one lane. The package ships prebuilt platform binaries and runs no
+install script, so it needs no `allowBuilds` entry and no compiler.
+
+The algorithm, version, parameters, and a per-password salt all travel inside the stored
+PHC string, so raising the parameters later invalidates nothing.
+
+Policy is length only — at least 12 characters, at most 128. Composition rules push people
+towards `Passw0rd!` and away from the long passphrases that are actually harder to guess,
+which is the position NIST SP 800-63B settled on.
+
+Login answers identically for an unknown email, a soft-deleted account, an account with no
+password, and a wrong password. When no user is found it still verifies against a dummy
+hash, so response timing does not disclose whether an address exists.
+
+### The current user
+
+`JwtAuthGuard` records the verified user id in the same `AsyncLocalStorage` context that
+carries the request id, rather than hanging a property on the Express request. Two things
+follow:
+
+- `@CurrentUserId()` reads it. Named for exactly what it returns — the token carries
+  identity and nothing else, so a `@CurrentUser()` returning a one-field object would
+  promise more than it holds. When the context later gains organization and role, such a
+  decorator joins this one rather than replacing it.
+- **Every log line emitted after the guard runs carries `userId`**, with no call site
+  passing it along. See [Request correlation](#request-correlation).
+
+### Responses never carry persistence internals
+
+No Prisma model is returned from a controller, and no response is built by spreading one.
+Three independent layers:
+
+1. **Explicit mappers** in [`auth.responses.ts`](apps/api/src/auth/auth.responses.ts) name
+   every field they emit. A spread-then-delete would leak each column a future migration
+   adds, and the first time such a column is a secret the leak has already shipped.
+2. **Narrow `select` clauses** on every query, so excluded columns are never in memory.
+   `passwordHash` is selected in exactly one place — the login lookup — and read into a
+   local, never onto a returned object.
+3. **A leak assertion** in the integration suite walks every response body, success and
+   error alike, and fails on any of `passwordHash`, `tokenHash`, `familyId`, `deletedAt`,
+   `revokedAt`, or a value equal to the submitted password or issued token.
+
+The refresh token appears in a `Set-Cookie` header and nowhere else. Soft-delete metadata
+is a filter, not a field.
+
+### Error codes
+
+These are the first values to populate the optional `code` on the
+[error contract](#api-error-responses), which earlier stages built and left unset. Clients
+branch on them, so they are part of the public API.
+
+`EMAIL_ALREADY_REGISTERED` · `ORGANIZATION_SLUG_TAKEN` · `INVALID_CREDENTIALS` ·
+`INVALID_REFRESH_TOKEN` · `REFRESH_TOKEN_EXPIRED` · `REFRESH_TOKEN_REUSED` ·
+`UNAUTHENTICATED`
+
+### Known gaps
+
+- **No rate limiting on login.** The honest gap. In-memory throttling is close to useless
+  across multiple instances, so this waits for Redis rather than shipping a false sense of
+  coverage.
+- **No authorization.** `Role` is stored and returned; nothing enforces it.
+- **No email verification or password reset.** Both need mail delivery.
+- **Expired refresh tokens are not reaped.** They are rejected on use; deleting them needs
+  a scheduler.
 
 ---
 

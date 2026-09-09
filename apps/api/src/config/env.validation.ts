@@ -10,9 +10,9 @@ import { z } from 'zod';
  * POSTGRES_* variables are Docker Compose's contract for the local container
  * (see docker/docker-compose.yml) — DATABASE_URL already carries the host,
  * port, credentials, and database name, so the API does not depend on them.
- * Variables for systems that do not exist yet (REDIS_URL, JWT_SECRET) are
- * deliberately absent: requiring them would fail the boot over infrastructure
- * nothing currently uses.
+ * Variables for systems that do not exist yet (REDIS_URL) are deliberately
+ * absent: requiring them would fail the boot over infrastructure nothing
+ * currently uses.
  *
  * Undeclared variables are dropped from this schema's output, but ConfigModule
  * merges them back afterwards, so the rest of process.env stays reachable
@@ -42,6 +42,31 @@ export const envSchema = z.object({
   // `json` for machine-parseable one-line entries, `pretty` for the colourised
   // human format.
   LOG_FORMAT: z.enum(['json', 'pretty']).optional(),
+  // Signing key for access tokens. Required with no default, for the same
+  // reason as DATABASE_URL and one more: a defaulted signing key is a key every
+  // deployment that forgot to set one shares, which is indistinguishable from
+  // having no authentication at all.
+  //
+  // 32 characters is the floor, not a recommendation. Generate one with:
+  //   node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
+  JWT_SECRET: z.string().min(32),
+  // Stamped as `iss` and required to match on verification, so a token minted
+  // by another system that happens to share the secret is still rejected.
+  JWT_ISSUER: z.string().min(1).default('sentinelops'),
+  // Access token lifetime. Short by design: the access token carries no
+  // revocation check (the guard performs no database read), so its expiry is
+  // the only thing that ends a session early. Refresh covers the difference.
+  //
+  // Seconds rather than a "15m" string: this is validated as a number here,
+  // like PORT, instead of being parsed at the point of use.
+  JWT_ACCESS_TTL_SECONDS: z.coerce.number().int().positive().default(900),
+  // Refresh token lifetime, in whole days. Rotation means a token this old is
+  // only reachable by a client that has been idle for the whole period.
+  REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(30),
+  // Browser origins allowed to send credentialed requests, comma-separated.
+  // The refresh cookie only reaches the API if the origin is listed here, so
+  // this is load-bearing for the web app rather than decorative.
+  CORS_ORIGIN: z.string().min(1).default('http://localhost:3000'),
 });
 
 export type Env = z.infer<typeof envSchema>;

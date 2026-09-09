@@ -3,13 +3,18 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 /**
  * The ambient context carried alongside a request.
  *
- * Deliberately minimal: it holds what is known before any application code
- * runs. Authentication does not exist yet, so there is no `userId` here — the
- * shape is designed to gain one (and a `traceId`) without touching a single
- * call site, because nothing reads this store by destructuring it.
+ * It holds what is known about the request rather than what a handler was
+ * given: the correlation id from the moment the request arrived, and the
+ * authenticated user from the moment the guard verified one.
+ *
+ * `userId` is optional because most of a request's life happens before
+ * authentication, and because public routes never acquire one. Nothing reads
+ * this store by destructuring it, so a `traceId` can join them later without
+ * touching a call site.
  */
 export interface RequestContext {
   requestId: string;
+  userId?: string;
 }
 
 /**
@@ -47,3 +52,31 @@ export const runWithRequestContext = <T>(
  */
 export const getRequestId = (): string | undefined =>
   storage.getStore()?.requestId;
+
+/**
+ * Records the authenticated user on the current request's context.
+ *
+ * Mutates the existing store rather than opening a new scope: `storage.run()`
+ * here would establish a context that ends when this function returns, which is
+ * the opposite of what a guard needs. The object handed to `run()` by the
+ * middleware is shared by everything downstream, so writing to it is visible to
+ * the handler, the exception filter, and every log line that follows.
+ *
+ * Silently does nothing outside a request. That is not a failure worth throwing
+ * over: it means the guard ran somewhere no middleware established a context,
+ * which a unit test does all the time.
+ */
+export const setRequestUser = (userId: string): void => {
+  const store = storage.getStore();
+
+  if (store) {
+    store.userId = userId;
+  }
+};
+
+/**
+ * The authenticated user's id, or undefined when the request is unauthenticated
+ * or has not reached the guard yet.
+ */
+export const getRequestUser = (): string | undefined =>
+  storage.getStore()?.userId;

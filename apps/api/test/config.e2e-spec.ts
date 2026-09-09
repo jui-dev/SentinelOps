@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 
 import {
   appConfig,
+  authConfig,
   configurations,
   databaseConfig,
 } from './../src/config/configuration.js';
@@ -10,6 +11,7 @@ import { envSchema } from './../src/config/env.validation.js';
 
 const DATABASE_URL =
   'postgresql://postgres:password@localhost:5432/sentinelops';
+const JWT_SECRET = 'a-test-signing-key-of-at-least-32-characters';
 
 /**
  * Mirrors AppModule's registration minus the env file: `ignoreEnvFile` keeps the
@@ -40,6 +42,7 @@ describe('Configuration (e2e)', () => {
       vi.stubEnv('NODE_ENV', 'test');
       vi.stubEnv('PORT', '3001');
       vi.stubEnv('DATABASE_URL', DATABASE_URL);
+      vi.stubEnv('JWT_SECRET', JWT_SECRET);
 
       moduleRef = await bootConfigModule();
     });
@@ -65,8 +68,17 @@ describe('Configuration (e2e)', () => {
       expect(moduleRef.get(appConfig.KEY)).toEqual({
         port: 3001,
         environment: 'test',
+        corsOrigins: ['http://localhost:3000'],
       });
       expect(moduleRef.get(databaseConfig.KEY)).toEqual({ url: DATABASE_URL });
+      expect(moduleRef.get(authConfig.KEY)).toEqual({
+        jwtSecret: JWT_SECRET,
+        jwtIssuer: 'sentinelops',
+        accessTtlSeconds: 900,
+        refreshTtlDays: 30,
+        cookieSecure: false,
+        cookiePath: '/api/v1/auth',
+      });
     });
 
     it('should preserve the port as a number through the container', () => {
@@ -90,12 +102,18 @@ describe('Configuration (e2e)', () => {
       ['a non-numeric PORT', 'PORT', 'not-a-number'],
       ['an out-of-range PORT', 'PORT', '99999'],
       ['an unknown NODE_ENV', 'NODE_ENV', 'staging'],
+      // A guessable signing key is indistinguishable from no authentication,
+      // so a short one must stop the boot exactly as a bad DATABASE_URL does.
+      ['a JWT_SECRET below the minimum length', 'JWT_SECRET', 'too-short'],
+      ['a non-numeric access token TTL', 'JWT_ACCESS_TTL_SECONDS', 'quarter'],
+      ['a zero refresh token TTL', 'REFRESH_TOKEN_TTL_DAYS', '0'],
     ] as const;
 
     beforeEach(() => {
       vi.stubEnv('NODE_ENV', 'test');
       vi.stubEnv('PORT', '3001');
       vi.stubEnv('DATABASE_URL', DATABASE_URL);
+      vi.stubEnv('JWT_SECRET', JWT_SECRET);
     });
 
     it.each(cases)('should refuse to boot with %s', async (_, key, value) => {

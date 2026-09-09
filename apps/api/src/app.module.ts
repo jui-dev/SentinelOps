@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 
+import { AuthModule } from './auth/auth.module.js';
 import { CommonModule } from './common/common.module.js';
 import { configurations } from './config/configuration.js';
 import { ROOT_ENV_FILE } from './config/env.js';
@@ -29,6 +30,9 @@ import { LoggerModule } from './logger/logger.module.js';
     // feature module is loaded.
     CommonModule,
     DatabaseModule,
+    // Ahead of HealthModule because it registers the global guard that
+    // HealthModule's routes opt out of with @Public().
+    AuthModule,
     HealthModule,
   ],
   controllers: [],

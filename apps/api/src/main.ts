@@ -24,7 +24,14 @@ async function bootstrap() {
   app.useLogger(app.get(AppLogger));
   // Resolved by token rather than by name: the port is already validated and
   // coerced to a number, and its default lives in the schema, not here.
-  const { port } = app.get<ConfigType<typeof appConfig>>(appConfig.KEY);
+  const { port, corsOrigins } = app.get<ConfigType<typeof appConfig>>(
+    appConfig.KEY,
+  );
+  // `credentials` is the load-bearing half: without it the browser will not
+  // send the refresh cookie, and every refresh from the web app fails. An
+  // explicit origin list rather than a wildcard, because the two are mutually
+  // exclusive — a credentialed request is refused against `*`.
+  app.enableCors({ origin: corsOrigins, credentials: true });
   await app.listen(port);
 }
 await bootstrap();
