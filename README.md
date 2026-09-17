@@ -184,6 +184,7 @@ pnpm --filter @sentinelops/api start:dev
 
 # Checks
 pnpm --filter @sentinelops/api typecheck
+pnpm --filter @sentinelops/api typecheck:test    # includes specs and test helpers
 pnpm --filter @sentinelops/api lint
 pnpm --filter @sentinelops/api test              # unit, no database
 pnpm --filter @sentinelops/api test:e2e          # no database

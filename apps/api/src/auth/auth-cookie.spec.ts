@@ -75,7 +75,7 @@ describe('auth cookie', () => {
       expect(readCookie(requestWith('sops_rt=100%'), 'sops_rt')).toBe('100%');
     });
 
-    it.each([
+    it.each<[string | undefined, string]>([
       [undefined, 'no cookie header'],
       ['', 'an empty header'],
       ['garbage', 'a header with no equals'],

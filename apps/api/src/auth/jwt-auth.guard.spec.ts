@@ -76,12 +76,19 @@ describe('JwtAuthGuard', () => {
   });
 
   describe('rejecting a request', () => {
-    const expectUnauthorized = async (headers: Record<string, string>) => {
+    const expectUnauthorized = async (
+      headers: Record<string, string>,
+    ): Promise<UnauthorizedException> => {
       const promise = guardWith(false).canActivate(contextWith(headers));
 
       await expect(promise).rejects.toBeInstanceOf(UnauthorizedException);
 
-      return promise.catch((error: UnauthorizedException) => error);
+      return promise.then(
+        () => {
+          throw new Error('expected the guard to reject');
+        },
+        (error: UnauthorizedException) => error,
+      );
     };
 
     it('should reject a request with no Authorization header', async () => {
