@@ -2,6 +2,7 @@ import type { ConfigType } from '@nestjs/config';
 
 import {
   runWithRequestContext,
+  setRequestOrganization,
   setRequestUser,
 } from '../common/request-context.js';
 import type { loggingConfig } from '../config/configuration.js';
@@ -187,6 +188,49 @@ describe('AppLogger', () => {
       });
 
       expect(lastJson()).toMatchObject({ userId: 'explicit-user' });
+    });
+
+    it('should attach the organizationId once admission records one', () => {
+      runWithRequestContext({ requestId: 'req-1' }, () => {
+        setRequestUser('user-1');
+        setRequestOrganization({
+          organizationId: 'org-1',
+          membershipId: 'membership-1',
+          role: 'MEMBER',
+        });
+        loggerFor().log('inside an organization');
+      });
+
+      expect(lastJson()).toMatchObject({
+        requestId: 'req-1',
+        userId: 'user-1',
+        organizationId: 'org-1',
+      });
+    });
+
+    it('should not log the membership or role alongside the organization', () => {
+      // Correlation needs the tenant, not the grant. The role in particular is
+      // authorization state, not a log field.
+      runWithRequestContext({ requestId: 'req-1' }, () => {
+        setRequestOrganization({
+          organizationId: 'org-1',
+          membershipId: 'membership-1',
+          role: 'OWNER',
+        });
+        loggerFor().log('inside an organization');
+      });
+
+      expect(lastJson()).not.toHaveProperty('membershipId');
+      expect(lastJson()).not.toHaveProperty('role');
+    });
+
+    it('should omit organizationId on a route that was never admitted to one', () => {
+      runWithRequestContext({ requestId: 'req-1' }, () => {
+        setRequestUser('user-1');
+        loggerFor().log('not organization-scoped');
+      });
+
+      expect(lastJson()).not.toHaveProperty('organizationId');
     });
   });
 

@@ -5,6 +5,7 @@ import request from 'supertest';
 import { AppModule } from './../src/app.module.js';
 import { TokenService } from './../src/auth/token.service.js';
 import { PrismaService } from './../src/database/prisma.service.js';
+import { leakedKeys } from './leaks.js';
 import { resolveTestDatabaseUrl } from './test-database.js';
 
 /**
@@ -19,48 +20,6 @@ import { resolveTestDatabaseUrl } from './test-database.js';
  * The application is booted with PrismaService pointed at TEST_DATABASE_URL, so
  * DATABASE_URL is never consulted in this file.
  */
-
-/** Keys that must never appear anywhere in a response body. */
-const FORBIDDEN_KEYS = [
-  'passwordHash',
-  'password_hash',
-  'password',
-  'tokenHash',
-  'token_hash',
-  'refreshToken',
-  'refresh_token',
-  'familyId',
-  'family_id',
-  'deletedAt',
-  'deleted_at',
-  'revokedAt',
-  'revoked_at',
-];
-
-/**
- * Walks a response body and returns every forbidden key it holds, at any depth.
- *
- * The guard against a future migration adding a sensitive column and a careless
- * mapper spreading it into a response. It fails the test rather than shipping.
- */
-const leakedKeys = (value: unknown, path = ''): string[] => {
-  if (Array.isArray(value)) {
-    return value.flatMap((entry, index) =>
-      leakedKeys(entry, `${path}[${index}]`),
-    );
-  }
-
-  if (typeof value !== 'object' || value === null) {
-    return [];
-  }
-
-  return Object.entries(value).flatMap(([key, nested]) => {
-    const here = path ? `${path}.${key}` : key;
-    const found = FORBIDDEN_KEYS.includes(key) ? [here] : [];
-
-    return [...found, ...leakedKeys(nested, here)];
-  });
-};
 
 const PASSWORD = 'a-sufficiently-long-passphrase';
 

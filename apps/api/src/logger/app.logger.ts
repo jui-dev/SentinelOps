@@ -2,7 +2,11 @@ import { ConsoleLogger, Inject, Injectable, LOG_LEVELS } from '@nestjs/common';
 import type { LogLevel } from '@nestjs/common';
 import type { ConfigType } from '@nestjs/config';
 
-import { getRequestId, getRequestUser } from '../common/request-context.js';
+import {
+  getRequestId,
+  getRequestOrganization,
+  getRequestUser,
+} from '../common/request-context.js';
 import { loggingConfig } from '../config/configuration.js';
 import { redact } from './redact.js';
 
@@ -34,11 +38,12 @@ export const levelsFrom = (minimum: LogLevel): LogLevel[] =>
  * overriding it applies correlation and redaction to every line the process
  * emits — including ones written by code that never considered either.
  *
- * Correlation means two ambient fields, both taken from the request context:
- * `requestId` from the moment the request arrived, and `userId` from the
- * moment the guard verified one. Neither is passed by a caller, so every line a
- * domain service logs is attributable without that service knowing either
- * value exists.
+ * Correlation means three ambient fields, all taken from the request context:
+ * `requestId` from the moment the request arrived, `userId` from the moment the
+ * guard verified one, and `organizationId` from the moment membership admitted
+ * the request to an organization. None is passed by a caller, so every line a
+ * domain service logs is attributable without that service knowing any of
+ * these values exist.
  */
 @Injectable()
 export class AppLogger extends ConsoleLogger {
@@ -74,6 +79,7 @@ export class AppLogger extends ConsoleLogger {
   ): void {
     const requestId = getRequestId();
     const userId = getRequestUser();
+    const organizationId = getRequestOrganization()?.organizationId;
 
     // Spread first so a caller-supplied value is not silently overwritten by
     // the ambient one — they are the same in every normal path, and where they
@@ -81,10 +87,12 @@ export class AppLogger extends ConsoleLogger {
     //
     // userId is absent on anything logged before the guard runs, which includes
     // every public route and every failed authentication. An absent field is
-    // the honest representation of "nobody was authenticated".
+    // the honest representation of "nobody was authenticated". The same holds
+    // for organizationId on any route that is not organization-scoped.
     const merged = {
       ...(requestId ? { requestId } : {}),
       ...(userId ? { userId } : {}),
+      ...(organizationId ? { organizationId } : {}),
       ...params,
     };
 

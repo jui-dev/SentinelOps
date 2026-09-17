@@ -9,6 +9,7 @@ import { envSchema } from './config/env.validation.js';
 import { DatabaseModule } from './database/database.module.js';
 import { HealthModule } from './health/health.module.js';
 import { LoggerModule } from './logger/logger.module.js';
+import { OrganizationsModule } from './organizations/organizations.module.js';
 
 @Module({
   imports: [
@@ -34,6 +35,11 @@ import { LoggerModule } from './logger/logger.module.js';
     // HealthModule's routes opt out of with @Public().
     AuthModule,
     HealthModule,
+    // After AuthModule, whose global guard authenticates the caller before
+    // this module's controller-level admission guard runs. Nest orders global
+    // guards before controller guards regardless of module order; the
+    // placement just keeps the dependency readable.
+    OrganizationsModule,
   ],
   controllers: [],
   providers: [],

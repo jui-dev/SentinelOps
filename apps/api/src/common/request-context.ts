@@ -1,20 +1,42 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 
+import type { Role } from '../generated/prisma/enums.js';
+
+/**
+ * The organization a request was admitted to, and the membership that admitted
+ * it.
+ *
+ * Admission only. Holding one of these means the caller is a current member of
+ * `organizationId`; it says nothing about whether any particular row belongs to
+ * that organization. Every tenant-owned query still scopes by organizationId
+ * itself.
+ *
+ * `role` is carried so a later authorization stage has it to hand. Nothing
+ * reads it yet.
+ */
+export interface OrganizationContext {
+  organizationId: string;
+  membershipId: string;
+  role: Role;
+}
+
 /**
  * The ambient context carried alongside a request.
  *
  * It holds what is known about the request rather than what a handler was
- * given: the correlation id from the moment the request arrived, and the
- * authenticated user from the moment the guard verified one.
+ * given: the correlation id from the moment the request arrived, the
+ * authenticated user from the moment the guard verified one, and the
+ * organization from the moment membership admitted the request to it.
  *
- * `userId` is optional because most of a request's life happens before
- * authentication, and because public routes never acquire one. Nothing reads
- * this store by destructuring it, so a `traceId` can join them later without
- * touching a call site.
+ * `userId` and `organization` are optional because most of a request's life
+ * happens before authentication, and because most routes never acquire them.
+ * Nothing reads this store by destructuring it, so a `traceId` can join them
+ * later without touching a call site.
  */
 export interface RequestContext {
   requestId: string;
   userId?: string;
+  organization?: OrganizationContext;
 }
 
 /**
@@ -80,3 +102,45 @@ export const setRequestUser = (userId: string): void => {
  */
 export const getRequestUser = (): string | undefined =>
   storage.getStore()?.userId;
+
+/**
+ * Records the organization the current request was admitted to.
+ *
+ * Mutates the store for the same reason setRequestUser does, and likewise does
+ * nothing outside a request — `@CurrentMembership()` still fails closed there.
+ *
+ * Refuses to replace one organization with another. A request acts within
+ * exactly one tenant; a second admission naming a different one is a wiring
+ * mistake that would otherwise leave log lines and handlers disagreeing about
+ * which tenant they are in.
+ */
+export const setRequestOrganization = (
+  organization: OrganizationContext,
+): void => {
+  const store = storage.getStore();
+
+  if (!store) {
+    return;
+  }
+
+  if (
+    store.organization &&
+    store.organization.organizationId !== organization.organizationId
+  ) {
+    throw new Error(
+      'This request has already been admitted to a different organization.',
+    );
+  }
+
+  store.organization = organization;
+};
+
+/**
+ * The organization the request was admitted to, or undefined when the route is
+ * not organization-scoped or admission has not happened yet.
+ *
+ * For cross-cutting concerns such as logging. A service that needs the
+ * organization takes it as an explicit parameter instead.
+ */
+export const getRequestOrganization = (): OrganizationContext | undefined =>
+  storage.getStore()?.organization;

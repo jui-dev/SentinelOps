@@ -21,13 +21,16 @@ deliberately, and this README is updated as capabilities actually land.
   validation, structured logging, and request correlation
 - PostgreSQL via Prisma 7, with the core domain schema and its migrations
 - Authentication: registration, login, refresh with rotation, logout, and a global guard
+- Tenancy: per-request organization admission, and read-only organization and membership
+  routes that enforce tenant isolation
 - A Next.js frontend scaffold, untouched beyond its default page
 - Unit, end-to-end, and integration test suites
 
 **What does not exist yet**
 
 - Authorization: `Role` is stored and returned, but nothing enforces it
-- Any tenant-scoped resource: no organizations, teams, services, or incidents API
+- Any tenant-scoped resource beyond organizations and memberships: no teams, services, or
+  incidents API, and no way to change a membership through the API
 - Rate limiting on authentication, which waits for Redis
 - Continuous integration, and container images for the applications
 
@@ -88,10 +91,10 @@ area — it is not part of the request path, and nothing is required to live the
 
 ## Planned capabilities
 
-The intended scope, not a feature list. Only the item marked below is built.
+The intended scope, not a feature list. Only the items marked below are built.
 
-- **Multi-organization architecture** — tenant isolation across organizations. The schema
-  carries `organizationId`; nothing enforces the scoping yet
+- **Multi-organization architecture** — ✅ tenant admission and resource isolation for
+  organization-scoped routes. See [Tenancy](#tenancy)
 - **Authentication** — ✅ registration, login, refresh with rotation, logout, and a global
   guard. See [Authentication](#authentication)
 - **Authorization and role-based access control** — roles and granular permissions.
@@ -453,8 +456,9 @@ Membership is hard-deleted because revoking access must actually revoke it: a so
 grant that some future authorization check forgets to filter is a security hole, not a
 data-loss risk.
 
-Reads must filter on `deleted_at IS NULL`. That filtering is **not** built yet — there are
-no read paths — and arrives with the first query.
+Reads filter on `deleted_at IS NULL` unless they deliberately do not. Login, `GET /auth/me`,
+refresh, organization admission, and every organization-scoped read all apply it — see
+[Tenancy](#tenancy) for what that means for a soft-deleted user or organization.
 
 ### Conventions every later table follows
 
@@ -464,7 +468,7 @@ no read paths — and arrives with the first query.
 | `@default(uuid(7))` in `@db.Uuid` columns | 16 bytes rather than a 36-character string, and time-ordered, so primary-key inserts stay local in the btree. |
 | `@db.Timestamptz(3)` on every timestamp | Prisma maps `DateTime` to `timestamp` **without** time zone by default. |
 | Plain `text` for strings | Length limits live in the Zod schemas at the request boundary, where this project already validates. |
-| Tenant-owned tables carry `organizationId` | The isolation convention. Enforcement arrives with the first read path. |
+| Tenant-owned tables carry `organizationId` | The isolation convention. Every query on one filters by it — see [Tenancy](#tenancy). |
 
 Only `memberships.user_id` is separately indexed. `organization_id` needs no index of its
 own — it is the leading column of the composite unique, which already serves prefix lookups
@@ -707,8 +711,8 @@ follow:
 
 - `@CurrentUserId()` reads it. Named for exactly what it returns — the token carries
   identity and nothing else, so a `@CurrentUser()` returning a one-field object would
-  promise more than it holds. When the context later gains organization and role, such a
-  decorator joins this one rather than replacing it.
+  promise more than it holds. Organization and role are resolved separately, per request,
+  and read with `@CurrentMembership()` — see [Tenancy](#tenancy).
 - **Every log line emitted after the guard runs carries `userId`**, with no call site
   passing it along. See [Request correlation](#request-correlation).
 
@@ -740,15 +744,160 @@ branch on them, so they are part of the public API.
 `INVALID_REFRESH_TOKEN` · `REFRESH_TOKEN_EXPIRED` · `REFRESH_TOKEN_REUSED` ·
 `UNAUTHENTICATED`
 
+[Tenancy](#tenancy) adds `ORGANIZATION_NOT_FOUND` and `MEMBERSHIP_NOT_FOUND`.
+
 ### Known gaps
 
 - **No rate limiting on login.** The honest gap. In-memory throttling is close to useless
   across multiple instances, so this waits for Redis rather than shipping a false sense of
   coverage.
-- **No authorization.** `Role` is stored and returned; nothing enforces it.
+- **No authorization.** `Role` is stored, returned, and carried in the request context once
+  a request is admitted to an organization; nothing enforces it.
 - **No email verification or password reset.** Both need mail delivery.
 - **Expired refresh tokens are not reaped.** They are rejected on use; deleting them needs
   a scheduler.
+
+---
+
+## Tenancy
+
+A `User` is global; everything else a user does happens *within an organization*. This
+section is how a request says which one, and how the API makes sure it stays there.
+
+### Addressing an organization
+
+The organization is named by the route, and only by the route:
+
+```
+GET /api/v1/organizations/:organizationId/...
+Authorization: Bearer <access token — identity only>
+```
+
+The query string, headers, and body are never consulted for it. Adding
+`?organizationId=…` or an `X-Organization-Id` header changes nothing, and request schemas for
+tenant resources never declare an `organizationId` (or any other tenant-identity) field —
+the tenant a write applies to is the one in the path.
+
+The id is used rather than the slug because a slug can be renamed. The web app is free to
+put slugs in its own URLs.
+
+### Endpoints
+
+| Route | Purpose |
+| --- | --- |
+| `GET /api/v1/organizations/:organizationId` | The organization, and the caller's membership in it |
+| `GET /api/v1/organizations/:organizationId/memberships` | Every membership record, oldest first |
+| `GET /api/v1/organizations/:organizationId/memberships/:membershipId` | One membership record |
+
+All require authentication and a current membership, and all are readable by any member —
+role is carried but not enforced yet. The resource is named `memberships`, not `members`,
+because each item *is* a membership: its `id` is the membership's id, and it carries the
+role and the date the grant was made, with the user nested inside as `{ id, name, email }`.
+A member's other organizations are never included.
+
+### Admission is not isolation
+
+Two different checks, and the second is never skipped because the first passed:
+
+| | Tenant admission | Resource isolation |
+| --- | --- | --- |
+| Question | Is the caller a current member of `organizationId`? | Does *this row* belong to `organizationId`? |
+| Where | `OrganizationMembershipGuard`, once per request | Every query on tenant-owned data, in the service |
+| How | Membership lookup by organization and user | `where: { id: resourceId, organizationId }` |
+| Failure | `404 ORGANIZATION_NOT_FOUND` | `404` for that resource, e.g. `MEMBERSHIP_NOT_FOUND` |
+
+A caller admitted to organization A can still put an id that belongs to organization B in
+the URL. So every lookup of a tenant-owned row:
+
+- puts `organizationId` **in the predicate**, alongside the resource id;
+- never fetches by id alone and checks the organization afterwards;
+- never relies on the guard as its only tenant filter.
+
+Services take `organizationId` as an explicit argument, supplied by the handler from the
+admitted membership. They do not read it from the request context — that context exists
+for cross-cutting concerns such as logging, and background work has none. A service is
+therefore correct when called with no guard in front of it, and the integration suite calls
+it exactly that way to prove it.
+
+Database-level tenant-consistency constraints (composite keys or foreign keys that include
+`organization_id`) are a design principle to weigh relationship by relationship as tables
+are added — not a blanket rule, and not something this schema has yet.
+
+### A request's path through it
+
+1. `RequestIdMiddleware` opens the request context.
+2. `JwtAuthGuard` (global) verifies the token and records `userId`. No database.
+3. `OrganizationMembershipGuard` (per controller) reads `:organizationId`, looks up the
+   caller's membership, and records `{ organizationId, membershipId, role }`.
+4. The handler reads that with `@CurrentMembership()` and passes `organizationId` to the
+   service.
+5. The service scopes every query by it.
+
+Organization-scoped controllers are declared with `@OrganizationController()`, which
+attaches the route prefix and the admission guard together. It is the only place in `src/`
+allowed to spell the route parameter, and an architecture spec fails the unit suite if one
+appears anywhere else — so a tenant route cannot be declared without admission. Because the
+guard is attached at controller level rather than as a second `APP_GUARD`, Nest's own rule
+that global guards run first guarantees authentication precedes it.
+
+A module that declares such a controller imports `TenancyModule`. A route that is both
+`@Public()` and organization-scoped, or that reads `@CurrentMembership()` without being
+admitted, fails closed with a masked `500` — a wiring mistake, never an anonymous request
+inside a tenant.
+
+### Membership is resolved on every request
+
+One indexed lookup on `(organization_id, user_id)`, filtering soft-deleted organizations
+and soft-deleted users, and never cached. That is deliberate:
+
+- **Revocation is immediate.** Removing a membership refuses the very next request, even
+  with an access token issued before the removal.
+- **A soft-deleted user is refused here** even though `JwtAuthGuard` reads no database and
+  their token still verifies.
+- **A soft-deleted organization is unreachable** through every route beneath it.
+
+### Why the organization is not in the token
+
+The access token carries identity and nothing else. Putting the organization or role in it
+would keep a revoked membership or a changed role working until the token expired, would
+tie one token to one organization, and would mean minting a new token to switch.
+
+### Switching organizations
+
+There is nothing to switch on the server. The organization is part of every URL, so moving
+to another one is a client-side navigation to different URLs — no request, no new token, and
+two browser tabs can work in two organizations at once. `GET /auth/me` already lists the
+caller's memberships for an organization picker. Remembering a "last active" organization
+is a later, additive concern.
+
+### One answer for everything inaccessible
+
+A malformed organization id, one that does not exist, one that was soft-deleted, one the
+caller does not belong to, and a caller whose own account was soft-deleted all produce the
+same `404` with code `ORGANIZATION_NOT_FOUND` and the message `Organization not found`.
+`403` would confirm that the organization exists. The same holds one level down: a
+membership id that is malformed, missing, or belongs to another organization is
+`404 MEMBERSHIP_NOT_FOUND`. Neither message echoes the id. Malformed ids are refused before
+they reach Postgres, which would otherwise fail the `uuid` cast with a `500`.
+
+### Not yet
+
+- **Role enforcement.** `role` is in the request context; nothing reads it.
+- **Membership changes and invitations.** There is no API to add, remove, or re-role a
+  member.
+- **Row-level security, or automatic tenant filtering in the Prisma client.** Scoping is
+  explicit in every query and proven by tests. Either may be added later as defence in
+  depth.
+
+### Tests
+
+[`tenancy.integration-spec.ts`](apps/api/test/tenancy.integration-spec.ts) runs two tenants
+and a user who belongs to both against a real database. Among other things, it proves that
+a caller admitted to one organization cannot read a membership belonging to the other
+through its URL, that a foreign organization is indistinguishable from a nonexistent one,
+that spoofed query and header values change nothing, that revocation and soft deletion take
+effect on the next request, and that interleaved requests from two tenants stay in their
+own.
 
 ---
 
@@ -824,6 +973,11 @@ X-Request-Id: 0f9c1e2a-…   ← response header
 { "requestId": "0f9c1e2a-…" } ← error response body
 {"level":"log", …,"requestId":"0f9c1e2a-…"} ← every log line for that request
 ```
+
+Two more ambient fields join it as the request progresses: `userId` once `JwtAuthGuard` has
+verified a token, and `organizationId` once a request has been admitted to an organization.
+Each is absent until then — on public routes, failed authentications, and routes that are
+not organization-scoped. The membership id and role are never logged.
 
 Outside a request — bootstrap, shutdown, background work — the field is simply absent
 rather than filled with an id that would correlate with nothing.

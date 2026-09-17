@@ -16,8 +16,11 @@
 //   * String columns are plain `text`. Length limits live in the Zod schemas at
 //     the request boundary, which is where this project already validates —
 //     duplicating them here means two places to change and a migration to widen.
-//   * Tenant-owned tables carry organizationId. Enforcement of that scoping
-//     arrives with the first read path; the convention starts here.
+//   * Tenant-owned tables carry organizationId, and every query on one filters
+//     by it: `{ id, organizationId }`, never a lookup by id alone. Admitting a
+//     request to an organization (OrganizationMembershipGuard) does not replace
+//     that filter. Database-level tenant-consistency constraints are weighed per
+//     relationship, not applied as a blanket rule.
 //
 // Since Prisma 7 the connection URL lives in prisma.config.ts (datasource.url),
 // not in this block.
@@ -69,7 +72,8 @@ model Organization {
   updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
   /// Set by the ordinary application delete, which is an UPDATE and therefore
   /// leaves memberships and every historical relationship intact. Reads filter on
-  /// `deleted_at IS NULL`; that filtering arrives with the first read path.
+  /// `deleted_at IS NULL`, organization admission included, so a soft-deleted
+  /// organization is unreachable through every route beneath it.
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz(3)
 
   memberships Membership[]
