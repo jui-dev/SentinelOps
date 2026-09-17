@@ -28,8 +28,10 @@ const ORGANIZATION_ROUTE_PREFIX = 'organizations/:organizationId';
  * `@OrganizationController('memberships')` serves
  * `organizations/:organizationId/memberships`.
  *
- * This provides admission only. Handlers still pass the admitted
- * organizationId to their service explicitly, and every query scopes by it.
+ * This provides admission only. Every handler must also declare what it
+ * requires with `@RequirePermission()` — admission refuses one that does not —
+ * and still passes the admitted organizationId to its service explicitly, where
+ * every query scopes by it.
  */
 export const OrganizationController = (subpath = ''): ClassDecorator => {
   const trimmed = subpath.replace(/^\/+|\/+$/g, '');

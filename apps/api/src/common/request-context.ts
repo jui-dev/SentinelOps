@@ -11,8 +11,9 @@ import type { Role } from '../generated/prisma/enums.js';
  * that organization. Every tenant-owned query still scopes by organizationId
  * itself.
  *
- * `role` is carried so a later authorization stage has it to hand. Nothing
- * reads it yet.
+ * `role` is what OrganizationPermissionGuard authorizes against, so no second
+ * membership lookup is needed. Services do not read it from here: one that
+ * needs the caller's role takes it as an explicit parameter.
  */
 export interface OrganizationContext {
   organizationId: string;

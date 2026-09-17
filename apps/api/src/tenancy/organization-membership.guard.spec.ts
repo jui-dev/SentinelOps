@@ -1,6 +1,9 @@
-import { NotFoundException } from '@nestjs/common';
+import { NotFoundException, SetMetadata } from '@nestjs/common';
 import type { ExecutionContext } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 
+import { REQUIRED_PERMISSION_KEY } from '../authorization/authorization.constants.js';
+import { Permission } from '../authorization/permissions.js';
 import {
   getRequestOrganization,
   runWithRequestContext,
@@ -28,18 +31,29 @@ interface RequestShape {
   body?: unknown;
 }
 
-const contextWith = (request: RequestShape): ExecutionContext =>
+/** A handler that declares a permission, as every organization route must. */
+const declaredHandler = function handler() {};
+SetMetadata(
+  REQUIRED_PERMISSION_KEY,
+  Permission.ORGANIZATION_READ,
+)(declaredHandler);
+
+const contextWith = (
+  request: RequestShape,
+  handler: () => void = declaredHandler,
+): ExecutionContext =>
   ({
     switchToHttp: () => ({ getRequest: () => request }),
-    getHandler: () => function handler() {},
+    getHandler: () => handler,
     getClass: () => class Controller {},
   }) as unknown as ExecutionContext;
 
 const guardWith = (result: OrganizationContext | null = ADMITTED) => {
   const resolve = vi.fn().mockResolvedValue(result);
-  const guard = new OrganizationMembershipGuard({
-    resolve,
-  } as unknown as MembershipResolver);
+  const guard = new OrganizationMembershipGuard(
+    { resolve } as unknown as MembershipResolver,
+    new Reflector(),
+  );
 
   return { guard, resolve };
 };
@@ -193,6 +207,47 @@ describe('OrganizationMembershipGuard', () => {
       await expect(
         guard.canActivate(contextWith({ params: { organizationId: ORG_A } })),
       ).rejects.toThrow(/no authenticated user/);
+    });
+
+    it('should throw a plain error on a handler that declares no permission', async () => {
+      // Default deny: an organization route nobody decided a permission for
+      // is never admitted, and the refusal costs no query.
+      const { guard, resolve } = guardWith();
+
+      await inRequest(async () => {
+        const error = await guard
+          .canActivate(
+            contextWith(
+              { params: { organizationId: ORG_A } },
+              function undeclared() {},
+            ),
+          )
+          .catch((caught: unknown) => caught);
+
+        expect(error).toBeInstanceOf(Error);
+        expect(error).not.toBeInstanceOf(NotFoundException);
+        expect((error as Error).message).toMatch(/@RequirePermission\(\)/);
+        expect(getRequestOrganization()).toBeUndefined();
+      });
+
+      expect(resolve).not.toHaveBeenCalled();
+    });
+
+    it('should refuse an undeclared handler before looking at the caller', async () => {
+      // Reported as the wiring mistake it is even to an unauthenticated
+      // caller, so the failure is the same whoever finds it first.
+      const { guard } = guardWith();
+
+      await inRequest(async () => {
+        await expect(
+          guard.canActivate(
+            contextWith(
+              { params: { organizationId: ORG_A } },
+              function undeclared() {},
+            ),
+          ),
+        ).rejects.toThrow(/declare a permission/);
+      }, null);
     });
 
     it('should throw a plain error on a route without the parameter', async () => {

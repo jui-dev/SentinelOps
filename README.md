@@ -21,16 +21,17 @@ deliberately, and this README is updated as capabilities actually land.
   validation, structured logging, and request correlation
 - PostgreSQL via Prisma 7, with the core domain schema and its migrations
 - Authentication: registration, login, refresh with rotation, logout, and a global guard
-- Tenancy: per-request organization admission, and read-only organization and membership
-  routes that enforce tenant isolation
+- Tenancy: per-request organization admission, and organization and membership routes
+  that enforce tenant isolation
+- Authorization: per-route permissions within an organization, mapped from the member's
+  role, proven by a rename route that members may not use
 - A Next.js frontend scaffold, untouched beyond its default page
 - Unit, end-to-end, and integration test suites
 
 **What does not exist yet**
 
-- Authorization: `Role` is stored and returned, but nothing enforces it
 - Any tenant-scoped resource beyond organizations and memberships: no teams, services, or
-  incidents API, and no way to change a membership through the API
+  incidents API, and no way to invite, remove, or re-role a member through the API
 - Rate limiting on authentication, which waits for Redis
 - Continuous integration, and container images for the applications
 
@@ -97,8 +98,9 @@ The intended scope, not a feature list. Only the items marked below are built.
   organization-scoped routes. See [Tenancy](#tenancy)
 - **Authentication** — ✅ registration, login, refresh with rotation, logout, and a global
   guard. See [Authentication](#authentication)
-- **Authorization and role-based access control** — roles and granular permissions.
-  `Role` is stored and returned; nothing reads it
+- **Authorization and role-based access control** — ✅ per-route permissions mapped from
+  the organization role. Membership management and ownership rules are still to come. See
+  [Authorization](#authorization)
 - **Team management** — teams and membership
 - **Service catalog** — the systems being monitored and who owns them
 - **Incident lifecycle management** — open, acknowledge, escalate, resolve
@@ -435,7 +437,8 @@ capacity per organization — nobody is both `ADMIN` and `MEMBER`.
 `Role` is `OWNER`, `ADMIN`, `MEMBER`. It is the **initial coarse organization-level role
 and an authorization extension point**, not a commitment to the eventual authorization
 model — a later stage may add dedicated role or permission structures that read it,
-supersede it, or migrate it away. Nothing enforces it yet; it is data.
+supersede it, or migrate it away. Today it is read in exactly one place: the table that
+maps each role to its [permissions](#authorization).
 
 ### Deletion: two different mechanisms
 
@@ -746,14 +749,13 @@ branch on them, so they are part of the public API.
 `UNAUTHENTICATED`
 
 [Tenancy](#tenancy) adds `ORGANIZATION_NOT_FOUND` and `MEMBERSHIP_NOT_FOUND`.
+[Authorization](#authorization) adds `PERMISSION_DENIED`.
 
 ### Known gaps
 
 - **No rate limiting on login.** The honest gap. In-memory throttling is close to useless
   across multiple instances, so this waits for Redis rather than shipping a false sense of
   coverage.
-- **No authorization.** `Role` is stored, returned, and carried in the request context once
-  a request is admitted to an organization; nothing enforces it.
 - **No email verification or password reset.** Both need mail delivery.
 - **Expired refresh tokens are not reaped.** They are rejected on use; deleting them needs
   a scheduler.
@@ -784,28 +786,32 @@ put slugs in its own URLs.
 
 ### Endpoints
 
-| Route | Purpose |
-| --- | --- |
-| `GET /api/v1/organizations/:organizationId` | The organization, and the caller's membership in it |
-| `GET /api/v1/organizations/:organizationId/memberships` | Every membership record, oldest first |
-| `GET /api/v1/organizations/:organizationId/memberships/:membershipId` | One membership record |
+| Route | Purpose | Permission |
+| --- | --- | --- |
+| `GET /api/v1/organizations/:organizationId` | The organization, and the caller's membership in it | `organization:read` |
+| `PATCH /api/v1/organizations/:organizationId` | Rename the organization: `{ "name": "…" }`, nothing else | `organization:update` |
+| `GET /api/v1/organizations/:organizationId/memberships` | Every membership record, oldest first | `memberships:read` |
+| `GET /api/v1/organizations/:organizationId/memberships/:membershipId` | One membership record | `memberships:read` |
 
-All require authentication and a current membership, and all are readable by any member —
-role is carried but not enforced yet. The resource is named `memberships`, not `members`,
+All require authentication, a current membership, and the listed permission — every role
+may read; only `OWNER` and `ADMIN` may rename (see [Authorization](#authorization)). The
+rename returns the organization without the caller's membership, and leaves the slug
+alone. The resource is named `memberships`, not `members`,
 because each item *is* a membership: its `id` is the membership's id, and it carries the
 role and the date the grant was made, with the user nested inside as `{ id, name, email }`.
 A member's other organizations are never included.
 
 ### Admission is not isolation
 
-Two different checks, and the second is never skipped because the first passed:
+Two different checks, and the second is never skipped because the first passed.
+[Authorization](#authorization) is a third, and replaces neither:
 
-| | Tenant admission | Resource isolation |
-| --- | --- | --- |
-| Question | Is the caller a current member of `organizationId`? | Does *this row* belong to `organizationId`? |
-| Where | `OrganizationMembershipGuard`, once per request | Every query on tenant-owned data, in the service |
-| How | Membership lookup by organization and user | `where: { id: resourceId, organizationId }` |
-| Failure | `404 ORGANIZATION_NOT_FOUND` | `404` for that resource, e.g. `MEMBERSHIP_NOT_FOUND` |
+| | Tenant admission | Authorization | Resource isolation |
+| --- | --- | --- | --- |
+| Question | Is the caller a current member of `organizationId`? | May this member's role do this? | Does *this row* belong to `organizationId`? |
+| Where | `OrganizationMembershipGuard`, once per request | `OrganizationPermissionGuard`, once per request | Every query on tenant-owned data, in the service |
+| How | Membership lookup by organization and user | The admitted role against the handler's permission — no query | `where: { id: resourceId, organizationId }` |
+| Failure | `404 ORGANIZATION_NOT_FOUND` | `403 PERMISSION_DENIED` | `404` for that resource, e.g. `MEMBERSHIP_NOT_FOUND` |
 
 A caller admitted to organization A can still put an id that belongs to organization B in
 the URL. So every lookup of a tenant-owned row:
@@ -830,9 +836,12 @@ are added — not a blanket rule, and not something this schema has yet.
 2. `JwtAuthGuard` (global) verifies the token and records `userId`. No database.
 3. `OrganizationMembershipGuard` (per controller) reads `:organizationId`, looks up the
    caller's membership, and records `{ organizationId, membershipId, role }`.
-4. The handler reads that with `@CurrentMembership()` and passes `organizationId` to the
-   service.
-5. The service scopes every query by it.
+4. `OrganizationPermissionGuard` (per handler) checks that role against the handler's
+   permission. No database.
+5. The request body is validated.
+6. The handler reads the membership with `@CurrentMembership()` and passes `organizationId`
+   to the service.
+7. The service scopes every query by it.
 
 Organization-scoped controllers are declared with `@OrganizationController()`, which
 attaches the route prefix and the admission guard together. It is the only place in `src/`
@@ -883,9 +892,9 @@ they reach Postgres, which would otherwise fail the `uuid` cast with a `500`.
 
 ### Not yet
 
-- **Role enforcement.** `role` is in the request context; nothing reads it.
 - **Membership changes and invitations.** There is no API to add, remove, or re-role a
-  member.
+  member, and so none of the ownership rules those need — see
+  [Authorization](#authorization).
 - **Row-level security, or automatic tenant filtering in the Prisma client.** Scoping is
   explicit in every query and proven by tests. Either may be added later as defence in
   depth.
@@ -899,6 +908,104 @@ through its URL, that a foreign organization is indistinguishable from a nonexis
 that spoofed query and header values change nothing, that revocation and soft deletion take
 effect on the next request, and that interleaved requests from two tenants stay in their
 own.
+
+---
+
+## Authorization
+
+Tenancy decides whether a caller is *in* an organization. Authorization decides what they
+may *do* there. It is a third layer: it runs only after admission, and it never replaces
+the organization filter in a query.
+
+### Permissions, not roles, on routes
+
+Every organization-scoped handler declares exactly one permission:
+
+```ts
+@Patch()
+@RequirePermission(Permission.ORGANIZATION_UPDATE)
+updateOrganization(...)
+```
+
+Which roles hold which permission is written out once, in
+[`role-permissions.ts`](apps/api/src/authorization/role-permissions.ts):
+
+| Permission | `OWNER` | `ADMIN` | `MEMBER` |
+| --- | --- | --- | --- |
+| `organization:read` | ✓ | ✓ | ✓ |
+| `organization:update` | ✓ | ✓ | |
+| `memberships:read` | ✓ | ✓ | ✓ |
+
+There is no `@RequireRole()`. A route that names roles has to be edited every time the
+policy changes; a route that names an operation does not. The table is explicit per role
+rather than derived from `OWNER > ADMIN > MEMBER` — a spec asserts that ordering holds
+today, but a later role that does not fit the ladder is a change to the table alone.
+Permissions are added with the routes that need them, so there is no `OWNER`-only entry:
+no operation is `OWNER`-only yet.
+
+### Where the role comes from
+
+From the membership that admission already resolved for this request, carried in the
+request context. There is no second lookup, the token carries no role, and nothing in the
+query string, headers, or body is consulted. Because membership is resolved per request, a
+demotion or promotion takes effect on the very next request with the same token.
+
+`OrganizationPermissionGuard` reads the request context; services do not. A service whose
+rules depend on who is acting takes the actor as an explicit parameter — the rename does
+not, because nothing about renaming depends on it.
+
+### 403 here, 404 everywhere else
+
+| Situation | Response |
+| --- | --- |
+| Not authenticated | `401 UNAUTHENTICATED` |
+| Organization missing, malformed, soft-deleted, or not yours | `404 ORGANIZATION_NOT_FOUND` |
+| A member whose role lacks the permission | `403 PERMISSION_DENIED` |
+| A resource id that is not in this organization | `404` for that resource |
+
+`403` is safe only because it is reachable only after admission: it tells a member what
+they already know. The message names neither the permission nor the role that would have
+sufficed. Guards run before validation, so a member without the permission is refused
+before their body is looked at.
+
+### Default deny, and failing closed
+
+`@RequirePermission()` sets the permission and attaches the guard that enforces it,
+together, on the method — so it always runs after the controller's admission guard.
+
+| Mistake | Result |
+| --- | --- |
+| An `@OrganizationController()` handler with no `@RequirePermission()` | Masked `500` before any query — admission refuses it |
+| `@RequirePermission()` on a controller that admits no organization | Masked `500` — there is no role to check. An architecture spec also rejects it |
+
+Neither ever lets a request through.
+
+### Write bodies are strict
+
+The rename body is `z.strictObject({ name })`: `slug`, `role`, `organizationId`, or any
+other extra key is a `400`, not silently dropped. The update itself is a single statement
+on `{ id, deletedAt: null }`, so an organization soft-deleted after admission answers the
+same `404` and is never written.
+
+### Not yet
+
+- **Membership management** — invitations, removal, role changes.
+- **Ownership rules**, which arrive with it: the last `OWNER` cannot be removed or demoted;
+  an `ADMIN` cannot change an `OWNER` or grant `OWNER`; ownership transfer is one
+  transaction. These depend on the target row and on other rows, so they are service-level
+  checks with an explicit actor, not permissions.
+- **Deleting an organization or changing its slug**, custom roles, and anything
+  finer-grained than one permission per route.
+
+### Tests
+
+[`authorization.e2e-spec.ts`](apps/api/test/authorization.e2e-spec.ts) proves the ordering,
+the `403`/`404` split, and every wiring failure against the real `AppModule`.
+[`authorization.integration-spec.ts`](apps/api/test/authorization.integration-spec.ts) runs a
+user who is `ADMIN` in one organization and `MEMBER` in another with a single token, and
+proves that role changes apply on the next request, that refused writes leave the row
+untouched, that the update-miss mapping holds against the real driver adapter, and that
+interleaved requests in different roles stay apart.
 
 ---
 

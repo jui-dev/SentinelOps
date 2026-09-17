@@ -7,7 +7,9 @@ import { OrganizationsService } from './organizations.service.js';
 
 /**
  * The first organization-scoped routes. TenancyModule supplies admission;
- * OrganizationsService supplies resource isolation.
+ * `@RequirePermission()` supplies authorization, needing nothing imported
+ * beyond the Reflector Nest provides everywhere; OrganizationsService supplies
+ * resource isolation.
  */
 @Module({
   imports: [DatabaseModule, TenancyModule],

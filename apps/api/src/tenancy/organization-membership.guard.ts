@@ -1,7 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import type { CanActivate, ExecutionContext } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 
+import { REQUIRED_PERMISSION_KEY } from '../authorization/authorization.constants.js';
 import {
   getRequestUser,
   setRequestOrganization,
@@ -29,12 +31,35 @@ import { isResourceId } from './tenancy.schemas.js';
  * APP_GUARD. Nest always runs global guards before controller guards, so
  * JwtAuthGuard has established the user by the time this runs, without
  * depending on the registration order of two global guards.
+ *
+ * It also refuses to admit a request to a handler that declares no permission.
+ * That is a wiring check, not authorization — OrganizationPermissionGuard does
+ * the checking — but this guard is the one every organization route is
+ * certain to run, which is what makes forgetting `@RequirePermission()` a
+ * failure rather than a route open to every member.
  */
 @Injectable()
 export class OrganizationMembershipGuard implements CanActivate {
-  constructor(private readonly memberships: MembershipResolver) {}
+  constructor(
+    private readonly memberships: MembershipResolver,
+    private readonly reflector: Reflector,
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    // Checked first, before anything is read or queried: a handler with no
+    // declared permission is a wiring mistake whoever the caller is.
+    const permission: unknown = this.reflector.get(
+      REQUIRED_PERMISSION_KEY,
+      context.getHandler(),
+    );
+
+    if (!permission) {
+      throw new Error(
+        'Organization-scoped handlers must declare a permission. ' +
+          'Add @RequirePermission() to the handler.',
+      );
+    }
+
     const userId = getRequestUser();
 
     if (!userId) {

@@ -7,6 +7,8 @@ import request from 'supertest';
 import { AppModule } from './../src/app.module.js';
 import { Public } from './../src/auth/public.decorator.js';
 import { TokenService } from './../src/auth/token.service.js';
+import { Permission } from './../src/authorization/permissions.js';
+import { RequirePermission } from './../src/authorization/require-permission.decorator.js';
 import type { OrganizationContext } from './../src/common/request-context.js';
 import { PrismaService } from './../src/database/prisma.service.js';
 import { AppLogger } from './../src/logger/app.logger.js';
@@ -36,6 +38,7 @@ const CREATED = new Date('2026-09-01T12:00:00.000Z');
 class PublicOrganizationProbeController {
   @Public()
   @Get()
+  @RequirePermission(Permission.ORGANIZATION_READ)
   open(): { status: string } {
     return { status: 'open' };
   }
@@ -56,6 +59,7 @@ class LoggingProbeController {
   private readonly logger = new Logger('TenancyProbe');
 
   @Get()
+  @RequirePermission(Permission.ORGANIZATION_READ)
   log(@CurrentMembership() membership: OrganizationContext): unknown {
     this.logger.log('inside an organization');
 

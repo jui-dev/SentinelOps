@@ -1,6 +1,7 @@
 import { NotFoundException } from '@nestjs/common';
 
 import type { PrismaService } from '../database/prisma.service.js';
+import { Prisma } from '../generated/prisma/client.js';
 import { TenancyErrorCode } from '../tenancy/tenancy.errors.js';
 import { OrganizationsErrorCode } from './organizations.errors.js';
 import { OrganizationsService } from './organizations.service.js';
@@ -29,7 +30,7 @@ const membershipRow = {
 
 const serviceWith = () => {
   const prisma = {
-    organization: { findFirst: vi.fn() },
+    organization: { findFirst: vi.fn(), update: vi.fn() },
     membership: { findFirst: vi.fn(), findMany: vi.fn() },
   };
   const service = new OrganizationsService(prisma as unknown as PrismaService);
@@ -93,6 +94,91 @@ describe('OrganizationsService', () => {
 
       expect(error).toBeInstanceOf(NotFoundException);
       expect(error.errorCode).toBe(TenancyErrorCode.ORGANIZATION_NOT_FOUND);
+    });
+  });
+
+  describe('updateOrganization', () => {
+    const knownError = (code: string) =>
+      new Prisma.PrismaClientKnownRequestError('Prisma failure', {
+        code,
+        clientVersion: 'test',
+      });
+
+    it('should update by id with soft-deleted organizations excluded, in one statement', async () => {
+      const { service, prisma } = serviceWith();
+      prisma.organization.update.mockResolvedValue(organizationRow);
+
+      await service.updateOrganization(ORG_A, { name: 'Renamed' });
+
+      expect(prisma.organization.update).toHaveBeenCalledExactlyOnceWith({
+        where: { id: ORG_A, deletedAt: null },
+        data: { name: 'Renamed' },
+        select: { id: true, name: true, slug: true, createdAt: true },
+      });
+      expect(prisma.organization.findFirst).not.toHaveBeenCalled();
+    });
+
+    it('should write the name and nothing else, whatever the input carries', async () => {
+      // The strict body schema already refuses extra keys; the service does
+      // not rely on that.
+      const { service, prisma } = serviceWith();
+      prisma.organization.update.mockResolvedValue(organizationRow);
+
+      await service.updateOrganization(ORG_A, {
+        name: 'Renamed',
+        slug: 'hijacked',
+        deletedAt: null,
+      } as unknown as { name: string });
+
+      const [args] = prisma.organization.update.mock.calls[0];
+
+      expect(args.data).toEqual({ name: 'Renamed' });
+    });
+
+    it('should take the organization and the input, and no caller', () => {
+      expect(OrganizationsService.prototype.updateOrganization).toHaveLength(2);
+    });
+
+    it('should return the updated organization', async () => {
+      const { service, prisma } = serviceWith();
+      prisma.organization.update.mockResolvedValue({
+        ...organizationRow,
+        name: 'Renamed',
+      });
+
+      await expect(
+        service.updateOrganization(ORG_A, { name: 'Renamed' }),
+      ).resolves.toEqual({
+        id: ORG_A,
+        name: 'Renamed',
+        slug: 'acme-operations',
+        createdAt: '2026-09-01T12:00:00.000Z',
+      });
+    });
+
+    it('should answer the admission 404 when no live organization matched', async () => {
+      const { service, prisma } = serviceWith();
+      prisma.organization.update.mockRejectedValue(knownError('P2025'));
+
+      const error = await errorOf(
+        service.updateOrganization(ORG_A, { name: 'Renamed' }),
+      );
+
+      expect(error).toBeInstanceOf(NotFoundException);
+      expect(error.errorCode).toBe(TenancyErrorCode.ORGANIZATION_NOT_FOUND);
+      expect(JSON.stringify(error.getResponse())).not.toContain(ORG_A);
+    });
+
+    it.each([
+      ['a different known Prisma error', knownError('P2002')],
+      ['an unexpected error', new Error('connection reset')],
+    ])('should rethrow %s unchanged', async (_label, thrown) => {
+      const { service, prisma } = serviceWith();
+      prisma.organization.update.mockRejectedValue(thrown);
+
+      await expect(
+        service.updateOrganization(ORG_A, { name: 'Renamed' }),
+      ).rejects.toBe(thrown);
     });
   });
 

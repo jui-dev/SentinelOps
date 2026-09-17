@@ -55,11 +55,17 @@ export const slugSchema = z
       ),
   );
 
+/**
+ * An organization's display name. Shared by registration, which names the
+ * organization it creates, and by renaming one.
+ */
+export const organizationNameSchema = z.string().trim().min(1).max(100);
+
 export const registerSchema = z.object({
   email: emailSchema,
   password: passwordSchema,
   name: z.string().trim().min(1).max(100),
-  organizationName: z.string().trim().min(1).max(100),
+  organizationName: organizationNameSchema,
   /** Optional: derived from organizationName when absent. */
   organizationSlug: slugSchema.optional(),
 });

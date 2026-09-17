@@ -1,5 +1,8 @@
-import { Get, Param } from '@nestjs/common';
+import { Body, Get, Param, Patch } from '@nestjs/common';
 
+import type { OrganizationResponse } from '../auth/auth.contract.js';
+import { Permission } from '../authorization/permissions.js';
+import { RequirePermission } from '../authorization/require-permission.decorator.js';
 import type { OrganizationContext } from '../common/request-context.js';
 import { CurrentMembership } from '../tenancy/current-membership.decorator.js';
 import { OrganizationController } from '../tenancy/organization-controller.decorator.js';
@@ -7,16 +10,19 @@ import type {
   OrganizationDetailResponse,
   OrganizationMembershipResponse,
 } from './organizations.contract.js';
+import { updateOrganizationSchema } from './organizations.schemas.js';
+import type { UpdateOrganizationRequest } from './organizations.schemas.js';
 import { OrganizationsService } from './organizations.service.js';
 
 /**
- * Read-only routes within one organization.
+ * Routes on the organization itself and its membership records.
  *
- * `@OrganizationController()` admits the request: the caller is a current
- * member of the organization named in the path. Each handler then passes the
- * admitted organization id to the service explicitly, and the service scopes
- * every query by it. Role is available on the membership but is not enforced
- * here; every member may read these.
+ * Three layers, each on its own: `@OrganizationController()` admits the
+ * request (the caller is a current member of the organization in the path);
+ * `@RequirePermission()` authorizes it (the caller's role holds what the
+ * handler needs); and the service isolates it, scoping every query by the
+ * organization id the handler passes explicitly. Every member may read;
+ * renaming needs `organization:update`.
  */
 @OrganizationController()
 export class OrganizationsController {
@@ -24,6 +30,7 @@ export class OrganizationsController {
 
   /** The organization and the caller's membership in it. */
   @Get()
+  @RequirePermission(Permission.ORGANIZATION_READ)
   getOrganization(
     @CurrentMembership() membership: OrganizationContext,
   ): Promise<OrganizationDetailResponse> {
@@ -33,8 +40,29 @@ export class OrganizationsController {
     });
   }
 
+  /**
+   * Renames the organization. The body is strict: `name` and nothing else, so
+   * the slug, a role, or another organization cannot ride along.
+   *
+   * Guards run before pipes, so a member without the permission is refused
+   * with 403 before their body is even validated.
+   */
+  @Patch()
+  @RequirePermission(Permission.ORGANIZATION_UPDATE)
+  updateOrganization(
+    @CurrentMembership() membership: OrganizationContext,
+    @Body({ schema: updateOrganizationSchema })
+    body: UpdateOrganizationRequest,
+  ): Promise<OrganizationResponse> {
+    return this.organizations.updateOrganization(
+      membership.organizationId,
+      body,
+    );
+  }
+
   /** Every membership record in the organization. */
   @Get('memberships')
+  @RequirePermission(Permission.MEMBERSHIPS_READ)
   listMemberships(
     @CurrentMembership() membership: OrganizationContext,
   ): Promise<OrganizationMembershipResponse[]> {
@@ -47,6 +75,7 @@ export class OrganizationsController {
    * names nothing in this organization, instead of a 400.
    */
   @Get('memberships/:membershipId')
+  @RequirePermission(Permission.MEMBERSHIPS_READ)
   getMembership(
     @CurrentMembership() membership: OrganizationContext,
     @Param('membershipId') membershipId: string,

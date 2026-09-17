@@ -1,6 +1,9 @@
 import { Injectable } from '@nestjs/common';
 
+import type { OrganizationResponse } from '../auth/auth.contract.js';
+import { toOrganizationResponse } from '../auth/auth.responses.js';
 import { PrismaService } from '../database/prisma.service.js';
+import { Prisma } from '../generated/prisma/client.js';
 import { organizationNotFound } from '../tenancy/tenancy.errors.js';
 import { isResourceId } from '../tenancy/tenancy.schemas.js';
 import type {
@@ -12,6 +15,13 @@ import {
   toOrganizationDetailResponse,
   toOrganizationMembershipResponse,
 } from './organizations.responses.js';
+import type { UpdateOrganizationRequest } from './organizations.schemas.js';
+
+/**
+ * Prisma's answer to an update whose where matched no row: here, an
+ * organization that does not exist or was soft-deleted.
+ */
+const RECORD_NOT_FOUND = 'P2025';
 
 /** Columns an organization response is built from. Never deletedAt. */
 const organizationSelection = {
@@ -69,6 +79,45 @@ export class OrganizationsService {
     }
 
     return toOrganizationDetailResponse(organization, caller);
+  }
+
+  /**
+   * Renames the organization.
+   *
+   * One statement: the unique `id` together with `deletedAt: null` is the
+   * update's own predicate, so there is no read to race — a soft deletion
+   * committed before this runs makes it match nothing, and the caller receives
+   * the same 404 admission would have given. The organization *is* the tenant,
+   * so its id is the whole tenant filter.
+   *
+   * No caller parameter. Authorization has already happened before the
+   * handler, and renaming has no rule that depends on who is doing it. A
+   * service whose invariants do depend on the actor takes it explicitly.
+   */
+  async updateOrganization(
+    organizationId: string,
+    input: UpdateOrganizationRequest,
+  ): Promise<OrganizationResponse> {
+    try {
+      const organization = await this.prisma.organization.update({
+        where: { id: organizationId, deletedAt: null },
+        data: { name: input.name },
+        select: organizationSelection,
+      });
+
+      return toOrganizationResponse(organization);
+    } catch (error) {
+      // Only the no-row case is a 404. Anything else is a genuine fault and
+      // surfaces as a masked 500 with its stack in the log.
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === RECORD_NOT_FOUND
+      ) {
+        throw organizationNotFound();
+      }
+
+      throw error;
+    }
   }
 
   /**

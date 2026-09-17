@@ -77,6 +77,28 @@ describe('organization route architecture', () => {
     ).toEqual([]);
   });
 
+  it('should declare @RequirePermission() only in organization controllers', () => {
+    // At runtime a permission on any other controller fails closed with a
+    // 500, because no organization was admitted. This catches it sooner.
+    const offenders = files
+      .map((file) => ({
+        file,
+        source: withoutComments(readFileSync(file, 'utf8')),
+      }))
+      .filter(
+        ({ source }) =>
+          source.includes('@RequirePermission(') &&
+          !source.includes('@OrganizationController('),
+      )
+      .map(({ file }) => relative(SRC, file).split(sep).join('/'));
+
+    expect(
+      offenders,
+      '@RequirePermission() authorizes against an admitted membership, so it ' +
+        'belongs only on handlers of an @OrganizationController().',
+    ).toEqual([]);
+  });
+
   it('should spell the segment in the decorator with the name the guard reads', () => {
     const source = withoutComments(
       readFileSync(join(SRC, DECORATOR_FILE), 'utf8'),
