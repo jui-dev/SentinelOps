@@ -40,3 +40,16 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, ReadonlySet<Permission>>> =
 export const hasPermission = (role: Role, permission: Permission): boolean =>
   Object.hasOwn(ROLE_PERMISSIONS, role) &&
   ROLE_PERMISSIONS[role].has(permission);
+
+/**
+ * Every permission `role` holds, sorted, for a client to decide what to offer.
+ *
+ * Read from the same table the guard enforces, so what a client is told and
+ * what the API allows cannot diverge. Telling a client is advice, not
+ * authority: every route still checks. An unrecognised role holds nothing, as
+ * in `hasPermission`.
+ */
+export const permissionsFor = (role: Role): Permission[] =>
+  Object.hasOwn(ROLE_PERMISSIONS, role)
+    ? [...ROLE_PERMISSIONS[role]].sort()
+    : [];

@@ -190,7 +190,15 @@ describe('tenancy (integration)', () => {
         name: 'Acme Operations',
         slug: 'acme-operations',
         createdAt: expect.any(String),
-        membership: { id: fx.aliceInA, role: 'OWNER' },
+        membership: {
+          id: fx.aliceInA,
+          role: 'OWNER',
+          permissions: [
+            'memberships:read',
+            'organization:read',
+            'organization:update',
+          ],
+        },
       });
     });
 
@@ -240,8 +248,14 @@ describe('tenancy (integration)', () => {
       const inA = await get(`/organizations/${fx.orgA.id}`, fx.carol.id);
       const inB = await get(`/organizations/${fx.orgB.id}`, fx.carol.id);
 
-      expect(inA.body.membership).toEqual({ id: fx.carolInA, role: 'ADMIN' });
-      expect(inB.body.membership).toEqual({ id: fx.carolInB, role: 'MEMBER' });
+      expect(inA.body.membership).toMatchObject({
+        id: fx.carolInA,
+        role: 'ADMIN',
+      });
+      expect(inB.body.membership).toMatchObject({
+        id: fx.carolInB,
+        role: 'MEMBER',
+      });
     });
   });
 

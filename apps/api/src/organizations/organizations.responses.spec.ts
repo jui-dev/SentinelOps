@@ -28,8 +28,33 @@ describe('organization response mappers', () => {
         name: 'Acme Operations',
         slug: 'acme-operations',
         createdAt: '2026-09-01T12:00:00.000Z',
-        membership: { id: 'membership-1', role: 'OWNER' },
+        membership: {
+          id: 'membership-1',
+          role: 'OWNER',
+          permissions: [
+            'memberships:read',
+            'organization:read',
+            'organization:update',
+          ],
+        },
       });
+    });
+
+    it('should not offer a member the rename permission', () => {
+      const response = toOrganizationDetailResponse(
+        {
+          id: 'org-1',
+          name: 'Acme Operations',
+          slug: 'acme-operations',
+          createdAt: CREATED,
+        },
+        { membershipId: 'membership-2', role: 'MEMBER' },
+      );
+
+      expect(response.membership.permissions).toEqual([
+        'memberships:read',
+        'organization:read',
+      ]);
     });
   });
 

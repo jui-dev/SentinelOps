@@ -11,6 +11,12 @@ import type { OrganizationResponse } from '../auth/auth.contract.js';
 export interface CallerMembershipResponse {
   id: string;
   role: string;
+  /**
+   * What this grant permits, sorted — derived from the role by the same table
+   * the API enforces. A client uses it to decide what to offer, never to decide
+   * what is allowed: every route still checks its own permission.
+   */
+  permissions: string[];
 }
 
 /**

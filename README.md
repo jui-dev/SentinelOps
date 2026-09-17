@@ -9,8 +9,9 @@ unfold, and turning the result into reviewable operational records.
 
 ## Project status
 
-> **Early development.** The backend's foundations are in place and tested. There is no
-> product yet: no incidents, no services, no teams, and no user interface.
+> **Early development.** The backend's foundations are in place and tested, and the web
+> app can sign a user in and work within an organization. There is no product yet: no
+> incidents, no services, and no teams.
 
 Anything still described as **planned** below has not been built. Each piece is introduced
 deliberately, and this README is updated as capabilities actually land.
@@ -25,8 +26,10 @@ deliberately, and this README is updated as capabilities actually land.
   that enforce tenant isolation
 - Authorization: per-route permissions within an organization, mapped from the member's
   role, proven by a rename route that members may not use
-- A Next.js frontend scaffold, untouched beyond its default page
-- Unit, end-to-end, and integration test suites
+- A Next.js web app: registration, login, session restore across reloads and tabs,
+  an organization picker, and per-organization overview, member list, and rename — the
+  last offered only when the API reports the permission. See [Web application](#web-application)
+- Unit, end-to-end, and integration test suites for the API, and unit tests for the web app
 
 **What does not exist yet**
 
@@ -122,7 +125,7 @@ The intended scope, not a feature list. Only the items marked below are built.
 sentinelops/
 ├── apps/
 │   ├── api/           # NestJS backend
-│   └── web/           # Next.js frontend (scaffold)
+│   └── web/           # Next.js frontend
 ├── packages/          # Shared internal packages, introduced when genuinely needed
 ├── docker/            # Container definitions and local dev compose files
 ├── infrastructure/    # Infrastructure-as-code and deployment configuration
@@ -184,6 +187,10 @@ pnpm --filter @sentinelops/api prisma:migrate
 # Run the API
 pnpm --filter @sentinelops/api start:dev
 
+# Run the web app (Next.js reads its env from apps/web, not from the root)
+cp apps/web/.env.example apps/web/.env.local
+pnpm --filter @sentinelops/web dev               # http://localhost:3000
+
 # Checks
 pnpm --filter @sentinelops/api typecheck
 pnpm --filter @sentinelops/api typecheck:test    # includes specs and test helpers
@@ -191,6 +198,10 @@ pnpm --filter @sentinelops/api lint
 pnpm --filter @sentinelops/api test              # unit, no database
 pnpm --filter @sentinelops/api test:e2e          # no database
 pnpm --filter @sentinelops/api test:integration  # needs pnpm db:up
+pnpm --filter @sentinelops/web lint
+pnpm --filter @sentinelops/web typecheck
+pnpm --filter @sentinelops/web test              # no API or database
+pnpm --filter @sentinelops/web build
 ```
 
 The API refuses to boot without a `JWT_SECRET` of at least 32 characters. That is
@@ -788,13 +799,16 @@ put slugs in its own URLs.
 
 | Route | Purpose | Permission |
 | --- | --- | --- |
-| `GET /api/v1/organizations/:organizationId` | The organization, and the caller's membership in it | `organization:read` |
+| `GET /api/v1/organizations/:organizationId` | The organization, and the caller's membership and permissions in it | `organization:read` |
 | `PATCH /api/v1/organizations/:organizationId` | Rename the organization: `{ "name": "…" }`, nothing else | `organization:update` |
 | `GET /api/v1/organizations/:organizationId/memberships` | Every membership record, oldest first | `memberships:read` |
 | `GET /api/v1/organizations/:organizationId/memberships/:membershipId` | One membership record | `memberships:read` |
 
 All require authentication, a current membership, and the listed permission — every role
 may read; only `OWNER` and `ADMIN` may rename (see [Authorization](#authorization)). The
+organization read carries the caller's grant as
+`membership: { id, role, permissions }` — see
+[Telling a client what it may do](#telling-a-client-what-it-may-do). The
 rename returns the organization without the caller's membership, and leaves the slug
 alone. The resource is named `memberships`, not `members`,
 because each item *is* a membership: its `id` is the membership's id, and it carries the
@@ -954,6 +968,26 @@ demotion or promotion takes effect on the very next request with the same token.
 rules depend on who is acting takes the actor as an explicit parameter — the rename does
 not, because nothing about renaming depends on it.
 
+### Telling a client what it may do
+
+`GET /organizations/:organizationId` reports the caller's permissions there, sorted:
+
+```jsonc
+"membership": {
+  "id": "…",
+  "role": "MEMBER",
+  "permissions": ["memberships:read", "organization:read"]
+}
+```
+
+They are read from the same table the guard enforces, through `permissionsFor(role)`, so
+what a client is told and what the API allows cannot diverge. A client uses the list to
+decide what to *offer* — the web app hides the rename form without `organization:update` —
+and never to decide what is *allowed*: every route still checks. It is resolved per
+request like the role, so a promotion shows up on the next read. The list is not in the
+token or in `/auth/me`, which stays about identity and memberships. It tells a member
+nothing their own role does not already let them do.
+
 ### 403 here, 404 everywhere else
 
 | Situation | Response |
@@ -1006,6 +1040,66 @@ user who is `ADMIN` in one organization and `MEMBER` in another with a single to
 proves that role changes apply on the next request, that refused writes leave the row
 untouched, that the update-miss mapping holds against the real driver adapter, and that
 interleaved requests in different roles stay apart.
+
+---
+
+## Web application
+
+`apps/web` is a Next.js 16 App Router app. Authenticated pages render in the browser and
+call the API directly, using the CORS policy described in
+[Configuration](#configuration); there is no proxy or backend-for-frontend. Working on the
+app — its layout, request kinds, and query keys — is covered in
+[`apps/web/README.md`](apps/web/README.md).
+
+### How the browser holds a session
+
+| | Access token | Refresh token |
+| --- | --- | --- |
+| Held in | Module memory in each tab | The API's `HttpOnly` cookie, which script never reads |
+| Survives a reload | No — restored by a refresh on load | Yes |
+| Sent with | Every organization and `/auth/me` request, as `Authorization: Bearer` | Only the session requests: register, login, refresh, logout |
+
+The API client has two request kinds, and every endpoint picks one explicitly. Session
+requests use `credentials: 'include'` — which a browser requires both to send the cookie
+*and* to store one set by a cross-origin response — and never carry a bearer token, and
+never refresh on `401`. Authenticated requests use `credentials: 'omit'`, so the cookie
+never travels with them (its `Path=/api/v1/auth` would otherwise match `/auth/me`), and a
+`401` gets at most one refresh and one retry.
+
+Because the API revokes a whole token family when a refresh cookie is used twice,
+refreshes never overlap: single-flight within a tab, and serialized across tabs by an
+exclusive Web Lock held until the response has been read. Several tabs refreshing together
+therefore make several sequential refreshes and each hold their own access token. Where
+Web Locks is unavailable (it requires a secure context), or a tab unloads mid-refresh, the
+user can be signed out; nothing is exposed. The rotation and reuse-detection rules in
+[Authentication](#authentication) are unchanged.
+
+Hiding a control the caller's permissions do not include is a convenience. Every request
+is still authorized by the API, with the same `403`/`404` answers as for any other client.
+
+### Deployment constraint: one site
+
+The refresh cookie is `SameSite=Lax`, so a browser only sends it to the API when the web
+app and the API are on the **same site** — the same scheme and registrable domain:
+
+| Web app | API | Works |
+| --- | --- | --- |
+| `http://localhost:3000` | `http://localhost:3001` | Yes — the port does not change the site |
+| `https://app.example.com` | `https://api.example.com` | Yes |
+| `http://127.0.0.1:3000` | `http://localhost:3001` | No — different sites, and not in `CORS_ORIGIN` |
+| `https://sentinelops.vercel.app` | `https://sentinelops-api.onrender.com` | No — each is its own site under a public suffix, and third-party cookie blocking applies as well |
+
+`CORS_ORIGIN` must list the web app's exact origin. The web app's own configuration is
+`NEXT_PUBLIC_API_URL`, the API origin, set in `apps/web/.env.local`; it is inlined at build
+time and a build without it fails.
+
+### Not yet
+
+- Browser end-to-end tests and CI.
+- A Content Security Policy. The app sends `X-Content-Type-Options`, `Referrer-Policy`,
+  and `X-Frame-Options: DENY`; a nonce-based CSP is later work.
+- Telling other tabs about a logout. They keep working until their access token expires
+  and their next refresh fails.
 
 ---
 

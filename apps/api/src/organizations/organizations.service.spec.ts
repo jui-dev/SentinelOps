@@ -77,7 +77,15 @@ describe('OrganizationsService', () => {
         name: 'Acme Operations',
         slug: 'acme-operations',
         createdAt: '2026-09-01T12:00:00.000Z',
-        membership: { id: MEMBERSHIP_ID, role: 'ADMIN' },
+        membership: {
+          id: MEMBERSHIP_ID,
+          role: 'ADMIN',
+          permissions: [
+            'memberships:read',
+            'organization:read',
+            'organization:update',
+          ],
+        },
       });
     });
 

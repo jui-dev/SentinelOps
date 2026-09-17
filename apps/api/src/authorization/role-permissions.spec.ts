@@ -1,6 +1,10 @@
 import { Role } from '../generated/prisma/enums.js';
 import { Permission } from './permissions.js';
-import { hasPermission, ROLE_PERMISSIONS } from './role-permissions.js';
+import {
+  hasPermission,
+  permissionsFor,
+  ROLE_PERMISSIONS,
+} from './role-permissions.js';
 
 const ROLES = Object.values(Role);
 const PERMISSIONS = Object.values(Permission);
@@ -98,6 +102,41 @@ describe('role permissions', () => {
   it('should deny a permission that is not declared', () => {
     expect(hasPermission('OWNER', 'organization:delete' as Permission)).toBe(
       false,
+    );
+  });
+
+  describe('permissionsFor', () => {
+    it.each(ROLES)('should list exactly what %s holds, sorted', (role) => {
+      const expected = PERMISSIONS.filter(
+        (permission) => EXPECTED[role][permission],
+      ).sort();
+
+      expect(permissionsFor(role)).toEqual(expected);
+    });
+
+    it('should agree with hasPermission for every role and permission', () => {
+      for (const role of ROLES) {
+        for (const permission of PERMISSIONS) {
+          expect(permissionsFor(role).includes(permission)).toBe(
+            hasPermission(role, permission),
+          );
+        }
+      }
+    });
+
+    it('should return a copy the caller cannot use to change the policy', () => {
+      permissionsFor('MEMBER').push(Permission.ORGANIZATION_UPDATE);
+
+      expect(hasPermission('MEMBER', Permission.ORGANIZATION_UPDATE)).toBe(
+        false,
+      );
+    });
+
+    it.each(['constructor', '__proto__', 'owner', ''])(
+      'should list nothing for the unknown role %j',
+      (role) => {
+        expect(permissionsFor(role as Role)).toEqual([]);
+      },
     );
   });
 });

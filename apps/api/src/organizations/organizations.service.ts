@@ -4,6 +4,7 @@ import type { OrganizationResponse } from '../auth/auth.contract.js';
 import { toOrganizationResponse } from '../auth/auth.responses.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { Prisma } from '../generated/prisma/client.js';
+import type { Role } from '../generated/prisma/enums.js';
 import { organizationNotFound } from '../tenancy/tenancy.errors.js';
 import { isResourceId } from '../tenancy/tenancy.schemas.js';
 import type {
@@ -67,7 +68,7 @@ export class OrganizationsService {
    */
   async getOrganization(
     organizationId: string,
-    caller: { membershipId: string; role: string },
+    caller: { membershipId: string; role: Role },
   ): Promise<OrganizationDetailResponse> {
     const organization = await this.prisma.organization.findFirst({
       where: { id: organizationId, deletedAt: null },

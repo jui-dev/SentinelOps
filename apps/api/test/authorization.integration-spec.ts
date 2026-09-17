@@ -55,6 +55,17 @@ const comparable = (body: Record<string, unknown>) => {
   return rest;
 };
 
+/** What the role-to-permission table grants, as the API reports it: sorted. */
+const FULL_PERMISSIONS: readonly string[] = [
+  'memberships:read',
+  'organization:read',
+  'organization:update',
+];
+const READ_PERMISSIONS: readonly string[] = [
+  'memberships:read',
+  'organization:read',
+];
+
 describe('authorization (integration)', () => {
   const prisma = new PrismaService({ url: resolveTestDatabaseUrl() });
   let app: INestApplication;
@@ -310,6 +321,50 @@ describe('authorization (integration)', () => {
         (await rename(fx.orgA.id, fx.dave.id, undefined, token)).status,
       ).toBe(200);
     });
+
+    it('should report the permissions of the current role on the next read', async () => {
+      const token = await tokenFor(fx.dave.id);
+
+      const before = await read(fx.orgA.id, token);
+
+      expect(before.status).toBe(200);
+      expect(before.body.membership.permissions).toEqual(READ_PERMISSIONS);
+
+      await setRole(fx.daveInA, 'ADMIN');
+
+      const after = await read(fx.orgA.id, token);
+
+      expect(after.status).toBe(200);
+      expect(after.body.membership).toEqual({
+        id: fx.daveInA,
+        role: 'ADMIN',
+        permissions: FULL_PERMISSIONS,
+      });
+    });
+  });
+
+  describe('advertised permissions', () => {
+    it.each([
+      ['OWNER', 'alice', FULL_PERMISSIONS],
+      ['ADMIN', 'carol', FULL_PERMISSIONS],
+      ['MEMBER', 'dave', READ_PERMISSIONS],
+    ] as const)(
+      'should tell an %s what the API will let them do',
+      async (_role, who, expected) => {
+        const token = await tokenFor(fx[who].id);
+        const response = await read(fx.orgA.id, token);
+
+        expect(response.status).toBe(200);
+        expect(response.body.membership.permissions).toEqual(expected);
+
+        // The advice and the enforcement agree.
+        const renamed = await rename(fx.orgA.id, fx[who].id, undefined, token);
+
+        expect(renamed.status).toBe(
+          expected.includes('organization:update') ? 200 : 403,
+        );
+      },
+    );
   });
 
   describe('the request body', () => {
@@ -459,11 +514,19 @@ describe('authorization (integration)', () => {
         Array.from({ length: 20 }, (_, index) =>
           index % 2 === 0
             ? read(fx.orgA.id, token).then((response) => ({
-                expected: { id: fx.carolInA, role: 'ADMIN' },
+                expected: {
+                  id: fx.carolInA,
+                  role: 'ADMIN',
+                  permissions: FULL_PERMISSIONS,
+                },
                 response,
               }))
             : read(fx.orgB.id, token).then((response) => ({
-                expected: { id: fx.carolInB, role: 'MEMBER' },
+                expected: {
+                  id: fx.carolInB,
+                  role: 'MEMBER',
+                  permissions: READ_PERMISSIONS,
+                },
                 response,
               })),
         ),

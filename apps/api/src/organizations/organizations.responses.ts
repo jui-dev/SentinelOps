@@ -1,4 +1,6 @@
 import { toOrganizationResponse } from '../auth/auth.responses.js';
+import { permissionsFor } from '../authorization/role-permissions.js';
+import type { Role } from '../generated/prisma/enums.js';
 import type {
   OrganizationDetailResponse,
   OrganizationMembershipResponse,
@@ -19,7 +21,7 @@ interface OrganizationRow {
 
 interface CallerMembership {
   membershipId: string;
-  role: string;
+  role: Role;
 }
 
 interface MembershipRow {
@@ -41,6 +43,7 @@ export const toOrganizationDetailResponse = (
   membership: {
     id: caller.membershipId,
     role: caller.role,
+    permissions: permissionsFor(caller.role),
   },
 });
 

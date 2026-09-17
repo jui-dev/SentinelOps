@@ -240,7 +240,11 @@ describe('Tenancy (e2e)', () => {
         name: 'Acme Operations',
         slug: 'acme-operations',
         createdAt: '2026-09-01T12:00:00.000Z',
-        membership: { id: MEMBERSHIP_ID, role: 'MEMBER' },
+        membership: {
+          id: MEMBERSHIP_ID,
+          role: 'MEMBER',
+          permissions: ['memberships:read', 'organization:read'],
+        },
       });
     });
 
