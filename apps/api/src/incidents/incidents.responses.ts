@@ -1,5 +1,7 @@
 import type { ServiceCriticality } from '../services/services.contract.js';
 import type {
+  IncidentActivityResponse,
+  IncidentActivityType,
   IncidentDetailResponse,
   IncidentMemberResponse,
   IncidentResponse,
@@ -91,4 +93,30 @@ export const toIncidentDetailResponse = (
   responders: incident.responders.map(({ membership }) =>
     toIncidentMemberResponse(membership),
   ),
+});
+
+interface IncidentActivityRow {
+  id: string;
+  type: IncidentActivityType;
+  message: string | null;
+  fromValue: string | null;
+  toValue: string | null;
+  createdAt: Date;
+  actor: { id: string; name: string };
+}
+
+/** One timeline entry. The actor is identity only — never an email. */
+export const toIncidentActivityResponse = (
+  activity: IncidentActivityRow,
+): IncidentActivityResponse => ({
+  id: activity.id,
+  type: activity.type,
+  message: activity.message,
+  fromValue: activity.fromValue,
+  toValue: activity.toValue,
+  actor: {
+    id: activity.actor.id,
+    name: activity.actor.name,
+  },
+  createdAt: activity.createdAt.toISOString(),
 });

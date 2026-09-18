@@ -51,6 +51,17 @@ const incidentRow = {
   responders: [],
 };
 
+const activityRow = {
+  id: '0199a1b2-c3d4-7000-8000-0000000000f1',
+  incidentId: INCIDENT_ID,
+  type: 'UPDATE',
+  message: 'Investigating elevated database latency.',
+  fromValue: null,
+  toValue: null,
+  createdAt: CREATED,
+  actor: { id: USER_ID, name: 'Ada Lovelace' },
+};
+
 const base = `/api/v1/organizations/${ORG_ID}/incidents`;
 
 const declaration = {
@@ -78,6 +89,7 @@ describe('Incidents (e2e)', () => {
       findFirstOrThrow: vi.fn(),
     },
     incidentResponder: { create: vi.fn(), deleteMany: vi.fn() },
+    incidentActivity: { create: vi.fn(), createMany: vi.fn() },
   };
 
   /**
@@ -142,6 +154,8 @@ describe('Incidents (e2e)', () => {
     prisma.incident.findFirstOrThrow.mockResolvedValue(incidentRow);
     prisma.incidentResponder.create.mockResolvedValue({ id: 'r-1' });
     prisma.incidentResponder.deleteMany.mockResolvedValue({ count: 1 });
+    prisma.incidentActivity.create.mockResolvedValue(activityRow);
+    prisma.incidentActivity.createMany.mockResolvedValue({ count: 1 });
   });
 
   afterEach(async () => {
@@ -212,6 +226,31 @@ describe('Incidents (e2e)', () => {
       expect(
         (await send('delete', `${base}/1/responders/${MEMBERSHIP_ID}`)).status,
       ).toBe(204);
+    });
+
+    it('should post an operational update and read the timeline', async () => {
+      const expected = {
+        id: activityRow.id,
+        type: 'UPDATE',
+        message: 'Investigating elevated database latency.',
+        fromValue: null,
+        toValue: null,
+        actor: { id: USER_ID, name: 'Ada Lovelace' },
+        createdAt: '2026-09-18T12:00:00.000Z',
+      };
+
+      const posted = await send('post', `${base}/1/updates`, {
+        message: 'Investigating elevated database latency.',
+      });
+
+      expect(posted.status).toBe(201);
+      expect(posted.body).toEqual(expected);
+
+      prisma.incident.findFirst.mockResolvedValue({ activity: [activityRow] });
+      const timeline = await send('get', `${base}/1/timeline`);
+
+      expect(timeline.status).toBe(200);
+      expect(timeline.body).toEqual([expected]);
     });
   });
 
@@ -299,6 +338,17 @@ describe('Incidents (e2e)', () => {
       },
     );
 
+    it.each([
+      ['a blank message', { message: '   ' }],
+      ['an overlong message', { message: 'x'.repeat(2001) }],
+      ['an actor', { message: 'x', actorId: USER_ID }],
+    ])('should refuse an update with %s with 400', async (_, body) => {
+      const response = await send('post', `${base}/1/updates`, body);
+
+      expect(response.status).toBe(400);
+      expect(prisma.incidentActivity.create).not.toHaveBeenCalled();
+    });
+
     it('should offer no way to delete an incident', async () => {
       const response = await send('delete', `${base}/1`);
 
@@ -314,6 +364,8 @@ describe('Incidents (e2e)', () => {
       { method: 'post' as const, path: base },
       { method: 'patch' as const, path: `${base}/1` },
       { method: 'post' as const, path: `${base}/1/responders` },
+      { method: 'get' as const, path: `${base}/1/timeline` },
+      { method: 'post' as const, path: `${base}/1/updates` },
       {
         method: 'delete' as const,
         path: `${base}/1/responders/${MEMBERSHIP_ID}`,
@@ -333,6 +385,7 @@ describe('Incidents (e2e)', () => {
       expect(prisma.incident.update).not.toHaveBeenCalled();
       expect(prisma.incidentResponder.create).not.toHaveBeenCalled();
       expect(prisma.incidentResponder.deleteMany).not.toHaveBeenCalled();
+      expect(prisma.incidentActivity.create).not.toHaveBeenCalled();
     });
   });
 });

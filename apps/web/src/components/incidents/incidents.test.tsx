@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { OrganizationScope } from "@/components/organizations/organization-scope";
 import type {
+  IncidentActivityResponse,
   IncidentDetailResponse,
   IncidentResponse,
 } from "@/lib/api/contracts";
@@ -141,6 +142,20 @@ const incident = (
   ...overrides,
 });
 
+/** A timeline entry; by default an update Daniel posted. */
+const activity = (
+  overrides: Partial<IncidentActivityResponse> = {},
+): IncidentActivityResponse => ({
+  id: "0199a1b2-c3d4-7000-8000-000000000101",
+  type: "UPDATE",
+  message: "Investigating elevated database latency.",
+  fromValue: null,
+  toValue: null,
+  actor: { id: daniel.user.id, name: "Daniel Okafor" },
+  createdAt: "2026-09-18T12:05:00.000Z",
+  ...overrides,
+});
+
 const page = (items: IncidentResponse[], cursor: string | null = null) => ({
   items,
   page: { cursor, hasMore: cursor !== null },
@@ -154,12 +169,14 @@ const api = (
     active = [incident()],
     resolved = [] as IncidentResponse[],
     detail = incident(),
+    timeline = [] as IncidentActivityResponse[],
     services = [paymentApi],
     handler = () => undefined,
   }: {
     active?: IncidentResponse[];
     resolved?: IncidentResponse[];
     detail?: IncidentDetailResponse;
+    timeline?: IncidentActivityResponse[];
     services?: (typeof paymentApi)[];
     handler?: Handler;
   } = {},
@@ -182,6 +199,8 @@ const api = (
         return jsonResponse(200, page(resolved));
       case `GET ${base}/incidents/${detail.number}`:
         return jsonResponse(200, detail);
+      case `GET ${base}/incidents/${detail.number}/timeline`:
+        return jsonResponse(200, timeline);
       case `GET ${base}/services`:
         return jsonResponse(200, services);
       case `GET ${base}/teams`:
@@ -382,7 +401,7 @@ describe("incidents", () => {
       navigation.params = { orgSlug: "acme-ops", incidentNumber: "42" };
     });
 
-    it("shows what the record holds, and no timeline", async () => {
+    it("shows what the record holds", async () => {
       api(READ_ONLY);
 
       inOrganization(<IncidentDetail />);
@@ -399,7 +418,6 @@ describe("incidents", () => {
         screen.getByRole("link", { name: "Payments" }).getAttribute("href"),
       ).toBe("/orgs/acme-ops/teams/payments");
       expect(screen.getByText("Ada Lovelace")).toBeDefined();
-      expect(screen.queryByText(/timeline/i)).toBeNull();
       // Read-only: nothing to change.
       expect(screen.queryByRole("button", { name: "Resolve…" })).toBeNull();
       expect(screen.queryByLabelText("Status")).toBeNull();
@@ -640,6 +658,137 @@ describe("incidents", () => {
       expect(await screen.findByText(/resolved by someone else/)).toBeDefined();
     });
 
+    it("tells the story on the timeline, oldest first, with nothing to post for a reader", async () => {
+      api(READ_ONLY, {
+        timeline: [
+          activity({
+            id: "0199a1b2-c3d4-7000-8000-000000000100",
+            type: "DECLARED",
+            message: null,
+            toValue: "SEV2",
+            actor: { id: currentUser.id, name: "Ada Lovelace" },
+            createdAt: "2026-09-18T12:00:00.000Z",
+          }),
+          activity(),
+          activity({
+            id: "0199a1b2-c3d4-7000-8000-000000000102",
+            type: "SEVERITY_CHANGED",
+            message: null,
+            fromValue: "SEV2",
+            toValue: "SEV1",
+          }),
+          activity({
+            id: "0199a1b2-c3d4-7000-8000-000000000103",
+            type: "STATUS_CHANGED",
+            message: null,
+            fromValue: "INVESTIGATING",
+            toValue: "IDENTIFIED",
+          }),
+        ],
+      });
+
+      inOrganization(<IncidentDetail />);
+
+      const timeline = (await screen.findByRole("heading", { name: /Timeline/ }))
+        .closest("section") as HTMLElement;
+      const entries = await within(timeline).findAllByRole("listitem");
+
+      expect(entries.map((entry) => entry.textContent)).toEqual([
+        expect.stringMatching(/^Ada Lovelace · .*Declared the incident at SEV2/),
+        expect.stringMatching(
+          /^Daniel Okafor posted an update · .*Investigating elevated database latency\.$/,
+        ),
+        expect.stringMatching(/Changed severity SEV2.*→.*SEV1/),
+        expect.stringMatching(/Changed status Investigating.*→.*Identified/),
+      ]);
+      expect(within(timeline).queryByLabelText("Post an update")).toBeNull();
+    });
+
+    it("posts an operational update and shows it on the timeline", async () => {
+      const user = userEvent.setup();
+      let timeline: IncidentActivityResponse[] = [];
+      const posted = activity({
+        actor: { id: currentUser.id, name: "Ada Lovelace" },
+        message: "Connection pool exhaustion identified.",
+      });
+      const { requests } = api(MEMBER, {
+        handler: (request) => {
+          if (route(request) === `GET ${base}/incidents/42/timeline`) {
+            return jsonResponse(200, timeline);
+          }
+          if (route(request) === `POST ${base}/incidents/42/updates`) {
+            timeline = [posted];
+            return jsonResponse(201, posted);
+          }
+          return undefined;
+        },
+      });
+
+      inOrganization(<IncidentDetail />);
+
+      const composer = await screen.findByLabelText("Post an update");
+      expect(await screen.findByText("No activity recorded yet.")).toBeDefined();
+      expect(
+        (screen.getByRole("button", { name: "Post update" }) as HTMLButtonElement).disabled,
+      ).toBe(true);
+
+      await user.type(composer, "Connection pool exhaustion identified.");
+      await user.click(screen.getByRole("button", { name: "Post update" }));
+
+      expect(
+        await screen.findByText("Connection pool exhaustion identified."),
+      ).toBeDefined();
+      expect(
+        requests.find((r) => route(r) === `POST ${base}/incidents/42/updates`)?.body,
+      ).toEqual({ message: "Connection pool exhaustion identified." });
+      expect((composer as HTMLTextAreaElement).value).toBe("");
+    });
+
+    it("keeps a resolved incident's timeline readable, with nowhere to post", async () => {
+      api(MEMBER, {
+        detail: incident({ status: "RESOLVED", resolvedAt: "2026-09-18T13:00:00.000Z" }),
+        timeline: [
+          activity(),
+          activity({
+            id: "0199a1b2-c3d4-7000-8000-000000000104",
+            type: "STATUS_CHANGED",
+            message: null,
+            fromValue: "MONITORING",
+            toValue: "RESOLVED",
+          }),
+        ],
+      });
+
+      inOrganization(<IncidentDetail />);
+
+      const timeline = (await screen.findByRole("heading", { name: /Timeline/ }))
+        .closest("section") as HTMLElement;
+      const entries = await within(timeline).findAllByRole("listitem");
+
+      expect(entries.at(-1)?.textContent).toMatch(/Resolved the incident$/);
+      expect(screen.queryByLabelText("Post an update")).toBeNull();
+    });
+
+    it("explains an update refused because the incident was resolved meanwhile", async () => {
+      const user = userEvent.setup();
+      const { requests } = api(MEMBER, {
+        handler: (request) =>
+          route(request) === `POST ${base}/incidents/42/updates`
+            ? apiError(409, "INCIDENT_RESOLVED")
+            : undefined,
+      });
+
+      inOrganization(<IncidentDetail />);
+
+      await user.type(await screen.findByLabelText("Post an update"), "Rolled back.");
+      await user.click(screen.getByRole("button", { name: "Post update" }));
+
+      expect(await screen.findByText(/updates can no longer be posted/)).toBeDefined();
+      await waitFor(() =>
+        expect(count(requests, `GET ${base}/incidents/42`)).toBeGreaterThan(1),
+      );
+    });
+
     it("answers an unknown number with a not-found page", async () => {
       navigation.params = { orgSlug: "acme-ops", incidentNumber: "999" };
       api(READ_ONLY);
@@ -665,7 +814,7 @@ describe("incidents", () => {
   });
 
   describe("the cache", () => {
-    it("stores a changed incident and stales both lists, and nothing outside incidents", () => {
+    it("stores a changed incident and stales both lists and its timeline, and nothing outside incidents", () => {
       const queryClient = new QueryClient();
       const orgId = organization.id;
       const changed = incident({ status: "MONITORING" });
@@ -673,12 +822,14 @@ describe("incidents", () => {
       queryClient.setQueryData(queryKeys.incidentList(orgId, "active"), { pages: [], pageParams: [] });
       queryClient.setQueryData(queryKeys.incidentList(orgId, "resolved"), { pages: [], pageParams: [] });
       queryClient.setQueryData(queryKeys.services(orgId), []);
+      queryClient.setQueryData(queryKeys.incidentTimeline(orgId, 42), []);
 
       storeIncident(queryClient, orgId, changed);
 
       expect(queryClient.getQueryData(queryKeys.incident(orgId, 42))).toEqual(changed);
       expect(queryClient.getQueryState(queryKeys.incidentList(orgId, "active"))?.isInvalidated).toBe(true);
       expect(queryClient.getQueryState(queryKeys.incidentList(orgId, "resolved"))?.isInvalidated).toBe(true);
+      expect(queryClient.getQueryState(queryKeys.incidentTimeline(orgId, 42))?.isInvalidated).toBe(true);
       expect(queryClient.getQueryState(queryKeys.services(orgId))?.isInvalidated).toBe(false);
       expect(queryClient.getQueryState(queryKeys.incident(orgId, 42))?.isInvalidated).toBe(false);
     });

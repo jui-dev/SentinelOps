@@ -11,8 +11,8 @@ import { resolveTestDatabaseUrl } from './test-database.js';
 /**
  * What the server writes while incidents are declared and worked, against a
  * real database and with the production logger in JSON at `debug`: the
- * incident's identifiers and enum values, and never its title or summary —
- * free text that can carry customer or system details.
+ * incident's identifiers and enum values, and never its title, summary, or
+ * update messages — free text that can carry customer or system details.
  *
  * Its own file, with its own application, so the capture is scoped to it.
  */
@@ -26,6 +26,7 @@ describe('incident logging (integration)', () => {
   const TITLE = 'Sentinel-title-3f9a: card 4111 declined for customer Ada';
   const SUMMARY = 'Sentinel-summary-7c2e: host db-payments-02 unreachable';
   const NEW_TITLE = 'Sentinel-retitle-51bd';
+  const MESSAGE = 'Sentinel-update-9d41: pool on db-payments-02 exhausted';
 
   beforeAll(async () => {
     vi.stubEnv('LOG_FORMAT', 'json');
@@ -63,7 +64,7 @@ describe('incident logging (integration)', () => {
     await app.close();
   });
 
-  it('should log declaring, changing, and resolving without the title or summary', async () => {
+  it('should log declaring, changing, posting updates, and resolving without the free text', async () => {
     const organization = await prisma.organization.create({
       data: { name: 'Acme Operations', slug: 'acme-operations' },
     });
@@ -98,15 +99,12 @@ describe('incident logging (integration)', () => {
     const base = `/api/v1/organizations/${organization.id}/incidents`;
     const server = () => request(app.getHttpServer());
 
-    const declared = await server()
-      .post(base)
-      .set('Authorization', auth)
-      .send({
-        title: TITLE,
-        summary: SUMMARY,
-        serviceId: service.id,
-        severity: 'SEV1',
-      });
+    const declared = await server().post(base).set('Authorization', auth).send({
+      title: TITLE,
+      summary: SUMMARY,
+      serviceId: service.id,
+      severity: 'SEV1',
+    });
 
     expect(declared.status).toBe(201);
 
@@ -116,6 +114,10 @@ describe('incident logging (integration)', () => {
       .set('Authorization', auth)
       .send({ title: NEW_TITLE, severity: 'SEV2' });
     await server()
+      .post(`${base}/1/updates`)
+      .set('Authorization', auth)
+      .send({ message: MESSAGE });
+    await server()
       .patch(`${base}/1`)
       .set('Authorization', auth)
       .send({ status: 'RESOLVED' });
@@ -123,6 +125,11 @@ describe('incident logging (integration)', () => {
       .patch(`${base}/1`)
       .set('Authorization', auth)
       .send({ summary: SUMMARY });
+    await server()
+      .post(`${base}/1/updates`)
+      .set('Authorization', auth)
+      .send({ message: MESSAGE });
+    await server().get(`${base}/1/timeline`).set('Authorization', auth);
     await server()
       .post(base)
       .set('Authorization', auth)
@@ -142,6 +149,7 @@ describe('incident logging (integration)', () => {
       expect.arrayContaining([
         'Incident declared',
         'Incident updated',
+        'Incident update posted',
         'Incident resolved',
       ]),
     );
@@ -159,7 +167,7 @@ describe('incident logging (integration)', () => {
       entries.find((entry) => entry.message === 'Incident updated'),
     ).toEqual(expect.objectContaining({ changed: ['title', 'severity'] }));
 
-    for (const secret of [TITLE, SUMMARY, NEW_TITLE, 'Sentinel-']) {
+    for (const secret of [TITLE, SUMMARY, NEW_TITLE, MESSAGE, 'Sentinel-']) {
       expect(lines.filter((line) => line.includes(secret))).toEqual([]);
     }
   });

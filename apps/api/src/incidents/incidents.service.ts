@@ -13,6 +13,7 @@ import { teamNotFound } from '../teams/teams.errors.js';
 import { organizationNotFound } from '../tenancy/tenancy.errors.js';
 import { isResourceId } from '../tenancy/tenancy.schemas.js';
 import type {
+  IncidentActivityResponse,
   IncidentDetailResponse,
   IncidentPage,
   IncidentSeverity,
@@ -25,6 +26,7 @@ import {
   responderNotFound,
 } from './incidents.errors.js';
 import {
+  toIncidentActivityResponse,
   toIncidentDetailResponse,
   toIncidentResponse,
 } from './incidents.responses.js';
@@ -33,6 +35,7 @@ import type {
   AddResponderRequest,
   CreateIncidentRequest,
   ListIncidentsQuery,
+  PostIncidentUpdateRequest,
   UpdateIncidentRequest,
 } from './incidents.schemas.js';
 
@@ -101,6 +104,21 @@ const incidentDetailSelection = {
     // UUIDv7: ordering by id is the order responders were added.
     orderBy: { id: 'asc' },
   },
+} as const;
+
+/**
+ * Columns a timeline entry is built from. The actor is identity only, and is
+ * not filtered on deletedAt: who posted or changed something stays true after
+ * they leave.
+ */
+const activitySelection = {
+  id: true,
+  type: true,
+  message: true,
+  fromValue: true,
+  toValue: true,
+  createdAt: true,
+  actor: { select: { id: true, name: true } },
 } as const;
 
 /**
@@ -180,8 +198,9 @@ export const decodeResolvedCursor = (cursor: string): number => {
  * admitted membership, inside the declaring transaction, and never from a
  * body.
  *
- * Title and summary are free text and may carry customer or system details,
- * so they are never logged. Ids, numbers, and enum values are.
+ * Titles, summaries, and update messages are free text and may carry
+ * customer or system details, so they are never logged. Ids, numbers, and
+ * enum values are.
  */
 @Injectable()
 export class IncidentsService {
@@ -307,7 +326,8 @@ export class IncidentsService {
    *      archived, or deleted, and its owning team cannot be deleted — it
    *      owns the service. The owner read here is therefore still the owner
    *      when the incident is inserted, and still exists.
-   *   4. Insert the incident with scalar ids.
+   *   4. Insert the incident with scalar ids, and its DECLARED timeline
+   *      entry.
    *
    * So a declaration racing a change to its service happens entirely before
    * or entirely after it: before, and the change waits (and a delete is then
@@ -325,20 +345,11 @@ export class IncidentsService {
       incident = await this.prisma.$transaction(async (tx) => {
         const number = await this.allocateNumber(tx, organizationId);
 
-        const declarer = await tx.membership.findFirst({
-          where: {
-            id: actor.membershipId,
-            organizationId,
-            user: { deletedAt: null },
-          },
-          select: { userId: true },
-        });
-
-        if (!declarer) {
-          // The caller's grant is gone since admission: the same answer
-          // admission would now give.
-          throw organizationNotFound();
-        }
+        const declarerId = await this.resolveActor(
+          tx,
+          organizationId,
+          actor.membershipId,
+        );
 
         const service = await this.lockService(
           tx,
@@ -356,7 +367,7 @@ export class IncidentsService {
 
         // Scalar ids, not nested connects: both relations share
         // organizationId, and it is that shared column the keys check.
-        return tx.incident.create({
+        const created = await tx.incident.create({
           data: {
             organizationId,
             number,
@@ -365,10 +376,24 @@ export class IncidentsService {
             serviceId: input.serviceId,
             teamId: service.ownerTeamId,
             severity: input.severity,
-            createdById: declarer.userId,
+            createdById: declarerId,
           },
           select: incidentDetailSelection,
         });
+
+        await tx.incidentActivity.create({
+          data: {
+            organizationId,
+            incidentId: created.id,
+            type: 'DECLARED',
+            actorId: declarerId,
+            toValue: created.severity,
+            createdAt: created.createdAt,
+          },
+          select: { id: true },
+        });
+
+        return created;
       });
     } catch (error) {
       // A backstop: the row lock makes this unreachable through the API,
@@ -403,17 +428,23 @@ export class IncidentsService {
    * in the same write. A resolved incident is not changed — any change to one
    * is a 409, whatever it names.
    *
-   * The incident is judged first (404, then 409), and only then the team or
-   * lead a body names, so a foreign incident reveals nothing about the body. The
-   * update itself re-asserts that the incident is unresolved: of two
-   * concurrent resolutions, the second waits on the row, then matches
-   * nothing and is told the incident is resolved. resolvedAt is written
-   * exactly once.
+   * The incident is judged and locked first (see lockActive: 404, then 409),
+   * and only then the team or lead a body names, so a foreign incident
+   * reveals nothing about the body. Of two concurrent resolutions, the second
+   * waits on the row, then is told the incident is resolved. resolvedAt is
+   * written exactly once; the update itself still re-asserts that the
+   * incident is unresolved.
+   *
+   * A severity or status that actually changes is recorded on the timeline in
+   * the same transaction, attributed to the acting member. The previous value
+   * is read, and the entry timestamped, under the row lock, so concurrent
+   * changes each record a true "from" and appear in the order they applied.
    */
   async update(
     organizationId: string,
     incidentNumber: string,
     input: UpdateIncidentRequest,
+    actor: { membershipId: string },
   ): Promise<IncidentDetailResponse> {
     const number = parseIncidentNumber(incidentNumber);
 
@@ -426,18 +457,39 @@ export class IncidentsService {
 
     try {
       incident = await this.prisma.$transaction(async (tx) => {
-        const current = await tx.incident.findFirst({
-          where: { organizationId, number, organization: { deletedAt: null } },
-          select: { status: true },
+        const incidentId = await this.lockActive(tx, organizationId, number);
+        const now = new Date();
+        const before = await tx.incident.findFirstOrThrow({
+          where: { id: incidentId, organizationId },
+          select: { severity: true, status: true },
         });
 
-        if (!current) {
-          throw incidentNotFound();
-        }
+        const changes = [
+          ...(input.severity !== undefined && input.severity !== before.severity
+            ? [
+                {
+                  type: 'SEVERITY_CHANGED' as const,
+                  fromValue: before.severity,
+                  toValue: input.severity,
+                },
+              ]
+            : []),
+          ...(input.status !== undefined && input.status !== before.status
+            ? [
+                {
+                  type: 'STATUS_CHANGED' as const,
+                  fromValue: before.status,
+                  toValue: input.status,
+                },
+              ]
+            : []),
+        ];
 
-        if (current.status === 'RESOLVED') {
-          throw incidentResolved();
-        }
+        // Looked up only when there is a change to attribute.
+        const actorId =
+          changes.length > 0
+            ? await this.resolveActor(tx, organizationId, actor.membershipId)
+            : undefined;
 
         if (input.teamId !== undefined) {
           await this.requireTeam(tx, organizationId, input.teamId);
@@ -451,7 +503,7 @@ export class IncidentsService {
           );
         }
 
-        return tx.incident.update({
+        const updated = await tx.incident.update({
           where: {
             organizationId_number: { organizationId, number },
             status: { not: 'RESOLVED' },
@@ -464,10 +516,24 @@ export class IncidentsService {
             status: input.status,
             teamId: input.teamId,
             leadMembershipId: input.leadMembershipId,
-            resolvedAt: resolving ? new Date() : undefined,
+            resolvedAt: resolving ? now : undefined,
           },
           select: incidentDetailSelection,
         });
+
+        if (actorId !== undefined) {
+          await tx.incidentActivity.createMany({
+            data: changes.map((change) => ({
+              organizationId,
+              incidentId,
+              actorId,
+              ...change,
+              createdAt: now,
+            })),
+          });
+        }
+
+        return updated;
       });
     } catch (error) {
       if (
@@ -636,6 +702,119 @@ export class IncidentsService {
       incidentNumber: number,
       membershipId,
     });
+  }
+
+  /**
+   * The incident's timeline, oldest first: operational updates and recorded
+   * lifecycle changes. Unpaged, and readable whether or not the incident is
+   * resolved.
+   */
+  async timeline(
+    organizationId: string,
+    incidentNumber: string,
+  ): Promise<IncidentActivityResponse[]> {
+    const number = parseIncidentNumber(incidentNumber);
+
+    if (number === undefined) {
+      throw incidentNotFound();
+    }
+
+    const incident = await this.prisma.incident.findFirst({
+      where: { organizationId, number, organization: { deletedAt: null } },
+      select: {
+        activity: {
+          select: activitySelection,
+          // The two entries of one change share a timestamp; the id breaks
+          // the tie.
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        },
+      },
+    });
+
+    if (!incident) {
+      throw incidentNotFound();
+    }
+
+    return incident.activity.map(toIncidentActivityResponse);
+  }
+
+  /**
+   * Posts an operational update to an active incident's timeline, attributed
+   * to the acting member. A resolved incident is not changed, and that
+   * includes its timeline: 409.
+   *
+   * The incident is judged and locked first (see lockActive), which orders
+   * the post against a concurrent resolution. The message is free text and is
+   * never logged.
+   */
+  async postUpdate(
+    organizationId: string,
+    incidentNumber: string,
+    input: PostIncidentUpdateRequest,
+    actor: { membershipId: string },
+  ): Promise<IncidentActivityResponse> {
+    const number = parseIncidentNumber(incidentNumber);
+
+    if (number === undefined) {
+      throw incidentNotFound();
+    }
+
+    const activity = await this.prisma.$transaction(async (tx) => {
+      const incidentId = await this.lockActive(tx, organizationId, number);
+      const actorId = await this.resolveActor(
+        tx,
+        organizationId,
+        actor.membershipId,
+      );
+
+      return tx.incidentActivity.create({
+        data: {
+          organizationId,
+          incidentId,
+          type: 'UPDATE',
+          actorId,
+          message: input.message,
+          // Taken under the row lock, as update() does, so the timeline shows
+          // the order in which things applied.
+          createdAt: new Date(),
+        },
+        select: { ...activitySelection, incidentId: true },
+      });
+    });
+
+    this.logger.log('Incident update posted', {
+      incidentId: activity.incidentId,
+      incidentNumber: number,
+      activityId: activity.id,
+    });
+
+    return toIncidentActivityResponse(activity);
+  }
+
+  /**
+   * The user behind the acting membership, within this organization: who a
+   * declaration or a timeline entry is attributed to. A grant gone since
+   * admission is answered as admission would now answer it.
+   */
+  private async resolveActor(
+    tx: Prisma.TransactionClient,
+    organizationId: string,
+    membershipId: string,
+  ): Promise<string> {
+    const membership = await tx.membership.findFirst({
+      where: {
+        id: membershipId,
+        organizationId,
+        user: { deletedAt: null },
+      },
+      select: { userId: true },
+    });
+
+    if (!membership) {
+      throw organizationNotFound();
+    }
+
+    return membership.userId;
   }
 
   /**

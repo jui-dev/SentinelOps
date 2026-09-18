@@ -2,6 +2,7 @@ import {
   createIncidentSchema,
   listIncidentsQuerySchema,
   parseIncidentNumber,
+  postIncidentUpdateSchema,
   updateIncidentSchema,
 } from './incidents.schemas.js';
 
@@ -127,6 +128,26 @@ describe('incident schemas', () => {
       expect(
         listIncidentsQuerySchema.parse({ state: 'resolved', cursor: '41' }),
       ).toEqual({ state: 'resolved', cursor: '41' });
+    });
+  });
+
+  describe('postIncidentUpdateSchema', () => {
+    it('should accept a message and trim it', () => {
+      expect(
+        postIncidentUpdateSchema.parse({
+          message: '  Rolled back the latest deployment.  ',
+        }),
+      ).toEqual({ message: 'Rolled back the latest deployment.' });
+    });
+
+    it.each([
+      ['a blank message', { message: '   ' }],
+      ['an overlong message', { message: 'x'.repeat(2001) }],
+      ['no message', {}],
+      ['an actor', { message: 'x', actorId: TEAM }],
+      ['a type', { message: 'x', type: 'STATUS_CHANGED' }],
+    ])('should refuse %s', (_, body) => {
+      expect(postIncidentUpdateSchema.safeParse(body).success).toBe(false);
     });
   });
 

@@ -135,8 +135,9 @@ model User {
 
   memberships       Membership[]
   refreshTokens     RefreshToken[]
-  invitationsSent   Invitation[]   @relation("InvitationsSent")
-  incidentsDeclared Incident[]     @relation("IncidentsDeclared")
+  invitationsSent   Invitation[]       @relation("InvitationsSent")
+  incidentsDeclared Incident[]         @relation("IncidentsDeclared")
+  incidentActivity  IncidentActivity[]
 
   @@map("users")
 }
@@ -527,12 +528,13 @@ model Incident {
   /// a NOT NULL column.
   lead         Membership?         @relation("IncidentLead", fields: [organizationId, leadMembershipId], references: [organizationId, id], onDelete: Restrict, onUpdate: Restrict)
   responders   IncidentResponder[]
+  activity     IncidentActivity[]
 
   /// The addressing key: the API names an incident by its number within the
   /// organization. Also serves keyset pages ordered by number.
   @@unique([organizationId, number])
-  /// Redundant with the primary key; the target a later composite foreign
-  /// key (incident timeline entries) will reference.
+  /// Redundant with the primary key; the target of the composite foreign keys
+  /// incident_responders and incident_activities carry.
   @@unique([organizationId, id])
   /// Serves the Restrict check when a service is deleted.
   @@index([organizationId, serviceId])
@@ -575,6 +577,60 @@ model IncidentResponder {
   /// Serves the Restrict check when a membership is deleted.
   @@index([membershipId])
   @@map("incident_responders")
+}
+
+/// What an incident's timeline entry records. UPDATE is written by a member;
+/// the others are written by the server, in the transaction of the change
+/// they describe. Resolution is STATUS_CHANGED to RESOLVED.
+enum IncidentActivityType {
+  DECLARED
+  UPDATE
+  SEVERITY_CHANGED
+  STATUS_CHANGED
+
+  @@map("incident_activity_type")
+}
+
+/// One entry on an incident's timeline: an operational update posted by a
+/// member, or a lifecycle change recorded by the server.
+///
+/// History, not state. The incident row is the source of its current state;
+/// nothing is ever reconstructed by replaying these rows. Entries are never
+/// changed or deleted by the application.
+///
+/// The incident key is composite on the shared organization_id, so an entry
+/// cannot be attached to another organization's incident. The actor is the
+/// global User, for the reason Incident.createdById gives: attribution must
+/// outlive the membership. It is taken from the admitted membership, never
+/// from a body.
+///
+/// createdAt is set by IncidentsService while it holds the incident's row
+/// lock, not left to the column default (the transaction's start), so entries
+/// sort in the order their changes applied.
+///
+/// message is set for UPDATE only. fromValue and toValue carry enum values as
+/// text: DECLARED sets toValue to the declared severity; SEVERITY_CHANGED and
+/// STATUS_CHANGED set both.
+model IncidentActivity {
+  id             String               @id @default(uuid(7)) @db.Uuid
+  organizationId String               @map("organization_id") @db.Uuid
+  incidentId     String               @map("incident_id") @db.Uuid
+  type           IncidentActivityType
+  actorId        String               @map("actor_id") @db.Uuid
+  message        String?
+  fromValue      String?              @map("from_value")
+  toValue        String?              @map("to_value")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  incident Incident @relation(fields: [organizationId, incidentId], references: [organizationId, id], onDelete: Cascade, onUpdate: Restrict)
+  actor    User     @relation(fields: [actorId], references: [id], onDelete: Restrict)
+
+  /// Serves reading an incident's timeline in order, and the cascade.
+  @@index([incidentId, createdAt])
+  /// Serves the Restrict check when a user row is physically deleted.
+  @@index([actorId])
+  @@map("incident_activities")
 }
 
 /// One issued refresh token. A row per token rather than per session, because

@@ -77,6 +77,14 @@ export const addResponderSchema = z.strictObject({
 });
 
 /**
+ * Posting an operational update: a short message, and nothing else. Who
+ * posted it and when come from the server.
+ */
+export const postIncidentUpdateSchema = z.strictObject({
+  message: z.string().trim().min(1).max(2000),
+});
+
+/**
  * Which incidents to list. `state` is required: active and resolved
  * incidents are different questions, ordered differently. The cursor is
  * opaque here and decoded by the service, which knows each state's shape.
@@ -89,6 +97,9 @@ export const listIncidentsQuerySchema = z.object({
 export type CreateIncidentRequest = z.infer<typeof createIncidentSchema>;
 export type UpdateIncidentRequest = z.infer<typeof updateIncidentSchema>;
 export type AddResponderRequest = z.infer<typeof addResponderSchema>;
+export type PostIncidentUpdateRequest = z.infer<
+  typeof postIncidentUpdateSchema
+>;
 export type ListIncidentsQuery = z.infer<typeof listIncidentsQuerySchema>;
 
 /** The largest value a Postgres `integer` column holds. */

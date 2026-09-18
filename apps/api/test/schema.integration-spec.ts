@@ -901,6 +901,28 @@ describe('core domain schema (integration)', () => {
       );
     });
 
+    it("should refuse a timeline entry on another organization's incident, whichever organization it claims", async () => {
+      const { acme, globex, user, acmePayments, acmeService } =
+        await twoTenants();
+      const incident = await anIncident({
+        organizationId: acme.id,
+        serviceId: acmeService.id,
+        teamId: acmePayments.id,
+        createdById: user.id,
+      });
+
+      await expect(
+        prisma.$executeRawUnsafe(
+          `INSERT INTO incident_activities (id, organization_id, incident_id, type, actor_id, message)
+           VALUES (gen_random_uuid(), $1::uuid, $2::uuid, 'UPDATE', $3::uuid, 'x')`,
+          globex.id,
+          incident.id,
+          user.id,
+        ),
+      ).rejects.toSatisfy(isForeignKeyViolation);
+      expect(await prisma.incidentActivity.count()).toBe(0);
+    });
+
     it('should refuse moving a team an incident names to another organization', async () => {
       const { acme, globex, user, acmeService } = await twoTenants();
       // A team that owns nothing and whose name globex lacks, so only the
@@ -1343,7 +1365,8 @@ describe('core domain schema (integration)', () => {
       // never edited. services adds created_at, updated_at, and archived_at
       // (3); incidents adds created_at, updated_at, and resolved_at (3), and
       // incident_responders only created_at (1), like team_memberships.
-      expect(columns).toHaveLength(26);
+      // incident_activities only created_at (1): an entry is never edited.
+      expect(columns).toHaveLength(27);
       for (const column of columns) {
         expect(column.data_type).toBe('timestamp with time zone');
       }

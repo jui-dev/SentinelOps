@@ -46,6 +46,7 @@ import {
   storeIncident,
   useIncident,
 } from "./incident-queries";
+import { IncidentTimeline } from "./incident-timeline";
 import { SeveritySelect } from "./incidents-view";
 import {
   ACTIVE_STATUSES,
@@ -700,6 +701,10 @@ function IncidentPage({ incident }: { incident: IncidentDetailResponse }) {
               <p className="text-sm text-fg-muted">No summary yet.</p>
             )}
           </Section>
+          <IncidentTimeline
+            incident={incident}
+            canPost={canManage && !resolved}
+          />
           {canManage && !resolved && (
             <>
               <ResponseForm
@@ -727,8 +732,7 @@ function IncidentPage({ incident }: { incident: IncidentDetailResponse }) {
 /**
  * One incident, at `/incidents/[incidentNumber]`: what it is, where the
  * response stands, and — for those who may respond, while it is active — the
- * controls to move it on. Only what the incident record holds; its timeline
- * arrives with the timeline.
+ * controls to move it on — and its timeline, where updates are posted.
  */
 export function IncidentDetail() {
   const organization = useOrganization();

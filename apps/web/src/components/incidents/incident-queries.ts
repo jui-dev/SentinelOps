@@ -12,7 +12,11 @@ import type {
   IncidentDetailResponse,
   IncidentState,
 } from "@/lib/api/contracts";
-import { getIncident, listIncidents } from "@/lib/api/endpoints";
+import {
+  getIncident,
+  getIncidentTimeline,
+  listIncidents,
+} from "@/lib/api/endpoints";
 import { queryKeys } from "@/lib/api/query-keys";
 
 export const incidentsHref = (orgSlug: string) =>
@@ -47,7 +51,8 @@ export const useIncident = (organizationId: string, number: number) =>
 /**
  * After an incident is declared or changed: its own entry holds the API's
  * answer, and both lists refetch — its status, severity, or team may have
- * moved it between them or within one.
+ * moved it between them or within one. Its timeline refetches too: the
+ * change may have been recorded there.
  */
 export const storeIncident = (
   queryClient: QueryClient,
@@ -61,7 +66,17 @@ export const storeIncident = (
   void queryClient.invalidateQueries({
     queryKey: [...queryKeys.incidents(organizationId), "list"],
   });
+  void queryClient.invalidateQueries({
+    queryKey: queryKeys.incidentTimeline(organizationId, incident.number),
+  });
 };
+
+/** One incident's timeline, oldest first. */
+export const useIncidentTimeline = (organizationId: string, number: number) =>
+  useQuery({
+    queryKey: queryKeys.incidentTimeline(organizationId, number),
+    queryFn: () => getIncidentTimeline(organizationId, number),
+  });
 
 /**
  * Everything incident-shaped in the organization is stale: after a change

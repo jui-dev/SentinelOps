@@ -22,6 +22,8 @@
  *   team's name, so a change to a service or a team rename stales the whole
  *   prefix. Declaring or changing an incident writes that incident's entry
  *   and stales the lists.
+ * - `incidentTimeline`: one incident's timeline, beneath its entry. Posting
+ *   an update or changing the incident stales it.
  *
  * The invitation an `/invite` page shows is deliberately not cached here: it
  * is fetched with a token, and lives in that page's own state.
@@ -46,4 +48,13 @@ export const queryKeys = {
     ["organization", organizationId, "incidents", "list", state] as const,
   incident: (organizationId: string, number: number) =>
     ["organization", organizationId, "incidents", "detail", number] as const,
+  incidentTimeline: (organizationId: string, number: number) =>
+    [
+      "organization",
+      organizationId,
+      "incidents",
+      "detail",
+      number,
+      "timeline",
+    ] as const,
 };

@@ -16,6 +16,7 @@ import type { OrganizationContext } from '../common/request-context.js';
 import { CurrentMembership } from '../tenancy/current-membership.decorator.js';
 import { OrganizationController } from '../tenancy/organization-controller.decorator.js';
 import type {
+  IncidentActivityResponse,
   IncidentDetailResponse,
   IncidentPage,
 } from './incidents.contract.js';
@@ -23,12 +24,14 @@ import {
   addResponderSchema,
   createIncidentSchema,
   listIncidentsQuerySchema,
+  postIncidentUpdateSchema,
   updateIncidentSchema,
 } from './incidents.schemas.js';
 import type {
   AddResponderRequest,
   CreateIncidentRequest,
   ListIncidentsQuery,
+  PostIncidentUpdateRequest,
   UpdateIncidentRequest,
 } from './incidents.schemas.js';
 import { IncidentsService } from './incidents.service.js';
@@ -103,6 +106,39 @@ export class IncidentsController {
       membership.organizationId,
       incidentNumber,
       body,
+      { membershipId: membership.membershipId },
+    );
+  }
+
+  /**
+   * The incident's timeline, oldest first: operational updates and the
+   * severity and status changes the server recorded.
+   */
+  @Get(':incidentNumber/timeline')
+  @RequirePermission(Permission.INCIDENTS_READ)
+  timeline(
+    @CurrentMembership() membership: OrganizationContext,
+    @Param('incidentNumber') incidentNumber: string,
+  ): Promise<IncidentActivityResponse[]> {
+    return this.incidents.timeline(membership.organizationId, incidentNumber);
+  }
+
+  /**
+   * Posts an operational update to an active incident. Who posted it is the
+   * admitted member, and cannot be supplied.
+   */
+  @Post(':incidentNumber/updates')
+  @RequirePermission(Permission.INCIDENTS_MANAGE)
+  postUpdate(
+    @CurrentMembership() membership: OrganizationContext,
+    @Param('incidentNumber') incidentNumber: string,
+    @Body({ schema: postIncidentUpdateSchema }) body: PostIncidentUpdateRequest,
+  ): Promise<IncidentActivityResponse> {
+    return this.incidents.postUpdate(
+      membership.organizationId,
+      incidentNumber,
+      body,
+      { membershipId: membership.membershipId },
     );
   }
 

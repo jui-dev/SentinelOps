@@ -264,6 +264,35 @@ export interface IncidentDetailResponse extends IncidentResponse {
   responders: IncidentMemberResponse[];
 }
 
+/**
+ * What a timeline entry records. UPDATE is posted by a member; the others the
+ * server records with the change. Resolution is STATUS_CHANGED to RESOLVED.
+ */
+export type IncidentActivityType =
+  | "DECLARED"
+  | "UPDATE"
+  | "SEVERITY_CHANGED"
+  | "STATUS_CHANGED";
+
+/**
+ * One entry on an incident's timeline. `message` is set for UPDATE only;
+ * `fromValue`/`toValue` are severities or statuses (DECLARED carries only the
+ * declared severity in `toValue`). The actor is identity only.
+ */
+export interface IncidentActivityResponse {
+  id: string;
+  type: IncidentActivityType;
+  message: string | null;
+  fromValue: string | null;
+  toValue: string | null;
+  actor: { id: string; name: string };
+  createdAt: string;
+}
+
+export interface PostIncidentUpdateRequest {
+  message: string;
+}
+
 /** A page of a collection. `cursor` asks for the next page. */
 export interface Page<T> {
   items: T[];

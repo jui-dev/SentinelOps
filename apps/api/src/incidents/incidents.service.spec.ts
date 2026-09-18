@@ -21,6 +21,19 @@ const TEAM = '0199a1b2-c3d4-7000-8000-0000000000c1';
 const OTHER_TEAM = '0199a1b2-c3d4-7000-8000-0000000000c2';
 const SERVICE = '0199a1b2-c3d4-7000-8000-0000000000d1';
 const CREATED = new Date('2026-09-18T12:00:00.000Z');
+const ACTOR = { membershipId: MEMBERSHIP };
+
+const activityRow = (overrides: Record<string, unknown> = {}) => ({
+  id: 'activity-1',
+  incidentId: 'incident-1',
+  type: 'UPDATE' as const,
+  message: 'Investigating elevated database latency.',
+  fromValue: null,
+  toValue: null,
+  createdAt: CREATED,
+  actor: { id: USER, name: 'Ada Lovelace' },
+  ...overrides,
+});
 
 const incidentRow = (overrides: Record<string, unknown> = {}) => ({
   id: 'incident-1',
@@ -68,6 +81,14 @@ const serviceWith = () => {
       findFirst: vi.fn().mockResolvedValue(incidentRow()),
       create: vi.fn().mockResolvedValue(incidentRow({ number: 7 })),
       update: vi.fn().mockResolvedValue(incidentRow()),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      findFirstOrThrow: vi
+        .fn()
+        .mockResolvedValue({ severity: 'SEV1', status: 'INVESTIGATING' }),
+    },
+    incidentActivity: {
+      create: vi.fn().mockResolvedValue(activityRow()),
+      createMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
     $queryRaw: vi
       .fn()
@@ -144,6 +165,24 @@ describe('IncidentsService', () => {
         }),
       );
       expect(created.number).toBe(7);
+    });
+
+    it('should record the declaration on the timeline, attributed to the declarer', async () => {
+      const { service, prisma } = serviceWith();
+
+      await service.create(ORG, ACTOR, declaration);
+
+      expect(prisma.incidentActivity.create).toHaveBeenCalledWith({
+        data: {
+          organizationId: ORG,
+          incidentId: 'incident-1',
+          type: 'DECLARED',
+          actorId: USER,
+          toValue: 'SEV1',
+          createdAt: CREATED,
+        },
+        select: { id: true },
+      });
     });
 
     it('should lock the service row with a parameterized FOR SHARE read scoped by organization', async () => {
@@ -254,7 +293,7 @@ describe('IncidentsService', () => {
     it('should update through the (organization, number) key, re-asserting it is unresolved', async () => {
       const { service, prisma } = serviceWith();
 
-      await service.update(ORG, '1', { severity: 'SEV2' });
+      await service.update(ORG, '1', { severity: 'SEV2' }, ACTOR);
 
       expect(prisma.incident.update).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -271,11 +310,71 @@ describe('IncidentsService', () => {
       );
     });
 
+    it('should read the previous values only under the row lock', async () => {
+      const { service, prisma } = serviceWith();
+
+      await service.update(ORG, '1', { severity: 'SEV2' }, ACTOR);
+
+      expect(
+        prisma.incident.updateMany.mock.invocationCallOrder[0],
+      ).toBeLessThan(
+        prisma.incident.findFirstOrThrow.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('should record each severity or status that changes, from and to, attributed to the actor', async () => {
+      const { service, prisma } = serviceWith();
+
+      await service.update(
+        ORG,
+        '1',
+        { severity: 'SEV2', status: 'IDENTIFIED' },
+        ACTOR,
+      );
+
+      expect(prisma.incidentActivity.createMany).toHaveBeenCalledWith({
+        data: [
+          {
+            organizationId: ORG,
+            incidentId: 'incident-1',
+            actorId: USER,
+            type: 'SEVERITY_CHANGED',
+            fromValue: 'SEV1',
+            toValue: 'SEV2',
+            createdAt: expect.any(Date),
+          },
+          {
+            organizationId: ORG,
+            incidentId: 'incident-1',
+            actorId: USER,
+            type: 'STATUS_CHANGED',
+            fromValue: 'INVESTIGATING',
+            toValue: 'IDENTIFIED',
+            createdAt: expect.any(Date),
+          },
+        ],
+      });
+    });
+
+    it('should record nothing, and look no actor up, when nothing recorded changes', async () => {
+      const { service, prisma } = serviceWith();
+
+      await service.update(
+        ORG,
+        '1',
+        { severity: 'SEV1', status: 'INVESTIGATING', title: 'Renamed' },
+        ACTOR,
+      );
+
+      expect(prisma.incidentActivity.createMany).not.toHaveBeenCalled();
+      expect(prisma.membership.findFirst).not.toHaveBeenCalled();
+    });
+
     it('should set resolvedAt only when resolving', async () => {
       const { service, prisma } = serviceWith();
 
-      await service.update(ORG, '1', { status: 'MONITORING' });
-      await service.update(ORG, '1', { status: 'RESOLVED' });
+      await service.update(ORG, '1', { status: 'MONITORING' }, ACTOR);
+      await service.update(ORG, '1', { status: 'RESOLVED' }, ACTOR);
 
       expect(
         prisma.incident.update.mock.calls[0][0].data.resolvedAt,
@@ -290,7 +389,7 @@ describe('IncidentsService', () => {
       prisma.incident.findFirst.mockResolvedValue({ status: 'RESOLVED' });
 
       await expectCode(
-        service.update(ORG, '1', { title: 'Typo fixed' }),
+        service.update(ORG, '1', { title: 'Typo fixed' }, ACTOR),
         409,
         IncidentsErrorCode.INCIDENT_RESOLVED,
       );
@@ -300,7 +399,7 @@ describe('IncidentsService', () => {
     it('should look a lead up within the organization, then write it', async () => {
       const { service, prisma } = serviceWith();
 
-      await service.update(ORG, '1', { leadMembershipId: MEMBERSHIP });
+      await service.update(ORG, '1', { leadMembershipId: MEMBERSHIP }, ACTOR);
 
       expect(prisma.membership.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -320,7 +419,7 @@ describe('IncidentsService', () => {
     it('should clear the lead with null, looking nothing up', async () => {
       const { service, prisma } = serviceWith();
 
-      await service.update(ORG, '1', { leadMembershipId: null });
+      await service.update(ORG, '1', { leadMembershipId: null }, ACTOR);
 
       expect(prisma.membership.findFirst).not.toHaveBeenCalled();
       expect(
@@ -333,7 +432,7 @@ describe('IncidentsService', () => {
       prisma.membership.findFirst.mockResolvedValue(null);
 
       await expectCode(
-        service.update(ORG, '1', { leadMembershipId: MEMBERSHIP }),
+        service.update(ORG, '1', { leadMembershipId: MEMBERSHIP }, ACTOR),
         404,
         'MEMBERSHIP_NOT_FOUND',
       );
@@ -346,7 +445,7 @@ describe('IncidentsService', () => {
       prisma.team.findFirst.mockResolvedValue(null);
 
       await expectCode(
-        service.update(ORG, '1', { teamId: OTHER_TEAM }),
+        service.update(ORG, '1', { teamId: OTHER_TEAM }, ACTOR),
         404,
         IncidentsErrorCode.INCIDENT_NOT_FOUND,
       );
@@ -358,7 +457,7 @@ describe('IncidentsService', () => {
       prisma.team.findFirst.mockResolvedValue(null);
 
       await expectCode(
-        service.update(ORG, '1', { teamId: OTHER_TEAM }),
+        service.update(ORG, '1', { teamId: OTHER_TEAM }, ACTOR),
         404,
         TeamsErrorCode.TEAM_NOT_FOUND,
       );
@@ -372,7 +471,7 @@ describe('IncidentsService', () => {
       );
 
       await expectCode(
-        service.update(ORG, '1', { teamId: OTHER_TEAM }),
+        service.update(ORG, '1', { teamId: OTHER_TEAM }, ACTOR),
         404,
         TeamsErrorCode.TEAM_NOT_FOUND,
       );
@@ -386,7 +485,7 @@ describe('IncidentsService', () => {
         .mockResolvedValueOnce({ status: 'RESOLVED' });
 
       await expectCode(
-        service.update(ORG, '1', { status: 'RESOLVED' }),
+        service.update(ORG, '1', { status: 'RESOLVED' }, ACTOR),
         409,
         IncidentsErrorCode.INCIDENT_RESOLVED,
       );
@@ -400,7 +499,7 @@ describe('IncidentsService', () => {
         .mockResolvedValueOnce(null);
 
       await expectCode(
-        service.update(ORG, '1', { status: 'RESOLVED' }),
+        service.update(ORG, '1', { status: 'RESOLVED' }, ACTOR),
         404,
         IncidentsErrorCode.INCIDENT_NOT_FOUND,
       );
@@ -412,13 +511,120 @@ describe('IncidentsService', () => {
         const { service, prisma } = serviceWith();
 
         await expectCode(
-          service.update(ORG, number, { title: 'x' }),
+          service.update(ORG, number, { title: 'x' }, ACTOR),
           404,
           IncidentsErrorCode.INCIDENT_NOT_FOUND,
         );
         expect(prisma.$transaction).not.toHaveBeenCalled();
       },
     );
+  });
+
+  describe('postUpdate', () => {
+    const update = { message: 'Connection pool exhaustion identified.' };
+
+    it('should lock the active incident, then record the update attributed to the actor', async () => {
+      const { service, prisma } = serviceWith();
+      prisma.incidentActivity.create.mockResolvedValue(
+        activityRow({ message: update.message }),
+      );
+
+      const posted = await service.postUpdate(ORG, '1', update, ACTOR);
+
+      expect(prisma.incident.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            id: 'incident-1',
+            organizationId: ORG,
+            status: { not: 'RESOLVED' },
+          },
+        }),
+      );
+      expect(prisma.incidentActivity.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: {
+            organizationId: ORG,
+            incidentId: 'incident-1',
+            type: 'UPDATE',
+            actorId: USER,
+            message: update.message,
+            createdAt: expect.any(Date),
+          },
+        }),
+      );
+      expect(posted).toStrictEqual({
+        id: 'activity-1',
+        type: 'UPDATE',
+        message: update.message,
+        fromValue: null,
+        toValue: null,
+        actor: { id: USER, name: 'Ada Lovelace' },
+        createdAt: CREATED.toISOString(),
+      });
+    });
+
+    it('should refuse a resolved incident with 409 and write nothing', async () => {
+      const { service, prisma } = serviceWith();
+      prisma.incident.findFirst.mockResolvedValue({
+        id: 'incident-1',
+        status: 'RESOLVED',
+      });
+
+      await expectCode(
+        service.postUpdate(ORG, '1', update, ACTOR),
+        409,
+        IncidentsErrorCode.INCIDENT_RESOLVED,
+      );
+      expect(prisma.incidentActivity.create).not.toHaveBeenCalled();
+    });
+
+    it('should answer a missing incident with 404 and write nothing', async () => {
+      const { service, prisma } = serviceWith();
+      prisma.incident.findFirst.mockResolvedValue(null);
+
+      await expectCode(
+        service.postUpdate(ORG, '1', update, ACTOR),
+        404,
+        IncidentsErrorCode.INCIDENT_NOT_FOUND,
+      );
+      expect(prisma.incidentActivity.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('timeline', () => {
+    it('should read the entries of the incident within the organization, oldest first', async () => {
+      const { service, prisma } = serviceWith();
+      prisma.incident.findFirst.mockResolvedValue({
+        activity: [activityRow()],
+      });
+
+      const timeline = await service.timeline(ORG, '1');
+
+      expect(prisma.incident.findFirst).toHaveBeenCalledWith({
+        where: {
+          organizationId: ORG,
+          number: 1,
+          organization: { deletedAt: null },
+        },
+        select: {
+          activity: expect.objectContaining({
+            orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+          }),
+        },
+      });
+      expect(timeline).toHaveLength(1);
+    });
+
+    it('should answer a missing incident with 404', async () => {
+      const { service, prisma } = serviceWith();
+      prisma.incident.findFirst.mockResolvedValue(null);
+
+      await expectCode(
+        service.timeline(ORG, '1'),
+        404,
+        IncidentsErrorCode.INCIDENT_NOT_FOUND,
+      );
+    });
   });
 
   describe('get', () => {

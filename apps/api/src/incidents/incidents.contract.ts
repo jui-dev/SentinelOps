@@ -82,6 +82,36 @@ export interface IncidentDetailResponse extends IncidentResponse {
 }
 
 /**
+ * What a timeline entry records. UPDATE is posted by a member; the others are
+ * recorded by the server with the change they describe. Resolution is
+ * STATUS_CHANGED with `toValue: 'RESOLVED'`.
+ */
+export type IncidentActivityType =
+  'DECLARED' | 'UPDATE' | 'SEVERITY_CHANGED' | 'STATUS_CHANGED';
+
+/**
+ * One entry on an incident's timeline. History, not state: the incident
+ * itself says where it stands now.
+ *
+ * `message` is set for UPDATE only. `fromValue` and `toValue` are severity or
+ * status values: DECLARED carries the declared severity in `toValue`; the two
+ * changes carry both. `actor` names who posted or made the change even if
+ * their account was since deleted, as `createdBy` does. Never an email.
+ */
+export interface IncidentActivityResponse {
+  id: string;
+  type: IncidentActivityType;
+  message: string | null;
+  fromValue: string | null;
+  toValue: string | null;
+  actor: {
+    id: string;
+    name: string;
+  };
+  createdAt: string;
+}
+
+/**
  * One page of a collection. `cursor` is opaque and asks for the page after
  * this one; it is null exactly when `hasMore` is false.
  */

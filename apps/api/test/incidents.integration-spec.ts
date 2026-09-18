@@ -1135,4 +1135,215 @@ describe('incidents (integration)', () => {
       expect(await prisma.incidentResponder.count()).toBe(0);
     });
   });
+
+  describe('timeline and operational updates', () => {
+    const incidentPath = `incidents/1`;
+    const timelineOf = async (organizationId: string, userId: string) =>
+      call('get', `${organizationId}/${incidentPath}/timeline`, userId);
+    const post = (organizationId: string, userId: string, message: string) =>
+      call('post', `${organizationId}/${incidentPath}/updates`, userId, {
+        message,
+      });
+
+    it('should tell the story in order: declared, updates, and each recorded change, attributed', async () => {
+      await declare(fx.orgA, fx.alice, fx.apiA, { severity: 'SEV2' });
+
+      const posted = await post(
+        fx.orgA,
+        fx.dave,
+        '  Investigating elevated database latency.  ',
+      );
+
+      expect(posted.status).toBe(201);
+      expect(posted.body).toEqual({
+        id: expect.any(String),
+        type: 'UPDATE',
+        message: 'Investigating elevated database latency.',
+        fromValue: null,
+        toValue: null,
+        actor: { id: fx.dave, name: 'Dave Duarte' },
+        createdAt: expect.any(String),
+      });
+
+      await call('patch', `${fx.orgA}/${incidentPath}`, fx.carol, {
+        severity: 'SEV1',
+      });
+      await call('patch', `${fx.orgA}/${incidentPath}`, fx.carol, {
+        status: 'IDENTIFIED',
+      });
+      await post(fx.orgA, fx.carol, 'Connection pool exhaustion identified.');
+      await call('patch', `${fx.orgA}/${incidentPath}`, fx.alice, {
+        status: 'RESOLVED',
+      });
+
+      const timeline = await timelineOf(fx.orgA, fx.dave);
+
+      expect(timeline.status).toBe(200);
+      expect(
+        timeline.body.map(
+          (entry: Record<string, unknown> & { actor: { name: string } }) => [
+            entry.type,
+            entry.fromValue ?? entry.message,
+            entry.toValue,
+            entry.actor.name,
+          ],
+        ),
+      ).toEqual([
+        ['DECLARED', null, 'SEV2', 'Alice Anders'],
+        [
+          'UPDATE',
+          'Investigating elevated database latency.',
+          null,
+          'Dave Duarte',
+        ],
+        ['SEVERITY_CHANGED', 'SEV2', 'SEV1', 'Carol Chen'],
+        ['STATUS_CHANGED', 'INVESTIGATING', 'IDENTIFIED', 'Carol Chen'],
+        [
+          'UPDATE',
+          'Connection pool exhaustion identified.',
+          null,
+          'Carol Chen',
+        ],
+        ['STATUS_CHANGED', 'IDENTIFIED', 'RESOLVED', 'Alice Anders'],
+      ]);
+    });
+
+    it('should record the two changes of one request, and nothing for a value that did not change', async () => {
+      await declare(fx.orgA, fx.alice, fx.apiA);
+
+      await call('patch', `${fx.orgA}/${incidentPath}`, fx.alice, {
+        severity: 'SEV3',
+        status: 'MONITORING',
+      });
+      await call('patch', `${fx.orgA}/${incidentPath}`, fx.alice, {
+        severity: 'SEV3',
+        status: 'MONITORING',
+        title: 'Renamed',
+        teamId: fx.platformA,
+      });
+
+      const types = (await timelineOf(fx.orgA, fx.alice)).body.map(
+        (entry: { type: string }) => entry.type,
+      );
+
+      expect(types).toHaveLength(3);
+      expect(types[0]).toBe('DECLARED');
+      expect(types.slice(1).sort()).toEqual([
+        'SEVERITY_CHANGED',
+        'STATUS_CHANGED',
+      ]);
+    });
+
+    it('should keep the timeline of a resolved incident readable, and refuse new updates with 409', async () => {
+      await declare(fx.orgA, fx.alice, fx.apiA);
+      await call('patch', `${fx.orgA}/${incidentPath}`, fx.alice, {
+        status: 'RESOLVED',
+      });
+
+      expectCode(
+        await post(fx.orgA, fx.alice, 'Customer comms sent.'),
+        409,
+        'INCIDENT_RESOLVED',
+      );
+      expect((await timelineOf(fx.orgA, fx.alice)).body).toHaveLength(2);
+    });
+
+    it("should answer another organization's incident exactly as a missing one, and write nothing", async () => {
+      await declare(fx.orgB, fx.bob, fx.apiB);
+
+      // B has a #1; A has none.
+      for (const [foreign, missing] of [
+        [
+          await timelineOf(fx.orgA, fx.alice),
+          await call('get', `${fx.orgA}/incidents/999/timeline`, fx.alice),
+        ],
+        [
+          await post(fx.orgA, fx.alice, 'Not yours.'),
+          await call('post', `${fx.orgA}/incidents/999/updates`, fx.alice, {
+            message: 'Not yours.',
+          }),
+        ],
+      ]) {
+        expectCode(foreign, 404, 'INCIDENT_NOT_FOUND');
+        expect(comparable(foreign.body)).toEqual(comparable(missing.body));
+      }
+
+      expect(
+        await prisma.incidentActivity.count({ where: { type: 'UPDATE' } }),
+      ).toBe(0);
+      expectCode(
+        await timelineOf(fx.orgB, fx.alice),
+        404,
+        'ORGANIZATION_NOT_FOUND',
+      );
+    });
+
+    it('should refuse a body that names an actor or a type', async () => {
+      await declare(fx.orgA, fx.alice, fx.apiA);
+
+      for (const extra of [{ actorId: fx.bob }, { type: 'STATUS_CHANGED' }]) {
+        expect(
+          (
+            await call('post', `${fx.orgA}/${incidentPath}/updates`, fx.alice, {
+              message: 'x',
+              ...extra,
+            })
+          ).status,
+        ).toBe(400);
+      }
+
+      expect(
+        await prisma.incidentActivity.count({ where: { type: 'UPDATE' } }),
+      ).toBe(0);
+    });
+
+    it('should wait for an in-flight resolution, then refuse the update', async () => {
+      await declare(fx.orgA, fx.alice, fx.apiA);
+      const held = await hold((tx) =>
+        tx.incident.updateMany({
+          where: { organizationId: fx.orgA, number: 1 },
+          data: { status: 'RESOLVED', resolvedAt: new Date() },
+        }),
+      );
+      const posting = inFlight(post(fx.orgA, fx.alice, 'Rolled back.'));
+
+      await someoneIsWaitingOnALock();
+      held.release();
+      await held.done;
+
+      expectCode(await posting, 409, 'INCIDENT_RESOLVED');
+      expect(
+        await prisma.incidentActivity.count({ where: { type: 'UPDATE' } }),
+      ).toBe(0);
+    });
+
+    it('should record a true previous value when two severity changes race', async () => {
+      await declare(fx.orgA, fx.alice, fx.apiA, { severity: 'SEV3' });
+
+      await Promise.all([
+        call('patch', `${fx.orgA}/${incidentPath}`, fx.alice, {
+          severity: 'SEV2',
+        }),
+        call('patch', `${fx.orgA}/${incidentPath}`, fx.carol, {
+          severity: 'SEV1',
+        }),
+      ]);
+
+      const changes = (await timelineOf(fx.orgA, fx.alice)).body.filter(
+        (entry: { type: string }) => entry.type === 'SEVERITY_CHANGED',
+      );
+
+      // Whichever applied second starts from where the first left it.
+      const first = changes.find(
+        (entry: { fromValue: string }) => entry.fromValue === 'SEV3',
+      );
+      const second = changes.find(
+        (entry: { fromValue: string }) => entry !== first,
+      );
+
+      expect(changes).toHaveLength(2);
+      expect(first).toBeDefined();
+      expect(second.fromValue).toBe(first.toValue);
+    });
+  });
 });

@@ -7,6 +7,7 @@ import type {
   CreatedInvitationResponse,
   CreateIncidentRequest,
   CurrentUserResponse,
+  IncidentActivityResponse,
   IncidentDetailResponse,
   IncidentResponse,
   IncidentState,
@@ -18,6 +19,7 @@ import type {
   OrganizationMembershipResponse,
   OrganizationResponse,
   Page,
+  PostIncidentUpdateRequest,
   RegisterRequest,
   RegisterWithInvitationRequest,
   ServiceResponse,
@@ -262,6 +264,22 @@ export const removeIncidentResponder = (
   authenticatedRequest<void>(
     `${respondersPath(organizationId, number)}/${membershipId}`,
     { method: "DELETE" },
+  );
+
+/** The incident's timeline, oldest first. Unpaged. */
+export const getIncidentTimeline = (organizationId: string, number: number) =>
+  authenticatedRequest<IncidentActivityResponse[]>(
+    `${incidentPath(organizationId, number)}/timeline`,
+  );
+
+export const postIncidentUpdate = (
+  organizationId: string,
+  number: number,
+  body: PostIncidentUpdateRequest,
+) =>
+  authenticatedRequest<IncidentActivityResponse>(
+    `${incidentPath(organizationId, number)}/updates`,
+    { method: "POST", body },
   );
 
 // Invitation tokens always travel in a request body: never in a path or a
