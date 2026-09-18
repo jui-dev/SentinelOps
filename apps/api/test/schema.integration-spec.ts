@@ -37,7 +37,7 @@ describe('core domain schema (integration)', () => {
 
   beforeEach(async () => {
     await prisma.$executeRawUnsafe(
-      'TRUNCATE TABLE invitations, memberships, users, organizations RESTART IDENTITY CASCADE',
+      'TRUNCATE TABLE team_memberships, teams, invitations, memberships, users, organizations RESTART IDENTITY CASCADE',
     );
   });
 
@@ -70,11 +70,13 @@ describe('core domain schema (integration)', () => {
         `SELECT table_name, data_type FROM information_schema.columns
          WHERE table_schema = 'public'
            AND column_name = 'id'
-           AND table_name IN ('organizations', 'users', 'memberships')
+           AND table_name IN (
+             'organizations', 'users', 'memberships', 'teams', 'team_memberships'
+           )
          ORDER BY table_name`,
       );
 
-      expect(columns).toHaveLength(3);
+      expect(columns).toHaveLength(5);
       for (const column of columns) {
         expect(column.data_type).toBe('uuid');
       }
@@ -204,6 +206,169 @@ describe('core domain schema (integration)', () => {
     });
   });
 
+  describe('teams and tenant consistency', () => {
+    /** Postgres foreign-key violation: Prisma's code, or the SQLSTATE on raw SQL. */
+    const isForeignKeyViolation = (error: unknown): boolean =>
+      codeOf(error) === 'P2003' ||
+      (error instanceof Error && /23503|foreign key/i.test(error.message));
+
+    /** Two organizations, each with one member and one team. */
+    const twoTenants = async () => {
+      const acme = await anOrganization('acme');
+      const globex = await anOrganization('globex');
+      const ada = await aUser('ada@example.com');
+      const grace = await aUser('grace@example.com');
+      const adaInAcme = await prisma.membership.create({
+        data: { organizationId: acme.id, userId: ada.id },
+      });
+      const graceInGlobex = await prisma.membership.create({
+        data: { organizationId: globex.id, userId: grace.id },
+      });
+      const acmeTeam = await prisma.team.create({
+        data: { organizationId: acme.id, name: 'Platform', slug: 'platform' },
+      });
+      const globexTeam = await prisma.team.create({
+        data: { organizationId: globex.id, name: 'Platform', slug: 'platform' },
+      });
+
+      return { acme, globex, adaInAcme, graceInGlobex, acmeTeam, globexTeam };
+    };
+
+    const place = (
+      organizationId: string,
+      teamId: string,
+      membershipId: string,
+    ) =>
+      prisma.teamMembership.create({
+        data: { organizationId, teamId, membershipId },
+      });
+
+    it('should allow the same team name and slug in two organizations', async () => {
+      // Created by twoTenants without error.
+      const { acmeTeam, globexTeam } = await twoTenants();
+
+      expect(acmeTeam.slug).toBe(globexTeam.slug);
+    });
+
+    it('should reject a duplicate team slug or name within one organization', async () => {
+      const { acme } = await twoTenants();
+
+      await expect(
+        prisma.team.create({
+          data: { organizationId: acme.id, name: 'Other', slug: 'platform' },
+        }),
+      ).rejects.toSatisfy(isUniqueViolation);
+      await expect(
+        prisma.team.create({
+          data: { organizationId: acme.id, name: 'Platform', slug: 'other' },
+        }),
+      ).rejects.toSatisfy(isUniqueViolation);
+    });
+
+    it('should reject placing the same member on a team twice', async () => {
+      const { acme, acmeTeam, adaInAcme } = await twoTenants();
+
+      await place(acme.id, acmeTeam.id, adaInAcme.id);
+
+      await expect(place(acme.id, acmeTeam.id, adaInAcme.id)).rejects.toSatisfy(
+        isUniqueViolation,
+      );
+    });
+
+    it("should reject another organization's membership on a team, whichever organization the row claims", async () => {
+      const { acme, globex, acmeTeam, graceInGlobex } = await twoTenants();
+
+      // Claiming the team's organization: the membership key fails.
+      await expect(
+        place(acme.id, acmeTeam.id, graceInGlobex.id),
+      ).rejects.toSatisfy(isForeignKeyViolation);
+      // Claiming the membership's organization: the team key fails.
+      await expect(
+        place(globex.id, acmeTeam.id, graceInGlobex.id),
+      ).rejects.toSatisfy(isForeignKeyViolation);
+
+      expect(await prisma.teamMembership.count()).toBe(0);
+    });
+
+    it('should reject a cross-organization placement written in raw SQL, bypassing Prisma', async () => {
+      const { acme, globex, acmeTeam, graceInGlobex } = await twoTenants();
+
+      for (const organizationId of [acme.id, globex.id]) {
+        await expect(
+          prisma.$executeRawUnsafe(
+            `INSERT INTO team_memberships (id, organization_id, team_id, membership_id)
+             VALUES (gen_random_uuid(), $1::uuid, $2::uuid, $3::uuid)`,
+            organizationId,
+            acmeTeam.id,
+            graceInGlobex.id,
+          ),
+        ).rejects.toSatisfy(isForeignKeyViolation);
+      }
+
+      expect(await prisma.teamMembership.count()).toBe(0);
+    });
+
+    it('should refuse to move a membership to another organization while it is on a team', async () => {
+      const { acme, globex, acmeTeam, adaInAcme } = await twoTenants();
+      await place(acme.id, acmeTeam.id, adaInAcme.id);
+
+      // ON UPDATE CASCADE carries the new organization into the placement,
+      // where it no longer matches the team's.
+      await expect(
+        prisma.$executeRawUnsafe(
+          'UPDATE memberships SET organization_id = $1::uuid WHERE id = $2::uuid',
+          globex.id,
+          adaInAcme.id,
+        ),
+      ).rejects.toSatisfy(isForeignKeyViolation);
+    });
+
+    it('should remove placements, and only placements, when a team is deleted', async () => {
+      const { acme, acmeTeam, adaInAcme } = await twoTenants();
+      await place(acme.id, acmeTeam.id, adaInAcme.id);
+
+      await prisma.team.delete({ where: { id: acmeTeam.id } });
+
+      expect(await prisma.teamMembership.count()).toBe(0);
+      expect(
+        await prisma.membership.count({ where: { id: adaInAcme.id } }),
+      ).toBe(1);
+    });
+
+    it('should remove placements, keeping the team, when a membership is deleted', async () => {
+      const { acme, acmeTeam, adaInAcme } = await twoTenants();
+      await place(acme.id, acmeTeam.id, adaInAcme.id);
+
+      await prisma.membership.delete({ where: { id: adaInAcme.id } });
+
+      expect(await prisma.teamMembership.count()).toBe(0);
+      expect(await prisma.team.count({ where: { id: acmeTeam.id } })).toBe(1);
+    });
+
+    it("should remove an organization's teams when it is physically deleted", async () => {
+      const { acme, acmeTeam, adaInAcme } = await twoTenants();
+      await place(acme.id, acmeTeam.id, adaInAcme.id);
+
+      await prisma.organization.delete({ where: { id: acme.id } });
+
+      expect(await prisma.team.count()).toBe(1);
+      expect(await prisma.teamMembership.count()).toBe(0);
+    });
+
+    it('should preserve teams and placements when an organization is soft deleted', async () => {
+      const { acme, acmeTeam, adaInAcme } = await twoTenants();
+      await place(acme.id, acmeTeam.id, adaInAcme.id);
+
+      await prisma.organization.update({
+        where: { id: acme.id },
+        data: { deletedAt: new Date() },
+      });
+
+      expect(await prisma.team.count()).toBe(2);
+      expect(await prisma.teamMembership.count()).toBe(1);
+    });
+  });
+
   describe('the role enum', () => {
     it('should default a membership to MEMBER', async () => {
       const organization = await anOrganization('acme');
@@ -266,8 +431,10 @@ describe('core domain schema (integration)', () => {
       // created_at, expires_at, and revoked_at (3) and has no updated_at,
       // because a credential is issued and revoked rather than edited.
       // invitations adds created_at, updated_at, expires_at, accepted_at, and
-      // revoked_at (5).
-      expect(columns).toHaveLength(16);
+      // revoked_at (5). teams adds created_at and updated_at (2), and
+      // team_memberships only created_at (1): a placement is made or removed,
+      // never edited.
+      expect(columns).toHaveLength(19);
       for (const column of columns) {
         expect(column.data_type).toBe('timestamp with time zone');
       }

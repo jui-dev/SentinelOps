@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 
+import { slugify } from '../common/slug.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { uniqueViolationHint } from '../database/unique-violation.js';
 import type { RegisterWithInvitationRequest } from '../invitations/invitations.schemas.js';
@@ -17,7 +18,6 @@ import {
 } from './auth.errors.js';
 import { toCurrentUserResponse, toUserResponse } from './auth.responses.js';
 import type { LoginRequest, RegisterRequest } from './auth.schemas.js';
-import { slugify } from './auth.schemas.js';
 import { PasswordService } from './password.service.js';
 import type { IssuedRefreshToken } from './refresh-token.service.js';
 import { RefreshTokenService } from './refresh-token.service.js';
@@ -77,6 +77,11 @@ export class AuthService {
   async register(request: RegisterRequest): Promise<AuthenticationResult> {
     const slug = request.organizationSlug ?? slugify(request.organizationName);
 
+    // A name with nothing to derive a slug from is answered with a 400 asking
+    // for an explicit one, which is honest, rather than inventing
+    // `organization-1`. Nor is a suffix appended on collision: a caller who
+    // typed "Acme" and silently received `acme-2` has a URL they did not choose
+    // and cannot predict; the 409 lets them decide.
     if (!slug) {
       throw new BadRequestException({
         message: 'Request validation failed',

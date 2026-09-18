@@ -16,6 +16,8 @@ export const Permission = {
   MEMBERSHIPS_READ: 'memberships:read',
   INVITATIONS_READ: 'invitations:read',
   INVITATIONS_MANAGE: 'invitations:manage',
+  TEAMS_READ: 'teams:read',
+  TEAMS_MANAGE: 'teams:manage',
 } as const;
 
 export type Permission = (typeof Permission)[keyof typeof Permission];

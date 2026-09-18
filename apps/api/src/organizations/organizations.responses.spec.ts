@@ -37,6 +37,8 @@ describe('organization response mappers', () => {
             'memberships:read',
             'organization:read',
             'organization:update',
+            'teams:manage',
+            'teams:read',
           ],
         },
       });
@@ -56,6 +58,7 @@ describe('organization response mappers', () => {
       expect(response.membership.permissions).toEqual([
         'memberships:read',
         'organization:read',
+        'teams:read',
       ]);
     });
   });

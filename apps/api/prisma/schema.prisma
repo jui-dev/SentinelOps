@@ -84,6 +84,7 @@ model Organization {
 
   memberships Membership[]
   invitations Invitation[]
+  teams       Team[]
 
   @@map("organizations")
 }
@@ -155,11 +156,17 @@ model Membership {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamMemberships TeamMembership[]
 
   /// One capacity per user per organization: nobody is both ADMIN and MEMBER.
   @@unique([organizationId, userId])
+  /// Logically redundant with the primary key, and there for one reason: a
+  /// composite foreign key must reference a unique constraint over exactly its
+  /// columns. TeamMembership references (organization_id, id), which is what
+  /// lets the database itself refuse a team member from another organization.
+  @@unique([organizationId, id])
   /// Postgres does not index foreign keys automatically. This serves "which
   /// organizations does this user belong to" — the lookup every authenticated
   /// request will make — and turns the cascade from `users` into an index scan.
@@ -221,6 +228,88 @@ model Invitation {
   /// Serves the Restrict check when a user row is physically deleted.
   @@index([invitedById])
   @@map("invitations")
+}
+
+/// A named group of an organization's members — the unit that will own
+/// services and respond to incidents.
+///
+/// Organizational configuration, not history, and hard-deleted: nothing
+/// operational references a team yet. The deletion principle every later
+/// relationship follows: deleting configuration never silently deletes
+/// operational resources or historical records. When services reference teams,
+/// that foreign key is Restrict, so a team that owns services cannot be deleted
+/// until they are reassigned — the delete is refused, never cascaded.
+///
+/// Belonging to a team grants nothing. Authorization is the organization role
+/// alone; there are no team roles or team-scoped permissions.
+model Team {
+  id             String  @id @default(uuid(7)) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  name           String
+  /// Derived from the name when the team is created, never supplied by a
+  /// client, and never changed afterwards: renaming writes `name` only, so a
+  /// URL built from the slug keeps working. Navigation and internal reference,
+  /// not content.
+  ///
+  /// Because it is derived, its uniqueness also refuses a second team whose
+  /// name differs only by case or punctuation ("Platform", "platform!") — at
+  /// creation. A rename is held only to the exact-name unique below.
+  slug           String
+  /// Null when there is none. An empty string is normalised to null at the
+  /// Zod boundary, so there is one way to say "no description".
+  description    String?
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  memberships  TeamMembership[]
+
+  @@unique([organizationId, slug])
+  @@unique([organizationId, name])
+  /// The target of composite foreign keys from tenant-owned children — team
+  /// memberships now, services later — and a lookup key that cannot be used
+  /// without the organization: findUnique({ organizationId_id }).
+  @@unique([organizationId, id])
+  @@map("teams")
+}
+
+/// Places an organization member on a team.
+///
+/// References the organization Membership rather than the global User: a team
+/// member is, by construction, a member of the organization, and removing
+/// someone from the organization removes them from its teams by cascade.
+///
+/// Tenant consistency is a database invariant, not a service convention. Both
+/// foreign keys are composite and share the one organization_id column, so the
+/// team and the membership a row joins must belong to the same organization as
+/// the row — and therefore to each other. Simple foreign keys on team_id and
+/// membership_id alone would accept a team in one organization joined to a
+/// membership in another.
+///
+/// Rows must be created with scalar ids (organizationId, teamId, membershipId),
+/// not nested `connect`: the two relations share organizationId.
+///
+/// Hard lifecycle. The surrogate id follows the schema convention and is not
+/// exposed; the API addresses a team member by its membership id.
+model TeamMembership {
+  id             String @id @default(uuid(7)) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  teamId         String @map("team_id") @db.Uuid
+  membershipId   String @map("membership_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  team       Team       @relation(fields: [organizationId, teamId], references: [organizationId, id], onDelete: Cascade)
+  membership Membership @relation(fields: [organizationId, membershipId], references: [organizationId, id], onDelete: Cascade)
+
+  /// A person is on a team at most once. Membership is one per user per
+  /// organization, so this is also one per user per team. Its leading column
+  /// serves the cascade from teams.
+  @@unique([teamId, membershipId])
+  /// Serves the cascade from memberships, and "which teams is this member on".
+  @@index([membershipId])
+  @@map("team_memberships")
 }
 
 /// One issued refresh token. A row per token rather than per session, because

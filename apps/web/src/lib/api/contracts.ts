@@ -133,6 +133,42 @@ export interface RegisterWithInvitationRequest {
 }
 
 /**
+ * One team, as `GET /organizations/:organizationId/teams` lists it. `slug`
+ * is derived by the API and used only to build URLs.
+ */
+export interface TeamResponse {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  memberCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** One member of a team, keyed by their organization membership id. */
+export interface TeamMemberResponse {
+  membershipId: string;
+  addedAt: string;
+  user: {
+    id: string;
+    name: string;
+    email: string;
+  };
+}
+
+/** No slug: the API derives it from the name. */
+export interface CreateTeamRequest {
+  name: string;
+  description?: string | null;
+}
+
+export interface UpdateTeamRequest {
+  name?: string;
+  description?: string | null;
+}
+
+/**
  * Permission names the UI checks. Names only: which role holds which is the
  * API's decision, and is never reproduced here.
  */
@@ -142,6 +178,8 @@ export const Permission = {
   MEMBERSHIPS_READ: "memberships:read",
   INVITATIONS_READ: "invitations:read",
   INVITATIONS_MANAGE: "invitations:manage",
+  TEAMS_READ: "teams:read",
+  TEAMS_MANAGE: "teams:manage",
 } as const;
 
 /** Machine-readable error codes this client branches on. */
@@ -161,6 +199,10 @@ export const ApiErrorCode = {
   INVITATION_ALREADY_PENDING: "INVITATION_ALREADY_PENDING",
   INVITATION_EMAIL_MISMATCH: "INVITATION_EMAIL_MISMATCH",
   ALREADY_A_MEMBER: "ALREADY_A_MEMBER",
+  TEAM_NOT_FOUND: "TEAM_NOT_FOUND",
+  TEAM_NAME_TAKEN: "TEAM_NAME_TAKEN",
+  TEAM_MEMBER_NOT_FOUND: "TEAM_MEMBER_NOT_FOUND",
+  ALREADY_A_TEAM_MEMBER: "ALREADY_A_TEAM_MEMBER",
 } as const;
 
 export interface ValidationErrorDetail {

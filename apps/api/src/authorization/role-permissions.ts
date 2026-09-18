@@ -20,6 +20,8 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, ReadonlySet<Permission>>> =
       Permission.MEMBERSHIPS_READ,
       Permission.INVITATIONS_READ,
       Permission.INVITATIONS_MANAGE,
+      Permission.TEAMS_READ,
+      Permission.TEAMS_MANAGE,
     ]),
     ADMIN: new Set([
       Permission.ORGANIZATION_READ,
@@ -27,10 +29,13 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, ReadonlySet<Permission>>> =
       Permission.MEMBERSHIPS_READ,
       Permission.INVITATIONS_READ,
       Permission.INVITATIONS_MANAGE,
+      Permission.TEAMS_READ,
+      Permission.TEAMS_MANAGE,
     ]),
     MEMBER: new Set([
       Permission.ORGANIZATION_READ,
       Permission.MEMBERSHIPS_READ,
+      Permission.TEAMS_READ,
     ]),
   };
 

@@ -10,8 +10,9 @@ unfold, and turning the result into reviewable operational records.
 ## Project status
 
 > **Early development.** The backend's foundations are in place and tested, and the web
-> app can sign a user in, work within an organization, and invite others into it. There
-> is no product yet: no incidents, no services, and no teams.
+> app can sign a user in, work within an organization, invite others into it, and group
+> its members into teams. There is no operational product yet: no services and no
+> incidents.
 
 Anything still described as **planned** below has not been built. Each piece is introduced
 deliberately, and this README is updated as capabilities actually land.
@@ -29,9 +30,12 @@ deliberately, and this README is updated as capabilities actually land.
 - Invitations: an `OWNER` or `ADMIN` invites an email address as `ADMIN` or `MEMBER`
   and shares a single-use link; the invitee creates an account or signs in, and joins.
   See [Invitations](#invitations)
+- Teams: an `OWNER` or `ADMIN` creates teams and places existing organization members on
+  them. The database itself refuses a team member from another organization. See
+  [Teams](#teams)
 - A Next.js web app: registration, login, session restore across reloads and tabs,
-  an organization picker, per-organization overview, member list, invitations, and
-  rename — each offered only when the API reports the permission — and an invitation
+  an organization picker, per-organization overview, member list, invitations, teams,
+  and rename — each offered only when the API reports the permission — and an invitation
   acceptance page. See [Web application](#web-application)
 - The web app's UI and design-system foundation: a full-viewport operations workspace
   (situation strip and navigation rail), light and dark themes from semantic design
@@ -42,8 +46,8 @@ deliberately, and this README is updated as capabilities actually land.
 
 **What does not exist yet**
 
-- Any tenant-scoped resource beyond organizations, memberships, and invitations: no
-  teams, services, or incidents API, and no way to remove or re-role a member
+- Any operational resource: no services or incidents API. And no way to remove or
+  re-role a member
 - Email delivery: invitation links are shared by hand, and addresses are not verified
 - Rate limiting on authentication and on the public invitation routes
 - Continuous integration, and container images for the applications
@@ -115,7 +119,8 @@ The intended scope, not a feature list. Only the items marked below are built.
   the organization role, and invitations. Changing or removing a membership, and
   ownership rules, are still to come. See [Authorization](#authorization) and
   [Invitations](#invitations)
-- **Team management** — teams and membership
+- **Team management** — ✅ teams and who is on them, with tenant consistency enforced by
+  the database. See [Teams](#teams)
 - **Service catalog** — the systems being monitored and who owns them
 - **Incident lifecycle management** — open, acknowledge, escalate, resolve
 - **Severity and priority management** — classification of incident impact
@@ -401,7 +406,8 @@ the status code, which is what a probe reads.
 
 The core domain is three tables: an organization to own data, a user to act, and a
 membership binding them with a role. Teams, services, incidents, and audit entries all
-hang off these. `invitations` holds offers of a membership, and `refresh_tokens` holds
+hang off these. `invitations` holds offers of a membership, `teams` and
+`team_memberships` group members (see [Teams](#teams)), and `refresh_tokens` holds
 sessions rather than domain data.
 
 ```
@@ -459,6 +465,23 @@ sessions rather than domain data.
                    │   WHERE accepted_at IS NULL          │
                    │     AND revoked_at IS NULL           │
                    └──────────────────────────────────────┘
+
+   organizations 1 ──< teams 1 ──< team_memberships >── 1 memberships
+   ┌──────────────────────────────┐   ┌──────────────────────────────────────────┐
+   │            teams             │   │             team_memberships             │
+   │──────────────────────────────│   │──────────────────────────────────────────│
+   │ id              uuid PK      │   │ id               uuid PK                 │
+   │ organization_id uuid FK      │   │ organization_id  uuid                    │
+   │ name            text         │   │ team_id          uuid                    │
+   │ slug            text         │   │ membership_id    uuid                    │
+   │ description     text NULL    │   │ created_at                               │
+   │ created_at / updated_at      │   │ FK(organization_id, team_id)             │
+   │ UQ(organization_id, slug)    │   │   → teams(organization_id, id)           │
+   │ UQ(organization_id, name)    │   │ FK(organization_id, membership_id)       │
+   │ UQ(organization_id, id)      │   │   → memberships(organization_id, id)     │
+   └──────────────────────────────┘   │ UQ(team_id, membership_id)               │
+                                      └──────────────────────────────────────────┘
+   memberships also carries UQ(organization_id, id), the target of the second key.
 ```
 
 `users.password_hash` is nullable, reserved for identities without a local password —
@@ -496,6 +519,8 @@ maps each role to its [permissions](#authorization).
 | `User` | **Soft** — set `deleted_at` | Cascades to memberships |
 | `Membership` | **Hard** — the row is removed | n/a |
 | `Invitation` | **Kept** — accepted or revoked, never deleted | Cascades from its organization; **refused** for a user who sent one |
+| `Team` | **Hard** — the row is removed, with its placements | Cascades from its organization |
+| `TeamMembership` | **Hard** | Cascades from its team and from its membership |
 
 The **ordinary** delete of an organization or user writes `deleted_at`. That is an
 `UPDATE`, touches no foreign key, and therefore **preserves memberships and every
@@ -508,6 +533,15 @@ request, a local reset. It is the exceptional path, not the normal one.
 Membership is hard-deleted because revoking access must actually revoke it: a soft-deleted
 grant that some future authorization check forgets to filter is a security hole, not a
 data-loss risk.
+
+**Deleting organizational configuration never silently deletes operational resources or
+historical records.** Configuration — a team, and later who owns what — can be removed
+only when nothing operational or historical depends on it; dependents are reassigned
+first, and the database enforces that with `Restrict`, not `Cascade`. A team is
+hard-deleted today only because nothing operational references one yet: deleting it
+removes who was on it, and every member stays in the organization. When services
+reference teams, that foreign key is `Restrict`, so a team that owns services cannot be
+deleted until they are reassigned.
 
 Reads filter on `deleted_at IS NULL` unless they deliberately do not. Login, `GET /auth/me`,
 refresh, organization admission, and every organization-scoped read all apply it — see
@@ -522,11 +556,36 @@ refresh, organization admission, and every organization-scoped read all apply it
 | `@db.Timestamptz(3)` on every timestamp | Prisma maps `DateTime` to `timestamp` **without** time zone by default. |
 | Plain `text` for strings | Length limits live in the Zod schemas at the request boundary, where this project already validates. |
 | Tenant-owned tables carry `organizationId` | The isolation convention. Every query on one filters by it — see [Tenancy](#tenancy). |
+| A tenant-owned row references another tenant-owned row by a composite key on `organization_id` | The database, not only the service, keeps both rows in one organization — see [Tenant consistency by composite foreign key](#tenant-consistency-by-composite-foreign-key). |
 
 Foreign keys are indexed where no other index leads with them: `memberships.user_id`,
-`refresh_tokens.user_id`, and `invitations.invited_by_id`. `memberships.organization_id`
+`refresh_tokens.user_id`, `invitations.invited_by_id`, and
+`team_memberships.membership_id`. `memberships.organization_id`
 needs no index of its own — it leads the composite unique, which already serves prefix
 lookups and the cascade from `organizations`.
+
+### Tenant consistency by composite foreign key
+
+A `team_memberships` row joins a team to a membership, and both must belong to the same
+organization. Plain foreign keys on `team_id` and `membership_id` would not say so: the
+database would accept a team in one organization joined to a membership in another, and
+only service code would stand in the way.
+
+Instead the row carries `organization_id`, and both foreign keys are composite and share
+it — `(organization_id, team_id)` references `teams(organization_id, id)`, and
+`(organization_id, membership_id)` references `memberships(organization_id, id)`. Both
+referenced rows must therefore carry the row's own organization, so a cross-tenant team
+member is unrepresentable, whichever organization the row claims and however it is
+written — raw SQL included. The `UQ(organization_id, id)` on `teams` and `memberships`
+is redundant with their primary keys and exists only because a composite foreign key must
+reference a unique constraint over exactly its columns. As a side effect, moving a
+membership to another organization while it is on a team is refused: `ON UPDATE CASCADE`
+carries the new organization into the placement, which then no longer matches its team.
+
+This is declarative, visible to Prisma (no drift), and costs nothing at runtime. Services
+still scope every query by organization — the constraint is the backstop, not the
+mechanism that produces the right `404`. Later tenant-owned references (a service's
+owning team, an incident's service) follow the same pattern.
 
 A partial unique index is declared in `schema.prisma` with Prisma's `partialIndexes`
 preview feature, so Prisma knows about it and never treats it as drift. Preview features
@@ -856,6 +915,7 @@ put slugs in its own URLs.
 | `POST /api/v1/organizations/:organizationId/invitations` | Invite an email address: `{ "email", "role" }` | `invitations:manage` |
 | `GET /api/v1/organizations/:organizationId/invitations` | Every open invitation, newest first | `invitations:read` |
 | `DELETE /api/v1/organizations/:organizationId/invitations/:invitationId` | Revoke an open invitation | `invitations:manage` |
+| `/api/v1/organizations/:organizationId/teams…` | Teams and who is on them — see [Teams](#teams) | `teams:read` / `teams:manage` |
 
 All require authentication, a current membership, and the listed permission — every role
 may read the organization and its memberships; only `OWNER` and `ADMIN` may rename it or
@@ -1006,8 +1066,11 @@ Which roles hold which permission is written out once, in
 | `memberships:read` | ✓ | ✓ | ✓ |
 | `invitations:read` | ✓ | ✓ | |
 | `invitations:manage` | ✓ | ✓ | |
+| `teams:read` | ✓ | ✓ | ✓ |
+| `teams:manage` | ✓ | ✓ | |
 
 A `MEMBER` cannot see open invitations: they name people who are not members yet.
+Belonging to a team grants nothing: authorization is the organization role alone.
 
 There is no `@RequireRole()`. A route that names roles has to be edited every time the
 policy changes; a route that names an operation does not. The table is explicit per role
@@ -1229,6 +1292,83 @@ rules; and every service call with no guard in front of it.
 [`invitations-logging.integration-spec.ts`](apps/api/test/invitations-logging.integration-spec.ts)
 drives every route with the production JSON logger and asserts that no token or invitee
 address is written.
+
+---
+
+## Teams
+
+A team is a named group of an organization's members — the unit that will own services
+and respond to incidents. An `OWNER` or `ADMIN` creates, renames, and deletes teams, and
+places existing organization members on them; every member can see them.
+
+### Endpoints
+
+All under `/api/v1/organizations/:organizationId`, with admission, permission, and
+isolation exactly as in [Tenancy](#tenancy) and [Authorization](#authorization).
+
+| Route | Permission | Purpose |
+| --- | --- | --- |
+| `GET /teams` | `teams:read` | Every team, by name, each with `memberCount` |
+| `POST /teams` | `teams:manage` | Create `{ "name", "description"? }`. `201` |
+| `GET /teams/:teamId` | `teams:read` | One team |
+| `PATCH /teams/:teamId` | `teams:manage` | Change `{ "name"?, "description"? }` (at least one; `null` clears the description) |
+| `DELETE /teams/:teamId` | `teams:manage` | Delete the team; its members stay in the organization. `204` |
+| `GET /teams/:teamId/members` | `teams:read` | Who is on it, by name: `{ membershipId, addedAt, user: { id, name, email } }` |
+| `POST /teams/:teamId/members` | `teams:manage` | Add `{ "membershipId" }` — an existing member of this organization. `201` |
+| `DELETE /teams/:teamId/members/:membershipId` | `teams:manage` | Take them off the team; they stay in the organization. `204` |
+
+A team member is addressed by their **organization membership id** — the id
+`GET /memberships` lists — so the path segment is `members`, and the team-membership row's
+own id is never exposed. Bodies are strict: `slug`, `organizationId`, or `id` is a `400`.
+
+### Invariants
+
+- A team belongs to exactly one organization, and may be empty.
+- A person is on a given team at most once, and on any number of teams.
+- A team member is a member of the same organization — enforced by the database, see
+  [Tenant consistency by composite foreign key](#tenant-consistency-by-composite-foreign-key).
+- Names are unique within an organization. The **slug** is derived from the name at
+  creation, never supplied or shown as content, and never changes — it exists for URLs and
+  future internal references. Because it is derived and unique, a second team whose name
+  differs only by case or punctuation (`Platform`, `platform!`) is refused at creation. A
+  rename is held only to exact-name uniqueness. A name with nothing to derive a slug from
+  (`決済`) gets an opaque one (`team-3fa9c1d2`).
+- Members whose accounts were soft-deleted are neither listed, counted, nor addable.
+
+### Errors
+
+| Case | Answer |
+| --- | --- |
+| Team id malformed, missing, or in another organization | `404 TEAM_NOT_FOUND`, identically |
+| `membershipId` not a current member of this organization | `404 MEMBERSHIP_NOT_FOUND` |
+| Removing someone who is not on the team | `404 TEAM_MEMBER_NOT_FOUND` |
+| Name taken, or too similar to one at creation | `409 TEAM_NAME_TAKEN` |
+| Already on the team | `409 ALREADY_A_TEAM_MEMBER` |
+
+Every uniqueness rule is an index, so concurrent requests resolve to `409`, and an add
+racing the team's deletion — refused by the composite foreign key — to `404`, never `500`.
+
+### Deletion
+
+Teams follow the [deletion principle](#deletion-two-different-mechanisms): deleting one
+removes only who was on it, because nothing operational references a team yet. Once
+services do, deleting a team that owns services will be refused until they are reassigned.
+
+### Not yet
+
+Team leads, team roles or team-scoped permissions, nested teams, on-call, and services.
+
+### Tests
+
+[`teams.e2e-spec.ts`](apps/api/test/teams.e2e-spec.ts) proves the wiring: every route is
+admitted and authorized, and a `MEMBER` is refused every write before its body is read.
+[`teams.integration-spec.ts`](apps/api/test/teams.integration-spec.ts) runs two tenants
+against a real database: foreign team and membership ids answered exactly as missing ones
+on every route, refused writes leaving rows untouched, the service isolating with no guard,
+soft-deleted members, the constraint mapping against the real driver adapter, and races.
+[`schema.integration-spec.ts`](apps/api/test/schema.integration-spec.ts) proves the
+invariants in the database itself, including a cross-organization placement refused when
+written as raw SQL.
 
 ---
 

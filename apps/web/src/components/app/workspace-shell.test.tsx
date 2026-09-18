@@ -109,6 +109,32 @@ describe("WorkspaceShell", () => {
       expect(overview.getAttribute("aria-current")).toBe("page");
     });
 
+    it("offers Teams only when the API reports teams:read", async () => {
+      at("/orgs/acme-ops/teams/platform", "acme-ops");
+      api({ permissions: [...READ, "teams:read"] });
+
+      renderShell();
+
+      const teams = await within(primaryNav()).findByRole("link", {
+        name: "Teams",
+      });
+
+      expect(teams.getAttribute("href")).toBe("/orgs/acme-ops/teams");
+      expect(teams.getAttribute("aria-current")).toBe("page");
+    });
+
+    it("does not offer Teams without teams:read", async () => {
+      at("/orgs/acme-ops", "acme-ops");
+      api({ permissions: READ });
+
+      renderShell();
+
+      expect(
+        await within(primaryNav()).findByRole("link", { name: "Members" }),
+      ).toBeDefined();
+      expect(within(primaryNav()).queryByRole("link", { name: "Teams" })).toBeNull();
+    });
+
     it("does not offer Settings without organization:update", async () => {
       at("/orgs/acme-ops", "acme-ops");
       const { requests } = api({ permissions: READ });

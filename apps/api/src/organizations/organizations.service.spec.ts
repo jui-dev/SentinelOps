@@ -86,6 +86,8 @@ describe('OrganizationsService', () => {
             'memberships:read',
             'organization:read',
             'organization:update',
+            'teams:manage',
+            'teams:read',
           ],
         },
       });

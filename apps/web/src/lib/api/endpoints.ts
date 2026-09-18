@@ -2,6 +2,7 @@ import { authenticatedRequest, publicRequest, sessionRequest } from "./client";
 import type {
   AuthenticatedResponse,
   CreateInvitationRequest,
+  CreateTeamRequest,
   CreatedInvitationResponse,
   CurrentUserResponse,
   InvitationLookupResponse,
@@ -13,7 +14,10 @@ import type {
   OrganizationResponse,
   RegisterRequest,
   RegisterWithInvitationRequest,
+  TeamMemberResponse,
+  TeamResponse,
   UpdateOrganizationRequest,
+  UpdateTeamRequest,
 } from "./contracts";
 
 /**
@@ -93,6 +97,61 @@ export const revokeInvitation = (
 ) =>
   authenticatedRequest<void>(
     `${invitationsPath(organizationId)}/${encodeURIComponent(invitationId)}`,
+    { method: "DELETE" },
+  );
+
+const teamsPath = (organizationId: string) =>
+  `${organizationPath(organizationId)}/teams`;
+
+const teamPath = (organizationId: string, teamId: string) =>
+  `${teamsPath(organizationId)}/${encodeURIComponent(teamId)}`;
+
+export const listTeams = (organizationId: string) =>
+  authenticatedRequest<TeamResponse[]>(teamsPath(organizationId));
+
+export const createTeam = (organizationId: string, body: CreateTeamRequest) =>
+  authenticatedRequest<TeamResponse>(teamsPath(organizationId), {
+    method: "POST",
+    body,
+  });
+
+export const updateTeam = (
+  organizationId: string,
+  teamId: string,
+  body: UpdateTeamRequest,
+) =>
+  authenticatedRequest<TeamResponse>(teamPath(organizationId, teamId), {
+    method: "PATCH",
+    body,
+  });
+
+export const deleteTeam = (organizationId: string, teamId: string) =>
+  authenticatedRequest<void>(teamPath(organizationId, teamId), {
+    method: "DELETE",
+  });
+
+export const listTeamMembers = (organizationId: string, teamId: string) =>
+  authenticatedRequest<TeamMemberResponse[]>(
+    `${teamPath(organizationId, teamId)}/members`,
+  );
+
+export const addTeamMember = (
+  organizationId: string,
+  teamId: string,
+  membershipId: string,
+) =>
+  authenticatedRequest<TeamMemberResponse>(
+    `${teamPath(organizationId, teamId)}/members`,
+    { method: "POST", body: { membershipId } },
+  );
+
+export const removeTeamMember = (
+  organizationId: string,
+  teamId: string,
+  membershipId: string,
+) =>
+  authenticatedRequest<void>(
+    `${teamPath(organizationId, teamId)}/members/${encodeURIComponent(membershipId)}`,
     { method: "DELETE" },
   );
 

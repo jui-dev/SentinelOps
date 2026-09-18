@@ -8,6 +8,11 @@
  *   organization fields, so nothing about the organization itself stales it.
  * - `invitations`: an organization's open invitations. Creating or revoking
  *   one stales only this.
+ * - `teams`: an organization's teams, each with its member count. Team pages
+ *   read the team from here too, so any change to a team or to who is on it
+ *   stales this.
+ * - `teamMembers`: who is on one team. Adding or removing someone stales it
+ *   and `teams` (the count).
  *
  * The invitation an `/invite` page shows is deliberately not cached here: it
  * is fetched with a token, and lives in that page's own state.
@@ -20,4 +25,8 @@ export const queryKeys = {
     ["organization", organizationId, "memberships"] as const,
   invitations: (organizationId: string) =>
     ["organization", organizationId, "invitations"] as const,
+  teams: (organizationId: string) =>
+    ["organization", organizationId, "teams"] as const,
+  teamMembers: (organizationId: string, teamId: string) =>
+    ["organization", organizationId, "teams", teamId, "members"] as const,
 };

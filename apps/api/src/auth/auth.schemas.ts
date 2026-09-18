@@ -38,7 +38,7 @@ export const passwordSchema = z.string().min(12).max(128);
 /**
  * A URL-safe organization identifier. Rejected rather than silently repaired,
  * because a caller that supplies a slug explicitly cares what it is; the
- * forgiving path is to omit it and let `slugify` derive one.
+ * forgiving path is to omit it and let `slugify` (common/slug.ts) derive one.
  */
 export const slugSchema = z
   .string()
@@ -84,32 +84,3 @@ export const loginSchema = z.object({
 
 export type RegisterRequest = z.infer<typeof registerSchema>;
 export type LoginRequest = z.infer<typeof loginSchema>;
-
-/**
- * Derives a slug from an organization name.
- *
- * Returns undefined when nothing usable survives — a name of only punctuation
- * or non-Latin script. The caller turns that into a 400 asking for an explicit
- * slug, which is honest, rather than inventing `organization-1`.
- *
- * No uniqueness suffix is appended on collision. A caller who typed "Acme" and
- * silently received `acme-2` has a URL they did not choose and cannot predict;
- * a 409 lets them decide.
- */
-export const slugify = (name: string): string | undefined => {
-  const slug = name
-    .normalize('NFKD')
-    // Strip the combining marks NFKD just separated out, so a name like
-    // "Ubernacht" written with an umlaut slugs to 'ubernacht' rather than
-    // losing the character entirely. Escaped rather than written literally:
-    // a combining mark in source is invisible and survives editing by luck.
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 48)
-    // A truncation at 48 can leave a trailing hyphen behind.
-    .replace(/-+$/g, '');
-
-  return slug.length >= 2 ? slug : undefined;
-};

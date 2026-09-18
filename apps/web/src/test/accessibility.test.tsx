@@ -11,6 +11,10 @@ import { OrganizationOverview } from "@/components/organizations/organization-ov
 import { OrganizationPicker } from "@/components/organizations/organization-picker";
 import { OrganizationScope } from "@/components/organizations/organization-scope";
 import { OrganizationSettings } from "@/components/organizations/organization-settings";
+import { TeamDetail } from "@/components/teams/team-detail";
+import { TeamScope } from "@/components/teams/team-scope";
+import { TeamSettings } from "@/components/teams/team-settings";
+import { TeamsView } from "@/components/teams/teams-view";
 import { clearAccessToken } from "@/lib/auth/token-store";
 
 import {
@@ -33,7 +37,7 @@ import { renderWithSession } from "./render";
  */
 
 const navigation = vi.hoisted(() => ({
-  params: {} as { orgSlug?: string },
+  params: {} as { orgSlug?: string; teamSlug?: string },
   pathname: "/",
 }));
 
@@ -50,8 +54,20 @@ const OWNER = [
   "memberships:read",
   "organization:read",
   "organization:update",
+  "teams:manage",
+  "teams:read",
 ];
-const MEMBER = ["memberships:read", "organization:read"];
+const MEMBER = ["memberships:read", "organization:read", "teams:read"];
+
+const team = {
+  id: "0199a1b2-c3d4-7000-8000-0000000000d1",
+  name: "Platform",
+  slug: "platform",
+  description: "Owns the runtime.",
+  memberCount: 1,
+  createdAt: "2026-09-18T12:00:00.000Z",
+  updatedAt: "2026-09-18T12:00:00.000Z",
+};
 
 const base = `/organizations/${organization.id}`;
 
@@ -70,6 +86,20 @@ const signedIn = (permissions: string[]) =>
             id: currentUser.memberships[0].id,
             role: "OWNER",
             createdAt: "2026-09-01T12:00:00.000Z",
+            user: {
+              id: currentUser.id,
+              name: currentUser.name,
+              email: currentUser.email,
+            },
+          },
+        ]);
+      case `GET ${base}/teams`:
+        return jsonResponse(200, [team]);
+      case `GET ${base}/teams/${team.id}/members`:
+        return jsonResponse(200, [
+          {
+            membershipId: currentUser.memberships[0].id,
+            addedAt: "2026-09-18T12:00:00.000Z",
             user: {
               id: currentUser.id,
               name: currentUser.name,
@@ -182,6 +212,56 @@ describe("accessibility", () => {
       const { container } = inWorkspace(<OrganizationSettings />);
 
       await screen.findByText(/do not have permission/);
+      await expectNoAxeViolations(container);
+    });
+
+    it("Teams, as an owner creating one", async () => {
+      signedIn(OWNER);
+      const { container } = inWorkspace(<TeamsView />);
+
+      await screen.findByRole("table", { name: "Teams" });
+      (await screen.findAllByRole("button", { name: "New team" }))[0].click();
+      await screen.findByRole("region", { name: "New team" });
+      await expectNoAxeViolations(container);
+    });
+
+    it("Team, as an owner", async () => {
+      navigation.params = { orgSlug: organization.slug, teamSlug: team.slug };
+      signedIn(OWNER);
+      const { container } = inWorkspace(
+        <TeamScope>
+          <TeamDetail />
+        </TeamScope>,
+      );
+
+      await screen.findByRole("table", { name: "Team members" });
+      await screen.findByText("Everyone in this organization is on this team.");
+      await expectNoAxeViolations(container);
+    });
+
+    it("Team, as a member", async () => {
+      navigation.params = { orgSlug: organization.slug, teamSlug: team.slug };
+      signedIn(MEMBER);
+      const { container } = inWorkspace(
+        <TeamScope>
+          <TeamDetail />
+        </TeamScope>,
+      );
+
+      await screen.findByRole("table", { name: "Team members" });
+      await expectNoAxeViolations(container);
+    });
+
+    it("Team settings", async () => {
+      navigation.params = { orgSlug: organization.slug, teamSlug: team.slug };
+      signedIn(OWNER);
+      const { container } = inWorkspace(
+        <TeamScope>
+          <TeamSettings />
+        </TeamScope>,
+      );
+
+      await screen.findByRole("button", { name: "Delete team…" });
       await expectNoAxeViolations(container);
     });
 

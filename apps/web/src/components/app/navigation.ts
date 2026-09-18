@@ -1,4 +1,4 @@
-import { LayoutPanelTop, Settings2, Users } from "lucide-react";
+import { LayoutPanelTop, Network, Settings2, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { Permission } from "@/lib/api/contracts";
@@ -6,9 +6,9 @@ import { Permission } from "@/lib/api/contracts";
 /**
  * The navigation rail, as data.
  *
- * Only what exists is listed. Incidents, Services, Teams, On-call, and
- * Activity are not here — not even disabled — because none of them exist;
- * each joins as its own section entry when its routes ship.
+ * Only what exists is listed. Incidents, Services, On-call, and Activity are
+ * not here — not even disabled — because none of them exist; each joins as
+ * its own section entry when its routes ship.
  */
 export interface NavItem {
   id: string;
@@ -57,9 +57,17 @@ export const ORGANIZATION_NAVIGATION: NavSection[] = [
         href: (slug) => `${organizationPath(slug)}/members`,
         match: "prefix",
       },
+      {
+        id: "teams",
+        label: "Teams",
+        icon: Network,
+        href: (slug) => `${organizationPath(slug)}/teams`,
+        match: "prefix",
+        requires: Permission.TEAMS_READ,
+      },
     ],
   },
-  // Operational sections (Incidents, Services, Teams, On-call, Activity)
+  // Operational sections (Incidents, Services, On-call, Activity)
   // are added here as each feature ships.
   {
     id: "administration",

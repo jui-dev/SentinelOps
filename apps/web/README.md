@@ -37,13 +37,13 @@ src/
 ├── app/                      routes — thin server files that render client components
 │   ├── (auth)/login, register
 │   ├── (app)/                signed-in shell: RequireSession + AppShell
-│   │   └── orgs/[orgSlug]/   overview, members (and invitations), settings
+│   │   └── orgs/[orgSlug]/   overview, members (and invitations), teams, settings
 │   ├── invite/               invitation acceptance — outside both groups
 │   └── page.tsx              `/` redirects to login, the only org, or /orgs
 ├── components/
 │   ├── ui/                   primitives — see UI foundation below
 │   ├── app/                  workspace shell, rail, situation strip, auth frame, theme control
-│   ├── auth/, organizations/, invitations/
+│   ├── auth/, organizations/, invitations/, teams/
 ├── lib/
 │   ├── config/env.ts         validated public config
 │   ├── api/                  transport, the two request kinds, endpoints, contracts
@@ -60,8 +60,8 @@ template — a full-viewport workspace, rules and tables rather than cards, comp
 and colour that means something.
 
 It is a foundation, not the finished product. It is applied only to what exists today —
-sign-in, organizations, members, invitations, settings. Operational screens (incidents,
-services, teams, on-call, activity) are designed when their domain models are, and extend
+sign-in, organizations, members, invitations, teams, settings. Operational screens
+(incidents, services, on-call, activity) are designed when their domain models are, and extend
 this system — new navigation entries, the reserved signal colours, situation-strip levels,
 denser table and record layouts — rather than being mocked up in advance. No screen shows
 placeholder operational data. The pieces:
@@ -70,7 +70,7 @@ placeholder operational data. The pieces:
 | --- | --- |
 | **Workspace** | `WorkspaceShell`: an ink **situation strip** across the full width, the navigation **rail** beneath it on the left, and `main` — the only thing that scrolls. Below 1024px the rail becomes a drawer (a native `<dialog>`) opened from the strip. |
 | **Situation strip** | Shows where you are and the time in UTC. Its colour comes from a *level* supplied by `SituationContext`; only `neutral` exists, because nothing operational is observed yet. A live source will add levels there — the strip claims no state it cannot see. |
-| **Navigation** | Data, in [`components/app/navigation.ts`](src/components/app/navigation.ts). Only shipped routes are listed — no placeholders for Incidents, Services, or Teams. An item may `require` a permission; like `useCan`, that is advice, and the API authorizes regardless. |
+| **Navigation** | Data, in [`components/app/navigation.ts`](src/components/app/navigation.ts). Only shipped routes are listed — no placeholders for Incidents or Services. An item may `require` a permission; like `useCan`, that is advice, and the API authorizes regardless. |
 | **Pages** | `PageHeader` (eyebrow, the page's single `<h1>`, description, actions) then `PageBody` (`full` for lists, `form` for settings). Parts of a page are `Section`s, separated by space and rules. |
 | **Primitives** | `Button` (primary / secondary / quiet / destructive — destructive is outlined; a solid red is for high-consequence confirmations, later), `Field`, `Select`, `CopyField`, `Alert` / `ErrorAlert`, `Table` (+ `THead`, `TR`, `TH`, `TD`, `TableEmpty`), `Status`, `RecordList`, `SettingRow`, `EmptyState`, `Tabs`, `IsoDate`, `Spinner`. |
 
@@ -206,6 +206,21 @@ signing in, which clears the cache, does not look the invitation up again. The p
   signed-out view on the same page;
 - anything unusable: one "invitation not available" state.
 
+## Teams
+
+`/orgs/[orgSlug]/teams` lists the organization's teams and, for `teams:manage`, opens
+a create form in place from **New team** — name and description only; the API derives the
+slug. The form is inline rather than a `/teams/new` route because that route would shadow
+a team whose derived slug is `new`.
+
+`/teams/[teamSlug]` is the team: its name, description, and members, with an add form
+(organization members not already on it) and Remove for `teams:manage`. Nothing else is
+shown — services join this page when they exist. `/teams/[teamSlug]/settings` edits the
+name and description and deletes the team after an inline confirmation. `TeamScope`
+resolves the slug against the cached team list, as `OrganizationScope` does for
+organizations; a slug never changes, so the URL stays valid across renames. The slug is
+never displayed.
+
 ## Query keys
 
 Defined in [`lib/api/query-keys.ts`](src/lib/api/query-keys.ts). Invalidate by what a
@@ -213,4 +228,7 @@ write actually changes: a rename merges the new name into `['organization', id]`
 invalidates `['me']` (whose memberships embed organization names), and leaves
 `['organization', id, 'memberships']` alone. Creating or revoking an invitation
 invalidates only `['organization', id, 'invitations']`; accepting one refetches `['me']`.
+Team pages read the team from `['organization', id, 'teams']`, so every team change —
+including adding or removing a member, which changes the count — refreshes it; member
+changes also refresh `['organization', id, 'teams', teamId, 'members']`.
 No query key ever contains an invitation token.
