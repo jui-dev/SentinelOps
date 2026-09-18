@@ -5,14 +5,18 @@ import { useState } from "react";
 
 import { Alert, ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Section } from "@/components/ui/page";
 import { Spinner } from "@/components/ui/spinner";
+import { Status } from "@/components/ui/status";
+import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
+import { IsoDate } from "@/components/ui/timestamp";
 import { Permission } from "@/lib/api/contracts";
 import type { InvitationResponse } from "@/lib/api/contracts";
 import { listInvitations, revokeInvitation } from "@/lib/api/endpoints";
 import { isApiError } from "@/lib/api/errors";
 import { queryKeys } from "@/lib/api/query-keys";
 
-import { formatDate, formatRole } from "./format";
+import { formatRole } from "./format";
 import { useCan, useOrganizationId } from "./organization-scope";
 
 /**
@@ -57,33 +61,36 @@ function InvitationRow({
   revoking: boolean;
 }) {
   return (
-    <tr>
-      <td className="px-4 py-2">{invitation.email}</td>
-      <td className="px-4 py-2">{formatRole(invitation.role)}</td>
-      <td className="px-4 py-2">
+    <TR>
+      <TD className="font-medium">{invitation.email}</TD>
+      <TD>{formatRole(invitation.role)}</TD>
+      <TD>
         {invitation.status === "expired" ? (
-          <span className="text-amber-700">Expired</span>
+          <Status tone="warning">Expired</Status>
         ) : (
-          "Pending"
+          <Status tone="neutral">Pending</Status>
         )}
-      </td>
-      <td className="px-4 py-2 text-slate-600">{invitation.invitedBy.name}</td>
-      <td className="px-4 py-2 text-slate-600">
-        {formatDate(invitation.expiresAt)}
-      </td>
+      </TD>
+      <TD kind="muted" className="hidden md:table-cell">
+        {invitation.invitedBy.name}
+      </TD>
+      <TD kind="data">
+        <IsoDate value={invitation.expiresAt} />
+      </TD>
       {canManage && (
-        <td className="px-4 py-2 text-right">
+        <TD kind="actions">
           <Button
-            variant="secondary"
+            variant="destructive"
+            size="sm"
             disabled={revoking}
             onClick={() => onRevoke(invitation.id)}
             aria-label={`Revoke invitation for ${invitation.email}`}
           >
             {revoking ? "Revoking…" : "Revoke"}
           </Button>
-        </td>
+        </TD>
       )}
-    </tr>
+    </TR>
   );
 }
 
@@ -115,37 +122,38 @@ function OpenInvitations({ canManage }: { canManage: boolean }) {
           <ErrorAlert error={revoke.error} />
         ))}
       {invitations.data.length === 0 ? (
-        <p className="text-sm text-slate-600">No open invitations.</p>
+        <p className="text-sm text-fg-muted">
+          No open invitations. New invitations are listed here until they are
+          accepted or revoked.
+        </p>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 text-slate-600">
-              <tr>
-                <th scope="col" className="px-4 py-2 font-medium">Email</th>
-                <th scope="col" className="px-4 py-2 font-medium">Role</th>
-                <th scope="col" className="px-4 py-2 font-medium">Status</th>
-                <th scope="col" className="px-4 py-2 font-medium">Invited by</th>
-                <th scope="col" className="px-4 py-2 font-medium">Expires</th>
-                {canManage && (
-                  <th scope="col" className="px-4 py-2">
-                    <span className="sr-only">Actions</span>
-                  </th>
-                )}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200">
-              {invitations.data.map((invitation) => (
-                <InvitationRow
-                  key={invitation.id}
-                  invitation={invitation}
-                  canManage={canManage}
-                  onRevoke={onRevoke}
-                  revoking={revokingId === invitation.id}
-                />
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <Table label="Open invitations">
+          <THead>
+            <TR>
+              <TH>Email</TH>
+              <TH>Role</TH>
+              <TH>Status</TH>
+              <TH className="hidden md:table-cell">Invited by</TH>
+              <TH>Expires</TH>
+              {canManage && (
+                <TH align="end">
+                  <span className="sr-only">Actions</span>
+                </TH>
+              )}
+            </TR>
+          </THead>
+          <TBody>
+            {invitations.data.map((invitation) => (
+              <InvitationRow
+                key={invitation.id}
+                invitation={invitation}
+                canManage={canManage}
+                onRevoke={onRevoke}
+                revoking={revokingId === invitation.id}
+              />
+            ))}
+          </TBody>
+        </Table>
       )}
     </>
   );
@@ -163,9 +171,8 @@ export function OpenInvitationList() {
   if (!canRead) return null;
 
   return (
-    <section className="flex flex-col gap-3">
-      <h2 className="text-lg font-semibold">Open invitations</h2>
+    <Section title="Open invitations" level={3}>
       <OpenInvitations canManage={canManage} />
-    </section>
+    </Section>
   );
 }

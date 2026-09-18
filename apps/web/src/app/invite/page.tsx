@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { AuthFrame } from "@/components/app/auth-frame";
 import { InvitationAcceptance } from "@/components/invitations/invitation-acceptance";
 
 export const metadata: Metadata = {
@@ -13,11 +14,8 @@ export const metadata: Metadata = {
  */
 export default function InvitePage() {
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center px-4 py-12">
-      <p className="mb-6 text-lg font-semibold tracking-tight">SentinelOps</p>
-      <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-        <InvitationAcceptance />
-      </div>
-    </main>
+    <AuthFrame width="md">
+      <InvitationAcceptance />
+    </AuthFrame>
   );
 }

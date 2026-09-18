@@ -12,10 +12,11 @@ export function SessionUnavailable() {
   const { retry } = useSession();
 
   return (
-    <div className="mx-auto flex min-h-[50vh] max-w-md flex-col items-center justify-center gap-4 px-4">
-      <Alert>
-        SentinelOps is temporarily unreachable. Check your connection and try
-        again.
+    <div className="mx-auto flex min-h-[60vh] w-full max-w-md flex-col items-start justify-center gap-4 px-4">
+      <Alert title="SentinelOps is temporarily unreachable." className="w-full">
+        <p className="text-fg-muted">
+          Check your connection and try again. You have not been signed out.
+        </p>
       </Alert>
       <Button onClick={retry}>Try again</Button>
     </div>

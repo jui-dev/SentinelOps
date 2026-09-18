@@ -35,7 +35,7 @@ export function HomeRedirect() {
   if (status === "unavailable") return <SessionUnavailable />;
   if (me.isError) {
     return (
-      <div className="mx-auto max-w-md p-6">
+      <div className="mx-auto w-full max-w-md px-4 py-16">
         <ErrorAlert error={me.error} />
       </div>
     );

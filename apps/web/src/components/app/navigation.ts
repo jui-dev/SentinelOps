@@ -1,0 +1,86 @@
+import { LayoutPanelTop, Settings2, Users } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+
+import { Permission } from "@/lib/api/contracts";
+
+/**
+ * The navigation rail, as data.
+ *
+ * Only what exists is listed. Incidents, Services, Teams, On-call, and
+ * Activity are not here — not even disabled — because none of them exist;
+ * each joins as its own section entry when its routes ship.
+ */
+export interface NavItem {
+  id: string;
+  label: string;
+  icon: LucideIcon;
+  /** The item's path within the organization with this slug. */
+  href: (slug: string) => string;
+  /** `exact` for an index page; `prefix` when sub-pages belong to the item. */
+  match: "exact" | "prefix";
+  /**
+   * Offered only when the API reports this permission. Advice, like
+   * `useCan`: the API authorizes the pages behind every item regardless.
+   */
+  requires?: string;
+}
+
+export interface NavSection {
+  id: string;
+  /** A heading for the group; omitted for a lone utility group. */
+  label?: string;
+  /** `main` fills the rail from the top; `footer` sits at its foot. */
+  placement: "main" | "footer";
+  items: NavItem[];
+}
+
+export const organizationPath = (slug: string) =>
+  `/orgs/${encodeURIComponent(slug)}`;
+
+export const ORGANIZATION_NAVIGATION: NavSection[] = [
+  {
+    id: "organization",
+    label: "Organization",
+    placement: "main",
+    items: [
+      {
+        id: "overview",
+        label: "Overview",
+        icon: LayoutPanelTop,
+        href: organizationPath,
+        match: "exact",
+      },
+      {
+        id: "members",
+        label: "Members",
+        icon: Users,
+        href: (slug) => `${organizationPath(slug)}/members`,
+        match: "prefix",
+      },
+    ],
+  },
+  // Operational sections (Incidents, Services, Teams, On-call, Activity)
+  // are added here as each feature ships.
+  {
+    id: "administration",
+    placement: "footer",
+    items: [
+      {
+        id: "settings",
+        label: "Settings",
+        icon: Settings2,
+        href: (slug) => `${organizationPath(slug)}/settings`,
+        match: "prefix",
+        requires: Permission.ORGANIZATION_UPDATE,
+      },
+    ],
+  },
+];
+
+/** Whether `pathname` is the item's page (or, for `prefix`, beneath it). */
+export const isCurrentPath = (
+  href: string,
+  match: NavItem["match"],
+  pathname: string,
+): boolean =>
+  pathname === href || (match === "prefix" && pathname.startsWith(`${href}/`));

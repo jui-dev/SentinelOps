@@ -1,1 +1,228 @@
 @import "tailwindcss";
+
+/*
+ * SentinelOps design tokens.
+ *
+ * Components use the semantic roles below and nothing else: Tailwind's default
+ * palette is removed (`--color-*: initial`), so `bg-slate-50` and friends do
+ * not exist here, and a test fails on any that reappear in source.
+ *
+ * Every colour is declared once, with `light-dark(<light>, <dark>)`. Which
+ * half applies follows `color-scheme`: the operating system's by default, or
+ * the user's explicit choice via `data-theme` on <html> (see lib/theme). Keep
+ * one declaration per line — the contrast test in src/test reads this file.
+ *
+ * Four colour families, never mixed:
+ *   - neutrals    surfaces, text, lines — structure.
+ *   - accent      SentinelOps' blue-violet — interaction only: primary
+ *                 actions, links, the current place, focus, selection.
+ *   - feedback    danger / warning / success / info — outcomes of what the
+ *                 user just did (a failed request, a created invitation).
+ *   - signal      operational state of the systems SentinelOps watches.
+ *                 Reserved: nothing uses these until incidents and services
+ *                 exist, and they are named by intensity, not by a severity
+ *                 model that has not been designed yet.
+ * No feedback or signal hue sits near the accent's, which is why info is
+ * teal-cyan rather than blue.
+ */
+@theme {
+  --color-*: initial;
+
+  /* Surfaces */
+  --color-canvas: light-dark(#f8f9fb, #0d1118);
+  --color-surface: light-dark(#ffffff, #121722);
+  --color-sunken: light-dark(#f0f2f6, #0a0d13);
+  --color-chrome: light-dark(#f1f3f7, #0a0e15);
+  --color-field: light-dark(#ffffff, #0a0d13);
+  --color-hover: light-dark(#eceff4, #171d29);
+  --color-selected: light-dark(#ecebff, #1c1a3c);
+
+  /* Text */
+  --color-fg: light-dark(#0e1219, #e8ebf1);
+  --color-fg-muted: light-dark(#454e5e, #a9b1bf);
+  --color-fg-subtle: light-dark(#5e6778, #848ea0);
+  --color-fg-disabled: light-dark(#a0a8b5, #4c5567);
+
+  /* Lines */
+  --color-line-subtle: light-dark(#e6e9ee, #1a202c);
+  --color-line: light-dark(#d8dde4, #232a37);
+  --color-line-strong: light-dark(#b9c0cb, #343d4d);
+  --color-line-control: light-dark(#838c9b, #5e697d);
+
+  /* Interaction — the SentinelOps accent */
+  --color-accent: light-dark(#5b47fb, #6655ff);
+  --color-accent-hover: light-dark(#4c37ee, #5a48f5);
+  --color-accent-pressed: light-dark(#3f2bd6, #4d3ce0);
+  --color-accent-text: light-dark(#4e3af0, #a198ff);
+  --color-accent-subtle: light-dark(#efedff, #1b1840);
+  --color-accent-line: light-dark(#cbc4ff, #3b3491);
+  --color-on-accent: light-dark(#ffffff, #ffffff);
+  --color-focus: light-dark(#5b47fb, #8b7fff);
+
+  /* Feedback */
+  --color-danger-text: light-dark(#b42318, #ff8a80);
+  --color-danger-subtle: light-dark(#fef1f0, #2a1215);
+  --color-danger-line: light-dark(#f4c7c3, #5c2126);
+  --color-danger-solid: light-dark(#c8322a, #e0453b);
+  --color-warning-text: light-dark(#8a5300, #f5b94a);
+  --color-warning-subtle: light-dark(#fff6e5, #2a1f0b);
+  --color-warning-line: light-dark(#f2d49b, #5a4418);
+  --color-warning-solid: light-dark(#c77c02, #e0a23a);
+  --color-success-text: light-dark(#146c43, #5fd39a);
+  --color-success-subtle: light-dark(#edf8f2, #0e2419);
+  --color-success-line: light-dark(#b5dec8, #1e4d35);
+  --color-success-solid: light-dark(#1a8a55, #3fb57c);
+  --color-info-text: light-dark(#0b6a83, #5cc8e0);
+  --color-info-subtle: light-dark(#eaf6f9, #0b2229);
+  --color-info-line: light-dark(#b5dde7, #1b4a56);
+  --color-info-solid: light-dark(#0e7f9c, #3fb0cb);
+
+  /* Signal — reserved for operational state; unused until the domain exists */
+  --color-signal-critical: light-dark(#c8322a, #f0564b);
+  --color-signal-high: light-dark(#c2560c, #f28a3c);
+  --color-signal-caution: light-dark(#a86a00, #e8b04a);
+  --color-signal-nominal: light-dark(#1a8a55, #46c486);
+  --color-signal-advisory: light-dark(#0e7f9c, #4cc0da);
+  --color-signal-inactive: light-dark(#6b7485, #7d8799);
+
+  /*
+   * The situation strip: an ink band in both themes. Its colours come from
+   * its level (see situation-strip.tsx); only `neutral` exists today.
+   */
+  --color-ink: light-dark(#11151d, #06080c);
+  --color-ink-line: light-dark(#262c38, #1a202b);
+  --color-ink-hover: light-dark(#1f2530, #121720);
+  --color-ink-fg: light-dark(#e8ebf1, #e1e5ec);
+  --color-ink-muted: light-dark(#98a1b2, #8a93a4);
+  --color-ink-accent: light-dark(#9d92ff, #9d92ff);
+
+  /* Behind a modal drawer. */
+  --color-scrim: light-dark(rgb(14 18 25 / 0.45), rgb(0 0 0 / 0.6));
+
+  /* Type: compact operational scale. 14px is body copy. */
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1rem;
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base: 0.875rem;
+  --text-base--line-height: 1.25rem;
+  --text-lg: 1rem;
+  --text-lg--line-height: 1.5rem;
+  --text-xl: 1.25rem;
+  --text-xl--line-height: 1.75rem;
+  --text-2xl: 1.5rem;
+  --text-2xl--line-height: 2rem;
+
+  /* Small radii: this is an instrument, not a toy. */
+  --radius-*: initial;
+  --radius-xs: 2px;
+  --radius-sm: 3px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+  --radius-full: 9999px;
+
+  /* Borders and rules carry structure; shadows are for overlays only. */
+  --shadow-*: initial;
+  --shadow-overlay:
+    0 16px 40px -12px light-dark(rgb(14 18 25 / 0.28), rgb(0 0 0 / 0.6)),
+    0 0 0 1px light-dark(rgb(14 18 25 / 0.06), rgb(255 255 255 / 0.04));
+  --shadow-control: inset 0 -1px 0 light-dark(rgb(14 18 25 / 0.07), rgb(0 0 0 / 0.35));
+
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --duration-fast: 120ms;
+
+  /* Shell geometry */
+  --spacing-strip: 2.5rem;
+  --spacing-rail: 14.5rem;
+}
+
+/* next/font exposes the families as variables on <html>. */
+@theme inline {
+  --font-sans:
+    var(--font-plex-sans), ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+  --font-mono:
+    var(--font-plex-mono), ui-monospace, "Cascadia Mono", "Consolas", monospace;
+}
+
+/*
+ * The console's one typographic signature: small, spaced, upper-case mono.
+ * For column headers and eyebrows only — never for sentences.
+ */
+@utility label-caps {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  line-height: var(--text-2xs--line-height);
+  font-weight: 500;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+/* Identifiers, timestamps, durations, metrics. */
+@utility data {
+  font-family: var(--font-mono);
+  font-size: 0.78125rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+@layer base {
+  :root {
+    color-scheme: light dark;
+  }
+
+  :root[data-theme="light"] {
+    color-scheme: light;
+  }
+
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+  }
+
+  html {
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-fg);
+    font-size: var(--text-base);
+    line-height: var(--text-base--line-height);
+  }
+
+  ::selection {
+    background-color: var(--color-accent-subtle);
+    color: var(--color-fg);
+  }
+
+  /*
+   * One focus treatment everywhere. An outline, not a box-shadow: shadows
+   * vanish in Windows forced-colours mode and outlines do not.
+   */
+  :focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+
+  button:not(:disabled),
+  [role="tab"],
+  select:not(:disabled),
+  summary {
+    cursor: pointer;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}

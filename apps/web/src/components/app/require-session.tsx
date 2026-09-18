@@ -8,6 +8,22 @@ import { PageSpinner } from "@/components/ui/spinner";
 import { useSession } from "@/lib/auth/session-provider";
 
 import { SessionUnavailable } from "./session-unavailable";
+import { StripFrame } from "./situation";
+import { ThemeControl } from "./theme-control";
+
+/**
+ * The workspace's chrome before the workspace can render: the same strip, so
+ * restoring a session looks like the product from the first paint rather
+ * than a blank page the shell later pops into.
+ */
+function SessionFallback({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex min-h-dvh flex-col bg-canvas">
+      <StripFrame alignToRail trailing={<ThemeControl />} />
+      <main className="flex flex-1 flex-col">{children}</main>
+    </div>
+  );
+}
 
 /**
  * Renders its children only for a signed-in user, and sends anyone else to
@@ -34,7 +50,10 @@ export function RequireSession({ children }: { children: ReactNode }) {
   }, [router, pathname, status, signOutReason]);
 
   if (status === "authenticated") return children;
-  if (status === "unavailable") return <SessionUnavailable />;
 
-  return <PageSpinner />;
+  return (
+    <SessionFallback>
+      {status === "unavailable" ? <SessionUnavailable /> : <PageSpinner />}
+    </SessionFallback>
+  );
 }

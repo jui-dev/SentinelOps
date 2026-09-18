@@ -4,56 +4,62 @@ import { useQuery } from "@tanstack/react-query";
 
 import { ErrorAlert } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
+import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
+import { IsoDate } from "@/components/ui/timestamp";
 import { listMemberships } from "@/lib/api/endpoints";
 import { queryKeys } from "@/lib/api/query-keys";
+import { useCurrentUser } from "@/lib/auth/session-provider";
 
-import { formatDate, formatRole } from "./format";
+import { formatRole } from "./format";
 import { useOrganizationId } from "./organization-scope";
 
-export function MembershipList() {
-  const organizationId = useOrganizationId();
-  const memberships = useQuery({
+export const useMemberships = (organizationId: string) =>
+  useQuery({
     queryKey: queryKeys.memberships(organizationId),
     queryFn: () => listMemberships(organizationId),
   });
+
+export function MembershipList() {
+  const organizationId = useOrganizationId();
+  const memberships = useMemberships(organizationId);
+  const me = useCurrentUser();
 
   if (memberships.isError) return <ErrorAlert error={memberships.error} />;
   if (!memberships.data) return <Spinner label="Loading members…" />;
 
   return (
-    <section className="flex flex-col gap-3">
-      <h2 className="text-lg font-semibold">
-        Members{" "}
-        <span className="text-sm font-normal text-slate-500">
-          ({memberships.data.length})
-        </span>
-      </h2>
-      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-slate-50 text-slate-600">
-            <tr>
-              <th scope="col" className="px-4 py-2 font-medium">Name</th>
-              <th scope="col" className="px-4 py-2 font-medium">Email</th>
-              <th scope="col" className="px-4 py-2 font-medium">Role</th>
-              <th scope="col" className="px-4 py-2 font-medium">Joined</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-200">
-            {memberships.data.map((membership) => (
-              <tr key={membership.id}>
-                <td className="px-4 py-2">{membership.user.name}</td>
-                <td className="px-4 py-2 text-slate-600">
-                  {membership.user.email}
-                </td>
-                <td className="px-4 py-2">{formatRole(membership.role)}</td>
-                <td className="px-4 py-2 text-slate-600">
-                  {formatDate(membership.createdAt)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
+    <Table label="Members">
+      <THead>
+        <TR>
+          <TH>Name</TH>
+          <TH className="hidden sm:table-cell">Email</TH>
+          <TH>Role</TH>
+          <TH className="hidden sm:table-cell">Joined</TH>
+        </TR>
+      </THead>
+      <TBody>
+        {memberships.data.map((membership) => (
+          <TR key={membership.id}>
+            <TD>
+              <span className="font-medium">{membership.user.name}</span>
+              {membership.user.id === me.data?.id && (
+                <span className="label-caps ml-2 text-fg-subtle">You</span>
+              )}
+              {/* On narrow screens the email folds under the name. */}
+              <span className="block truncate text-xs text-fg-muted sm:hidden">
+                {membership.user.email}
+              </span>
+            </TD>
+            <TD kind="muted" className="hidden sm:table-cell">
+              {membership.user.email}
+            </TD>
+            <TD>{formatRole(membership.role)}</TD>
+            <TD kind="data" className="hidden sm:table-cell">
+              <IsoDate value={membership.createdAt} />
+            </TD>
+          </TR>
+        ))}
+      </TBody>
+    </Table>
   );
 }

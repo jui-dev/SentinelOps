@@ -2,14 +2,18 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { useParams, usePathname } from "next/navigation";
+import { useParams } from "next/navigation";
 import { createContext, useContext, useEffect } from "react";
 import type { ReactNode } from "react";
 
 import { ErrorAlert } from "@/components/ui/alert";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageBody } from "@/components/ui/page";
 import { PageSpinner } from "@/components/ui/spinner";
-import { Permission } from "@/lib/api/contracts";
-import type { OrganizationDetailResponse } from "@/lib/api/contracts";
+import type {
+  MembershipResponse,
+  OrganizationDetailResponse,
+} from "@/lib/api/contracts";
 import { getOrganization } from "@/lib/api/endpoints";
 import { isApiError } from "@/lib/api/errors";
 import { queryKeys } from "@/lib/api/query-keys";
@@ -28,6 +32,42 @@ export const organizationQuery = (organizationId: string) => ({
   queryKey: queryKeys.organization(organizationId),
   queryFn: () => getOrganization(organizationId),
 });
+
+/** A malformed escape in the URL names no organization; it must not throw. */
+const decodeSegment = (segment: string): string | null => {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return null;
+  }
+};
+
+/** The caller's membership whose organization has this URL segment as slug. */
+export const findMembershipBySlug = (
+  memberships: MembershipResponse[],
+  segment: string,
+): MembershipResponse | undefined => {
+  const slug = decodeSegment(segment);
+
+  return slug === null
+    ? undefined
+    : memberships.find(({ organization }) => organization.slug === slug);
+};
+
+/**
+ * The caller's membership in the organization the current route names, or
+ * `undefined` outside an organization route, while `me` loads, or when the
+ * slug is not one of theirs. For chrome outside the scope — the navigation
+ * rail and the situation strip — which must agree with it.
+ */
+export const useRouteMembership = (): MembershipResponse | undefined => {
+  const { orgSlug } = useParams<{ orgSlug?: string }>();
+  const me = useCurrentUser();
+
+  return orgSlug && me.data
+    ? findMembershipBySlug(me.data.memberships, orgSlug)
+    : undefined;
+};
 
 /** The current organization's id. Only valid inside `OrganizationScope`. */
 export const useOrganizationId = (): string => {
@@ -59,59 +99,42 @@ export const useCan = (permission: string): boolean =>
 
 export function OrganizationNotFound() {
   return (
-    <section className="flex flex-col items-start gap-3">
-      <h1 className="text-xl font-semibold">Organization not found</h1>
-      <p className="text-sm text-slate-600">
-        It does not exist, or you are not a member of it.
-      </p>
-      <Link href="/orgs" className="text-sm font-medium underline">
-        Your organizations
-      </Link>
-    </section>
+    <PageBody width="form">
+      <EmptyState
+        className="mt-6"
+        headingLevel={1}
+        title="Organization not found"
+        action={
+          <Link
+            href="/orgs"
+            className="text-sm font-medium text-accent-text underline-offset-2 hover:underline"
+          >
+            Your organizations
+          </Link>
+        }
+      >
+        <p>
+          It does not exist, or you are not a member of it. If you were
+          removed or the link is old, ask an organization admin for access.
+        </p>
+      </EmptyState>
+    </PageBody>
   );
 }
 
-function OrganizationTabs({ slug }: { slug: string }) {
-  const pathname = usePathname();
-  const canUpdate = useCan(Permission.ORGANIZATION_UPDATE);
-  const base = `/orgs/${encodeURIComponent(slug)}`;
-  const tabs = [
-    { href: base, label: "Overview" },
-    { href: `${base}/members`, label: "Members" },
-    ...(canUpdate ? [{ href: `${base}/settings`, label: "Settings" }] : []),
-  ];
-
+function ScopeError({ error }: { error: unknown }) {
   return (
-    <nav aria-label="Organization" className="flex gap-1 border-b border-slate-200">
-      {tabs.map(({ href, label }) => {
-        const current = pathname === href;
-
-        return (
-          <Link
-            key={href}
-            href={href}
-            aria-current={current ? "page" : undefined}
-            className={`-mb-px border-b-2 px-3 py-2 text-sm ${
-              current
-                ? "border-slate-900 font-medium text-slate-900"
-                : "border-transparent text-slate-600 hover:text-slate-900"
-            }`}
-          >
-            {label}
-          </Link>
-        );
-      })}
-    </nav>
+    <PageBody width="form">
+      <ErrorAlert error={error} />
+    </PageBody>
   );
 }
 
 function OrganizationLoaded({
   organizationId,
-  slug,
   children,
 }: {
   organizationId: string;
-  slug: string;
   children: ReactNode;
 }) {
   const queryClient = useQueryClient();
@@ -128,45 +151,24 @@ function OrganizationLoaded({
   }, [vanished, queryClient]);
 
   if (vanished) return <OrganizationNotFound />;
-  if (organization.isError) return <ErrorAlert error={organization.error} />;
+  if (organization.isError) return <ScopeError error={organization.error} />;
   if (!organization.data) return <PageSpinner />;
 
   return (
     <OrganizationIdContext.Provider value={organizationId}>
-      <div className="flex flex-col gap-6">
-        <div className="flex flex-col gap-3">
-          <h1 className="text-2xl font-semibold">{organization.data.name}</h1>
-          <OrganizationTabs slug={slug} />
-        </div>
-        {children}
-      </div>
+      {children}
     </OrganizationIdContext.Provider>
   );
 }
-
-/** A malformed escape in the URL names no organization; it must not throw. */
-const decodeSegment = (segment: string): string | null => {
-  try {
-    return decodeURIComponent(segment);
-  } catch {
-    return null;
-  }
-};
 
 export function OrganizationScope({ children }: { children: ReactNode }) {
   const { orgSlug } = useParams<{ orgSlug: string }>();
   const me = useCurrentUser();
 
-  if (me.isError) return <ErrorAlert error={me.error} />;
+  if (me.isError) return <ScopeError error={me.error} />;
   if (!me.data) return <PageSpinner />;
 
-  const slug = decodeSegment(orgSlug);
-  const membership =
-    slug === null
-      ? undefined
-      : me.data.memberships.find(
-          ({ organization }) => organization.slug === slug,
-        );
+  const membership = findMembershipBySlug(me.data.memberships, orgSlug);
 
   if (!membership) return <OrganizationNotFound />;
 
@@ -174,7 +176,6 @@ export function OrganizationScope({ children }: { children: ReactNode }) {
     <OrganizationLoaded
       key={membership.organization.id}
       organizationId={membership.organization.id}
-      slug={membership.organization.slug}
     >
       {children}
     </OrganizationLoaded>

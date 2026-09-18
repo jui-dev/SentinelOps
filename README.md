@@ -33,6 +33,11 @@ deliberately, and this README is updated as capabilities actually land.
   an organization picker, per-organization overview, member list, invitations, and
   rename — each offered only when the API reports the permission — and an invitation
   acceptance page. See [Web application](#web-application)
+- The web app's UI and design-system foundation: a full-viewport operations workspace
+  (situation strip and navigation rail), light and dark themes from semantic design
+  tokens, IBM Plex typography, and accessible primitives — with contrast and axe-core
+  checks in its tests. It styles only the screens that exist; operational screens are
+  designed with their domain models. See [`apps/web/README.md`](apps/web/README.md#ui-foundation)
 - Unit, end-to-end, and integration test suites for the API, and unit tests for the web app
 
 **What does not exist yet**
@@ -1232,7 +1237,7 @@ address is written.
 `apps/web` is a Next.js 16 App Router app. Authenticated pages render in the browser and
 call the API directly, using the CORS policy described in
 [Configuration](#configuration); there is no proxy or backend-for-frontend. Working on the
-app — its layout, request kinds, and query keys — is covered in
+app — its layout, request kinds, query keys, and UI foundation — is covered in
 [`apps/web/README.md`](apps/web/README.md).
 
 ### How the browser holds a session

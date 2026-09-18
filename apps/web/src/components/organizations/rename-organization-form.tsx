@@ -7,6 +7,7 @@ import type { FormEvent } from "react";
 import { Alert, ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
+import { SettingRow } from "@/components/ui/setting-row";
 import { ApiErrorCode, Permission } from "@/lib/api/contracts";
 import type { OrganizationDetailResponse } from "@/lib/api/contracts";
 import { updateOrganization } from "@/lib/api/endpoints";
@@ -53,6 +54,7 @@ export function RenameOrganizationForm() {
     return (
       <Alert tone="info">
         You do not have permission to change this organization&apos;s settings.
+        An owner or admin can change them.
       </Alert>
     );
   }
@@ -71,36 +73,46 @@ export function RenameOrganizationForm() {
   const fields = fieldErrorsOf(rename.error);
 
   return (
-    <form
-      onSubmit={onSubmit}
-      noValidate
-      className="flex max-w-md flex-col gap-4 rounded-lg border border-slate-200 bg-white p-4"
+    <SettingRow
+      title="Organization name"
+      description={
+        <p>
+          Shown to members across SentinelOps. The URL name,{" "}
+          <span className="data text-fg">{organization.slug}</span>, does not
+          change, so existing links keep working.
+        </p>
+      }
     >
-      <h2 className="text-lg font-semibold">Organization name</h2>
-      {rename.isError && (
-        <ErrorAlert
-          error={rename.error}
-          message={
-            denied
-              ? "You do not have permission to rename this organization."
-              : undefined
-          }
+      <form
+        onSubmit={onSubmit}
+        noValidate
+        className="flex max-w-md flex-col gap-4"
+      >
+        {rename.isError && (
+          <ErrorAlert
+            error={rename.error}
+            message={
+              denied
+                ? "You do not have permission to rename this organization."
+                : undefined
+            }
+          />
+        )}
+        {saved && <Alert tone="success">Organization renamed.</Alert>}
+        <Field
+          label="Name"
+          name="name"
+          defaultValue={organization.name}
+          required
+          maxLength={100}
+          error={fields.name}
         />
-      )}
-      {saved && <Alert tone="info">Organization renamed.</Alert>}
-      <Field
-        label="Name"
-        name="name"
-        defaultValue={organization.name}
-        required
-        maxLength={100}
-        error={fields.name}
-      />
-      <div>
-        <Button type="submit" disabled={rename.isPending}>
-          {rename.isPending ? "Saving…" : "Save"}
-        </Button>
-      </div>
-    </form>
+        <div>
+          <Button type="submit" disabled={rename.isPending}>
+            {rename.isPending ? "Saving…" : "Save"}
+          </Button>
+        </div>
+      </form>
+    </SettingRow>
   );
 }

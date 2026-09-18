@@ -41,14 +41,86 @@ src/
 │   ├── invite/               invitation acceptance — outside both groups
 │   └── page.tsx              `/` redirects to login, the only org, or /orgs
 ├── components/
-│   ├── ui/                   Button, Field, Alert, Spinner — nothing more yet
-│   ├── app/, auth/, organizations/, invitations/
-└── lib/
-    ├── config/env.ts         validated public config
-    ├── api/                  transport, the two request kinds, endpoints, contracts
-    ├── auth/                 token store, refresh coordination, session provider
-    └── query/                the QueryClient defaults
+│   ├── ui/                   primitives — see UI foundation below
+│   ├── app/                  workspace shell, rail, situation strip, auth frame, theme control
+│   ├── auth/, organizations/, invitations/
+├── lib/
+│   ├── config/env.ts         validated public config
+│   ├── api/                  transport, the two request kinds, endpoints, contracts
+│   ├── auth/                 token store, refresh coordination, session provider
+│   ├── query/                the QueryClient defaults
+│   └── theme/                light/dark preference and its pre-paint script
+└── test/                     API fakes, axe helper, accessibility and design-token suites
 ```
+
+## UI foundation
+
+The design-system foundation for SentinelOps: an operations console, not a dashboard
+template — a full-viewport workspace, rules and tables rather than cards, compact type,
+and colour that means something.
+
+It is a foundation, not the finished product. It is applied only to what exists today —
+sign-in, organizations, members, invitations, settings. Operational screens (incidents,
+services, teams, on-call, activity) are designed when their domain models are, and extend
+this system — new navigation entries, the reserved signal colours, situation-strip levels,
+denser table and record layouts — rather than being mocked up in advance. No screen shows
+placeholder operational data. The pieces:
+
+| | |
+| --- | --- |
+| **Workspace** | `WorkspaceShell`: an ink **situation strip** across the full width, the navigation **rail** beneath it on the left, and `main` — the only thing that scrolls. Below 1024px the rail becomes a drawer (a native `<dialog>`) opened from the strip. |
+| **Situation strip** | Shows where you are and the time in UTC. Its colour comes from a *level* supplied by `SituationContext`; only `neutral` exists, because nothing operational is observed yet. A live source will add levels there — the strip claims no state it cannot see. |
+| **Navigation** | Data, in [`components/app/navigation.ts`](src/components/app/navigation.ts). Only shipped routes are listed — no placeholders for Incidents, Services, or Teams. An item may `require` a permission; like `useCan`, that is advice, and the API authorizes regardless. |
+| **Pages** | `PageHeader` (eyebrow, the page's single `<h1>`, description, actions) then `PageBody` (`full` for lists, `form` for settings). Parts of a page are `Section`s, separated by space and rules. |
+| **Primitives** | `Button` (primary / secondary / quiet / destructive — destructive is outlined; a solid red is for high-consequence confirmations, later), `Field`, `Select`, `CopyField`, `Alert` / `ErrorAlert`, `Table` (+ `THead`, `TR`, `TH`, `TD`, `TableEmpty`), `Status`, `RecordList`, `SettingRow`, `EmptyState`, `Tabs`, `IsoDate`, `Spinner`. |
+
+### Colour tokens
+
+Every colour is a semantic token in [`globals.css`](src/app/globals.css), declared once
+as `light-dark(<light>, <dark>)`. Tailwind's default palette is **removed**, so
+`bg-slate-50` does not exist, and there is no `dark:` variant — the token changes, not
+the class. Four families, never mixed:
+
+- **Neutrals** — `canvas`, `surface`, `sunken`, `chrome`, `field`, `fg`, `fg-muted`, `fg-subtle`, `line-*`: structure.
+- **Accent** — the blue-violet `accent*`, `focus`, `selected`: interaction only — primary actions, links, the current place, focus.
+- **Feedback** — `danger-*`, `warning-*`, `success-*`, `info-*`: the outcome of what the user just did.
+- **Signal** — `signal-*`: the operational state of watched systems. Reserved and unused until incidents and services exist; named by intensity, not by a severity model that has not been designed.
+
+State is never colour alone: `Status` pairs a glyph whose *shape* differs by tone with
+words, alerts carry a glyph and a rule, the current rail item has a bar and weight.
+
+### Type
+
+IBM Plex Sans for text and IBM Plex Mono for data, self-hosted by `next/font`. Body copy
+is 14px. Identifiers, slugs, request ids, and dates in tables use the `data` utility (mono,
+tabular figures); column headers and eyebrows use `label-caps`. Dense tables show dates
+as ISO calendar dates **in UTC** (`2026-09-18`), matching the strip's clock, with the
+local date and time on hover; prose uses a localized long form.
+
+### Themes
+
+Light, dark, or the system's, chosen in the strip and stored per device in
+`localStorage` (`sentinelops.theme`). With no stored choice nothing is set and
+`color-scheme` follows the OS — no JavaScript needed. An explicit choice is
+`data-theme` on `<html>`, applied **before first paint** by a constant inline script
+([`lib/theme/theme-script.ts`](src/lib/theme/theme-script.ts)) so there is no flash; a
+future CSP can allow it by hash. `ThemeSync` re-applies it after React's development-only
+Strict Mode remount, and a change in one tab reaches the others.
+
+### What the tests hold you to
+
+- [`design-tokens.test.ts`](src/test/design-tokens.test.ts) checks WCAG AA contrast for
+  every token pair the components combine — text 4.5:1, controls and marks 3:1 — in
+  **both** themes, and fails on any raw palette class or `dark:` variant in source.
+  jsdom cannot measure contrast on rendered pages; this is how it is checked instead.
+- [`accessibility.test.tsx`](src/test/accessibility.test.tsx) runs axe-core over every
+  screen in its real frame.
+- Component tests cover the Tabs keyboard model, the drawer, rail permission gating,
+  and the theme mechanism.
+
+A `className` passed to a primitive is for layout additions (margins, a grid), never to
+override its colour, padding, or gap: `cx` joins classes, it does not merge them, so two
+classes for one property resolve by stylesheet order. Use the primitive's props instead.
 
 ## The API client
 

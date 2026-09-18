@@ -1,12 +1,15 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useId, useState } from "react";
+import { useState } from "react";
 import type { FormEvent } from "react";
 
-import { ErrorAlert } from "@/components/ui/alert";
+import { Alert, ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { CopyField } from "@/components/ui/copy-field";
 import { Field } from "@/components/ui/field";
+import { Section } from "@/components/ui/page";
+import { Select } from "@/components/ui/select";
 import { ApiErrorCode, Permission } from "@/lib/api/contracts";
 import type {
   CreateInvitationRequest,
@@ -93,57 +96,39 @@ function IssuedInvitation({
   issued: IssuedLink;
   onDone: () => void;
 }) {
-  const linkId = useId();
-  const [copied, setCopied] = useState<boolean | null>(null);
-
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(issued.link);
-      setCopied(true);
-    } catch {
-      setCopied(false);
-    }
-  };
-
   return (
-    <div className="flex flex-col gap-3 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-950">
-      <p className="font-medium">Invitation created for {issued.email}.</p>
-      <div className="flex flex-col gap-1">
-        <label htmlFor={linkId} className="font-medium">
-          Invitation link
-        </label>
-        <div className="flex flex-wrap gap-2">
-          <input
-            id={linkId}
-            readOnly
-            value={issued.link}
-            onFocus={(event) => event.currentTarget.select()}
-            className="min-w-0 flex-1 rounded-md border border-emerald-300 bg-white px-2 py-1.5 font-mono text-xs text-slate-900"
-          />
-          <Button variant="secondary" onClick={copy}>
-            {copied ? "Copied" : "Copy link"}
-          </Button>
-        </div>
-        {copied === false && (
-          <p className="text-xs">
-            Copying failed. Select the link and copy it manually.
+    <Alert
+      tone="success"
+      title={
+        <>
+          Invitation created for{" "}
+          <span className="font-semibold">{issued.email}</span>.
+        </>
+      }
+    >
+      <div className="flex flex-col gap-3 pt-1">
+        <CopyField
+          label="Invitation link"
+          value={issued.link}
+          copyLabel="Copy link"
+        />
+        <p className="text-fg-muted">
+          Anyone with this link may be able to accept this invitation. Share it
+          only with the intended recipient. It expires in 7 days, and this is
+          the only time it is shown.
+        </p>
+        {issued.replacedExisting && (
+          <p className="text-fg-muted">
+            The previous link for this email no longer works.
           </p>
         )}
+        <div>
+          <Button variant="secondary" size="sm" onClick={onDone}>
+            Done
+          </Button>
+        </div>
       </div>
-      <p>
-        Anyone with this link may be able to accept this invitation. Share it
-        only with the intended recipient. It expires in 7 days, and this is
-        the only time it is shown.
-      </p>
-      {issued.replacedExisting && (
-        <p>The previous link for this email no longer works.</p>
-      )}
-      <div>
-        <Button variant="secondary" onClick={onDone}>
-          Done
-        </Button>
-      </div>
-    </div>
+    </Alert>
   );
 }
 
@@ -152,7 +137,6 @@ export function InviteMemberForm() {
   const canManage = useCan(Permission.INVITATIONS_MANAGE);
   const create = useCreateInvitation(organizationId);
   const [issued, setIssued] = useState<IssuedLink | null>(null);
-  const roleId = useId();
 
   if (!canManage) return null;
 
@@ -183,12 +167,15 @@ export function InviteMemberForm() {
   const fields = fieldErrorsOf(create.error);
 
   return (
-    <section className="flex flex-col gap-3">
-      <h2 className="text-lg font-semibold">Invite a member</h2>
+    <Section
+      title="Invite a member"
+      level={3}
+      description="You'll get a link to share with them. Inviting an email that already has an open invitation replaces it."
+    >
       <form
         onSubmit={onSubmit}
         noValidate
-        className="flex max-w-xl flex-col gap-4 rounded-lg border border-slate-200 bg-white p-4"
+        className="flex max-w-2xl flex-col gap-4"
       >
         {create.isError && (
           <ErrorAlert error={create.error} message={messageFor(create.error)} />
@@ -196,43 +183,33 @@ export function InviteMemberForm() {
         {issued && (
           <IssuedInvitation issued={issued} onDone={() => setIssued(null)} />
         )}
-        <div className="flex flex-wrap items-end gap-3">
+        <div className="flex flex-wrap items-start gap-3">
           <div className="min-w-56 flex-1">
             <Field
               label="Email"
               name="email"
               type="email"
               autoComplete="off"
+              placeholder="name@company.com"
               required
               error={fields.email}
             />
           </div>
-          <div className="flex flex-col gap-1">
-            <label htmlFor={roleId} className="text-sm font-medium text-slate-800">
-              Role
-            </label>
-            <select
-              id={roleId}
-              name="role"
-              defaultValue="MEMBER"
-              className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
-            >
+          <div className="w-36">
+            <Select label="Role" name="role" defaultValue="MEMBER">
               {ROLES.map(({ value, label }) => (
                 <option key={value} value={value}>
                   {label}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
-          <Button type="submit" disabled={create.isPending}>
+          {/* Aligned with the controls, below their labels. */}
+          <Button type="submit" disabled={create.isPending} className="mt-6.5">
             {create.isPending ? "Creating…" : "Create invitation"}
           </Button>
         </div>
-        <p className="text-xs text-slate-500">
-          You&apos;ll get a link to share with them. Inviting an email that
-          already has an open invitation replaces it.
-        </p>
       </form>
-    </section>
+    </Section>
   );
 }

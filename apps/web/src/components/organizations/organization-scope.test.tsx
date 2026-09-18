@@ -1,4 +1,4 @@
-import { act, renderHook, screen } from "@testing-library/react";
+import { act, renderHook, screen, within } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -19,11 +19,11 @@ import {
 import type { SentRequest } from "@/test/api";
 import { renderWithSession } from "@/test/render";
 
+import { WorkspaceShell } from "@/components/app/workspace-shell";
+
 import { OrganizationScope } from "./organization-scope";
-import {
-  RenameOrganizationForm,
-  useRenameOrganization,
-} from "./rename-organization-form";
+import { OrganizationSettings } from "./organization-settings";
+import { useRenameOrganization } from "./rename-organization-form";
 
 const navigation = vi.hoisted(() => ({ slug: "acme-ops" }));
 
@@ -52,11 +52,15 @@ const signedInApi = (
     }
   });
 
+// The Settings page inside the real workspace shell, whose rail decides
+// whether to offer Settings at all.
 const renderSettings = () =>
   renderWithSession(
-    <OrganizationScope>
-      <RenameOrganizationForm />
-    </OrganizationScope>,
+    <WorkspaceShell>
+      <OrganizationScope>
+        <OrganizationSettings />
+      </OrganizationScope>
+    </WorkspaceShell>,
   );
 
 describe("OrganizationScope", () => {
@@ -93,8 +97,9 @@ describe("OrganizationScope", () => {
 
     renderSettings();
 
-    expect(await screen.findByRole("heading", { name: organization.name }))
-      .toBeDefined();
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Settings" }),
+    ).toBeDefined();
     expect(
       requests.find((r) => r.path === `/organizations/${organization.id}`),
     ).toMatchObject({
@@ -120,13 +125,18 @@ describe("OrganizationScope", () => {
   });
 
   describe("settings", () => {
-    it("offers the rename form and Settings tab when the API reports organization:update", async () => {
+    it("offers the rename form and the Settings link when the API reports organization:update", async () => {
       signedInApi(() => jsonResponse(200, organizationDetail(FULL)));
 
       renderSettings();
 
       expect(await screen.findByLabelText("Name")).toBeDefined();
-      expect(screen.getByRole("link", { name: "Settings" })).toBeDefined();
+      expect(
+        within(screen.getByRole("navigation", { name: "Primary" })).getByRole(
+          "link",
+          { name: "Settings" },
+        ),
+      ).toBeDefined();
     });
 
     it("hides both when the API does not report organization:update", async () => {

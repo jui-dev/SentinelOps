@@ -7,11 +7,13 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import type { FormEvent, ReactNode } from "react";
 
 import { SessionUnavailable } from "@/components/app/session-unavailable";
+import { AuthHeading } from "@/components/auth/auth-heading";
 import { formatDate, formatRole } from "@/components/organizations/format";
 import { Alert, ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Spinner } from "@/components/ui/spinner";
+import { Tabs } from "@/components/ui/tabs";
 import { ApiErrorCode } from "@/lib/api/contracts";
 import type { InvitationLookupResponse } from "@/lib/api/contracts";
 import { acceptInvitation, lookupInvitation } from "@/lib/api/endpoints";
@@ -91,12 +93,11 @@ const useInvitationLookup = (token: string) => {
 function InvalidInvitation() {
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-xl font-semibold">Invitation not available</h1>
-      <p className="text-sm text-slate-600">
-        This invitation link is invalid, has expired, or is no longer active.
-        Ask the person who invited you for a new link.
-      </p>
-      <Link href="/" className="text-sm font-medium underline">
+      <AuthHeading
+        title="Invitation not available"
+        description="This invitation link is invalid, has expired, or is no longer active. Ask the person who invited you for a new link."
+      />
+      <Link href="/" className="text-sm font-medium text-accent-text underline-offset-2 hover:underline">
         Go to SentinelOps
       </Link>
     </div>
@@ -111,17 +112,16 @@ function Offer({
   children: ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-1">
-        <h1 className="text-xl font-semibold">
+        <p className="label-caps text-fg-subtle">Invitation</p>
+        <h1 className="text-xl font-semibold tracking-[-0.01em] text-fg">
           Join {invitation.organization.name}
         </h1>
-        <p className="text-sm text-slate-600">
+        <p className="text-sm text-fg-muted">
           {invitation.invitedBy.name} invited{" "}
-          <span className="font-medium text-slate-900">
-            {invitation.email}
-          </span>{" "}
-          to join as {formatRole(invitation.role)}. The invitation expires on{" "}
+          <span className="font-medium text-fg">{invitation.email}</span> to
+          join as {formatRole(invitation.role)}. The invitation expires on{" "}
           {formatDate(invitation.expiresAt)}.
         </p>
       </div>
@@ -196,8 +196,15 @@ function CreateAccount({
           }
         />
       )}
-      <Field label="Email" name="email" value={invitation.email} readOnly />
       <Field
+        size="lg"
+        label="Email"
+        name="email"
+        value={invitation.email}
+        readOnly
+      />
+      <Field
+        size="lg"
         label="Your name"
         name="name"
         autoComplete="name"
@@ -206,6 +213,7 @@ function CreateAccount({
         error={fields.name}
       />
       <Field
+        size="lg"
         label="Password"
         name="password"
         type="password"
@@ -216,7 +224,7 @@ function CreateAccount({
         hint="At least 12 characters. A long passphrase is best."
         error={fields.password}
       />
-      <Button type="submit" disabled={submitting}>
+      <Button type="submit" size="lg" disabled={submitting}>
         {submitting ? "Creating account…" : "Create account and join"}
       </Button>
     </form>
@@ -268,6 +276,7 @@ function SignIn({
         />
       )}
       <Field
+        size="lg"
         label="Email"
         name="email"
         type="email"
@@ -276,18 +285,24 @@ function SignIn({
         required
       />
       <Field
+        size="lg"
         label="Password"
         name="password"
         type="password"
         autoComplete="current-password"
         required
       />
-      <Button type="submit" disabled={submitting}>
+      <Button type="submit" size="lg" disabled={submitting}>
         {submitting ? "Logging in…" : "Log in"}
       </Button>
     </form>
   );
 }
+
+const MODES = [
+  { value: "create", label: "Create an account" },
+  { value: "sign-in", label: "I have an account" },
+] as const;
 
 function SignedOut({
   token,
@@ -301,31 +316,16 @@ function SignedOut({
   const [mode, setMode] = useState<"create" | "sign-in">("create");
   const [notice, setNotice] = useState<string>();
 
-  const tab = (value: typeof mode, label: string) => (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={mode === value}
-      onClick={() => {
+  return (
+    <Tabs
+      label="How to accept"
+      tabs={MODES}
+      value={mode}
+      onChange={(value) => {
         setMode(value);
         setNotice(undefined);
       }}
-      className={`-mb-px border-b-2 px-3 py-2 text-sm ${
-        mode === value
-          ? "border-slate-900 font-medium text-slate-900"
-          : "border-transparent text-slate-600 hover:text-slate-900"
-      }`}
     >
-      {label}
-    </button>
-  );
-
-  return (
-    <>
-      <div role="tablist" className="flex gap-1 border-b border-slate-200">
-        {tab("create", "Create an account")}
-        {tab("sign-in", "I have an account")}
-      </div>
       {mode === "create" ? (
         <CreateAccount
           token={token}
@@ -341,7 +341,7 @@ function SignedOut({
       ) : (
         <SignIn invitation={invitation} notice={notice} />
       )}
-    </>
+    </Tabs>
   );
 }
 
@@ -376,7 +376,7 @@ function Join({
         You are already a member of {invitation.organization.name}.{" "}
         <Link
           href={organizationHref(invitation)}
-          className="font-medium underline"
+          className="font-medium text-accent-text underline-offset-2 hover:underline"
         >
           Open it
         </Link>
@@ -389,7 +389,11 @@ function Join({
   return (
     <div className="flex flex-col gap-3">
       {accept.isError && <ErrorAlert error={accept.error} />}
-      <Button onClick={() => accept.mutate()} disabled={accept.isPending}>
+      <Button
+        size="lg"
+        onClick={() => accept.mutate()}
+        disabled={accept.isPending}
+      >
         {accept.isPending ? "Joining…" : `Join ${invitation.organization.name}`}
       </Button>
     </div>

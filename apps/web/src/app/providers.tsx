@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 
 import { SessionProvider } from "@/lib/auth/session-provider";
 import { createQueryClient } from "@/lib/query/query-client";
+import { ThemeSync } from "@/lib/theme/theme";
 
 let browserQueryClient: QueryClient | undefined;
 
@@ -24,6 +25,7 @@ const getQueryClient = (): QueryClient => {
 export function Providers({ children }: { children: ReactNode }) {
   return (
     <QueryClientProvider client={getQueryClient()}>
+      <ThemeSync />
       <SessionProvider>{children}</SessionProvider>
     </QueryClientProvider>
   );

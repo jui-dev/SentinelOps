@@ -16,8 +16,7 @@ import {
 import type { SentRequest } from "@/test/api";
 import { renderWithSession } from "@/test/render";
 
-import { InviteMemberForm } from "./invite-member-form";
-import { OpenInvitationList } from "./open-invitation-list";
+import { MembersView } from "./members-view";
 import { OrganizationScope } from "./organization-scope";
 
 vi.mock("next/navigation", () => ({
@@ -73,16 +72,18 @@ const api = (permissions: string[], handler: Handler = () => undefined) =>
         return jsonResponse(200, organizationDetail(permissions, "RESPONDER"));
       case `GET ${base}/invitations`:
         return jsonResponse(200, [openInvitation, expiredInvitation]);
+      case `GET ${base}/memberships`:
+        return jsonResponse(200, []);
       default:
         return apiError(404);
     }
   });
 
+// The Members page as it ships: the member list, then the invitation parts.
 const renderMembers = () =>
   renderWithSession(
     <OrganizationScope>
-      <InviteMemberForm />
-      <OpenInvitationList />
+      <MembersView />
     </OrganizationScope>,
   );
 
@@ -118,8 +119,9 @@ describe("invitation management", () => {
       renderMembers();
 
       expect(
-        await screen.findByRole("heading", { name: organization.name }),
+        await screen.findByRole("heading", { level: 1, name: "Members" }),
       ).toBeDefined();
+      expect(screen.queryByRole("heading", { name: "Invitations" })).toBeNull();
       expect(screen.queryByRole("heading", { name: "Invite a member" })).toBeNull();
       expect(screen.queryByRole("heading", { name: "Open invitations" })).toBeNull();
       expect(listRequests(requests)).toEqual([]);
@@ -310,7 +312,7 @@ describe("invitation management", () => {
         );
 
         renderMembers();
-        const table = await screen.findByRole("table");
+        const table = await screen.findByRole("table", { name: "Open invitations" });
         await userEvent
           .setup()
           .click(

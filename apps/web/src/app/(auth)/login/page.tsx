@@ -9,7 +9,7 @@ export const metadata: Metadata = { title: "Log in" };
 export default function LoginPage() {
   // The form reads `?next=`, so it renders on the client below this boundary.
   return (
-    <Suspense fallback={<PageSpinner />}>
+    <Suspense fallback={<PageSpinner size="panel" />}>
       <LoginForm />
     </Suspense>
   );

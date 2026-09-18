@@ -1,43 +1,120 @@
+import { CircleAlert } from "lucide-react";
 import { useId } from "react";
-import type { InputHTMLAttributes } from "react";
+import type { InputHTMLAttributes, ReactNode } from "react";
+
+import { cx } from "./cx";
+
+export type ControlSize = "md" | "lg";
+
+/**
+ * The look shared by every text-like control — inputs and selects. A 1px
+ * border at 3:1 against its background, so the control is findable without
+ * relying on anything else (WCAG 1.4.11).
+ */
+export const controlClasses = (size: ControlSize = "md") =>
+  cx(
+    "w-full min-w-0 rounded-md border border-line-control bg-field text-fg transition-colors duration-(--duration-fast)",
+    "placeholder:text-fg-subtle hover:border-fg-subtle",
+    "focus-visible:border-accent focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-focus",
+    "aria-invalid:border-danger-solid",
+    // The attribute, not `:read-only`, which also matches every <select>.
+    "[&[readonly]]:border-line [&[readonly]]:bg-sunken [&[readonly]]:text-fg-muted",
+    "disabled:cursor-not-allowed disabled:border-line disabled:text-fg-disabled",
+    size === "lg" ? "h-9 px-3 text-base" : "h-8 px-2.5 text-base",
+  );
+
+/**
+ * Label, control, hint, and error for one form field, wired together for
+ * assistive technology. Shared by Field and Select.
+ */
+export function FieldFrame({
+  id,
+  label,
+  optional,
+  hint,
+  error,
+  children,
+}: {
+  id: string;
+  label: string;
+  optional?: boolean;
+  hint?: string;
+  error?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label
+        htmlFor={id}
+        className="flex items-baseline gap-2 text-sm font-medium text-fg"
+      >
+        {label}
+        {optional && (
+          <span className="text-xs font-normal text-fg-subtle">Optional</span>
+        )}
+      </label>
+      {children}
+      {hint && (
+        <p id={`${id}-hint`} className="text-xs text-fg-subtle">
+          {hint}
+        </p>
+      )}
+      {error && (
+        <p
+          id={`${id}-error`}
+          className="flex items-start gap-1.5 text-xs text-danger-text"
+        >
+          <CircleAlert aria-hidden="true" className="mt-px size-3.5 shrink-0" />
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** Ids for a field's hint and error, for `aria-describedby`. */
+export const describedBy = (
+  id: string,
+  hint?: string,
+  error?: string,
+): string | undefined =>
+  [hint && `${id}-hint`, error && `${id}-error`].filter(Boolean).join(" ") ||
+  undefined;
 
 /** A labelled input with an optional hint and error, wired for assistive tech. */
 export function Field({
   label,
   hint,
   error,
+  optional,
+  size = "md",
+  className,
   ...input
-}: InputHTMLAttributes<HTMLInputElement> & {
+}: Omit<InputHTMLAttributes<HTMLInputElement>, "size"> & {
   label: string;
   hint?: string;
   error?: string;
+  /** Marks the field optional in its label. Required is the default. */
+  optional?: boolean;
+  size?: ControlSize;
 }) {
   const id = useId();
-  const hintId = hint ? `${id}-hint` : undefined;
-  const errorId = error ? `${id}-error` : undefined;
 
   return (
-    <div className="flex flex-col gap-1">
-      <label htmlFor={id} className="text-sm font-medium text-slate-800">
-        {label}
-      </label>
+    <FieldFrame
+      id={id}
+      label={label}
+      optional={optional}
+      hint={hint}
+      error={error}
+    >
       <input
         id={id}
         aria-invalid={error ? true : undefined}
-        aria-describedby={[hintId, errorId].filter(Boolean).join(" ") || undefined}
-        className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus-visible:border-slate-900 focus-visible:outline-none aria-invalid:border-red-600"
+        aria-describedby={describedBy(id, hint, error)}
+        className={cx(controlClasses(size), className)}
         {...input}
       />
-      {hint && (
-        <p id={hintId} className="text-xs text-slate-500">
-          {hint}
-        </p>
-      )}
-      {error && (
-        <p id={errorId} className="text-xs text-red-700">
-          {error}
-        </p>
-      )}
-    </div>
+    </FieldFrame>
   );
 }

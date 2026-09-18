@@ -1,7 +1,24 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
+import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import "./globals.css";
 
+import { THEME_INIT_SCRIPT } from "@/lib/theme/theme-script";
+
 import { Providers } from "./providers";
+
+// Self-hosted at build time: the browser never contacts Google.
+const plexSans = IBM_Plex_Sans({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-plex-sans",
+});
+
+const plexMono = IBM_Plex_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500"],
+  display: "swap",
+  variable: "--font-plex-mono",
+});
 
 export const metadata: Metadata = {
   title: {
@@ -11,10 +28,27 @@ export const metadata: Metadata = {
   description: "Incident and operations management.",
 };
 
+export const viewport: Viewport = {
+  colorScheme: "light dark",
+  // The situation strip's ink, so browser chrome continues it.
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#11151d" },
+    { media: "(prefers-color-scheme: dark)", color: "#06080c" },
+  ],
+};
+
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en">
-      <body className="min-h-screen bg-slate-50 text-slate-900 antialiased">
+    // The theme script sets data-theme before React hydrates.
+    <html
+      lang="en"
+      className={`${plexSans.variable} ${plexMono.variable}`}
+      suppressHydrationWarning
+    >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+      </head>
+      <body className="min-h-dvh">
         <Providers>{children}</Providers>
       </body>
     </html>

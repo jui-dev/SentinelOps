@@ -13,6 +13,7 @@ import { ApiErrorCode } from "@/lib/api/contracts";
 import { fieldErrorsOf, isApiError } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session-provider";
 
+import { AuthHeading } from "./auth-heading";
 import { useAuthRedirect } from "./use-auth-redirect";
 
 const messageFor = (error: unknown): string | undefined => {
@@ -32,7 +33,7 @@ export function LoginForm() {
   const [submitting, setSubmitting] = useState(false);
 
   if (status === "unavailable") return <SessionUnavailable />;
-  if (status !== "unauthenticated") return <PageSpinner />;
+  if (status !== "unauthenticated") return <PageSpinner size="panel" />;
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -58,12 +59,16 @@ export function LoginForm() {
     : "/register";
 
   return (
-    <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
-      <h1 className="text-xl font-semibold">Log in</h1>
+    <form onSubmit={onSubmit} noValidate className="flex flex-col gap-5">
+      <AuthHeading
+        title="Log in"
+        description="Sign in to your SentinelOps workspace."
+      />
       {error !== null && (
         <ErrorAlert error={error} message={messageFor(error)} />
       )}
       <Field
+        size="lg"
         label="Email"
         name="email"
         type="email"
@@ -72,6 +77,7 @@ export function LoginForm() {
         error={fields.email}
       />
       <Field
+        size="lg"
         label="Password"
         name="password"
         type="password"
@@ -79,12 +85,12 @@ export function LoginForm() {
         required
         error={fields.password}
       />
-      <Button type="submit" disabled={submitting}>
+      <Button type="submit" size="lg" disabled={submitting}>
         {submitting ? "Logging in…" : "Log in"}
       </Button>
-      <p className="text-sm text-slate-600">
+      <p className="border-t border-line-subtle pt-4 text-sm text-fg-muted">
         New to SentinelOps?{" "}
-        <Link href={registerHref} className="font-medium underline">
+        <Link href={registerHref} className="font-medium text-accent-text underline-offset-2 hover:underline">
           Create an organization
         </Link>
       </p>

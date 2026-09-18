@@ -13,6 +13,7 @@ import { ApiErrorCode } from "@/lib/api/contracts";
 import { fieldErrorsOf, isApiError } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session-provider";
 
+import { AuthHeading } from "./auth-heading";
 import { useAuthRedirect } from "./use-auth-redirect";
 
 /** Conflicts the API reports by code, placed on the field they concern. */
@@ -35,7 +36,7 @@ export function RegisterForm() {
   const [submitting, setSubmitting] = useState(false);
 
   if (status === "unavailable") return <SessionUnavailable />;
-  if (status !== "unauthenticated") return <PageSpinner />;
+  if (status !== "unauthenticated") return <PageSpinner size="panel" />;
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -65,8 +66,11 @@ export function RegisterForm() {
   const loginHref = next ? `/login?next=${encodeURIComponent(next)}` : "/login";
 
   return (
-    <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
-      <h1 className="text-xl font-semibold">Create your organization</h1>
+    <form onSubmit={onSubmit} noValidate className="flex flex-col gap-5">
+      <AuthHeading
+        title="Create your organization"
+        description="You'll be its owner, and can invite your team once you're in."
+      />
       {error !== null && (
         <ErrorAlert
           error={error}
@@ -76,6 +80,7 @@ export function RegisterForm() {
         />
       )}
       <Field
+        size="lg"
         label="Your name"
         name="name"
         autoComplete="name"
@@ -84,6 +89,7 @@ export function RegisterForm() {
         error={fields.name}
       />
       <Field
+        size="lg"
         label="Email"
         name="email"
         type="email"
@@ -92,6 +98,7 @@ export function RegisterForm() {
         error={fields.email}
       />
       <Field
+        size="lg"
         label="Password"
         name="password"
         type="password"
@@ -103,6 +110,7 @@ export function RegisterForm() {
         error={fields.password}
       />
       <Field
+        size="lg"
         label="Organization name"
         name="organizationName"
         autoComplete="organization"
@@ -111,18 +119,20 @@ export function RegisterForm() {
         error={fields.organizationName}
       />
       <Field
-        label="Organization URL name (optional)"
+        size="lg"
+        label="Organization URL name"
+        optional
         name="organizationSlug"
         hint="Lowercase letters, digits, and hyphens. Derived from the name if left blank."
         maxLength={48}
         error={fields.organizationSlug}
       />
-      <Button type="submit" disabled={submitting}>
+      <Button type="submit" size="lg" disabled={submitting}>
         {submitting ? "Creating…" : "Create organization"}
       </Button>
-      <p className="text-sm text-slate-600">
+      <p className="border-t border-line-subtle pt-4 text-sm text-fg-muted">
         Already have an account?{" "}
-        <Link href={loginHref} className="font-medium underline">
+        <Link href={loginHref} className="font-medium text-accent-text underline-offset-2 hover:underline">
           Log in
         </Link>
       </p>

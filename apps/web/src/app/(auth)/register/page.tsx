@@ -8,7 +8,7 @@ export const metadata: Metadata = { title: "Create your organization" };
 
 export default function RegisterPage() {
   return (
-    <Suspense fallback={<PageSpinner />}>
+    <Suspense fallback={<PageSpinner size="panel" />}>
       <RegisterForm />
     </Suspense>
   );

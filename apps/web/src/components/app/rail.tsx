@@ -1,0 +1,280 @@
+"use client";
+
+import { useQuery } from "@tanstack/react-query";
+import { Building, LogOut } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import Link from "next/link";
+import { useParams, usePathname, useRouter } from "next/navigation";
+import { useId, useState } from "react";
+
+import { cx } from "@/components/ui/cx";
+import { SelectControl } from "@/components/ui/select";
+import {
+  organizationQuery,
+  useRouteMembership,
+} from "@/components/organizations/organization-scope";
+import { formatRole } from "@/components/organizations/format";
+import type { MembershipResponse } from "@/lib/api/contracts";
+import { useCurrentUser, useSession } from "@/lib/auth/session-provider";
+
+import {
+  isCurrentPath,
+  ORGANIZATION_NAVIGATION,
+  organizationPath,
+} from "./navigation";
+import type { NavSection } from "./navigation";
+
+function RailLink({
+  href,
+  label,
+  icon: Icon,
+  current,
+}: {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  current: boolean;
+}) {
+  return (
+    <Link
+      href={href}
+      aria-current={current ? "page" : undefined}
+      className={cx(
+        "group relative flex h-8 items-center gap-2.5 rounded-md px-2.5 text-base transition-colors duration-(--duration-fast)",
+        current
+          ? "bg-selected font-medium text-fg"
+          : "text-fg-muted hover:bg-hover hover:text-fg",
+      )}
+    >
+      {/* The current place: a bar, a tint, and weight — not colour alone. */}
+      <span
+        aria-hidden="true"
+        className={cx(
+          "absolute inset-y-1.5 -left-2 w-0.5 rounded-full bg-accent forced-color-adjust-none forced-colors:bg-[Highlight]",
+          !current && "hidden",
+        )}
+      />
+      <Icon
+        aria-hidden="true"
+        className={cx(
+          "size-4 shrink-0",
+          current ? "text-accent-text" : "text-fg-subtle group-hover:text-fg-muted",
+        )}
+      />
+      <span className="truncate">{label}</span>
+    </Link>
+  );
+}
+
+function SectionLinks({
+  section,
+  slug,
+  permissions,
+  pathname,
+}: {
+  section: NavSection;
+  slug: string;
+  permissions: string[];
+  pathname: string;
+}) {
+  // Unique per instance: the drawer renders a second rail while open.
+  const headingId = useId();
+  const items = section.items.filter(
+    (item) => !item.requires || permissions.includes(item.requires),
+  );
+
+  if (items.length === 0) return null;
+
+  return (
+    <div className="flex flex-col gap-1">
+      {section.label && (
+        <h2 id={headingId} className="label-caps px-2.5 pb-1 text-fg-subtle">
+          {section.label}
+        </h2>
+      )}
+      <ul
+        aria-labelledby={section.label ? headingId : undefined}
+        className="flex flex-col gap-px"
+      >
+        {items.map((item) => {
+          const href = item.href(slug);
+
+          return (
+            <li key={item.id}>
+              <RailLink
+                href={href}
+                label={item.label}
+                icon={item.icon}
+                current={isCurrentPath(href, item.match, pathname)}
+              />
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+/**
+ * Which organization the workspace is showing, when there is a choice. With
+ * one organization there is nothing to switch, and its name is already in
+ * the situation strip and the page's eyebrow.
+ */
+function OrganizationSwitcher({
+  memberships,
+  current,
+}: {
+  memberships: MembershipResponse[];
+  current?: MembershipResponse;
+}) {
+  const router = useRouter();
+
+  return (
+    <SelectControl
+      aria-label="Organization"
+      value={current?.organization.slug ?? ""}
+      onChange={(event) =>
+        router.push(
+          event.target.value ? organizationPath(event.target.value) : "/orgs",
+        )
+      }
+      className="font-medium"
+    >
+      {!current && <option value="">Choose organization…</option>}
+      {memberships.map(({ organization }) => (
+        <option key={organization.id} value={organization.slug}>
+          {organization.name}
+        </option>
+      ))}
+      {current && <option value="">All organizations…</option>}
+    </SelectControl>
+  );
+}
+
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+
+  return (
+    (parts[0]?.[0] ?? "") + (parts.length > 1 ? parts.at(-1)![0] : "")
+  ).toUpperCase();
+}
+
+/** Who is signed in, and in what capacity here. */
+function Account({ role }: { role?: string }) {
+  const { logout } = useSession();
+  const me = useCurrentUser();
+  const [signingOut, setSigningOut] = useState(false);
+
+  // RequireSession navigates to /login once the session is gone.
+  const onLogout = async () => {
+    setSigningOut(true);
+
+    try {
+      await logout();
+    } catch {
+      // Local state is already cleared; see SessionProvider.logout.
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-2.5 border-t border-line px-3 py-3">
+      {me.data && (
+        <>
+          <span
+            aria-hidden="true"
+            className="grid size-7 shrink-0 place-items-center rounded-md border border-line bg-surface font-mono text-2xs font-medium text-fg-muted"
+          >
+            {initialsOf(me.data.name)}
+          </span>
+          <div className="flex min-w-0 flex-1 flex-col">
+            <p className="truncate text-sm font-medium text-fg">
+              {me.data.name}
+            </p>
+            <p
+              className="truncate text-xs text-fg-subtle"
+              title={me.data.email}
+            >
+              {role ? formatRole(role) : me.data.email}
+            </p>
+          </div>
+        </>
+      )}
+      <button
+        type="button"
+        onClick={onLogout}
+        disabled={signingOut}
+        title="Log out"
+        className="ml-auto grid size-7 shrink-0 place-items-center rounded-md text-fg-subtle transition-colors duration-(--duration-fast) hover:bg-hover hover:text-fg disabled:text-fg-disabled"
+      >
+        <LogOut aria-hidden="true" className="size-4" />
+        <span className="sr-only">{signingOut ? "Logging out…" : "Log out"}</span>
+      </button>
+    </div>
+  );
+}
+
+/**
+ * The persistent navigation rail: the organization, what can be done in it,
+ * and who is signed in. Items the caller's permissions do not include are
+ * not offered; the API authorizes every page behind them regardless.
+ */
+export function Rail() {
+  const pathname = usePathname();
+  const { orgSlug } = useParams<{ orgSlug?: string }>();
+  const me = useCurrentUser();
+  const membership = useRouteMembership();
+  // The same query, by key, that the organization scope makes — no second
+  // request. Permissions come only from it: `me` carries roles, not
+  // permissions, and the client never maps one to the other.
+  const detail = useQuery({
+    ...organizationQuery(membership?.organization.id ?? ""),
+    enabled: membership !== undefined,
+  });
+  const permissions = detail.data?.membership.permissions ?? [];
+  const slug = membership?.organization.slug;
+
+  const sections = (placement: NavSection["placement"]) =>
+    slug
+      ? ORGANIZATION_NAVIGATION.filter(
+          (section) => section.placement === placement,
+        ).map((section) => (
+          <SectionLinks
+            key={section.id}
+            section={section}
+            slug={slug}
+            permissions={permissions}
+            pathname={pathname}
+          />
+        ))
+      : null;
+
+  return (
+    <nav aria-label="Primary" className="flex h-full min-h-0 flex-col bg-chrome">
+      {me.data && me.data.memberships.length > 1 && (
+        <div className="border-b border-line px-3 py-3">
+          <OrganizationSwitcher
+            memberships={me.data.memberships}
+            current={membership}
+          />
+        </div>
+      )}
+      <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-3 py-4">
+        {sections("main")}
+        {!orgSlug && (
+          <ul className="flex flex-col gap-px">
+            <li>
+              <RailLink
+                href="/orgs"
+                label="Organizations"
+                icon={Building}
+                current={pathname === "/orgs"}
+              />
+            </li>
+          </ul>
+        )}
+      </div>
+      <div className="flex flex-col gap-1 px-3 pb-3">{sections("footer")}</div>
+      <Account role={membership?.role} />
+    </nav>
+  );
+}
