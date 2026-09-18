@@ -54,6 +54,47 @@ describe("LoginForm", () => {
     navigation.search = "";
   });
 
+  it("shows no development account outside development", async () => {
+    withLogin(() => apiError(401, "INVALID_CREDENTIALS"));
+    renderWithSession(<LoginForm />);
+
+    await screen.findByLabelText("Email");
+
+    expect(screen.queryByText("Development account")).toBeNull();
+  });
+
+  it("shows the development account in development, and fills it in", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    const user = userEvent.setup();
+    const { requests } = withLogin(() =>
+      jsonResponse(200, {
+        accessToken: "token",
+        expiresIn: 900,
+        tokenType: "Bearer",
+        user: currentUser,
+      }),
+    );
+
+    try {
+      renderWithSession(<LoginForm />);
+
+      expect(await screen.findByText("Development account")).toBeDefined();
+      expect(screen.getByText("admin@example.com")).toBeDefined();
+      expect(screen.getByText("dev-password-123")).toBeDefined();
+
+      await user.click(screen.getByRole("button", { name: "Use these" }));
+      await user.click(screen.getByRole("button", { name: "Log in" }));
+
+      await waitFor(() =>
+        expect(
+          requests.find((r) => route(r) === "POST /auth/login")?.body,
+        ).toEqual({ email: "admin@example.com", password: "dev-password-123" }),
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("says the credentials were wrong without saying which", async () => {
     withLogin(() => apiError(401, "INVALID_CREDENTIALS"));
     renderWithSession(<LoginForm />);

@@ -1,17 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { FormEvent } from "react";
 
 import { SessionUnavailable } from "@/components/app/session-unavailable";
-import { ErrorAlert } from "@/components/ui/alert";
+import { Alert, ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { PageSpinner } from "@/components/ui/spinner";
 import { ApiErrorCode } from "@/lib/api/contracts";
 import { fieldErrorsOf, isApiError } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session-provider";
+import { DEV_ACCOUNT, showDevAccount } from "@/lib/dev/dev-account";
 
 import { AuthHeading } from "./auth-heading";
 import { useAuthRedirect } from "./use-auth-redirect";
@@ -26,11 +27,46 @@ const messageFor = (error: unknown): string | undefined => {
   return undefined;
 };
 
+/**
+ * TEMPORARY — the development account, shown in development only. Remove
+ * with lib/dev/dev-account.ts.
+ */
+function DevAccountPanel({ onUse }: { onUse: () => void }) {
+  return (
+    <Alert tone="info" title="Development account">
+      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
+        <dt className="text-fg-muted">Email</dt>
+        <dd className="data select-all">{DEV_ACCOUNT.email}</dd>
+        <dt className="text-fg-muted">Password</dt>
+        <dd className="data select-all">{DEV_ACCOUNT.password}</dd>
+      </dl>
+      <div className="pt-1">
+        <Button variant="secondary" size="sm" onClick={onUse}>
+          Use these
+        </Button>
+      </div>
+    </Alert>
+  );
+}
+
 export function LoginForm() {
   const { login } = useSession();
   const { status, next } = useAuthRedirect();
   const [error, setError] = useState<unknown>(null);
   const [submitting, setSubmitting] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
+
+  const fillDevAccount = () => {
+    const form = formRef.current;
+
+    if (!form) return;
+
+    for (const [name, value] of Object.entries(DEV_ACCOUNT)) {
+      const input = form.elements.namedItem(name);
+
+      if (input instanceof HTMLInputElement) input.value = value;
+    }
+  };
 
   if (status === "unavailable") return <SessionUnavailable />;
   if (status !== "unauthenticated") return <PageSpinner size="panel" />;
@@ -59,11 +95,17 @@ export function LoginForm() {
     : "/register";
 
   return (
-    <form onSubmit={onSubmit} noValidate className="flex flex-col gap-5">
+    <form
+      ref={formRef}
+      onSubmit={onSubmit}
+      noValidate
+      className="flex flex-col gap-5"
+    >
       <AuthHeading
         title="Log in"
         description="Sign in to your SentinelOps workspace."
       />
+      {showDevAccount() && <DevAccountPanel onUse={fillDevAccount} />}
       {error !== null && (
         <ErrorAlert error={error} message={messageFor(error)} />
       )}

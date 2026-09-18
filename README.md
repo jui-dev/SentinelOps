@@ -236,6 +236,22 @@ pnpm --filter @sentinelops/web test              # no API or database
 pnpm --filter @sentinelops/web build
 ```
 
+### Development account (temporary)
+
+When the API runs with `NODE_ENV=development` — `start:dev` with the default `.env` —
+it ensures a known login at every boot, and the web login page shows it with a
+**Use these** button:
+
+| Email | Password | Organization |
+| --- | --- | --- |
+| `admin@example.com` | `dev-password-123` | SentinelOps Dev (`OWNER`) |
+
+Every boot resets that account's password and restores it if it was deleted. It is never
+created in `test` or `production`, and the login panel is compiled out of production
+builds. It is temporary: to remove it, delete `apps/api/src/dev/` and its line in
+`app.module.ts`, `apps/web/src/lib/dev/`, and the panel in
+`apps/web/src/components/auth/login-form.tsx`.
+
 The API refuses to boot without a `JWT_SECRET` of at least 32 characters. That is
 deliberate: a defaulted signing key is a key every deployment that forgot to set one
 shares.
