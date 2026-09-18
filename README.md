@@ -11,8 +11,9 @@ unfold, and turning the result into reviewable operational records.
 
 > **Early development.** The backend's foundations are in place and tested, and the web
 > app can sign a user in, work within an organization, invite others into it, group its
-> members into teams, and catalog the services those teams own. There are no incidents
-> yet.
+> members into teams, catalog the services those teams own, and declare, work, and
+> resolve incidents against those services. Incidents are recorded by hand; nothing
+> detects them yet, and there is no incident timeline yet.
 
 Anything still described as **planned** below has not been built. Each piece is introduced
 deliberately, and this README is updated as capabilities actually land.
@@ -34,13 +35,18 @@ deliberately, and this README is updated as capabilities actually land.
   them. The database itself refuses a team member from another organization. See
   [Teams](#teams)
 - Services: an `OWNER` or `ADMIN` records the systems the organization runs, each owned
-  by one of its teams and classified by criticality. The database itself refuses an
-  owner from another organization, and refuses deleting a team that still owns services.
-  See [Services](#services)
+  by one of its teams and classified by criticality, and retires them by archiving. The
+  database itself refuses an owner from another organization, and refuses deleting a
+  team that still owns services. See [Services](#services)
+- Incidents: any member declares an incident against a service, and the service's owner
+  team becomes responsible. Responders set its severity and move its status until it is
+  resolved. The database itself keeps every incident's service and team in its own
+  organization and refuses deleting either while an incident names it. See
+  [Incidents](#incidents)
 - A Next.js web app: registration, login, session restore across reloads and tabs,
   an organization picker, per-organization overview, member list, invitations, teams,
-  services, and rename — each offered only when the API reports the permission — and an
-  invitation acceptance page. See [Web application](#web-application)
+  services, incidents, and rename — each offered only when the API reports the
+  permission — and an invitation acceptance page. See [Web application](#web-application)
 - The web app's UI and design-system foundation: a full-viewport operations workspace
   (situation strip and navigation rail), light and dark themes from semantic design
   tokens, IBM Plex typography, and accessible primitives — with contrast and axe-core
@@ -50,8 +56,10 @@ deliberately, and this README is updated as capabilities actually land.
 
 **What does not exist yet**
 
-- Incidents, and anything built on them: service health, responders, timelines. And no
-  way to remove or re-role a member
+- What builds on incidents: the incident timeline (updates, status and severity
+  history, reopening), responders, an operational overview, and service health.
+  Detection — monitoring, alerts, paging — and notifications. And no way to remove or
+  re-role a member
 - Email delivery: invitation links are shared by hand, and addresses are not verified
 - Rate limiting on authentication and on the public invitation routes
 - Continuous integration, and container images for the applications
@@ -128,8 +136,10 @@ The intended scope, not a feature list. Only the items marked below are built.
 - **Service catalog** — ✅ the systems an organization runs, which team owns each, and
   how critical each is, with ownership kept within the tenant by the database. Health,
   dependencies, and monitoring are still to come. See [Services](#services)
-- **Incident lifecycle management** — open, acknowledge, escalate, resolve
-- **Severity and priority management** — classification of incident impact
+- **Incident lifecycle management** — ✅ declare, investigate, identify, monitor, and
+  resolve, with a responsible team. Reopening and history are still to come. See
+  [Incidents](#incidents)
+- **Severity management** — ✅ SEV1–SEV4, chosen per incident. See [Incidents](#incidents)
 - **Responder assignment** — assigning and reassigning incident responders
 - **Comments and incident timeline** — an ordered record of what happened
 - **Real-time incident updates** — live state pushed to connected clients
@@ -414,8 +424,9 @@ The core domain is three tables: an organization to own data, a user to act, and
 membership binding them with a role. Teams, services, incidents, and audit entries all
 hang off these. `invitations` holds offers of a membership, `teams` and
 `team_memberships` group members (see [Teams](#teams)), `services` records what those
-teams own (see [Services](#services)), and `refresh_tokens` holds sessions rather than
-domain data.
+teams own (see [Services](#services)), `incidents` records the operational problems
+declared against those services (see [Incidents](#incidents)), and `refresh_tokens`
+holds sessions rather than domain data.
 
 ```
 ┌────────────────────┐                          ┌────────────────────┐
@@ -502,6 +513,7 @@ domain data.
                    │ owner_team_id    uuid     NOT NULL       │
                    │ criticality      service_criticality     │
                    │                  DEFAULT 'NORMAL'        │
+                   │ archived_at      NULL                    │
                    │ created_at / updated_at                  │
                    │ FK(organization_id, owner_team_id)       │
                    │   → teams(organization_id, id)           │
@@ -511,6 +523,36 @@ domain data.
                    │ UQ(organization_id, id)                  │
                    │ IX(organization_id, owner_team_id)       │
                    └──────────────────────────────────────────┘
+
+   organizations 1 ──< incidents >── 1 services, 1 teams, 1 users (created_by_id)
+                   ┌──────────────────────────────────────────┐
+                   │                incidents                 │
+                   │──────────────────────────────────────────│
+                   │ id               uuid PK                 │
+                   │ organization_id  uuid FK  (cascade)      │
+                   │ number           int                     │
+                   │ title            text                    │
+                   │ summary          text NULL               │
+                   │ service_id       uuid     NOT NULL       │
+                   │ team_id          uuid     NOT NULL       │
+                   │ severity         incident_severity       │
+                   │ status           incident_status         │
+                   │                  DEFAULT 'INVESTIGATING' │
+                   │ created_by_id    uuid FK  (restrict)     │
+                   │ created_at / updated_at                  │
+                   │ resolved_at      NULL                    │
+                   │ FK(organization_id, service_id)          │
+                   │   → services(organization_id, id)        │
+                   │ FK(organization_id, team_id)             │
+                   │   → teams(organization_id, id)           │
+                   │   both ON DELETE / UPDATE RESTRICT       │
+                   │ UQ(organization_id, number)              │
+                   │ UQ(organization_id, id)                  │
+                   │ CHECK (status = 'RESOLVED')              │
+                   │     = (resolved_at IS NOT NULL)          │
+                   │ CHECK (number > 0)                       │
+                   └──────────────────────────────────────────┘
+   organizations also carries last_incident_number, the counter numbers come from.
 ```
 
 `users.password_hash` is nullable, reserved for identities without a local password —
@@ -550,7 +592,8 @@ maps each role to its [permissions](#authorization).
 | `Invitation` | **Kept** — accepted or revoked, never deleted | Cascades from its organization; **refused** for a user who sent one |
 | `Team` | **Hard** — the row is removed, with its placements | Cascades from its organization |
 | `TeamMembership` | **Hard** | Cascades from its team and from its membership |
-| `Service` | **Hard** — the row is removed | Cascades from its organization; **refused** for a team that owns it |
+| `Service` | **Archived** — `archived_at` set; **hard** delete only when no incident names it | Cascades from its organization; **refused** for a team that owns it |
+| `Incident` | **Kept** — never deleted | Cascades from its organization; **refused** for a service, a team, or a user it names |
 
 The **ordinary** delete of an organization or user writes `deleted_at`. That is an
 `UPDATE`, touches no foreign key, and therefore **preserves memberships and every
@@ -572,14 +615,18 @@ removes who was on it, and every member stays in the organization; a team that o
 services cannot be deleted at all until they are moved to another team — the services'
 owner key is `ON DELETE RESTRICT`, so the refusal is the database's, raw SQL included.
 
-A service is hard-deleted today only because nothing references one yet. When incidents
-reference services, their key refuses deleting a service with history in the same way,
-and retiring such a service becomes an archive rather than a delete.
+Incidents are history, and nothing they name can be deleted from under them. Their
+service and team keys are `ON DELETE RESTRICT`: a service with incidents cannot be
+deleted — retiring it is an **archive**, which keeps it resolvable from every incident
+that names it and refuses new ones — and a team that has been responsible for an
+incident cannot be deleted at all, only renamed. The declarer is a `User`, not a
+`Membership`, so removing someone from the organization leaves their incidents intact;
+physically deleting a user who declared incidents is refused, as for invitations.
 
 `Restrict` does not get in the way of the physical deletion of an organization: that
-cascade reaches the organization's teams and services in the same statement, and
-Postgres completes it — `schema.integration-spec.ts` proves it against the real
-migration.
+cascade reaches the organization's teams, services, and incidents in the same statement,
+and Postgres completes it — `schema.integration-spec.ts` proves it against the real
+migration, with incidents naming both a service and a team.
 
 Reads filter on `deleted_at IS NULL` unless they deliberately do not. Login, `GET /auth/me`,
 refresh, organization admission, and every organization-scoped read all apply it — see
@@ -598,8 +645,10 @@ refresh, organization admission, and every organization-scoped read all apply it
 
 Foreign keys are indexed where no other index leads with them: `memberships.user_id`,
 `refresh_tokens.user_id`, `invitations.invited_by_id`,
-`team_memberships.membership_id`, and `services(organization_id, owner_team_id)` — which
-serves the `Restrict` check when a team is deleted. `memberships.organization_id`
+`team_memberships.membership_id`, `services(organization_id, owner_team_id)` — which
+serves the `Restrict` check when a team is deleted — and on incidents
+`(organization_id, service_id)`, `(organization_id, team_id)`, and `created_by_id`, which
+serve the `Restrict` checks on deleting a service, a team, or a user. `memberships.organization_id`
 needs no index of its own — it leads the composite unique, which already serves prefix
 lookups and the cascade from `organizations`.
 
@@ -629,10 +678,18 @@ as on delete. `ON UPDATE CASCADE` there would be a hazard rather than a safeguar
 no second composite key to contradict it, moving a team to another organization would
 silently carry its services along. Instead the move is refused while the team owns any.
 
+An incident carries two such keys on its one `organization_id`:
+`(organization_id, service_id)` references `services(organization_id, id)` and
+`(organization_id, team_id)` references `teams(organization_id, id)`, both `RESTRICT` on
+delete and on update. Its affected service and its responsible team must therefore
+belong to its own organization — and to each other's — however the row is written.
+The declarer is the exception, and the only one: `users` are global, so no composite key
+can hold a user to an organization. `IncidentsService` takes the declarer from the
+admitted membership, inside the declaring transaction, and never from a request body.
+
 This is declarative, visible to Prisma (no drift), and costs nothing at runtime. The
 application still scopes every query by organization — the constraint is the backstop,
-not the mechanism that produces the right `404`. Incidents will reference services the
-same way, through `services(organization_id, id)`.
+not the mechanism that produces the right `404`.
 
 A partial unique index is declared in `schema.prisma` with Prisma's `partialIndexes`
 preview feature, so Prisma knows about it and never treats it as drift. Preview features
@@ -690,7 +747,7 @@ only by `AllExceptionsFilter`:
   "statusCode": 400,
   "error": "Bad Request",
   "message": "Request validation failed",
-  "code": "INCIDENT_ALREADY_RESOLVED", // optional, only when the thrower sets one
+  "code": "INCIDENT_RESOLVED",         // optional, only when the thrower sets one
   "details": [                         // optional, only for field-level failures
     { "field": "responders.0.email", "message": "Invalid email address" }
   ],
@@ -722,14 +779,15 @@ schema on the parameter decorators, so a Zod schema is usable as-is;
 Schema and inferred type live together, next to the module that owns them:
 
 ```ts
-export const createIncidentSchema = z.object({
-  title: z.string().min(1).max(200),
-  severity: z.enum(['low', 'medium', 'high', 'critical']),
+export const createIncidentSchema = z.strictObject({
+  title: z.string().trim().min(1).max(200),
+  serviceId: z.uuid(),
+  severity: z.enum(['SEV1', 'SEV2', 'SEV3', 'SEV4']),
 });
-export type CreateIncident = z.infer<typeof createIncidentSchema>;
+export type CreateIncidentRequest = z.infer<typeof createIncidentSchema>;
 
 @Post()
-create(@Body({ schema: createIncidentSchema }) body: CreateIncident) { … }
+create(@Body({ schema: createIncidentSchema }) body: CreateIncidentRequest) { … }
 ```
 
 The pipe is global but **opt-in**: a parameter that declares no `schema` is
@@ -915,6 +973,8 @@ branch on them, so they are part of the public API.
 [Authorization](#authorization) adds `PERMISSION_DENIED`.
 [Invitations](#invitations) adds `INVITATION_NOT_FOUND`, `INVITATION_NOT_PENDING`,
 `INVITATION_ALREADY_PENDING`, `INVITATION_EMAIL_MISMATCH`, and `ALREADY_A_MEMBER`.
+[Teams](#teams), [Services](#services), and [Incidents](#incidents) add their own,
+listed in their sections.
 
 ### Known gaps
 
@@ -964,6 +1024,7 @@ put slugs in its own URLs.
 | `DELETE /api/v1/organizations/:organizationId/invitations/:invitationId` | Revoke an open invitation | `invitations:manage` |
 | `/api/v1/organizations/:organizationId/teams…` | Teams and who is on them — see [Teams](#teams) | `teams:read` / `teams:manage` |
 | `/api/v1/organizations/:organizationId/services…` | Services and who owns them — see [Services](#services) | `services:read` / `services:manage` |
+| `/api/v1/organizations/:organizationId/incidents…` | Incidents — see [Incidents](#incidents) | `incidents:read` / `incidents:manage` |
 
 All require authentication, a current membership, and the listed permission — every role
 may read the organization and its memberships; only `OWNER` and `ADMIN` may rename it or
@@ -1003,9 +1064,12 @@ for cross-cutting concerns such as logging, and background work has none. A serv
 therefore correct when called with no guard in front of it, and the integration suite calls
 it exactly that way to prove it.
 
-Database-level tenant-consistency constraints (composite keys or foreign keys that include
-`organization_id`) are a design principle to weigh relationship by relationship as tables
-are added — not a blanket rule, and not something this schema has yet.
+Database-level tenant-consistency constraints — composite foreign keys that include
+`organization_id` — are weighed relationship by relationship as tables are added, not
+applied as a blanket rule. Team members, service owners, and an incident's service and
+team all carry one; see
+[Tenant consistency by composite foreign key](#tenant-consistency-by-composite-foreign-key).
+They are the backstop, never a replacement for the organization filter in the query.
 
 ### A request's path through it
 
@@ -1118,10 +1182,19 @@ Which roles hold which permission is written out once, in
 | `teams:manage` | ✓ | ✓ | |
 | `services:read` | ✓ | ✓ | ✓ |
 | `services:manage` | ✓ | ✓ | |
+| `incidents:read` | ✓ | ✓ | ✓ |
+| `incidents:manage` | ✓ | ✓ | ✓ |
 
 A `MEMBER` cannot see open invitations: they name people who are not members yet.
-Belonging to a team grants nothing, and neither does a team owning a service:
-authorization is the organization role alone.
+Belonging to a team grants nothing, and neither does a team owning a service or being
+responsible for an incident: authorization is the organization role alone.
+
+**Configuration is admin-governed; incident response is member-driven.** Teams,
+services, and invitations shape the organization, so only `OWNER` and `ADMIN` change
+them. Incidents are operational work: the engineer who notices card payments failing
+must be able to declare it and move it to resolution without finding an admin first, so
+every role holds `incidents:manage`. It is still a distinct permission, so a narrower
+role later — a read-only stakeholder — is a change to the table alone.
 
 There is no `@RequireRole()`. A route that names roles has to be edited every time the
 policy changes; a route that names an operation does not. The table is explicit per role
@@ -1348,8 +1421,8 @@ address is written.
 
 ## Teams
 
-A team is a named group of an organization's members — the unit that will own services
-and respond to incidents. An `OWNER` or `ADMIN` creates, renames, and deletes teams, and
+A team is a named group of an organization's members — the unit that owns services and
+is responsible for incidents. An `OWNER` or `ADMIN` creates, renames, and deletes teams, and
 places existing organization members on them; every member can see them.
 
 ### Endpoints
@@ -1363,7 +1436,7 @@ isolation exactly as in [Tenancy](#tenancy) and [Authorization](#authorization).
 | `POST /teams` | `teams:manage` | Create `{ "name", "description"? }`. `201` |
 | `GET /teams/:teamId` | `teams:read` | One team |
 | `PATCH /teams/:teamId` | `teams:manage` | Change `{ "name"?, "description"? }` (at least one; `null` clears the description) |
-| `DELETE /teams/:teamId` | `teams:manage` | Delete the team; its members stay in the organization. `204`, or `409` while it owns services |
+| `DELETE /teams/:teamId` | `teams:manage` | Delete the team; its members stay in the organization. `204`, or `409` while it owns services or once it has been responsible for an incident |
 | `GET /teams/:teamId/members` | `teams:read` | Who is on it, by name: `{ membershipId, addedAt, user: { id, name, email } }` |
 | `POST /teams/:teamId/members` | `teams:manage` | Add `{ "membershipId" }` — an existing member of this organization. `201` |
 | `DELETE /teams/:teamId/members/:membershipId` | `teams:manage` | Take them off the team; they stay in the organization. `204` |
@@ -1396,6 +1469,7 @@ own id is never exposed. Bodies are strict: `slug`, `organizationId`, or `id` is
 | Name taken, or too similar to one at creation | `409 TEAM_NAME_TAKEN` |
 | Already on the team | `409 ALREADY_A_TEAM_MEMBER` |
 | Deleting a team that owns services | `409 TEAM_OWNS_SERVICES` — nothing is deleted |
+| Deleting a team that has been responsible for an incident | `409 TEAM_HAS_INCIDENTS` — nothing is deleted |
 
 Every uniqueness rule is an index, so concurrent requests resolve to `409`, and an add
 racing the team's deletion — refused by the composite foreign key — to `404`, never `500`.
@@ -1408,9 +1482,16 @@ foreign key refuses it and the API answers `409 TEAM_OWNS_SERVICES` — until ea
 is moved to another team. The refusal is not checked in advance, which would race a
 service being assigned in between; the database decides.
 
+A team that has been the responsible team on any incident — resolved ones included — is
+never deleted: incidents are history, and their team key is `Restrict` too. The API
+answers `409 TEAM_HAS_INCIDENTS`, and the team can still be renamed. Team archival would
+be the way to retire one; it does not exist yet, deliberately, because keeping the team
+costs nothing but a name.
+
 ### Not yet
 
-Team leads, team roles or team-scoped permissions, nested teams, and on-call.
+Team leads, team roles or team-scoped permissions, nested teams, on-call, and team
+archival.
 
 ### Tests
 
@@ -1429,8 +1510,8 @@ written as raw SQL.
 ## Services
 
 A service is a system the organization runs — an API, a processor, a portal — owned by
-one of its teams. It is what incidents will be recorded against. An `OWNER` or `ADMIN`
-creates, changes, reassigns, and deletes services; every member can see them. The model is
+one of its teams. It is what incidents are recorded against. An `OWNER` or `ADMIN`
+creates, changes, reassigns, archives, and deletes services; every member can see them. The model is
 industry-neutral: a payments company's `Payment API` and a shop's `Checkout Service` are
 the same kind of record.
 
@@ -1442,6 +1523,7 @@ the same kind of record.
 | `description` | Optional: what it does, for someone who does not know it. |
 | owner team | Who is responsible. **Required** — a service nobody owns is exactly the ambiguity an incident tool exists to remove. |
 | `criticality` | How much the organization depends on it. Defaults to `NORMAL`. |
+| `archivedAt` | When it was retired, or `null` while in use. See [Archival and deletion](#archival-and-deletion). |
 | `slug` | Derived, for URLs only — the same rules as a team's. Never supplied or shown, never changed. A name with nothing to derive one from (`決済サービス`) gets an opaque slug (`service-3fa9c1d2`). |
 
 **Criticality** is four plain words, defined so they mean the same thing in any
@@ -1472,12 +1554,13 @@ isolation exactly as in [Tenancy](#tenancy) and [Authorization](#authorization).
 | `GET /services` | `services:read` | Every service, by name |
 | `POST /services` | `services:manage` | Create `{ "name", "ownerTeamId", "description"?, "criticality"? }`. `201` |
 | `GET /services/:serviceId` | `services:read` | One service |
-| `PATCH /services/:serviceId` | `services:manage` | Change `{ "name"?, "description"?, "ownerTeamId"?, "criticality"? }` (at least one; `null` clears the description; the owner can be moved, never cleared) |
-| `DELETE /services/:serviceId` | `services:manage` | Delete the service; its team is unaffected. `204` |
+| `PATCH /services/:serviceId` | `services:manage` | Change `{ "name"?, "description"?, "ownerTeamId"?, "criticality"?, "archived"? }` (at least one; `null` clears the description; the owner can be moved, never cleared; `archived: true` / `false` archives or unarchives) |
+| `DELETE /services/:serviceId` | `services:manage` | Delete a service no incident names; its team is unaffected. `204`, or `409` when incidents name it |
 
 A service is returned as `{ id, name, slug, description, criticality, ownerTeam: { id,
-name, slug }, createdAt, updatedAt }`. Bodies are strict: `slug`, `organizationId`, or
-`id` is a `400`.
+name, slug }, archivedAt, createdAt, updatedAt }`. Bodies are strict: `slug`,
+`organizationId`, `id`, or `archivedAt` is a `400` — the client says whether the service
+is archived, and the server records when.
 
 ### Invariants
 
@@ -1496,23 +1579,39 @@ name, slug }, createdAt, updatedAt }`. Bodies are strict: `slug`, `organizationI
 | `ownerTeamId` malformed | `400`, naming the field |
 | `ownerTeamId` missing, or another organization's team | `404 TEAM_NOT_FOUND`, identically |
 | Name taken, or too similar to one at creation | `409 SERVICE_NAME_TAKEN` |
+| Deleting a service that incidents name | `409 SERVICE_HAS_INCIDENTS` — nothing is deleted |
+| Declaring an incident against an archived service | `409 SERVICE_ARCHIVED` (on the incident route) |
 
 The service is judged before the team, so a service this organization lacks answers
 `SERVICE_NOT_FOUND` whatever the body names. A create or reassignment racing the target
 team's deletion resolves to `404 TEAM_NOT_FOUND` or to the team delete's `409`, never
 `500` and never a service without an owner.
 
-### Deletion
+### Archival and deletion
 
-Deleting a service removes the row and nothing else. That is safe only because nothing
-references a service yet. When incidents do, their foreign key will refuse deleting a
-service with history (`409`), and retiring one becomes an archive that hides it from new
-incidents while keeping it resolvable in old ones — introduced with the key that needs it.
+**Archiving retires a service.** It sets `archivedAt` and carries exactly one rule: no
+new incident can be declared against an archived service — refused by the server with
+`409 SERVICE_ARCHIVED`, not merely hidden by the web app. Everything else is unchanged:
+it is still listed (the web app shows it under **Archived**), still named by every
+incident recorded against it, still renamable and reassignable, and those incidents can
+still be worked and resolved. Unarchiving clears `archivedAt`. Archiving is allowed
+while incidents on the service are active; they carry on.
+
+**Deleting is for a service nothing references** — a mistake. A service that incidents
+name cannot be deleted: their foreign key refuses it and the API answers
+`409 SERVICE_HAS_INCIDENTS`. As for teams, this is not checked in advance, which would
+race a declaration in between; the database decides. An archived service with no
+incidents can still be deleted.
+
+A declaration and an archive, a reassignment, or a delete of the same service never
+interleave: declaring locks the service row until the incident is committed (see
+[Declaring, and what it races](#declaring-and-what-it-races)).
 
 ### Not yet
 
 Health or status, dependencies and topology, monitoring integrations, environments,
-repositories, runbooks, tags and custom fields, templates, and service archival.
+repositories, runbooks, tags and custom fields, templates, and archive reasons or who
+archived a service.
 
 ### Tests
 
@@ -1526,6 +1625,224 @@ between services and their teams. [`schema.integration-spec.ts`](apps/api/test/s
 proves the invariants in the database itself: cross-organization ownership refused as
 raw SQL on insert and on update, a null owner refused, team deletion and team moves
 refused while services remain, and a physical organization deletion still completing.
+Archival and the incident-driven delete refusal are proven in
+[`incidents.integration-spec.ts`](apps/api/test/incidents.integration-spec.ts).
+
+---
+
+## Incidents
+
+An incident is a real operational problem affecting one of the organization's services:
+card payments failing on the Payment API, customers unable to check out. Someone notices
+it — through support, a colleague, or their own monitoring — and **declares** it in
+SentinelOps. SentinelOps does not detect incidents; declaring is a deliberate human act.
+
+The model is industry-neutral. A payments company and a shop record incidents the same
+way; what differs is only the teams and services they have.
+
+### What an incident is
+
+| Field | Why it exists |
+| --- | --- |
+| `number` | The organization's own sequence, shown as **INC-42**. The API addresses an incident by it. |
+| `title` | What is happening, in a few words. Required. |
+| `summary` | Optional: what is known so far — who is affected and how. |
+| service | The affected service. Required, and **never changes** after declaration. |
+| responsible team | Who is responsible for this incident. See below. |
+| `severity` | How serious this incident is: `SEV1`–`SEV4`. Required — there is no default. |
+| `status` | Where the response stands. Starts `INVESTIGATING`. |
+| declared by | The member who declared it, by name. |
+| `createdAt` | When it was declared. |
+| `resolvedAt` | When it was resolved; set by the server, never by a client. |
+
+An incident is returned as `{ id, number, title, summary, severity, status, service: {
+id, name, slug, criticality, archivedAt }, team: { id, name, slug }, createdBy: { id,
+name }, createdAt, updatedAt, resolvedAt }`. The declarer's email is never included.
+
+### Severity is not criticality
+
+A service's **criticality** says how much the organization depends on it, in general.
+An incident's **severity** says how serious *this* incident is. They are chosen
+independently — a `CRITICAL` service can have a `SEV4` incident — and severity is never
+derived from criticality; the service's criticality is shown beside the incident as
+context.
+
+| Severity | Meaning |
+| --- | --- |
+| `SEV1` Critical | Core functionality unavailable, or major customer or business impact |
+| `SEV2` Major | Serious degradation or substantial impact, short of a complete critical outage |
+| `SEV3` Moderate | Limited or contained impact; normal operations largely continue |
+| `SEV4` Minor | A small operational issue with little immediate impact |
+
+Numbered, unlike criticality's words, because `SEVn` — `SEV1` the most severe — is the
+vocabulary responders already use, and because a different form keeps a "critical
+service" from being confused with a critical incident. The web app always writes the
+word beside the code, and severity is the first thing drawn with the reserved signal
+colours, each level with its own glyph shape.
+
+### Lifecycle
+
+| Status | Meaning |
+| --- | --- |
+| `INVESTIGATING` | The problem is known; its cause and fix are not |
+| `IDENTIFIED` | The likely cause is known; remediation is under way |
+| `MONITORING` | A fix or mitigation is in place; recovery is being watched |
+| `RESOLVED` | The incident is over |
+
+- Every incident starts `INVESTIGATING`. There is no separate "open": the problem is
+  known the moment someone declares it.
+- The three active statuses move **in any direction**. A fix that does not hold sends
+  `MONITORING` back to `INVESTIGATING`; a forward-only machine would make people misreport.
+- Any active status can move to `RESOLVED`, with the same `PATCH`. `resolvedAt` is set in
+  the same write, and a database `CHECK` keeps the two consistent for any writer:
+  `status = 'RESOLVED'` exactly when `resolved_at` is set.
+- **`RESOLVED` is final.** Any change to a resolved incident — title included — is
+  `409 INCIDENT_RESOLVED`. Reopening arrives with the incident timeline, where it will
+  be recorded as an event rather than silently overwriting the first resolution. Until
+  then, a problem that returns is a new incident.
+
+### The responsible team is a snapshot
+
+Every service has an owner team. When an incident is declared, the service's owner at
+that moment becomes the incident's responsible team — stored on the incident, not read
+through the service. So when the Payment API moves from Payments to Platform six months
+later, its old incidents still say Payments was responsible, and new ones say Platform.
+
+The responsible team can be **reassigned** while the incident is active — the owner of a
+service is not always the right team to respond — to any team in the organization.
+Until the incident timeline exists, a reassignment replaces the previous team without a
+record of it. Names are read live: renaming a team shows on its past incidents, because
+the team is the same one.
+
+### Numbers
+
+`INC-n` numbers are **per organization**, **unique**, **never changed or reused**, and
+**increase** in the order declarations commit. They come from a counter on the
+organization: declaring increments it in the same transaction that inserts the incident,
+and the row lock that increment takes makes concurrent declarations in one organization
+take turns — each gets a distinct, larger number, with no retry. Gaplessness is not
+promised; nothing depends on it. The counter lives on the organization, not in a global
+sequence, so one organization's numbers say nothing about another's activity.
+
+Numbers are guessable, and that is fine: the organization is in the path, so an incident
+number means nothing outside the organization it was admitted to.
+
+### Endpoints
+
+All under `/api/v1/organizations/:organizationId`, with admission, permission, and
+isolation exactly as in [Tenancy](#tenancy) and [Authorization](#authorization). Every
+role holds both permissions.
+
+| Route | Permission | Purpose |
+| --- | --- | --- |
+| `GET /incidents?state=active` | `incidents:read` | Active incidents, most severe first, then longest-running |
+| `GET /incidents?state=resolved` | `incidents:read` | Resolved incidents, most recently declared first |
+| `POST /incidents` | `incidents:manage` | Declare `{ "title", "serviceId", "severity", "summary"? }`. `201` |
+| `GET /incidents/:number` | `incidents:read` | One incident |
+| `PATCH /incidents/:number` | `incidents:manage` | Change `{ "title"?, "summary"?, "severity"?, "status"?, "teamId"? }` of an active incident (at least one). `"status": "RESOLVED"` resolves it |
+
+There is **no delete**. Incidents are history; a mistaken declaration is resolved.
+
+Both lists are the first collections to use the envelope reserved in
+[API conventions](#successful-responses-are-not-wrapped):
+
+```jsonc
+{ "items": [ /* incidents */ ], "page": { "cursor": "SEV2:41", "hasMore": true } }
+```
+
+Pages are 50 incidents; there is no `limit` parameter. `cursor` is opaque — pass it back
+as `?cursor=` for the next page; it is `null` exactly when `hasMore` is false. Pages are
+keyset reads over `(severity, number)` for active incidents and `number` for resolved
+ones, so a deep page costs what the first does. An incident whose status or severity
+changes between two page requests can be skipped or repeated; that is the nature of
+paging a changing set, and the active list is rarely more than one page.
+
+Declaring takes no `status` (every incident starts `INVESTIGATING`), no team (the
+service's owner is responsible), and no number, declarer, or `resolvedAt`: bodies are
+strict, and any of those is a `400`.
+
+### Errors
+
+| Case | Answer |
+| --- | --- |
+| Incident number malformed, missing, or not this organization's | `404 INCIDENT_NOT_FOUND`, identically |
+| `serviceId` missing, or another organization's service | `404 SERVICE_NOT_FOUND`, identically |
+| `serviceId` archived | `409 SERVICE_ARCHIVED` |
+| `teamId` missing, or another organization's team | `404 TEAM_NOT_FOUND`, identically |
+| Any change to a resolved incident | `409 INCIDENT_RESOLVED` |
+| `state` missing or unknown; a malformed cursor | `400`; `400 INVALID_CURSOR` |
+| `serviceId` or `teamId` not a uuid; a severity or status outside the enums | `400`, naming the field |
+
+On a change, the incident is judged first (`404`, then `409`) and only then the team the
+body names, so a foreign incident reveals nothing about the body.
+
+### Declaring, and what it races
+
+Declaring is one transaction that takes its locks in a fixed order — the organization
+row, then the service row — so it cannot deadlock:
+
+1. Increment the organization's counter: allocates the number, holds the organization
+   row, and refuses an organization soft-deleted since admission.
+2. Resolve the declarer from the admitted membership, within this organization.
+3. Read the service's owner and archival **`FOR SHARE`**. Until commit, the service
+   cannot be reassigned, archived, or deleted — and its owning team cannot be deleted,
+   because it owns the locked service.
+4. Insert the incident with the owner read in step 3 as its responsible team.
+
+Step 3 is the only raw SQL in the application, for one reason: Prisma's query API cannot
+express a locking read. It is a parameterized tagged template, scoped by organization.
+`FOR SHARE` rather than the `FOR KEY SHARE` a foreign key already takes, because
+`KEY SHARE` does not block an update of a non-key column, and `owner_team_id` and
+`archived_at` are exactly what must not change underneath the declaration.
+
+So a declaration and a change to its service happen one after the other, never
+interleaved:
+
+| Concurrent change | Committed first | Arrives while the declaration holds the lock |
+| --- | --- | --- |
+| Service deleted | `404 SERVICE_NOT_FOUND` | The delete waits, then is refused: `409 SERVICE_HAS_INCIDENTS` |
+| Service reassigned | The incident gets the new owner | The reassignment waits; the incident gets the owner it was declared under |
+| Service archived | `409 SERVICE_ARCHIVED` | The archive waits; the incident is declared, then the service is archived |
+| Owning team deleted | Refused: `409 TEAM_OWNS_SERVICES` | Refused the same way |
+| Another declaration | Distinct numbers, one after the other | — |
+
+Of two concurrent resolutions, the second waits on the row, finds it already resolved,
+and answers `409 INCIDENT_RESOLVED`; `resolvedAt` is written once. Other concurrent
+changes are last-write-wins per field: a change sends only the fields it changes.
+
+### Logging
+
+`Incident declared`, `Incident updated`, and `Incident resolved`, each with the incident's
+id and number and the service, team, severity, or status involved; an update names the
+fields it changed. **Never the title or summary**: free text can hold customer names or
+system details. See [Sensitive data](#sensitive-data).
+
+### Not yet
+
+The incident timeline — updates and notes, status, severity, and reassignment history,
+who resolved it, reopening. Responders and an incident commander, when impact began, a
+per-service or per-team incident list, the operational overview, and live updates.
+Detection, alerts, paging, and notifications. Deleting or voiding an incident, changing
+its service, and optimistic concurrency on edits.
+
+### Tests
+
+[`incidents.e2e-spec.ts`](apps/api/test/incidents.e2e-spec.ts) proves the wiring: every
+route is admitted and authorized, every role may respond, bodies are strict, and there
+is no delete route.
+[`incidents.integration-spec.ts`](apps/api/test/incidents.integration-spec.ts) runs two
+tenants against a real database: a member declaring, moving, and resolving; the
+responsible team surviving a service reassignment; per-organization numbering under ten
+concurrent declarations; both lists paged completely and in order; foreign incidents,
+services, and teams answered exactly as missing ones; the service isolating with no
+guard; archival refusing declarations; the delete refusals recognised through the real
+driver adapter; and every race in the table above, forced deterministically by holding a
+transaction open until the declaration is seen waiting on its lock.
+[`incidents-logging.integration-spec.ts`](apps/api/test/incidents-logging.integration-spec.ts)
+asserts no title or summary is logged, and
+[`schema.integration-spec.ts`](apps/api/test/schema.integration-spec.ts) proves the
+constraints themselves — including a physical organization deletion completing through
+the `Restrict` keys.
 
 ---
 
@@ -1609,8 +1926,13 @@ logger:
 export class IncidentsService {
   private readonly logger = new Logger(IncidentsService.name);
 
-  async escalate(id: string) {
-    this.logger.log('Incident escalated', { incidentId: id, tier: 2 });
+  async update(/* … */) {
+    // …
+    this.logger.log('Incident resolved', {
+      incidentId: incident.id,
+      incidentNumber: incident.number,
+      severity: incident.severity,
+    });
   }
 }
 ```
@@ -1623,13 +1945,13 @@ correlation id is added by the logger, not by the caller.
 `LOG_FORMAT=json` — one machine-parseable line per entry, the production default:
 
 ```json
-{"level":"log","pid":8123,"timestamp":1757328000000,"message":"Incident escalated","context":"IncidentsService","requestId":"0f9c1e2a-…","incidentId":"inc_1","tier":2}
+{"level":"log","pid":8123,"timestamp":1757328000000,"message":"Incident resolved","context":"IncidentsService","requestId":"0f9c1e2a-…","userId":"0199…","organizationId":"0199…","incidentId":"0199…","incidentNumber":42,"severity":"SEV1"}
 ```
 
 `LOG_FORMAT=pretty` — the colourised Nest format, the development and test default:
 
 ```text
-[Nest] 8123  - 09/08/2026, 4:20:11 PM     LOG [IncidentsService] Incident escalated { requestId: '0f9c1e2a-…', incidentId: 'inc_1', tier: 2 }
+[Nest] 8123  - 09/08/2026, 4:20:11 PM     LOG [IncidentsService] Incident resolved { requestId: '0f9c1e2a-…', incidentId: '0199…', incidentNumber: 42, severity: 'SEV1' }
 ```
 
 Structured fields sit at the JSON root rather than nested under `params`, so an aggregator
@@ -1686,7 +2008,10 @@ where an access log is most often consulted — are covered too.
 ### Sensitive data
 
 **Request bodies, response bodies, and headers are never logged.** The only header that
-reaches a log is the correlation id. This rule is the actual control.
+reaches a log is the correlation id. This rule is the actual control. It extends to
+structured fields a service chooses to log: free text a user wrote — an incident's title
+or summary — is never one of them, because redaction matches keys, not content.
+Identifiers and enum values are.
 
 Redaction is the backstop behind it: every structured field passes through
 [`apps/api/src/logger/redact.ts`](apps/api/src/logger/redact.ts), which masks the value of

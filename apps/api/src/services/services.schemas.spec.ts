@@ -116,6 +116,8 @@ describe('service schemas', () => {
       { description: null },
       { ownerTeamId: TEAM },
       { criticality: 'LOW' },
+      { archived: true },
+      { archived: false },
     ])('should accept %o alone', (body) => {
       expect(updateServiceSchema.safeParse(body).success).toBe(true);
     });
@@ -130,13 +132,21 @@ describe('service schemas', () => {
       );
     });
 
-    it.each([{ slug: 'chosen' }, { organizationId: TEAM }])(
-      'should refuse the extra key in %o',
-      (extra) => {
-        expect(
-          updateServiceSchema.safeParse({ name: 'Checkout', ...extra }).success,
-        ).toBe(false);
+    it.each([{ archived: 'yes' }, { archived: null }])(
+      'should refuse the archived state %o: it is a boolean',
+      (body) => {
+        expect(updateServiceSchema.safeParse(body).success).toBe(false);
       },
     );
+
+    it.each([
+      { slug: 'chosen' },
+      { organizationId: TEAM },
+      { archivedAt: '2026-09-18T00:00:00.000Z' },
+    ])('should refuse the extra key in %o', (extra) => {
+      expect(
+        updateServiceSchema.safeParse({ name: 'Checkout', ...extra }).success,
+      ).toBe(false);
+    });
   });
 });

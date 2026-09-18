@@ -20,6 +20,9 @@ export const Permission = {
   TEAMS_MANAGE: 'teams:manage',
   SERVICES_READ: 'services:read',
   SERVICES_MANAGE: 'services:manage',
+  INCIDENTS_READ: 'incidents:read',
+  /** Declare, change, reassign, and resolve incidents. */
+  INCIDENTS_MANAGE: 'incidents:manage',
 } as const;
 
 export type Permission = (typeof Permission)[keyof typeof Permission];

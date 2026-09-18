@@ -5,6 +5,8 @@ import { AuthFrame } from "@/components/app/auth-frame";
 import { WorkspaceShell } from "@/components/app/workspace-shell";
 import { LoginForm } from "@/components/auth/login-form";
 import { RegisterForm } from "@/components/auth/register-form";
+import { IncidentDetail } from "@/components/incidents/incident-detail";
+import { IncidentsView } from "@/components/incidents/incidents-view";
 import { InvitationAcceptance } from "@/components/invitations/invitation-acceptance";
 import { MembersView } from "@/components/organizations/members-view";
 import { OrganizationOverview } from "@/components/organizations/organization-overview";
@@ -41,7 +43,12 @@ import { renderWithSession } from "./render";
  */
 
 const navigation = vi.hoisted(() => ({
-  params: {} as { orgSlug?: string; teamSlug?: string; serviceSlug?: string },
+  params: {} as {
+    orgSlug?: string;
+    teamSlug?: string;
+    serviceSlug?: string;
+    incidentNumber?: string;
+  },
   pathname: "/",
 }));
 
@@ -62,8 +69,12 @@ const OWNER = [
   "services:read",
   "teams:manage",
   "teams:read",
+  "incidents:manage",
+  "incidents:read",
 ];
 const MEMBER = [
+  "incidents:manage",
+  "incidents:read",
   "memberships:read",
   "organization:read",
   "services:read",
@@ -88,8 +99,40 @@ const service = {
   description: "Takes card payments.",
   criticality: "CRITICAL",
   ownerTeam: { id: team.id, name: team.name, slug: team.slug },
+  archivedAt: null,
   createdAt: "2026-09-18T12:00:00.000Z",
   updatedAt: "2026-09-18T12:00:00.000Z",
+};
+
+const activeIncident = {
+  id: "0199a1b2-c3d4-7000-8000-0000000000f1",
+  number: 42,
+  title: "Card payments failing",
+  summary: "Card declines since 14:02.",
+  severity: "SEV1",
+  status: "INVESTIGATING",
+  service: {
+    id: service.id,
+    name: service.name,
+    slug: service.slug,
+    criticality: service.criticality,
+    archivedAt: null,
+  },
+  team: { id: team.id, name: team.name, slug: team.slug },
+  createdBy: { id: currentUser.id, name: currentUser.name },
+  createdAt: "2026-09-18T12:00:00.000Z",
+  updatedAt: "2026-09-18T12:00:00.000Z",
+  resolvedAt: null,
+};
+
+const resolvedIncident = {
+  ...activeIncident,
+  id: "0199a1b2-c3d4-7000-8000-0000000000f2",
+  number: 7,
+  title: "Reports delayed",
+  severity: "SEV3",
+  status: "RESOLVED",
+  resolvedAt: "2026-09-18T13:00:00.000Z",
 };
 
 const base = `/organizations/${organization.id}`;
@@ -120,6 +163,20 @@ const signedIn = (permissions: string[]) =>
         return jsonResponse(200, [team]);
       case `GET ${base}/services`:
         return jsonResponse(200, [service]);
+      case `GET ${base}/incidents?state=active`:
+        return jsonResponse(200, {
+          items: [activeIncident],
+          page: { cursor: null, hasMore: false },
+        });
+      case `GET ${base}/incidents?state=resolved`:
+        return jsonResponse(200, {
+          items: [resolvedIncident],
+          page: { cursor: "7", hasMore: true },
+        });
+      case `GET ${base}/incidents/42`:
+        return jsonResponse(200, activeIncident);
+      case `GET ${base}/incidents/7`:
+        return jsonResponse(200, resolvedIncident);
       case `GET ${base}/teams/${team.id}/members`:
         return jsonResponse(200, [
           {
@@ -331,6 +388,47 @@ describe("accessibility", () => {
       );
 
       await screen.findByRole("combobox", { name: "Owner team" });
+      await expectNoAxeViolations(container);
+    });
+
+    it("Incidents, as a member declaring one", async () => {
+      signedIn(MEMBER);
+      const { container } = inWorkspace(<IncidentsView />);
+
+      await screen.findByRole("table", { name: "Active incidents" });
+      await screen.findByRole("table", { name: "Resolved incidents" });
+      (await screen.findByRole("button", { name: "Declare incident" })).click();
+      await screen.findByLabelText("Affected service");
+      await expectNoAxeViolations(container);
+    });
+
+    it("Incident, active, as a member", async () => {
+      navigation.params = { orgSlug: organization.slug, incidentNumber: "42" };
+      signedIn(MEMBER);
+      const { container } = inWorkspace(<IncidentDetail />);
+
+      await screen.findByRole("heading", { level: 1, name: "Card payments failing" });
+      await screen.findByLabelText("Responsible team");
+      (await screen.findByRole("button", { name: "Resolve…" })).click();
+      await screen.findByRole("button", { name: "Resolve incident" });
+      await expectNoAxeViolations(container);
+    });
+
+    it("Incident, resolved", async () => {
+      navigation.params = { orgSlug: organization.slug, incidentNumber: "7" };
+      signedIn(MEMBER);
+      const { container } = inWorkspace(<IncidentDetail />);
+
+      await screen.findByRole("heading", { level: 1, name: "Reports delayed" });
+      await expectNoAxeViolations(container);
+    });
+
+    it("Incident not found", async () => {
+      navigation.params = { orgSlug: organization.slug, incidentNumber: "999" };
+      signedIn(MEMBER);
+      const { container } = inWorkspace(<IncidentDetail />);
+
+      await screen.findByRole("heading", { name: "Incident not found" });
       await expectNoAxeViolations(container);
     });
 

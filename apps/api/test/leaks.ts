@@ -20,6 +20,8 @@ export const FORBIDDEN_KEYS = [
   'deleted_at',
   'revokedAt',
   'revoked_at',
+  'lastIncidentNumber',
+  'last_incident_number',
 ];
 
 /**

@@ -31,6 +31,7 @@ const serviceRow = {
   slug: 'payment-api',
   description: null,
   criticality: 'CRITICAL',
+  archivedAt: null,
   createdAt: CREATED,
   updatedAt: CREATED,
   ownerTeam: { id: TEAM_ID, name: 'Payments', slug: 'payments' },
@@ -152,6 +153,7 @@ describe('Services (e2e)', () => {
         description: null,
         criticality: 'CRITICAL',
         ownerTeam: { id: TEAM_ID, name: 'Payments', slug: 'payments' },
+        archivedAt: null,
         createdAt: '2026-09-18T12:00:00.000Z',
         updatedAt: '2026-09-18T12:00:00.000Z',
       });

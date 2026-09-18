@@ -187,6 +187,11 @@ export interface ServiceResponse {
   description: string | null;
   criticality: ServiceCriticality;
   ownerTeam: { id: string; name: string; slug: string };
+  /**
+   * When the service was retired, or null while in use. An archived service
+   * keeps its incidents but cannot have new ones declared against it.
+   */
+  archivedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -199,12 +204,77 @@ export interface CreateServiceRequest {
   criticality?: ServiceCriticality;
 }
 
-/** Ownership moves; it is never cleared. */
+/** Ownership moves; it is never cleared. `archived` retires or restores it. */
 export interface UpdateServiceRequest {
   name?: string;
   description?: string | null;
   ownerTeamId?: string;
   criticality?: ServiceCriticality;
+  archived?: boolean;
+}
+
+/** How serious one incident is, SEV1 the most severe. Not criticality. */
+export type IncidentSeverity = "SEV1" | "SEV2" | "SEV3" | "SEV4";
+
+/** Three active statuses, which move freely, then RESOLVED — terminal. */
+export type IncidentStatus =
+  | "INVESTIGATING"
+  | "IDENTIFIED"
+  | "MONITORING"
+  | "RESOLVED";
+
+/**
+ * One incident. `number` is the organization's own sequence, shown as
+ * INC-{number} and used to address it. The responsible `team` is the
+ * service's owner when the incident was declared, unless reassigned since.
+ */
+export interface IncidentResponse {
+  id: string;
+  number: number;
+  title: string;
+  summary: string | null;
+  severity: IncidentSeverity;
+  status: IncidentStatus;
+  service: {
+    id: string;
+    name: string;
+    slug: string;
+    criticality: ServiceCriticality;
+    archivedAt: string | null;
+  };
+  team: { id: string; name: string; slug: string };
+  createdBy: { id: string; name: string };
+  createdAt: string;
+  updatedAt: string;
+  resolvedAt: string | null;
+}
+
+/** A page of a collection. `cursor` asks for the next page. */
+export interface Page<T> {
+  items: T[];
+  page: { cursor: string | null; hasMore: boolean };
+}
+
+export type IncidentState = "active" | "resolved";
+
+/**
+ * No status (every incident starts INVESTIGATING) and no team (the service's
+ * owner is responsible). Severity is required.
+ */
+export interface CreateIncidentRequest {
+  title: string;
+  summary?: string | null;
+  serviceId: string;
+  severity: IncidentSeverity;
+}
+
+/** `status: "RESOLVED"` resolves. The service never changes. */
+export interface UpdateIncidentRequest {
+  title?: string;
+  summary?: string | null;
+  severity?: IncidentSeverity;
+  status?: IncidentStatus;
+  teamId?: string;
 }
 
 /**
@@ -221,6 +291,8 @@ export const Permission = {
   TEAMS_MANAGE: "teams:manage",
   SERVICES_READ: "services:read",
   SERVICES_MANAGE: "services:manage",
+  INCIDENTS_READ: "incidents:read",
+  INCIDENTS_MANAGE: "incidents:manage",
 } as const;
 
 /** Machine-readable error codes this client branches on. */
@@ -245,8 +317,13 @@ export const ApiErrorCode = {
   TEAM_MEMBER_NOT_FOUND: "TEAM_MEMBER_NOT_FOUND",
   ALREADY_A_TEAM_MEMBER: "ALREADY_A_TEAM_MEMBER",
   TEAM_OWNS_SERVICES: "TEAM_OWNS_SERVICES",
+  TEAM_HAS_INCIDENTS: "TEAM_HAS_INCIDENTS",
   SERVICE_NOT_FOUND: "SERVICE_NOT_FOUND",
   SERVICE_NAME_TAKEN: "SERVICE_NAME_TAKEN",
+  SERVICE_HAS_INCIDENTS: "SERVICE_HAS_INCIDENTS",
+  SERVICE_ARCHIVED: "SERVICE_ARCHIVED",
+  INCIDENT_NOT_FOUND: "INCIDENT_NOT_FOUND",
+  INCIDENT_RESOLVED: "INCIDENT_RESOLVED",
 } as const;
 
 export interface ValidationErrorDetail {

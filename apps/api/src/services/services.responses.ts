@@ -15,6 +15,7 @@ interface ServiceRow {
   slug: string;
   description: string | null;
   criticality: ServiceCriticality;
+  archivedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
   ownerTeam: { id: string; name: string; slug: string };
@@ -32,6 +33,7 @@ export const toServiceResponse = (service: ServiceRow): ServiceResponse => ({
     name: service.ownerTeam.name,
     slug: service.ownerTeam.slug,
   },
+  archivedAt: service.archivedAt?.toISOString() ?? null,
   createdAt: service.createdAt.toISOString(),
   updatedAt: service.updatedAt.toISOString(),
 });

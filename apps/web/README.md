@@ -37,13 +37,13 @@ src/
 ├── app/                      routes — thin server files that render client components
 │   ├── (auth)/login, register
 │   ├── (app)/                signed-in shell: RequireSession + AppShell
-│   │   └── orgs/[orgSlug]/   overview, members (and invitations), teams, services, settings
+│   │   └── orgs/[orgSlug]/   overview, members (and invitations), teams, services, incidents, settings
 │   ├── invite/               invitation acceptance — outside both groups
 │   └── page.tsx              `/` redirects to login, the only org, or /orgs
 ├── components/
 │   ├── ui/                   primitives — see UI foundation below
 │   ├── app/                  workspace shell, rail, situation strip, auth frame, theme control
-│   ├── auth/, organizations/, invitations/, teams/, services/
+│   ├── auth/, organizations/, invitations/, teams/, services/, incidents/
 ├── lib/
 │   ├── config/env.ts         validated public config
 │   ├── api/                  transport, the two request kinds, endpoints, contracts
@@ -60,19 +60,20 @@ template — a full-viewport workspace, rules and tables rather than cards, comp
 and colour that means something.
 
 It is a foundation, not the finished product. It is applied only to what exists today —
-sign-in, organizations, members, invitations, teams, services, settings. Operational
-screens (incidents, on-call, activity) are designed when their domain models are, and extend
-this system — new navigation entries, the reserved signal colours, situation-strip levels,
-denser table and record layouts — rather than being mocked up in advance. No screen shows
-placeholder operational data. The pieces:
+sign-in, organizations, members, invitations, teams, services, incidents, settings.
+Operational screens are designed when their domain models are, and extend this system —
+new navigation entries, the reserved signal colours, situation-strip levels, denser table
+and record layouts — rather than being mocked up in advance. Incidents were the first:
+they added an Operations navigation entry, compact operational tables, and the first use
+of the signal colours. No screen shows placeholder operational data. The pieces:
 
 | | |
 | --- | --- |
 | **Workspace** | `WorkspaceShell`: an ink **situation strip** across the full width, the navigation **rail** beneath it on the left, and `main` — the only thing that scrolls. Below 1024px the rail becomes a drawer (a native `<dialog>`) opened from the strip. |
-| **Situation strip** | Shows where you are and the time in UTC. Its colour comes from a *level* supplied by `SituationContext`; only `neutral` exists, because nothing operational is observed yet. A live source will add levels there — the strip claims no state it cannot see. |
-| **Navigation** | Data, in [`components/app/navigation.ts`](src/components/app/navigation.ts). Only shipped routes are listed — Services sits in an Operations section that Incidents will join; there are no placeholders. An item may `require` a permission; like `useCan`, that is advice, and the API authorizes regardless. |
+| **Situation strip** | Shows where you are and the time in UTC. Its colour comes from a *level* supplied by `SituationContext`; only `neutral` exists. Incidents are recorded, but summarising them is the operational overview's job, still to come — the strip claims no state it does not summarise. |
+| **Navigation** | Data, in [`components/app/navigation.ts`](src/components/app/navigation.ts). Only shipped routes are listed — Incidents, then Services, under Operations; there are no placeholders. An item may `require` a permission; like `useCan`, that is advice, and the API authorizes regardless. |
 | **Pages** | `PageHeader` (eyebrow, the page's single `<h1>`, description, actions) then `PageBody` (`full` for lists, `form` for settings). Parts of a page are `Section`s, separated by space and rules. |
-| **Primitives** | `Button` (primary / secondary / quiet / destructive — destructive is outlined; a solid red is for high-consequence confirmations, later), `Field`, `Select`, `CopyField`, `Alert` / `ErrorAlert`, `Table` (+ `THead`, `TR`, `TH`, `TD`, `TableEmpty`), `Status`, `RecordList`, `SettingRow`, `EmptyState`, `Tabs`, `IsoDate`, `Spinner`. |
+| **Primitives** | `Button` (primary / secondary / quiet / destructive — destructive is outlined; a solid red is for high-consequence confirmations, later), `Field`, `TextArea`, `Select`, `CopyField`, `Alert` / `ErrorAlert`, `Table` (+ `THead`, `TR`, `TH`, `TD`, `TableEmpty`), `Status`, `RecordList`, `SettingRow`, `EmptyState`, `Tabs`, `IsoDate`, `LocalDateTime`, `Duration`, `Spinner`. `Duration` and the strip's clock share one minute-aligned `useMinuteClock`, so they tick together. |
 
 ### Colour tokens
 
@@ -84,7 +85,7 @@ the class. Four families, never mixed:
 - **Neutrals** — `canvas`, `surface`, `sunken`, `chrome`, `field`, `fg`, `fg-muted`, `fg-subtle`, `line-*`: structure.
 - **Accent** — the blue-violet `accent*`, `focus`, `selected`: interaction only — primary actions, links, the current place, focus.
 - **Feedback** — `danger-*`, `warning-*`, `success-*`, `info-*`: the outcome of what the user just did.
-- **Signal** — `signal-*`: the operational state of watched systems. Reserved and unused until something is observed — incidents, later health; named by intensity, not by a severity model that has not been designed. A service's criticality is deliberately *not* a signal: it is a classification people choose, shown as words.
+- **Signal** — `signal-*`: operational state. Named by intensity, not by any one model. Its first use is incident severity, in `SeverityMark` ([`components/incidents/severity.tsx`](src/components/incidents/severity.tsx)): `SEV1` critical, `SEV2` high, `SEV3` caution, `SEV4` advisory, each with its own glyph *shape* — diamond, triangle, square, ring — and always followed by the code, with the word written or read out. `nominal` and `inactive` stay reserved for service health. A service's criticality is deliberately *not* a signal: it is a classification people choose, shown as words — and so is an incident's status.
 
 State is never colour alone: `Status` pairs a glyph whose *shape* differs by tone with
 words, alerts carry a glyph and a rule, the current rail item has a bar and weight.
@@ -222,7 +223,9 @@ The list shows each team's member and service counts.
 inline confirmation. While the team owns services, deletion is not offered: the section
 says how many and links to them, because they must be moved first. A delete that races a
 service being assigned gets the API's `409 TEAM_OWNS_SERVICES`, explained in place, and
-the count is refreshed. `TeamScope` resolves the slug against the cached team list, as
+the count is refreshed. A team that has been responsible for an incident is refused with
+`409 TEAM_HAS_INCIDENTS`, and the section then says it has incident history and can only
+be renamed; no incident count is loaded to know that in advance. `TeamScope` resolves the slug against the cached team list, as
 `OrganizationScope` does for organizations; a slug never changes, so the URL stays valid
 across renames. The slug is never displayed.
 
@@ -236,14 +239,57 @@ chosen level's definition shown beneath the picker. With no teams yet, it says a
 needs an owning team and points to Teams instead.
 
 `/services/[serviceSlug]` is the service: its name and description, its owner team (a
-link), and its criticality with that level's definition, then created and updated dates.
-Nothing else — no health, incidents, or metrics, none of which exist.
+link), and its criticality with that level's definition, then created and updated dates,
+and — when archived — when it was retired. Nothing else: no health, metrics, or
+per-service incident history.
 `/services/[serviceSlug]/settings` edits the details and criticality, moves the service to
-another team, and deletes it after an inline confirmation. `ServiceScope` resolves the
-slug against the cached service list, as `TeamScope` does.
+another team, archives or unarchives it, and deletes it after an inline confirmation. A
+delete refused with `409 SERVICE_HAS_INCIDENTS` is explained in place, pointing to
+archiving. `ServiceScope` resolves the slug against the cached service list, as
+`TeamScope` does.
+
+Archived services are listed apart, in an **Archived** section below the services in
+use, and are marked "(archived)" on their team's page and on incidents. They are not
+offered when declaring an incident — and the API refuses one regardless.
 
 Criticality renders as plain words, never with `Status` glyphs or signal colours — see
 [Colour tokens](#colour-tokens).
+
+## Incidents
+
+`/orgs/[orgSlug]/incidents` is what is happening and what has happened: an **Active**
+table — most severe first, then longest-running — and a **Resolved** table, most recent
+first. Each row is the severity mark, `INC-n` and the title (a link), the service, the
+responsible team, and the status and how long it has run (or when it was resolved and how
+long it lasted). Both lists are the API's cursor pages, loaded with **Show more**; the page
+shows no counts, which would be wrong past the first page.
+
+**Declare incident** opens a form in place (`incidents:manage`, which every role holds):
+a title, the affected service — services in use only — a severity with **nothing
+preselected**, and an optional summary. Choosing the service says which team will be
+responsible and the service's criticality, as context: severity is never derived from it.
+The form sends no team and no status. A service archived or deleted meanwhile is
+explained on the field and the service list is refreshed.
+
+`/incidents/[incidentNumber]` fetches the incident by number — not from a list, which
+is paged — and shows what the record holds: severity and status with their definitions,
+the service (and whether it is archived), the responsible team, the service's
+criticality, who declared it and when, when it was resolved, and how long it ran, then
+its summary. There is no timeline section; the timeline arrives with its own model.
+While active, a responder gets:
+
+- **Response** — status (the three active ones), severity, and responsible team; only
+  what changed is sent.
+- **Details** — the title and summary.
+- **Resolve…** — after an inline confirmation that says a resolved incident is final.
+
+Once resolved, none of these are offered; the page says so. A change refused with
+`409 INCIDENT_RESOLVED` — someone resolved it meanwhile — is explained and the incident
+refetched. A number that cannot be one (`/incidents/INC-42`) is not-found without a
+request.
+
+Freshness is the query defaults — 30 seconds stale, refetch on focus. Nothing is pushed
+or polled; live updates arrive with the realtime layer.
 
 ## Query keys
 
@@ -258,4 +304,10 @@ changes also refresh `['organization', id, 'teams', teamId, 'members']`.
 Service pages read the service from `['organization', id, 'services']`. Creating,
 changing, or deleting a service refreshes it and the team list (each team's service
 count); renaming a team refreshes it too, because every service embeds its owner's name.
+Incidents live under `['organization', id, 'incidents']`: the two paged lists at
+`[…, 'list', 'active' | 'resolved']` and each incident at `[…, 'detail', number]`.
+Declaring or changing an incident writes the API's answer into its detail entry and
+refreshes both lists — a status, severity, or team change can move it between or within
+them. Changing a service (its name, criticality, or archival) or renaming a team
+refreshes the whole incidents prefix, because every incident embeds them.
 No query key ever contains an invitation token.

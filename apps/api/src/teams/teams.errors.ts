@@ -10,6 +10,7 @@ export const TeamsErrorCode = {
   TEAM_MEMBER_NOT_FOUND: 'TEAM_MEMBER_NOT_FOUND',
   ALREADY_A_TEAM_MEMBER: 'ALREADY_A_TEAM_MEMBER',
   TEAM_OWNS_SERVICES: 'TEAM_OWNS_SERVICES',
+  TEAM_HAS_INCIDENTS: 'TEAM_HAS_INCIDENTS',
 } as const;
 
 export type TeamsErrorCode =
@@ -56,4 +57,14 @@ export const teamOwnsServices = (): ConflictException =>
   new ConflictException(
     'This team owns services. Reassign them to another team before deleting it',
     { errorCode: TeamsErrorCode.TEAM_OWNS_SERVICES },
+  );
+
+/**
+ * The team has been responsible for incidents. Incidents are history and are
+ * never deleted, so neither is a team they name — it can be renamed instead.
+ */
+export const teamHasIncidents = (): ConflictException =>
+  new ConflictException(
+    'This team has been responsible for incidents, which keep it as their history. It cannot be deleted',
+    { errorCode: TeamsErrorCode.TEAM_HAS_INCIDENTS },
   );

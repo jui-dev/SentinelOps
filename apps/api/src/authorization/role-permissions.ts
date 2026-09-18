@@ -11,6 +11,13 @@ import { Permission } from './permissions.js';
  *
  * Keyed by `Role`, so adding an enum value without deciding what it may do is
  * a compile error rather than a role that silently holds nothing.
+ *
+ * Configuration — teams, services, invitations — is governed by OWNER and
+ * ADMIN. Incident response is everyone's work: a MEMBER holds
+ * `incidents:manage`, because the engineer who notices a failure must be able
+ * to declare it and move it to resolution without finding an admin first.
+ * It remains a distinct permission so a later, narrower role (a read-only
+ * stakeholder) is a change to this table alone.
  */
 export const ROLE_PERMISSIONS: Readonly<Record<Role, ReadonlySet<Permission>>> =
   {
@@ -24,6 +31,8 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, ReadonlySet<Permission>>> =
       Permission.TEAMS_MANAGE,
       Permission.SERVICES_READ,
       Permission.SERVICES_MANAGE,
+      Permission.INCIDENTS_READ,
+      Permission.INCIDENTS_MANAGE,
     ]),
     ADMIN: new Set([
       Permission.ORGANIZATION_READ,
@@ -35,12 +44,16 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, ReadonlySet<Permission>>> =
       Permission.TEAMS_MANAGE,
       Permission.SERVICES_READ,
       Permission.SERVICES_MANAGE,
+      Permission.INCIDENTS_READ,
+      Permission.INCIDENTS_MANAGE,
     ]),
     MEMBER: new Set([
       Permission.ORGANIZATION_READ,
       Permission.MEMBERSHIPS_READ,
       Permission.TEAMS_READ,
       Permission.SERVICES_READ,
+      Permission.INCIDENTS_READ,
+      Permission.INCIDENTS_MANAGE,
     ]),
   };
 

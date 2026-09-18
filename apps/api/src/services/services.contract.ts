@@ -30,6 +30,12 @@ export interface ServiceResponse {
     name: string;
     slug: string;
   };
+  /**
+   * When the service was retired, or null while it is in use. An archived
+   * service is kept — incidents still name it — but no new incident can be
+   * declared against it.
+   */
+  archivedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }

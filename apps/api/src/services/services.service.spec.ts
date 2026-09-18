@@ -19,6 +19,7 @@ const serviceRow = {
   slug: 'payment-api',
   description: null,
   criticality: 'NORMAL' as const,
+  archivedAt: null as Date | null,
   createdAt: CREATED,
   updatedAt: CREATED,
   ownerTeam: { id: TEAM, name: 'Payments', slug: 'payments' },
@@ -305,10 +306,43 @@ describe('ServicesService', () => {
             description: undefined,
             ownerTeamId: undefined,
             criticality: undefined,
+            archivedAt: undefined,
           },
         }),
       );
       expect(prisma.team.findFirst).not.toHaveBeenCalled();
+    });
+
+    it('should stamp the time when archiving, and clear it when unarchiving', async () => {
+      const { service, prisma } = serviceWith();
+
+      await service.update(ORG, SERVICE, { archived: true });
+
+      expect(
+        prisma.service.update.mock.calls[0][0].data.archivedAt,
+      ).toBeInstanceOf(Date);
+
+      prisma.service.findFirst.mockResolvedValue({
+        ...serviceRow,
+        archivedAt: CREATED,
+      });
+      await service.update(ORG, SERVICE, { archived: false });
+
+      expect(prisma.service.update.mock.calls[1][0].data.archivedAt).toBeNull();
+    });
+
+    it('should keep the original time when archiving an archived service', async () => {
+      const { service, prisma } = serviceWith();
+      prisma.service.findFirst.mockResolvedValue({
+        ...serviceRow,
+        archivedAt: CREATED,
+      });
+
+      await service.update(ORG, SERVICE, { archived: true });
+
+      expect(
+        prisma.service.update.mock.calls[0][0].data.archivedAt,
+      ).toBeUndefined();
     });
 
     it('should look a new owner up within the organization', async () => {
@@ -424,6 +458,27 @@ describe('ServicesService', () => {
         404,
         ServicesErrorCode.SERVICE_NOT_FOUND,
       );
+    });
+
+    it('should answer a service with incidents with 409, deleting nothing', async () => {
+      const { service, prisma } = serviceWith();
+      prisma.service.deleteMany.mockRejectedValue(
+        knownError('P2003', 'incidents_organization_id_service_id_fkey'),
+      );
+
+      await expectCode(
+        service.delete(ORG, SERVICE),
+        409,
+        ServicesErrorCode.SERVICE_HAS_INCIDENTS,
+      );
+    });
+
+    it('should rethrow a foreign-key violation it does not recognise', async () => {
+      const { service, prisma } = serviceWith();
+      const unknown = knownError('P2003', 'something_else_fkey');
+      prisma.service.deleteMany.mockRejectedValue(unknown);
+
+      await expect(service.delete(ORG, SERVICE)).rejects.toBe(unknown);
     });
 
     it('should answer a malformed id with 404 without deleting', async () => {

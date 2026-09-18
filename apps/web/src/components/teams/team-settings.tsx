@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { FormEvent } from "react";
 
+import { useInvalidateIncidents } from "@/components/incidents/incident-queries";
 import {
   useCan,
   useOrganization,
@@ -27,10 +28,18 @@ import { NAME_TAKEN_MESSAGE } from "./teams-view";
 const ownsServicesError = (error: unknown) =>
   isApiError(error, 409) && error.code === ApiErrorCode.TEAM_OWNS_SERVICES;
 
+/**
+ * Incidents name the team. Not known in advance — no incident count is
+ * loaded for a team — so it is learned from the refused delete.
+ */
+const hasIncidentsError = (error: unknown) =>
+  isApiError(error, 409) && error.code === ApiErrorCode.TEAM_HAS_INCIDENTS;
+
 function EditTeamForm() {
   const organization = useOrganization();
   const team = useTeam();
   const queryClient = useQueryClient();
+  const invalidateIncidents = useInvalidateIncidents();
   const [saved, setSaved] = useState(false);
   const update = useMutation({
     mutationFn: (body: UpdateTeamRequest) =>
@@ -42,11 +51,13 @@ function EditTeamForm() {
         (current) =>
           current?.map((each) => (each.id === updated.id ? updated : each)),
       );
-      // Every service embeds its owner's name.
+      // Every service embeds its owner's name, and every incident its
+      // responsible team's.
       void queryClient.invalidateQueries({
         queryKey: queryKeys.services(organization.id),
         exact: true,
       });
+      void invalidateIncidents(organization.id);
     },
     onError: (error) => {
       if (isApiError(error, 404)) {
@@ -165,8 +176,9 @@ function DeleteTeam() {
   const description = (
     <p>
       Removes the team. Its members stay in the organization. A team that owns
-      services cannot be deleted until they are moved to another team. This
-      cannot be undone.
+      services cannot be deleted until they are moved to another team, and a
+      team that has been responsible for an incident cannot be deleted at all.
+      This cannot be undone.
     </p>
   );
 
@@ -186,6 +198,19 @@ function DeleteTeam() {
             >
               See its services
             </Link>
+          </p>
+        </Alert>
+      </SettingRow>
+    );
+  }
+
+  if (hasIncidentsError(remove.error)) {
+    return (
+      <SettingRow title="Delete team" description={description}>
+        <Alert tone="info" title="This team has incident history">
+          <p>
+            It has been responsible for incidents, which keep it as their
+            history, so it cannot be deleted. It can still be renamed.
           </p>
         </Alert>
       </SettingRow>

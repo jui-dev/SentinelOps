@@ -7,6 +7,7 @@ import {
   useOrganization,
 } from "@/components/organizations/organization-scope";
 import { teamHref } from "@/components/teams/team-scope";
+import { Alert } from "@/components/ui/alert";
 import { buttonClasses } from "@/components/ui/button";
 import { PageBody, PageHeader } from "@/components/ui/page";
 import { RecordList, RecordRow } from "@/components/ui/record";
@@ -17,9 +18,9 @@ import { criticalityOf } from "./criticality";
 import { serviceHref, useService } from "./service-scope";
 
 /**
- * A service: what it is, which team owns it, and how much the organization
- * depends on it. Only what the service record actually holds — no health,
- * incidents, or metrics, none of which exist.
+ * A service: what it is, which team owns it, how much the organization
+ * depends on it, and whether it is archived. Only what the service record
+ * holds — no health, metrics, or per-service incident history.
  */
 export function ServiceDetail() {
   const organization = useOrganization();
@@ -45,6 +46,14 @@ export function ServiceDetail() {
         }
       />
       <PageBody width="form">
+        {service.archivedAt && (
+          <Alert tone="info" title="Archived">
+            <p>
+              Retired on <IsoDate value={service.archivedAt} />. It is kept for
+              its incidents, and no new incident can be declared against it.
+            </p>
+          </Alert>
+        )}
         <div className="flex flex-col gap-8">
           <RecordList>
             <RecordRow label="Owner team">

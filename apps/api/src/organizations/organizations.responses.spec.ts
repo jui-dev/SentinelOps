@@ -32,6 +32,8 @@ describe('organization response mappers', () => {
           id: 'membership-1',
           role: 'OWNER',
           permissions: [
+            'incidents:manage',
+            'incidents:read',
             'invitations:manage',
             'invitations:read',
             'memberships:read',
@@ -58,6 +60,8 @@ describe('organization response mappers', () => {
       );
 
       expect(response.membership.permissions).toEqual([
+        'incidents:manage',
+        'incidents:read',
         'memberships:read',
         'organization:read',
         'services:read',

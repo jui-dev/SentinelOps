@@ -8,6 +8,7 @@ import { ROOT_ENV_FILE } from './config/env.js';
 import { envSchema } from './config/env.validation.js';
 import { DatabaseModule } from './database/database.module.js';
 import { HealthModule } from './health/health.module.js';
+import { IncidentsModule } from './incidents/incidents.module.js';
 import { InvitationsModule } from './invitations/invitations.module.js';
 import { LoggerModule } from './logger/logger.module.js';
 import { OrganizationsModule } from './organizations/organizations.module.js';
@@ -48,6 +49,7 @@ import { TeamsModule } from './teams/teams.module.js';
     InvitationsModule,
     TeamsModule,
     ServicesModule,
+    IncidentsModule,
   ],
   controllers: [],
   providers: [],

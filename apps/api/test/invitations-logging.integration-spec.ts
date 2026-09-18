@@ -51,7 +51,7 @@ describe('invitation logging (integration)', () => {
     await app.init();
 
     await prisma.$executeRawUnsafe(
-      'TRUNCATE TABLE services, team_memberships, teams, invitations, refresh_tokens, memberships, users, organizations RESTART IDENTITY CASCADE',
+      'TRUNCATE TABLE incidents, services, team_memberships, teams, invitations, refresh_tokens, memberships, users, organizations RESTART IDENTITY CASCADE',
     );
   });
 

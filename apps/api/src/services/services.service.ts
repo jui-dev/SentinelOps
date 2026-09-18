@@ -9,7 +9,11 @@ import { teamNotFound } from '../teams/teams.errors.js';
 import { organizationNotFound } from '../tenancy/tenancy.errors.js';
 import { isResourceId } from '../tenancy/tenancy.schemas.js';
 import type { ServiceResponse } from './services.contract.js';
-import { serviceNameTaken, serviceNotFound } from './services.errors.js';
+import {
+  serviceHasIncidents,
+  serviceNameTaken,
+  serviceNotFound,
+} from './services.errors.js';
 import { toServiceResponse } from './services.responses.js';
 import type {
   CreateServiceRequest,
@@ -33,6 +37,7 @@ const serviceSelection = {
   slug: true,
   description: true,
   criticality: true,
+  archivedAt: true,
   createdAt: true,
   updatedAt: true,
   ownerTeam: { select: { id: true, name: true, slug: true } },
@@ -52,6 +57,15 @@ const isNameConflict = (hint: string): boolean => hint.includes('name');
  */
 const violatesOwnerTeamKey = (hint: string): boolean =>
   hint.includes('owner_team') || hint.includes('ownerteam');
+
+/**
+ * A service delete refused because incidents are recorded against it. The
+ * incidents' key is the only one that can refuse deleting a service.
+ */
+const violatesIncidentServiceKey = (hint: string): boolean =>
+  hint.includes('incidents') ||
+  hint.includes('service_id') ||
+  hint.includes('serviceid');
 
 /**
  * The slug for a name that yields none — only non-Latin script, or only
@@ -202,8 +216,15 @@ export class ServicesService {
   }
 
   /**
-   * Renames a service, changes its description or criticality, or moves it to
-   * another team of this organization. Never its slug.
+   * Renames a service, changes its description or criticality, moves it to
+   * another team of this organization, or archives or unarchives it. Never
+   * its slug.
+   *
+   * Archiving stamps the time now; unarchiving clears it. Archiving an
+   * archived service keeps the original time. Archiving is allowed while
+   * incidents on the service are still active — they carry on — and it waits
+   * on any declaration holding the service's row lock, so a declaration and
+   * an archive always happen one after the other.
    *
    * The service is judged before the team, so a service this organization
    * lacks answers SERVICE_NOT_FOUND whatever the body names. A team deleted
@@ -220,27 +241,44 @@ export class ServicesService {
     }
 
     try {
-      const service = await this.prisma.$transaction(async (tx) => {
-        await this.requireService(tx, organizationId, serviceId);
+      const { service, archivedChanged } = await this.prisma.$transaction(
+        async (tx) => {
+          const current = await this.requireService(
+            tx,
+            organizationId,
+            serviceId,
+          );
 
-        if (input.ownerTeamId !== undefined) {
-          await this.requireTeam(tx, organizationId, input.ownerTeamId);
-        }
+          if (input.ownerTeamId !== undefined) {
+            await this.requireTeam(tx, organizationId, input.ownerTeamId);
+          }
 
-        return tx.service.update({
-          where: {
-            organizationId_id: { organizationId, id: serviceId },
-            organization: { deletedAt: null },
-          },
-          data: {
-            name: input.name,
-            description: input.description,
-            ownerTeamId: input.ownerTeamId,
-            criticality: input.criticality,
-          },
-          select: serviceSelection,
-        });
-      });
+          const wasArchived = current.archivedAt !== null;
+          const archivedChanged =
+            input.archived !== undefined && input.archived !== wasArchived;
+
+          const updated = await tx.service.update({
+            where: {
+              organizationId_id: { organizationId, id: serviceId },
+              organization: { deletedAt: null },
+            },
+            data: {
+              name: input.name,
+              description: input.description,
+              ownerTeamId: input.ownerTeamId,
+              criticality: input.criticality,
+              archivedAt: archivedChanged
+                ? input.archived
+                  ? new Date()
+                  : null
+                : undefined,
+            },
+            select: serviceSelection,
+          });
+
+          return { service: updated, archivedChanged };
+        },
+      );
 
       this.logger.log(
         'Service updated',
@@ -248,6 +286,13 @@ export class ServicesService {
           ? { serviceId }
           : { serviceId, ownerTeamId: input.ownerTeamId },
       );
+
+      if (archivedChanged) {
+        this.logger.log(
+          service.archivedAt ? 'Service archived' : 'Service unarchived',
+          { serviceId },
+        );
+      }
 
       return toServiceResponse(service);
     } catch (error) {
@@ -275,21 +320,35 @@ export class ServicesService {
   }
 
   /**
-   * Deletes a service. Nothing operational references one yet; when incidents
-   * do, their foreign key refuses this rather than being cascaded.
+   * Deletes a service nothing references. A service with incidents is not
+   * deleted: their foreign key refuses it, and that refusal is the 409 — not
+   * checked first, which would race a declaration in between. Such a service
+   * is retired by archiving it instead.
    */
   async delete(organizationId: string, serviceId: string): Promise<void> {
     if (!isResourceId(serviceId)) {
       throw serviceNotFound();
     }
 
-    const { count } = await this.prisma.service.deleteMany({
-      where: {
-        id: serviceId,
-        organizationId,
-        organization: { deletedAt: null },
-      },
-    });
+    let count: number;
+
+    try {
+      ({ count } = await this.prisma.service.deleteMany({
+        where: {
+          id: serviceId,
+          organizationId,
+          organization: { deletedAt: null },
+        },
+      }));
+    } catch (error) {
+      const hint = foreignKeyViolationHint(error);
+
+      if (hint !== undefined && violatesIncidentServiceKey(hint)) {
+        throw serviceHasIncidents();
+      }
+
+      throw error;
+    }
 
     if (count === 0) {
       throw serviceNotFound();
@@ -303,19 +362,21 @@ export class ServicesService {
     db: Prisma.TransactionClient,
     organizationId: string,
     serviceId: string,
-  ): Promise<void> {
+  ): Promise<{ archivedAt: Date | null }> {
     const service = await db.service.findFirst({
       where: {
         id: serviceId,
         organizationId,
         organization: { deletedAt: null },
       },
-      select: { id: true },
+      select: { archivedAt: true },
     });
 
     if (!service) {
       throw serviceNotFound();
     }
+
+    return service;
   }
 
   /**

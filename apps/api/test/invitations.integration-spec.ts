@@ -269,7 +269,7 @@ describe('invitations (integration)', () => {
 
   beforeEach(async () => {
     await prisma.$executeRawUnsafe(
-      'TRUNCATE TABLE services, team_memberships, teams, invitations, refresh_tokens, memberships, users, organizations RESTART IDENTITY CASCADE',
+      'TRUNCATE TABLE incidents, services, team_memberships, teams, invitations, refresh_tokens, memberships, users, organizations RESTART IDENTITY CASCADE',
     );
 
     fx = await seed();

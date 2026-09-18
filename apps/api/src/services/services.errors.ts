@@ -11,6 +11,8 @@ import { ConflictException, NotFoundException } from '@nestjs/common';
 export const ServicesErrorCode = {
   SERVICE_NOT_FOUND: 'SERVICE_NOT_FOUND',
   SERVICE_NAME_TAKEN: 'SERVICE_NAME_TAKEN',
+  SERVICE_HAS_INCIDENTS: 'SERVICE_HAS_INCIDENTS',
+  SERVICE_ARCHIVED: 'SERVICE_ARCHIVED',
 } as const;
 
 export type ServicesErrorCode =
@@ -36,4 +38,25 @@ export const serviceNameTaken = (): ConflictException =>
   new ConflictException(
     'A service with this name, or a very similar one, already exists',
     { errorCode: ServicesErrorCode.SERVICE_NAME_TAKEN },
+  );
+
+/**
+ * Incidents have been recorded against the service. They are history, so
+ * the service stays; archiving it is how it is retired.
+ */
+export const serviceHasIncidents = (): ConflictException =>
+  new ConflictException(
+    'Incidents have been recorded against this service, which keep it as their history. Archive it instead of deleting it',
+    { errorCode: ServicesErrorCode.SERVICE_HAS_INCIDENTS },
+  );
+
+/**
+ * The service is archived: retired, and not available for new incidents.
+ * Answered only after the service is found in the organization, so it
+ * discloses nothing about another tenant's services.
+ */
+export const serviceArchived = (): ConflictException =>
+  new ConflictException(
+    'This service is archived. Incidents cannot be declared against it',
+    { errorCode: ServicesErrorCode.SERVICE_ARCHIVED },
   );

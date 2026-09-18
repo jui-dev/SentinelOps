@@ -1,0 +1,64 @@
+import type { ServiceCriticality } from '../services/services.contract.js';
+import type {
+  IncidentResponse,
+  IncidentSeverity,
+  IncidentStatus,
+} from './incidents.contract.js';
+
+/**
+ * Row-to-wire mapper for incidents. Same rules as auth.responses.ts: every
+ * emitted field is named, nothing is spread from a row, and inputs are
+ * structural rather than Prisma model types.
+ */
+
+interface IncidentRow {
+  id: string;
+  number: number;
+  title: string;
+  summary: string | null;
+  severity: IncidentSeverity;
+  status: IncidentStatus;
+  createdAt: Date;
+  updatedAt: Date;
+  resolvedAt: Date | null;
+  service: {
+    id: string;
+    name: string;
+    slug: string;
+    criticality: ServiceCriticality;
+    archivedAt: Date | null;
+  };
+  team: { id: string; name: string; slug: string };
+  createdBy: { id: string; name: string };
+}
+
+/** Embedded records are identity only — never a user's email or memberships. */
+export const toIncidentResponse = (
+  incident: IncidentRow,
+): IncidentResponse => ({
+  id: incident.id,
+  number: incident.number,
+  title: incident.title,
+  summary: incident.summary,
+  severity: incident.severity,
+  status: incident.status,
+  service: {
+    id: incident.service.id,
+    name: incident.service.name,
+    slug: incident.service.slug,
+    criticality: incident.service.criticality,
+    archivedAt: incident.service.archivedAt?.toISOString() ?? null,
+  },
+  team: {
+    id: incident.team.id,
+    name: incident.team.name,
+    slug: incident.team.slug,
+  },
+  createdBy: {
+    id: incident.createdBy.id,
+    name: incident.createdBy.name,
+  },
+  createdAt: incident.createdAt.toISOString(),
+  updatedAt: incident.updatedAt.toISOString(),
+  resolvedAt: incident.resolvedAt?.toISOString() ?? null,
+});

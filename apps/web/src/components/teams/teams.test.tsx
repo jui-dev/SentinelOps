@@ -539,6 +539,29 @@ describe("teams", () => {
       );
     });
 
+    it("explains that a team with incident history cannot be deleted", async () => {
+      const user = userEvent.setup();
+      api(MANAGE, {
+        handler: (request) =>
+          request.method === "DELETE"
+            ? apiError(409, "TEAM_HAS_INCIDENTS")
+            : undefined,
+      });
+
+      inTeam(<TeamSettings />);
+
+      await user.click(
+        await screen.findByRole("button", { name: "Delete team…" }),
+      );
+      await user.click(screen.getByRole("button", { name: "Delete team" }));
+
+      expect(
+        await screen.findByText("This team has incident history"),
+      ).toBeDefined();
+      expect(screen.queryByRole("button", { name: /Delete team/ })).toBeNull();
+      expect(navigation.push).not.toHaveBeenCalled();
+    });
+
     it("stays put and says so when a delete fails", async () => {
       const user = userEvent.setup();
       api(MANAGE, {

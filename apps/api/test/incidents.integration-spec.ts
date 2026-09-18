@@ -1,0 +1,889 @@
+import { randomUUID } from 'node:crypto';
+import type { INestApplication } from '@nestjs/common';
+import { HttpException } from '@nestjs/common';
+import { Test } from '@nestjs/testing';
+import request from 'supertest';
+
+import { AppModule } from './../src/app.module.js';
+import { TokenService } from './../src/auth/token.service.js';
+import { PrismaService } from './../src/database/prisma.service.js';
+import type { Prisma } from './../src/generated/prisma/client.js';
+import {
+  INCIDENT_PAGE_SIZE,
+  IncidentsService,
+} from './../src/incidents/incidents.service.js';
+import { leakedKeys } from './leaks.js';
+import { resolveTestDatabaseUrl } from './test-database.js';
+
+/**
+ * Incidents against a real database.
+ *
+ * Two tenants. Alice owns A, Bob owns B, Carol is ADMIN in A and MEMBER in B
+ * — one token, two capacities — and Dave is a plain MEMBER of A. A has two
+ * teams, Payments and Platform, and a Payment API owned by Payments; B has
+ * its own Payments and Payment API.
+ *
+ * What is proven here and nowhere else: that a member declares and resolves;
+ * that the responsible team is a snapshot of the service's owner; that
+ * numbers are per organization and distinct under concurrency; that both
+ * lists page completely; that foreign incidents, services, and teams are
+ * indistinguishable from missing ones; that archival refuses declarations;
+ * that the delete refusals are recognised through the real driver adapter;
+ * and that every race between a declaration and a change to its service has
+ * the outcome IncidentsService documents — never a 500, never an orphan.
+ */
+
+interface Fixture {
+  orgA: string;
+  orgB: string;
+  alice: string;
+  bob: string;
+  carol: string;
+  dave: string;
+  carolInB: string;
+  paymentsA: string;
+  platformA: string;
+  paymentsB: string;
+  apiA: string;
+  apiB: string;
+}
+
+type Role = 'OWNER' | 'ADMIN' | 'MEMBER';
+
+/** The error body with the per-request fields removed, for comparison. */
+const comparable = (body: Record<string, unknown>) => {
+  const {
+    requestId: _requestId,
+    timestamp: _timestamp,
+    path: _path,
+    ...rest
+  } = body;
+
+  return rest;
+};
+
+const SEVERITY_ORDER = ['SEV1', 'SEV2', 'SEV3', 'SEV4'];
+
+describe('incidents (integration)', () => {
+  const prisma = new PrismaService({ url: resolveTestDatabaseUrl() });
+  let app: INestApplication;
+  let tokens: TokenService;
+  let fx: Fixture;
+
+  const call = async (
+    method: 'get' | 'post' | 'patch' | 'delete',
+    path: string,
+    userId: string,
+    body?: object,
+  ): Promise<request.Response> => {
+    const pending = request(app.getHttpServer())
+      [method](`/api/v1/organizations/${path}`)
+      .set('Authorization', `Bearer ${await tokens.signAccessToken(userId)}`);
+    const response = await (body === undefined ? pending : pending.send(body));
+
+    expect(leakedKeys(response.body)).toEqual([]);
+
+    return response;
+  };
+
+  const expectCode = (
+    response: request.Response,
+    status: number,
+    code: string,
+  ) => {
+    expect(response.status).toBe(status);
+    expect(response.body.code).toBe(code);
+  };
+
+  const declare = (
+    organizationId: string,
+    userId: string,
+    serviceId: string,
+    extra: object = {},
+  ) =>
+    call('post', `${organizationId}/incidents`, userId, {
+      title: 'Card payments failing',
+      serviceId,
+      severity: 'SEV1',
+      ...extra,
+    });
+
+  const aTeam = async (organizationId: string, name: string) =>
+    (
+      await prisma.team.create({
+        data: {
+          organizationId,
+          name,
+          slug: name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+        },
+        select: { id: true },
+      })
+    ).id;
+
+  const aService = async (
+    organizationId: string,
+    ownerTeamId: string,
+    name: string,
+  ) =>
+    (
+      await prisma.service.create({
+        data: {
+          organizationId,
+          ownerTeamId,
+          name,
+          slug: name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+        },
+        select: { id: true },
+      })
+    ).id;
+
+  const seed = async (): Promise<Fixture> => {
+    const organization = async (name: string, slug: string) =>
+      (
+        await prisma.organization.create({
+          data: { name, slug },
+          select: { id: true },
+        })
+      ).id;
+    const user = async (email: string, name: string) =>
+      (
+        await prisma.user.create({
+          data: { email, name },
+          select: { id: true },
+        })
+      ).id;
+    const grant = async (organizationId: string, userId: string, role: Role) =>
+      (
+        await prisma.membership.create({
+          data: { organizationId, userId, role },
+          select: { id: true },
+        })
+      ).id;
+
+    const orgA = await organization('Acme Operations', 'acme-operations');
+    const orgB = await organization('Bravo Reliability', 'bravo-reliability');
+    const alice = await user('alice@acme.example', 'Alice Anders');
+    const bob = await user('bob@bravo.example', 'Bob Brandt');
+    const carol = await user('carol@both.example', 'Carol Chen');
+    const dave = await user('dave@acme.example', 'Dave Duarte');
+
+    await grant(orgA, alice, 'OWNER');
+    await grant(orgB, bob, 'OWNER');
+    await grant(orgA, carol, 'ADMIN');
+    const carolInB = await grant(orgB, carol, 'MEMBER');
+    await grant(orgA, dave, 'MEMBER');
+
+    const paymentsA = await aTeam(orgA, 'Payments');
+    const platformA = await aTeam(orgA, 'Platform');
+    const paymentsB = await aTeam(orgB, 'Payments');
+
+    return {
+      orgA,
+      orgB,
+      alice,
+      bob,
+      carol,
+      dave,
+      carolInB,
+      paymentsA,
+      platformA,
+      paymentsB,
+      apiA: await aService(orgA, paymentsA, 'Payment API'),
+      apiB: await aService(orgB, paymentsB, 'Payment API'),
+    };
+  };
+
+  /**
+   * Runs `work` in a transaction and holds it open — with its locks — until
+   * `release` is called. See invitations.integration-spec.ts.
+   */
+  const hold = async (
+    work: (tx: Prisma.TransactionClient) => Promise<unknown>,
+  ) => {
+    let release!: () => void;
+    let ready!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const started = new Promise<void>((resolve) => (ready = resolve));
+
+    const done = prisma.$transaction(
+      async (tx) => {
+        await work(tx);
+        ready();
+        await gate;
+      },
+      { timeout: 20_000 },
+    );
+
+    await started;
+
+    return { release, done };
+  };
+
+  /** Resolves once some other session in this database is waiting on a lock. */
+  const someoneIsWaitingOnALock = async () => {
+    for (let attempt = 0; attempt < 200; attempt += 1) {
+      const [{ waiting }] = await prisma.$queryRaw<{ waiting: number }[]>`
+        SELECT count(*)::int AS waiting
+        FROM pg_stat_activity
+        WHERE datname = current_database() AND wait_event_type = 'Lock'`;
+
+      if (waiting > 0) return;
+
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+
+    throw new Error('No session started waiting on a lock');
+  };
+
+  /** Starts a request without awaiting it, and without an unhandled rejection. */
+  const inFlight = (pending: Promise<request.Response>) => {
+    pending.catch(() => undefined);
+
+    return pending;
+  };
+
+  beforeAll(async () => {
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideProvider(PrismaService)
+      .useValue(prisma)
+      .compile();
+
+    app = moduleRef.createNestApplication();
+    app.setGlobalPrefix('/api/v1');
+    await app.init();
+
+    tokens = app.get(TokenService);
+  });
+
+  beforeEach(async () => {
+    await prisma.$executeRawUnsafe(
+      'TRUNCATE TABLE incidents, services, team_memberships, teams, invitations, refresh_tokens, memberships, users, organizations RESTART IDENTITY CASCADE',
+    );
+
+    fx = await seed();
+  });
+
+  afterAll(async () => {
+    await app.close();
+    await prisma.$disconnect();
+  });
+
+  describe('lifecycle', () => {
+    it('should let a member declare an incident, move it in any direction, and resolve it', async () => {
+      const declared = await declare(fx.orgA, fx.dave, fx.apiA, {
+        summary: 'Card declines since 14:02',
+      });
+
+      expect(declared.status).toBe(201);
+      expect(declared.body).toEqual(
+        expect.objectContaining({
+          number: 1,
+          status: 'INVESTIGATING',
+          severity: 'SEV1',
+          summary: 'Card declines since 14:02',
+          resolvedAt: null,
+          service: expect.objectContaining({
+            id: fx.apiA,
+            criticality: 'NORMAL',
+          }),
+          team: expect.objectContaining({ id: fx.paymentsA, name: 'Payments' }),
+          createdBy: { id: fx.dave, name: 'Dave Duarte' },
+        }),
+      );
+
+      const path = `${fx.orgA}/incidents/1`;
+
+      for (const status of ['IDENTIFIED', 'INVESTIGATING', 'MONITORING']) {
+        const moved = await call('patch', path, fx.dave, { status });
+
+        expect(moved.status).toBe(200);
+        expect(moved.body.status).toBe(status);
+        expect(moved.body.resolvedAt).toBeNull();
+      }
+
+      const resolved = await call('patch', path, fx.dave, {
+        status: 'RESOLVED',
+        severity: 'SEV2',
+      });
+
+      expect(resolved.status).toBe(200);
+      expect(resolved.body.status).toBe('RESOLVED');
+      expect(resolved.body.severity).toBe('SEV2');
+      expect(Date.parse(resolved.body.resolvedAt)).not.toBeNaN();
+
+      // Resolved is terminal: nothing about it changes again.
+      for (const change of [
+        { title: 'Typo fixed' },
+        { status: 'MONITORING' },
+        { status: 'RESOLVED' },
+        { teamId: fx.platformA },
+      ]) {
+        expectCode(
+          await call('patch', path, fx.alice, change),
+          409,
+          'INCIDENT_RESOLVED',
+        );
+      }
+
+      expect((await call('get', path, fx.dave)).body).toEqual(resolved.body);
+    });
+
+    it('should snapshot the owner as the responsible team: reassigning the service rewrites no history', async () => {
+      await declare(fx.orgA, fx.alice, fx.apiA);
+
+      expect(
+        (
+          await call('patch', `${fx.orgA}/services/${fx.apiA}`, fx.alice, {
+            ownerTeamId: fx.platformA,
+          })
+        ).status,
+      ).toBe(200);
+
+      const later = await declare(fx.orgA, fx.alice, fx.apiA);
+      const earlier = await call('get', `${fx.orgA}/incidents/1`, fx.alice);
+
+      expect(earlier.body.team.id).toBe(fx.paymentsA);
+      expect(later.body.team.id).toBe(fx.platformA);
+    });
+
+    it('should reassign the responsible team within the organization only', async () => {
+      await declare(fx.orgA, fx.alice, fx.apiA);
+      const path = `${fx.orgA}/incidents/1`;
+
+      const moved = await call('patch', path, fx.dave, {
+        teamId: fx.platformA,
+      });
+
+      expect(moved.status).toBe(200);
+      expect(moved.body.team.id).toBe(fx.platformA);
+
+      const foreign = await call('patch', path, fx.alice, {
+        teamId: fx.paymentsB,
+      });
+      const missing = await call('patch', path, fx.alice, {
+        teamId: randomUUID(),
+      });
+
+      expectCode(foreign, 404, 'TEAM_NOT_FOUND');
+      expect(comparable(foreign.body)).toEqual(comparable(missing.body));
+      expect(
+        (
+          await prisma.incident.findFirstOrThrow({
+            where: { organizationId: fx.orgA },
+          })
+        ).teamId,
+      ).toBe(fx.platformA);
+    });
+
+    it('should name the declarer after their account is deleted', async () => {
+      await declare(fx.orgA, fx.dave, fx.apiA);
+      await prisma.user.update({
+        where: { id: fx.dave },
+        data: { deletedAt: new Date() },
+      });
+
+      expect(
+        (await call('get', `${fx.orgA}/incidents/1`, fx.alice)).body.createdBy,
+      ).toEqual({ id: fx.dave, name: 'Dave Duarte' });
+    });
+
+    it('should judge one token by the role it holds in each organization', async () => {
+      // Carol is ADMIN in A and MEMBER in B; both may respond.
+      expect((await declare(fx.orgA, fx.carol, fx.apiA)).status).toBe(201);
+      expect((await declare(fx.orgB, fx.carol, fx.apiB)).status).toBe(201);
+    });
+  });
+
+  describe('numbering', () => {
+    it('should number each organization independently', async () => {
+      const a1 = await declare(fx.orgA, fx.alice, fx.apiA);
+      const a2 = await declare(fx.orgA, fx.alice, fx.apiA);
+      const b1 = await declare(fx.orgB, fx.bob, fx.apiB);
+
+      expect([a1.body.number, a2.body.number, b1.body.number]).toEqual([
+        1, 2, 1,
+      ]);
+    });
+
+    it('should give concurrent declarations distinct numbers, all of them succeeding', async () => {
+      const responses = await Promise.all(
+        Array.from({ length: 10 }, () => declare(fx.orgA, fx.alice, fx.apiA)),
+      );
+
+      expect(responses.map((response) => response.status)).toEqual(
+        Array(10).fill(201),
+      );
+
+      const numbers = responses.map(
+        (response) => response.body.number as number,
+      );
+
+      expect(new Set(numbers).size).toBe(10);
+      expect(
+        (
+          await prisma.organization.findUniqueOrThrow({
+            where: { id: fx.orgA },
+          })
+        ).lastIncidentNumber,
+      ).toBe(Math.max(...numbers));
+    });
+
+    it('should not consume a number for a refused declaration', async () => {
+      await declare(fx.orgA, fx.alice, randomUUID());
+      await declare(fx.orgA, fx.alice, fx.apiB);
+
+      expect((await declare(fx.orgA, fx.alice, fx.apiA)).body.number).toBe(1);
+    });
+  });
+
+  describe('lists', () => {
+    /** Incidents written directly: more than one page, mixed severities. */
+    const many = (count: number, resolved: boolean) =>
+      prisma.incident.createMany({
+        data: Array.from({ length: count }, (_, index) => ({
+          organizationId: fx.orgA,
+          number: index + 1,
+          title: `Incident ${index + 1}`,
+          serviceId: fx.apiA,
+          teamId: fx.paymentsA,
+          createdById: fx.alice,
+          severity: SEVERITY_ORDER[(index * 7) % 4] as 'SEV1',
+          status: resolved ? ('RESOLVED' as const) : ('MONITORING' as const),
+          resolvedAt: resolved ? new Date() : null,
+        })),
+      });
+
+    const walk = async (state: 'active' | 'resolved') => {
+      const seen: { number: number; severity: string }[] = [];
+      let cursor: string | null = null;
+      let pages = 0;
+
+      do {
+        const query: string = cursor
+          ? `state=${state}&cursor=${encodeURIComponent(cursor)}`
+          : `state=${state}`;
+        const response = await call(
+          'get',
+          `${fx.orgA}/incidents?${query}`,
+          fx.dave,
+        );
+
+        expect(response.status).toBe(200);
+        expect(response.body.page.hasMore).toBe(
+          response.body.page.cursor !== null,
+        );
+        seen.push(...response.body.items);
+        cursor = response.body.page.cursor;
+        pages += 1;
+      } while (cursor);
+
+      return { seen, pages };
+    };
+
+    it('should page every active incident, most severe first, then longest-running', async () => {
+      await many(INCIDENT_PAGE_SIZE + 7, false);
+
+      const { seen, pages } = await walk('active');
+
+      expect(pages).toBe(2);
+      expect(seen).toHaveLength(INCIDENT_PAGE_SIZE + 7);
+      expect(new Set(seen.map(({ number }) => number)).size).toBe(seen.length);
+
+      const expected = [...seen].sort(
+        (a, b) =>
+          SEVERITY_ORDER.indexOf(a.severity) -
+            SEVERITY_ORDER.indexOf(b.severity) || a.number - b.number,
+      );
+
+      expect(seen).toEqual(expected);
+    });
+
+    it('should page every resolved incident, most recent first', async () => {
+      await many(INCIDENT_PAGE_SIZE + 3, true);
+
+      const { seen, pages } = await walk('resolved');
+
+      expect(pages).toBe(2);
+      expect(seen.map(({ number }) => number)).toEqual(
+        Array.from(
+          { length: INCIDENT_PAGE_SIZE + 3 },
+          (_, index) => INCIDENT_PAGE_SIZE + 3 - index,
+        ),
+      );
+    });
+
+    it('should keep the two states apart and each organization to itself', async () => {
+      await declare(fx.orgA, fx.alice, fx.apiA);
+      await declare(fx.orgA, fx.alice, fx.apiA);
+      await call('patch', `${fx.orgA}/incidents/2`, fx.alice, {
+        status: 'RESOLVED',
+      });
+      await declare(fx.orgB, fx.bob, fx.apiB);
+
+      const active = await call(
+        'get',
+        `${fx.orgA}/incidents?state=active`,
+        fx.alice,
+      );
+      const resolved = await call(
+        'get',
+        `${fx.orgA}/incidents?state=resolved`,
+        fx.alice,
+      );
+
+      expect(
+        active.body.items.map((each: { number: number }) => each.number),
+      ).toEqual([1]);
+      expect(
+        resolved.body.items.map((each: { number: number }) => each.number),
+      ).toEqual([2]);
+    });
+
+    it('should refuse a cursor that does not fit the state', async () => {
+      expectCode(
+        await call(
+          'get',
+          `${fx.orgA}/incidents?state=active&cursor=41`,
+          fx.alice,
+        ),
+        400,
+        'INVALID_CURSOR',
+      );
+    });
+  });
+
+  describe('tenant isolation', () => {
+    it('should answer a foreign incident exactly as a nonexistent one, on every route', async () => {
+      await declare(fx.orgA, fx.alice, fx.apiA);
+      await declare(fx.orgB, fx.bob, fx.apiB);
+      await declare(fx.orgB, fx.bob, fx.apiB);
+
+      // B has a #2; A does not.
+      for (const [method, body] of [
+        ['get', undefined],
+        ['patch', { status: 'RESOLVED' }],
+      ] as const) {
+        const foreign = await call(
+          method,
+          `${fx.orgA}/incidents/2`,
+          fx.alice,
+          body,
+        );
+        const missing = await call(
+          method,
+          `${fx.orgA}/incidents/999`,
+          fx.alice,
+          body,
+        );
+
+        expectCode(foreign, 404, 'INCIDENT_NOT_FOUND');
+        expect(comparable(foreign.body)).toEqual(comparable(missing.body));
+      }
+
+      expect(
+        (
+          await prisma.incident.findFirstOrThrow({
+            where: { organizationId: fx.orgB, number: 2 },
+          })
+        ).status,
+      ).toBe('INVESTIGATING');
+    });
+
+    it('should answer a foreign service exactly as a nonexistent one, and write nothing', async () => {
+      const foreign = await declare(fx.orgA, fx.alice, fx.apiB);
+      const missing = await declare(fx.orgA, fx.alice, randomUUID());
+
+      expectCode(foreign, 404, 'SERVICE_NOT_FOUND');
+      expect(comparable(foreign.body)).toEqual(comparable(missing.body));
+      expect(await prisma.incident.count()).toBe(0);
+    });
+
+    it('should refuse a body that names an organization, number, or declarer', async () => {
+      for (const extra of [
+        { organizationId: fx.orgB },
+        { number: 5 },
+        { createdById: fx.bob },
+        { teamId: fx.platformA },
+      ]) {
+        expect((await declare(fx.orgA, fx.alice, fx.apiA, extra)).status).toBe(
+          400,
+        );
+      }
+
+      expect(await prisma.incident.count()).toBe(0);
+    });
+
+    it('should isolate in the service itself, with no guard in front of it', async () => {
+      const incidents = app.get(IncidentsService);
+      await declare(fx.orgB, fx.bob, fx.apiB);
+
+      // Carol's membership in B cannot declare into A, whatever A's service.
+      const caught = await incidents
+        .create(
+          fx.orgA,
+          { membershipId: fx.carolInB },
+          {
+            title: 'x',
+            serviceId: fx.apiA,
+            severity: 'SEV4',
+          },
+        )
+        .catch((error: unknown) => error);
+
+      expect(caught).toBeInstanceOf(HttpException);
+      expect((caught as HttpException).getStatus()).toBe(404);
+      expect(
+        await prisma.incident.count({ where: { organizationId: fx.orgA } }),
+      ).toBe(0);
+
+      expect(
+        (await incidents.list(fx.orgA, { state: 'active' })).items,
+      ).toEqual([]);
+      await expect(incidents.get(fx.orgA, '1')).rejects.toBeInstanceOf(
+        HttpException,
+      );
+    });
+
+    it('should make every incident route of a soft-deleted organization unreachable', async () => {
+      await declare(fx.orgA, fx.alice, fx.apiA);
+      await prisma.organization.update({
+        where: { id: fx.orgA },
+        data: { deletedAt: new Date() },
+      });
+
+      for (const response of [
+        await call('get', `${fx.orgA}/incidents?state=active`, fx.alice),
+        await call('get', `${fx.orgA}/incidents/1`, fx.alice),
+        await declare(fx.orgA, fx.alice, fx.apiA),
+        await call('patch', `${fx.orgA}/incidents/1`, fx.alice, {
+          status: 'RESOLVED',
+        }),
+      ]) {
+        expectCode(response, 404, 'ORGANIZATION_NOT_FOUND');
+      }
+    });
+  });
+
+  describe('archival and deletion', () => {
+    it('should refuse declaring against an archived service, keep it on its incidents, and allow it again once unarchived', async () => {
+      await declare(fx.orgA, fx.alice, fx.apiA);
+
+      const archived = await call(
+        'patch',
+        `${fx.orgA}/services/${fx.apiA}`,
+        fx.alice,
+        {
+          archived: true,
+        },
+      );
+
+      expect(archived.status).toBe(200);
+      expect(Date.parse(archived.body.archivedAt)).not.toBeNaN();
+
+      expectCode(
+        await declare(fx.orgA, fx.dave, fx.apiA),
+        409,
+        'SERVICE_ARCHIVED',
+      );
+      expect(await prisma.incident.count()).toBe(1);
+
+      // Its incident still names it, and can still be worked and resolved.
+      const existing = await call('get', `${fx.orgA}/incidents/1`, fx.dave);
+
+      expect(existing.body.service.archivedAt).toBe(archived.body.archivedAt);
+      expect(
+        (
+          await call('patch', `${fx.orgA}/incidents/1`, fx.dave, {
+            status: 'RESOLVED',
+          })
+        ).status,
+      ).toBe(200);
+
+      await call('patch', `${fx.orgA}/services/${fx.apiA}`, fx.alice, {
+        archived: false,
+      });
+
+      expect((await declare(fx.orgA, fx.dave, fx.apiA)).status).toBe(201);
+    });
+
+    it('should not let a member archive a service', async () => {
+      expectCode(
+        await call('patch', `${fx.orgA}/services/${fx.apiA}`, fx.dave, {
+          archived: true,
+        }),
+        403,
+        'PERMISSION_DENIED',
+      );
+    });
+
+    it('should refuse deleting a service with incidents, but delete an archived one with none', async () => {
+      await declare(fx.orgA, fx.alice, fx.apiA);
+
+      expectCode(
+        await call('delete', `${fx.orgA}/services/${fx.apiA}`, fx.alice),
+        409,
+        'SERVICE_HAS_INCIDENTS',
+      );
+      expect(await prisma.service.count({ where: { id: fx.apiA } })).toBe(1);
+
+      const unused = await aService(fx.orgA, fx.paymentsA, 'Legacy Portal');
+      await call('patch', `${fx.orgA}/services/${unused}`, fx.alice, {
+        archived: true,
+      });
+
+      expect(
+        (await call('delete', `${fx.orgA}/services/${unused}`, fx.alice))
+          .status,
+      ).toBe(204);
+    });
+
+    it('should refuse deleting a team that has been responsible for an incident', async () => {
+      // Platform owns nothing; only the incident names it.
+      await declare(fx.orgA, fx.alice, fx.apiA);
+      await call('patch', `${fx.orgA}/incidents/1`, fx.alice, {
+        teamId: fx.platformA,
+      });
+
+      expectCode(
+        await call('delete', `${fx.orgA}/teams/${fx.platformA}`, fx.alice),
+        409,
+        'TEAM_HAS_INCIDENTS',
+      );
+      expect(await prisma.team.count({ where: { id: fx.platformA } })).toBe(1);
+    });
+  });
+
+  describe('concurrency', () => {
+    it('should let exactly one of two concurrent resolutions win, writing resolvedAt once', async () => {
+      await declare(fx.orgA, fx.alice, fx.apiA);
+      const path = `${fx.orgA}/incidents/1`;
+
+      const responses = await Promise.all([
+        call('patch', path, fx.alice, { status: 'RESOLVED' }),
+        call('patch', path, fx.dave, { status: 'RESOLVED' }),
+      ]);
+      const statuses = responses.map((response) => response.status).sort();
+
+      expect(statuses).toEqual([200, 409]);
+
+      const winner = responses.find((response) => response.status === 200)!;
+      const stored = await prisma.incident.findFirstOrThrow({
+        where: { organizationId: fx.orgA, number: 1 },
+      });
+
+      expect(stored.resolvedAt?.toISOString()).toBe(winner.body.resolvedAt);
+    });
+
+    it('should wait for an in-flight reassignment, then declare with the new owner', async () => {
+      const held = await hold((tx) =>
+        tx.service.update({
+          where: { id: fx.apiA },
+          data: { ownerTeamId: fx.platformA },
+        }),
+      );
+      const declaring = inFlight(declare(fx.orgA, fx.alice, fx.apiA));
+
+      await someoneIsWaitingOnALock();
+      held.release();
+      await held.done;
+
+      const response = await declaring;
+
+      expect(response.status).toBe(201);
+      expect(response.body.team.id).toBe(fx.platformA);
+    });
+
+    it('should wait for an in-flight archive, then refuse the declaration', async () => {
+      const held = await hold((tx) =>
+        tx.service.update({
+          where: { id: fx.apiA },
+          data: { archivedAt: new Date() },
+        }),
+      );
+      const declaring = inFlight(declare(fx.orgA, fx.alice, fx.apiA));
+
+      await someoneIsWaitingOnALock();
+      held.release();
+      await held.done;
+
+      expectCode(await declaring, 409, 'SERVICE_ARCHIVED');
+      expect(await prisma.incident.count()).toBe(0);
+    });
+
+    it('should wait for an in-flight service deletion, then answer 404', async () => {
+      const held = await hold((tx) =>
+        tx.service.delete({ where: { id: fx.apiA } }),
+      );
+      const declaring = inFlight(declare(fx.orgA, fx.alice, fx.apiA));
+
+      await someoneIsWaitingOnALock();
+      held.release();
+      await held.done;
+
+      expectCode(await declaring, 404, 'SERVICE_NOT_FOUND');
+      expect(await prisma.incident.count()).toBe(0);
+    });
+
+    it('should make a deletion wait for an in-flight declaration, then refuse it', async () => {
+      // A transaction holding the service FOR SHARE, as a declaration does
+      // between its lock and its commit, followed by the incident it inserts.
+      const held = await hold(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM services WHERE id = ${fx.apiA}::uuid FOR SHARE`;
+        await tx.incident.create({
+          data: {
+            organizationId: fx.orgA,
+            number: 1,
+            title: 'Card payments failing',
+            serviceId: fx.apiA,
+            teamId: fx.paymentsA,
+            createdById: fx.alice,
+            severity: 'SEV1',
+          },
+        });
+      });
+      const deleting = inFlight(
+        call('delete', `${fx.orgA}/services/${fx.apiA}`, fx.alice),
+      );
+      const reassigning = inFlight(
+        call('patch', `${fx.orgA}/services/${fx.apiA}`, fx.carol, {
+          ownerTeamId: fx.platformA,
+        }),
+      );
+
+      await someoneIsWaitingOnALock();
+      held.release();
+      await held.done;
+
+      expectCode(await deleting, 409, 'SERVICE_HAS_INCIDENTS');
+      // The reassignment waited too, and applies after: the incident keeps
+      // the owner it was declared with.
+      expect((await reassigning).status).toBe(200);
+      expect((await prisma.incident.findFirstOrThrow()).teamId).toBe(
+        fx.paymentsA,
+      );
+    });
+
+    it('should resolve a burst of declarations and a service deletion without a 500 or an orphan', async () => {
+      const responses = await Promise.all([
+        declare(fx.orgA, fx.alice, fx.apiA),
+        call('delete', `${fx.orgA}/services/${fx.apiA}`, fx.alice),
+        declare(fx.orgA, fx.dave, fx.apiA),
+      ]);
+
+      for (const response of responses) {
+        expect(response.status).toBeLessThan(500);
+      }
+
+      const deleted = responses[1].status === 204;
+      const incidents = await prisma.incident.count();
+
+      if (deleted) {
+        expect(incidents).toBe(0);
+      } else {
+        expectCode(responses[1], 409, 'SERVICE_HAS_INCIDENTS');
+        expect(incidents).toBeGreaterThan(0);
+        expect(await prisma.service.count({ where: { id: fx.apiA } })).toBe(1);
+      }
+    });
+  });
+});

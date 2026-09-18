@@ -57,6 +57,8 @@ const comparable = (body: Record<string, unknown>) => {
 
 /** What the role-to-permission table grants, as the API reports it: sorted. */
 const FULL_PERMISSIONS: readonly string[] = [
+  'incidents:manage',
+  'incidents:read',
   'invitations:manage',
   'invitations:read',
   'memberships:read',
@@ -67,7 +69,10 @@ const FULL_PERMISSIONS: readonly string[] = [
   'teams:manage',
   'teams:read',
 ];
-const READ_PERMISSIONS: readonly string[] = [
+/** What a MEMBER holds: every read, and incident response. */
+const MEMBER_PERMISSIONS: readonly string[] = [
+  'incidents:manage',
+  'incidents:read',
   'memberships:read',
   'organization:read',
   'services:read',
@@ -184,7 +189,7 @@ describe('authorization (integration)', () => {
 
   beforeEach(async () => {
     await prisma.$executeRawUnsafe(
-      'TRUNCATE TABLE services, team_memberships, teams, invitations, refresh_tokens, memberships, users, organizations RESTART IDENTITY CASCADE',
+      'TRUNCATE TABLE incidents, services, team_memberships, teams, invitations, refresh_tokens, memberships, users, organizations RESTART IDENTITY CASCADE',
     );
 
     fx = await seed();
@@ -336,7 +341,7 @@ describe('authorization (integration)', () => {
       const before = await read(fx.orgA.id, token);
 
       expect(before.status).toBe(200);
-      expect(before.body.membership.permissions).toEqual(READ_PERMISSIONS);
+      expect(before.body.membership.permissions).toEqual(MEMBER_PERMISSIONS);
 
       await setRole(fx.daveInA, 'ADMIN');
 
@@ -355,7 +360,7 @@ describe('authorization (integration)', () => {
     it.each([
       ['OWNER', 'alice', FULL_PERMISSIONS],
       ['ADMIN', 'carol', FULL_PERMISSIONS],
-      ['MEMBER', 'dave', READ_PERMISSIONS],
+      ['MEMBER', 'dave', MEMBER_PERMISSIONS],
     ] as const)(
       'should tell an %s what the API will let them do',
       async (_role, who, expected) => {
@@ -533,7 +538,7 @@ describe('authorization (integration)', () => {
                 expected: {
                   id: fx.carolInB,
                   role: 'MEMBER',
-                  permissions: READ_PERMISSIONS,
+                  permissions: MEMBER_PERMISSIONS,
                 },
                 response,
               })),

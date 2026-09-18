@@ -13,6 +13,7 @@ import {
   alreadyATeamMember,
   teamMemberNotFound,
   teamNameTaken,
+  teamHasIncidents,
   teamNotFound,
   teamOwnsServices,
 } from './teams.errors.js';
@@ -87,6 +88,19 @@ const violatesMembershipKey = (hint: string): boolean =>
  */
 const violatesServiceOwnerKey = (hint: string): boolean =>
   hint.includes('owner_team') || hint.includes('ownerteam');
+
+/**
+ * A team delete refused because incidents name it as their responsible team:
+ * the constraint name, or its referencing column. Only two keys can refuse a
+ * team delete — team memberships cascade — so after the owner key, a
+ * `team_id` key is the incidents'. Checked after the owner key, so a team
+ * that both owns services and has incidents is told about the services,
+ * which can be moved.
+ */
+const violatesIncidentTeamKey = (hint: string): boolean =>
+  hint.includes('incidents') ||
+  hint.includes('team_id') ||
+  hint.includes('teamid');
 
 /**
  * The slug for a name that yields none — only non-Latin script, or only
@@ -266,7 +280,9 @@ export class TeamsService {
    *
    * A team that owns services is not deleted: the services' foreign key
    * refuses it, and that refusal is the 409. It is not checked first, which
-   * would race a service being assigned to the team in between.
+   * would race a service being assigned to the team in between. A team that
+   * has been responsible for an incident is refused the same way, by the
+   * incidents' key, and permanently: incidents are never deleted.
    */
   async delete(organizationId: string, teamId: string): Promise<void> {
     if (!isResourceId(teamId)) {
@@ -288,6 +304,10 @@ export class TeamsService {
 
       if (hint !== undefined && violatesServiceOwnerKey(hint)) {
         throw teamOwnsServices();
+      }
+
+      if (hint !== undefined && violatesIncidentTeamKey(hint)) {
+        throw teamHasIncidents();
       }
 
       throw error;

@@ -9,6 +9,7 @@ import {
   useCan,
   useOrganization,
 } from "@/components/organizations/organization-scope";
+import { useInvalidateIncidents } from "@/components/incidents/incident-queries";
 import { useTeams } from "@/components/teams/team-scope";
 import { Alert, ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -37,13 +38,15 @@ import {
 /**
  * Changes the current service. The slug never changes, so the page stays
  * where it is: the updated service replaces the cached one. Teams stale too,
- * because moving a service changes two teams' service counts. A 404 means the
- * page was out of date, and refreshing the lists shows why.
+ * because moving a service changes two teams' service counts, and so do
+ * incidents, which show the service's name, criticality, and archival. A 404
+ * means the page was out of date, and refreshing the lists shows why.
  */
 const useUpdateService = () => {
   const organization = useOrganization();
   const service = useService();
   const queryClient = useQueryClient();
+  const invalidateIncidents = useInvalidateIncidents();
 
   return useMutation({
     mutationFn: (body: UpdateServiceRequest) =>
@@ -58,6 +61,7 @@ const useUpdateService = () => {
         queryKey: queryKeys.teams(organization.id),
         exact: true,
       });
+      void invalidateIncidents(organization.id);
     },
     onError: (error) => {
       if (isApiError(error, 404)) {
@@ -224,6 +228,56 @@ function OwnershipForm() {
   );
 }
 
+/**
+ * Retires the service, or returns it to use. Archiving keeps it — and every
+ * incident recorded against it — and stops new incidents being declared
+ * against it. It is the way to retire a service that has incidents, which
+ * cannot be deleted.
+ */
+function ArchiveService() {
+  const service = useService();
+  const update = useUpdateService();
+  const archived = Boolean(service.archivedAt);
+
+  return (
+    <SettingRow
+      title={archived ? "Unarchive service" : "Archive service"}
+      description={
+        archived ? (
+          <p>
+            This service is archived. Unarchiving it makes it available for
+            new incidents again.
+          </p>
+        ) : (
+          <p>
+            Retires the service. It stays in Services, under Archived, and on
+            every incident recorded against it, but no new incident can be
+            declared against it. It can be unarchived.
+          </p>
+        )
+      }
+    >
+      {update.isError && <ErrorAlert error={update.error} className="mb-4" />}
+      <Button
+        variant="secondary"
+        disabled={update.isPending}
+        onClick={() => update.mutate({ archived: !archived })}
+      >
+        {update.isPending
+          ? archived
+            ? "Unarchiving…"
+            : "Archiving…"
+          : archived
+            ? "Unarchive service"
+            : "Archive service"}
+      </Button>
+    </SettingRow>
+  );
+}
+
+const hasIncidentsError = (error: unknown) =>
+  isApiError(error, 409) && error.code === ApiErrorCode.SERVICE_HAS_INCIDENTS;
+
 function DeleteService() {
   const organization = useOrganization();
   const service = useService();
@@ -258,14 +312,26 @@ function DeleteService() {
       description={
         <p>
           Removes the service from this organization. Its owner team is not
-          affected. This cannot be undone.
+          affected. This cannot be undone. A service with incidents cannot be
+          deleted — archive it instead.
         </p>
       }
     >
-      {remove.isError && !isApiError(remove.error, 404) && (
-        <ErrorAlert error={remove.error} className="mb-4" />
+      {remove.isError && hasIncidentsError(remove.error) ? (
+        <Alert tone="info" title="This service has incidents" className="mb-4">
+          <p>
+            Incidents have been recorded against {service.name}, and they keep
+            it as their history, so it cannot be deleted. Archive it to retire
+            it.
+          </p>
+        </Alert>
+      ) : (
+        remove.isError &&
+        !isApiError(remove.error, 404) && (
+          <ErrorAlert error={remove.error} className="mb-4" />
+        )
       )}
-      {confirming ? (
+      {confirming && !hasIncidentsError(remove.error) ? (
         <Alert tone="warning" title={`Delete ${service.name}?`}>
           <p>
             It will no longer appear in Services or on{" "}
@@ -299,7 +365,7 @@ function DeleteService() {
   );
 }
 
-/** A service's settings: its details, its owner, and deleting it. */
+/** A service's settings: its details, its owner, archiving, and deleting it. */
 export function ServiceSettings() {
   const organization = useOrganization();
   const service = useService();
@@ -316,6 +382,7 @@ export function ServiceSettings() {
           <>
             <EditServiceForm />
             <OwnershipForm />
+            <ArchiveService />
             <DeleteService />
           </>
         ) : (

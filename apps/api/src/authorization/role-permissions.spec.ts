@@ -24,6 +24,8 @@ const EXPECTED: Record<Role, Record<Permission, boolean>> = {
     'teams:manage': true,
     'services:read': true,
     'services:manage': true,
+    'incidents:read': true,
+    'incidents:manage': true,
   },
   ADMIN: {
     'organization:read': true,
@@ -35,6 +37,8 @@ const EXPECTED: Record<Role, Record<Permission, boolean>> = {
     'teams:manage': true,
     'services:read': true,
     'services:manage': true,
+    'incidents:read': true,
+    'incidents:manage': true,
   },
   MEMBER: {
     'organization:read': true,
@@ -46,6 +50,8 @@ const EXPECTED: Record<Role, Record<Permission, boolean>> = {
     'teams:manage': false,
     'services:read': true,
     'services:manage': false,
+    'incidents:read': true,
+    'incidents:manage': true,
   },
 };
 
@@ -90,6 +96,14 @@ describe('role permissions', () => {
     }
 
     expect(hasPermission('MEMBER', Permission.SERVICES_MANAGE)).toBe(false);
+  });
+
+  it('should let every role read and respond to incidents', () => {
+    // Configuration is admin-governed; incident response is member-driven.
+    for (const role of ROLES) {
+      expect(hasPermission(role, Permission.INCIDENTS_READ)).toBe(true);
+      expect(hasPermission(role, Permission.INCIDENTS_MANAGE)).toBe(true);
+    }
   });
 
   it('should let every role read the organization and its memberships', () => {

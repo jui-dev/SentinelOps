@@ -16,6 +16,12 @@
  * - `services`: an organization's services, each embedding its owning team's
  *   name. Service pages read the service from here. Any service change stales
  *   it and `teams` (each team's service count); a team rename stales it too.
+ * - `incidents`: the prefix of every incident query in an organization —
+ *   both paged lists (`incidentList`) and each incident (`incident`). Every
+ *   incident embeds its service's name, criticality, and archival, and its
+ *   team's name, so a change to a service or a team rename stales the whole
+ *   prefix. Declaring or changing an incident writes that incident's entry
+ *   and stales the lists.
  *
  * The invitation an `/invite` page shows is deliberately not cached here: it
  * is fetched with a token, and lives in that page's own state.
@@ -34,4 +40,10 @@ export const queryKeys = {
     ["organization", organizationId, "teams", teamId, "members"] as const,
   services: (organizationId: string) =>
     ["organization", organizationId, "services"] as const,
+  incidents: (organizationId: string) =>
+    ["organization", organizationId, "incidents"] as const,
+  incidentList: (organizationId: string, state: "active" | "resolved") =>
+    ["organization", organizationId, "incidents", "list", state] as const,
+  incident: (organizationId: string, number: number) =>
+    ["organization", organizationId, "incidents", "detail", number] as const,
 };

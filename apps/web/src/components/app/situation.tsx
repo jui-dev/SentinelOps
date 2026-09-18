@@ -1,10 +1,11 @@
 "use client";
 
 import { Menu } from "lucide-react";
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext } from "react";
 import type { ReactNode } from "react";
 
 import { cx } from "@/components/ui/cx";
+import { useMinuteClock } from "@/components/ui/timestamp";
 import { useRouteMembership } from "@/components/organizations/organization-scope";
 
 import { ThemeControl } from "./theme-control";
@@ -14,11 +15,12 @@ import { Wordmark } from "./wordmark";
  * The organization-wide operational situation, shown by the strip across the
  * top of the workspace.
  *
- * Only `neutral` exists. SentinelOps observes nothing yet — no incidents, no
- * services — so the strip claims no state: it shows where you are and the
- * time. When live operational data arrives, a provider will supply richer
- * levels here (an active incident, a degraded service) and the strip renders
- * them; nothing that consumes the context needs to change shape.
+ * Only `neutral` exists. Incidents are recorded, but the strip does not yet
+ * summarise them — that is the operational overview's job — so it claims no
+ * state: it shows where you are and the time. When it does, a provider will
+ * supply richer levels here (an active SEV1, a degraded service) and the
+ * strip renders them; nothing that consumes the context needs to change
+ * shape.
  */
 export type SituationLevel = "neutral";
 
@@ -43,21 +45,7 @@ const pad = (value: number) => String(value).padStart(2, "0");
  * live region: nobody needs it announced.
  */
 function UtcClock() {
-  const [now, setNow] = useState(() => new Date());
-
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout>;
-    const schedule = () => {
-      const current = new Date();
-
-      setNow(current);
-      timer = setTimeout(schedule, 60_000 - (current.getTime() % 60_000) + 50);
-    };
-
-    timer = setTimeout(schedule, 60_000 - (Date.now() % 60_000) + 50);
-
-    return () => clearTimeout(timer);
-  }, []);
+  const now = useMinuteClock();
 
   return (
     <p className="hidden items-baseline gap-1.5 sm:flex">

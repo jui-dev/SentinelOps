@@ -150,6 +150,41 @@ describe("WorkspaceShell", () => {
       expect(within(primaryNav()).getByText("Operations")).toBeDefined();
     });
 
+    it("offers Incidents first under Operations, only when the API reports incidents:read", async () => {
+      at("/orgs/acme-ops/incidents/42", "acme-ops");
+      api({ permissions: [...READ, "incidents:read", "services:read"] });
+
+      renderShell();
+
+      const incidents = await within(primaryNav()).findByRole("link", {
+        name: "Incidents",
+      });
+      const operations = within(primaryNav())
+        .getByText("Operations")
+        .closest("div,section,li") as HTMLElement;
+
+      expect(incidents.getAttribute("href")).toBe("/orgs/acme-ops/incidents");
+      expect(incidents.getAttribute("aria-current")).toBe("page");
+      expect(
+        within(operations)
+          .getAllByRole("link")
+          .map((link) => link.textContent),
+      ).toEqual(["Incidents", "Services"]);
+    });
+
+    it("does not offer Incidents without incidents:read", async () => {
+      at("/orgs/acme-ops", "acme-ops");
+      api({ permissions: [...READ, "services:read"] });
+
+      renderShell();
+
+      await within(primaryNav()).findByRole("link", { name: "Services" });
+
+      expect(
+        within(primaryNav()).queryByRole("link", { name: "Incidents" }),
+      ).toBeNull();
+    });
+
     it("does not offer Services without services:read", async () => {
       at("/orgs/acme-ops", "acme-ops");
       api({ permissions: READ });

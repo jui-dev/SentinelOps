@@ -285,8 +285,41 @@ function ServiceList({
     );
   }
 
+  const inUse = services.data.filter((service) => !service.archivedAt);
+  const archived = services.data.filter((service) => service.archivedAt);
+
   return (
-    <Table label="Services" density="compact">
+    <>
+      {inUse.length > 0 ? (
+        <ServiceTable label="Services" services={inUse} />
+      ) : (
+        <p className="text-sm text-fg-muted">Every service is archived.</p>
+      )}
+      {archived.length > 0 && (
+        <Section
+          id="archived-services"
+          title="Archived"
+          meta={archived.length}
+          description="Retired services, kept because incidents were recorded against them or for reference. No new incident can be declared against them."
+        >
+          <ServiceTable label="Archived services" services={archived} />
+        </Section>
+      )}
+    </>
+  );
+}
+
+function ServiceTable({
+  label,
+  services,
+}: {
+  label: string;
+  services: ServiceResponse[];
+}) {
+  const organization = useOrganization();
+
+  return (
+    <Table label={label} density="compact">
       <THead>
         <TR>
           <TH>Name</TH>
@@ -296,7 +329,7 @@ function ServiceList({
         </TR>
       </THead>
       <TBody>
-        {services.data.map((service) => (
+        {services.map((service) => (
           <TR key={service.id}>
             <TD>
               <Link

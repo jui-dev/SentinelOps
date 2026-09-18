@@ -321,6 +321,19 @@ describe('TeamsService', () => {
       );
     });
 
+    it('should answer a team that has been responsible for incidents with 409', async () => {
+      const { service, prisma } = serviceWith();
+      prisma.team.deleteMany.mockRejectedValue(
+        knownError('P2003', 'incidents_organization_id_team_id_fkey'),
+      );
+
+      await expectCode(
+        service.delete(ORG, TEAM),
+        409,
+        TeamsErrorCode.TEAM_HAS_INCIDENTS,
+      );
+    });
+
     it('should rethrow a foreign-key violation it does not recognise', async () => {
       const { service, prisma } = serviceWith();
       const unknown = knownError('P2003', 'something_else_fkey');

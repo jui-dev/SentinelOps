@@ -5,7 +5,10 @@ import type {
   CreateServiceRequest,
   CreateTeamRequest,
   CreatedInvitationResponse,
+  CreateIncidentRequest,
   CurrentUserResponse,
+  IncidentResponse,
+  IncidentState,
   InvitationLookupResponse,
   InvitationResponse,
   LoginRequest,
@@ -13,11 +16,13 @@ import type {
   OrganizationDetailResponse,
   OrganizationMembershipResponse,
   OrganizationResponse,
+  Page,
   RegisterRequest,
   RegisterWithInvitationRequest,
   ServiceResponse,
   TeamMemberResponse,
   TeamResponse,
+  UpdateIncidentRequest,
   UpdateOrganizationRequest,
   UpdateServiceRequest,
   UpdateTeamRequest,
@@ -189,6 +194,48 @@ export const updateService = (
 export const deleteService = (organizationId: string, serviceId: string) =>
   authenticatedRequest<void>(servicePath(organizationId, serviceId), {
     method: "DELETE",
+  });
+
+const incidentsPath = (organizationId: string) =>
+  `${organizationPath(organizationId)}/incidents`;
+
+const incidentPath = (organizationId: string, number: number) =>
+  `${incidentsPath(organizationId)}/${number}`;
+
+export const listIncidents = (
+  organizationId: string,
+  state: IncidentState,
+  cursor?: string,
+) => {
+  const query = new URLSearchParams({ state });
+
+  if (cursor) query.set("cursor", cursor);
+
+  return authenticatedRequest<Page<IncidentResponse>>(
+    `${incidentsPath(organizationId)}?${query}`,
+  );
+};
+
+export const getIncident = (organizationId: string, number: number) =>
+  authenticatedRequest<IncidentResponse>(incidentPath(organizationId, number));
+
+export const createIncident = (
+  organizationId: string,
+  body: CreateIncidentRequest,
+) =>
+  authenticatedRequest<IncidentResponse>(incidentsPath(organizationId), {
+    method: "POST",
+    body,
+  });
+
+export const updateIncident = (
+  organizationId: string,
+  number: number,
+  body: UpdateIncidentRequest,
+) =>
+  authenticatedRequest<IncidentResponse>(incidentPath(organizationId, number), {
+    method: "PATCH",
+    body,
   });
 
 // Invitation tokens always travel in a request body: never in a path or a

@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { OrganizationScope } from "@/components/organizations/organization-scope";
+import type { ServiceResponse } from "@/lib/api/contracts";
 import { clearAccessToken } from "@/lib/auth/token-store";
 import {
   apiError,
@@ -69,15 +70,26 @@ const platform = {
   serviceCount: 0,
 };
 
-const paymentApi = {
+const paymentApi: ServiceResponse = {
   id: "0199a1b2-c3d4-7000-8000-0000000000e1",
   name: "Payment API",
   slug: "payment-api",
   description: "Takes card payments.",
   criticality: "CRITICAL" as const,
   ownerTeam: { id: payments.id, name: payments.name, slug: payments.slug },
+  archivedAt: null,
   createdAt: "2026-09-18T12:00:00.000Z",
   updatedAt: "2026-09-18T13:00:00.000Z",
+};
+
+const legacyPortal: ServiceResponse = {
+  ...paymentApi,
+  id: "0199a1b2-c3d4-7000-8000-0000000000e2",
+  name: "Legacy Portal",
+  slug: "legacy-portal",
+  description: null,
+  criticality: "LOW",
+  archivedAt: "2026-09-18T14:00:00.000Z",
 };
 
 type Handler = (request: SentRequest) => Response | undefined;
@@ -149,6 +161,19 @@ describe("services", () => {
       expect(screen.getByText("Takes card payments.")).toBeDefined();
       expect(screen.queryByText("payment-api")).toBeNull();
       expect(screen.queryByText(/healthy|degraded|outage/i)).toBeNull();
+    });
+
+    it("lists archived services apart from those in use", async () => {
+      api(READ, { services: [paymentApi, legacyPortal] });
+
+      inOrganization(<ServicesView />);
+
+      const inUse = await screen.findByRole("table", { name: "Services" });
+      const archived = screen.getByRole("table", { name: "Archived services" });
+
+      expect(within(inUse).getByText("Payment API")).toBeDefined();
+      expect(within(inUse).queryByText("Legacy Portal")).toBeNull();
+      expect(within(archived).getByText("Legacy Portal")).toBeDefined();
     });
 
     it("offers no creation without services:manage", async () => {
@@ -327,7 +352,20 @@ describe("services", () => {
       ).toBeDefined();
       expect(screen.queryByText("payment-api")).toBeNull();
       expect(screen.queryByText(/incident/i)).toBeNull();
+      expect(screen.queryByText("Archived")).toBeNull();
       expect(screen.queryByRole("link", { name: "Settings" })).toBeNull();
+    });
+
+    it("says when it is archived", async () => {
+      navigation.params = { orgSlug: "acme-ops", serviceSlug: "legacy-portal" };
+      api(READ, { services: [paymentApi, legacyPortal] });
+
+      inService(<ServiceDetail />);
+
+      expect(await screen.findByText("Archived")).toBeDefined();
+      expect(
+        screen.getByText(/no new incident can be declared against it/),
+      ).toBeDefined();
     });
 
     it("offers settings to those who may manage services", async () => {
@@ -453,6 +491,57 @@ describe("services", () => {
           (r) => route(r) === `DELETE ${base}/services/${paymentApi.id}`,
         ),
       ).toBe(true);
+    });
+
+    it("archives the service, and refreshes incidents, which show it", async () => {
+      const user = userEvent.setup();
+      const { requests } = api(MANAGE, {
+        handler: (request) =>
+          route(request) === `PATCH ${base}/services/${paymentApi.id}`
+            ? jsonResponse(200, {
+                ...paymentApi,
+                archivedAt: "2026-09-18T15:00:00.000Z",
+              })
+            : undefined,
+      });
+
+      inService(<ServiceSettings />);
+
+      await user.click(
+        await screen.findByRole("button", { name: "Archive service" }),
+      );
+
+      expect(
+        await screen.findByRole("button", { name: "Unarchive service" }),
+      ).toBeDefined();
+      expect(
+        requests.find(
+          (r) => route(r) === `PATCH ${base}/services/${paymentApi.id}`,
+        )?.body,
+      ).toEqual({ archived: true });
+    });
+
+    it("explains that a service with incidents is archived rather than deleted", async () => {
+      const user = userEvent.setup();
+      api(MANAGE, {
+        handler: (request) =>
+          route(request) === `DELETE ${base}/services/${paymentApi.id}`
+            ? apiError(409, "SERVICE_HAS_INCIDENTS")
+            : undefined,
+      });
+
+      inService(<ServiceSettings />);
+
+      await user.click(
+        await screen.findByRole("button", { name: "Delete service…" }),
+      );
+      await user.click(screen.getByRole("button", { name: "Delete service" }));
+
+      expect(
+        await screen.findByText("This service has incidents"),
+      ).toBeDefined();
+      expect(screen.getByText(/Archive it to retire it/)).toBeDefined();
+      expect(navigation.push).not.toHaveBeenCalled();
     });
 
     it("offers nothing to change without services:manage", async () => {

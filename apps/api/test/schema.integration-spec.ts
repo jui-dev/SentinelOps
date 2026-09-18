@@ -37,7 +37,7 @@ describe('core domain schema (integration)', () => {
 
   beforeEach(async () => {
     await prisma.$executeRawUnsafe(
-      'TRUNCATE TABLE services, team_memberships, teams, invitations, memberships, users, organizations RESTART IDENTITY CASCADE',
+      'TRUNCATE TABLE incidents, services, team_memberships, teams, invitations, memberships, users, organizations RESTART IDENTITY CASCADE',
     );
   });
 
@@ -641,6 +641,513 @@ describe('core domain schema (integration)', () => {
     });
   });
 
+  describe('incidents and tenant consistency', () => {
+    /** Postgres foreign-key violation: Prisma's code, or the SQLSTATE on raw SQL. */
+    const isForeignKeyViolation = (error: unknown): boolean =>
+      codeOf(error) === 'P2003' ||
+      (error instanceof Error && /23503|foreign key/i.test(error.message));
+
+    /** Postgres: check_violation, invalid_text_representation. */
+    const isRefusedBy = (sqlstate: string) => (error: unknown) =>
+      error instanceof Error && error.message.includes(sqlstate);
+
+    /**
+     * Two organizations, each with a Payments and a Platform team, a Payment
+     * API owned by Payments, and a declaring user who is a member of both.
+     */
+    const twoTenants = async () => {
+      const acme = await anOrganization('acme');
+      const globex = await anOrganization('globex');
+      const user = await aUser('ada@example.com');
+      const team = (organizationId: string, name: string) =>
+        prisma.team.create({
+          data: { organizationId, name, slug: name.toLowerCase() },
+        });
+      const service = (organizationId: string, ownerTeamId: string) =>
+        prisma.service.create({
+          data: {
+            organizationId,
+            ownerTeamId,
+            name: 'Payment API',
+            slug: 'payment-api',
+          },
+        });
+
+      const acmePayments = await team(acme.id, 'Payments');
+      const acmePlatform = await team(acme.id, 'Platform');
+      const globexPayments = await team(globex.id, 'Payments');
+
+      return {
+        acme,
+        globex,
+        user,
+        acmePayments,
+        acmePlatform,
+        globexPayments,
+        acmeService: await service(acme.id, acmePayments.id),
+        globexService: await service(globex.id, globexPayments.id),
+      };
+    };
+
+    const anIncident = (data: {
+      organizationId: string;
+      serviceId: string;
+      teamId: string;
+      createdById: string;
+      number?: number;
+    }) =>
+      prisma.incident.create({
+        data: {
+          number: 1,
+          title: 'Card payments failing',
+          severity: 'SEV1',
+          ...data,
+        },
+      });
+
+    const insertIncidentSql = `INSERT INTO incidents
+      (id, organization_id, number, title, service_id, team_id, severity, created_by_id, updated_at)
+      VALUES (gen_random_uuid(), $1::uuid, $2, 'Card payments failing', $3::uuid, $4::uuid, 'SEV1', $5::uuid, now())`;
+
+    // The highest-risk invariant of the stage, proven first: incidents hold
+    // Restrict keys into services and teams, and the cascade from
+    // organizations deletes all three in one statement. Postgres must still
+    // complete it.
+    it("should remove an organization's incidents, services, and teams when it is physically deleted", async () => {
+      const {
+        acme,
+        globex,
+        user,
+        acmePayments,
+        acmePlatform,
+        acmeService,
+        globexService,
+        globexPayments,
+      } = await twoTenants();
+      await anIncident({
+        organizationId: acme.id,
+        serviceId: acmeService.id,
+        teamId: acmePayments.id,
+        createdById: user.id,
+      });
+      // Responsible team differs from the owner, so both team rows are
+      // referenced by an incident.
+      await anIncident({
+        organizationId: acme.id,
+        serviceId: acmeService.id,
+        teamId: acmePlatform.id,
+        createdById: user.id,
+        number: 2,
+      });
+      await anIncident({
+        organizationId: globex.id,
+        serviceId: globexService.id,
+        teamId: globexPayments.id,
+        createdById: user.id,
+      });
+
+      await prisma.$executeRawUnsafe(
+        'DELETE FROM organizations WHERE id = $1::uuid',
+        acme.id,
+      );
+
+      expect(
+        await prisma.incident.count({ where: { organizationId: acme.id } }),
+      ).toBe(0);
+      expect(
+        await prisma.service.count({ where: { organizationId: acme.id } }),
+      ).toBe(0);
+      expect(
+        await prisma.team.count({ where: { organizationId: acme.id } }),
+      ).toBe(0);
+      // The other tenant, and the global user, are untouched.
+      expect(
+        await prisma.incident.count({ where: { organizationId: globex.id } }),
+      ).toBe(1);
+      expect(await prisma.user.count({ where: { id: user.id } })).toBe(1);
+    });
+
+    it('should preserve incidents when an organization is soft deleted', async () => {
+      const { acme, user, acmePayments, acmeService } = await twoTenants();
+      await anIncident({
+        organizationId: acme.id,
+        serviceId: acmeService.id,
+        teamId: acmePayments.id,
+        createdById: user.id,
+      });
+
+      await prisma.organization.update({
+        where: { id: acme.id },
+        data: { deletedAt: new Date() },
+      });
+
+      expect(await prisma.incident.count()).toBe(1);
+    });
+
+    it('should default status to INVESTIGATING and start the organization counter at 0', async () => {
+      const { acme, user, acmePayments, acmeService } = await twoTenants();
+
+      const incident = await anIncident({
+        organizationId: acme.id,
+        serviceId: acmeService.id,
+        teamId: acmePayments.id,
+        createdById: user.id,
+      });
+
+      expect(incident.status).toBe('INVESTIGATING');
+      expect(incident.resolvedAt).toBeNull();
+      expect(acme.lastIncidentNumber).toBe(0);
+    });
+
+    it("should reject another organization's service, whichever organization the row claims", async () => {
+      const { acme, user, acmePayments, globexService } = await twoTenants();
+
+      await expect(
+        anIncident({
+          organizationId: acme.id,
+          serviceId: globexService.id,
+          teamId: acmePayments.id,
+          createdById: user.id,
+        }),
+      ).rejects.toSatisfy(isForeignKeyViolation);
+      await expect(
+        prisma.$executeRawUnsafe(
+          insertIncidentSql,
+          acme.id,
+          1,
+          globexService.id,
+          acmePayments.id,
+          user.id,
+        ),
+      ).rejects.toSatisfy(isForeignKeyViolation);
+
+      expect(await prisma.incident.count()).toBe(0);
+    });
+
+    it("should reject another organization's team, whichever organization the row claims", async () => {
+      const { acme, globex, user, acmeService, globexPayments } =
+        await twoTenants();
+
+      // Claiming acme: no (acme, globex-team) team.
+      await expect(
+        prisma.$executeRawUnsafe(
+          insertIncidentSql,
+          acme.id,
+          1,
+          acmeService.id,
+          globexPayments.id,
+          user.id,
+        ),
+      ).rejects.toSatisfy(isForeignKeyViolation);
+      // Claiming globex: no (globex, acme-service) service.
+      await expect(
+        prisma.$executeRawUnsafe(
+          insertIncidentSql,
+          globex.id,
+          1,
+          acmeService.id,
+          globexPayments.id,
+          user.id,
+        ),
+      ).rejects.toSatisfy(isForeignKeyViolation);
+
+      expect(await prisma.incident.count()).toBe(0);
+    });
+
+    it('should refuse re-pointing an incident across organizations in raw SQL', async () => {
+      const {
+        acme,
+        globex,
+        user,
+        acmePayments,
+        acmeService,
+        globexService,
+        globexPayments,
+      } = await twoTenants();
+      const incident = await anIncident({
+        organizationId: acme.id,
+        serviceId: acmeService.id,
+        teamId: acmePayments.id,
+        createdById: user.id,
+      });
+
+      for (const [sql, value] of [
+        [
+          'UPDATE incidents SET service_id = $1::uuid WHERE id = $2::uuid',
+          globexService.id,
+        ],
+        [
+          'UPDATE incidents SET team_id = $1::uuid WHERE id = $2::uuid',
+          globexPayments.id,
+        ],
+        [
+          'UPDATE incidents SET organization_id = $1::uuid WHERE id = $2::uuid',
+          globex.id,
+        ],
+      ] as const) {
+        await expect(
+          prisma.$executeRawUnsafe(sql, value, incident.id),
+        ).rejects.toSatisfy(isForeignKeyViolation);
+      }
+
+      expect(
+        await prisma.incident.findUniqueOrThrow({ where: { id: incident.id } }),
+      ).toEqual(
+        expect.objectContaining({
+          organizationId: acme.id,
+          serviceId: acmeService.id,
+          teamId: acmePayments.id,
+        }),
+      );
+    });
+
+    it('should refuse moving a team an incident names to another organization', async () => {
+      const { acme, globex, user, acmeService } = await twoTenants();
+      // A team that owns nothing and whose name globex lacks, so only the
+      // incident's team key can refuse the move. (A service cannot be moved
+      // either, but its owner key already refuses that — see services.)
+      const oncall = await prisma.team.create({
+        data: { organizationId: acme.id, name: 'On-call', slug: 'on-call' },
+      });
+      await anIncident({
+        organizationId: acme.id,
+        serviceId: acmeService.id,
+        teamId: oncall.id,
+        createdById: user.id,
+      });
+
+      await expect(
+        prisma.$executeRawUnsafe(
+          'UPDATE teams SET organization_id = $1::uuid WHERE id = $2::uuid',
+          globex.id,
+          oncall.id,
+        ),
+      ).rejects.toSatisfy(isForeignKeyViolation);
+    });
+
+    it('should refuse deleting a service or team an incident references, keeping the incident', async () => {
+      const { acme, user, acmePayments, acmePlatform, acmeService } =
+        await twoTenants();
+      // The service is later moved to Platform, so Payments is referenced by
+      // the incident alone.
+      const incident = await anIncident({
+        organizationId: acme.id,
+        serviceId: acmeService.id,
+        teamId: acmePayments.id,
+        createdById: user.id,
+      });
+      await prisma.service.update({
+        where: { id: acmeService.id },
+        data: { ownerTeamId: acmePlatform.id },
+      });
+
+      await expect(
+        prisma.$executeRawUnsafe(
+          'DELETE FROM services WHERE id = $1::uuid',
+          acmeService.id,
+        ),
+      ).rejects.toSatisfy(isForeignKeyViolation);
+      await expect(
+        prisma.$executeRawUnsafe(
+          'DELETE FROM teams WHERE id = $1::uuid',
+          acmePayments.id,
+        ),
+      ).rejects.toSatisfy(isForeignKeyViolation);
+
+      expect(
+        await prisma.incident.findUniqueOrThrow({ where: { id: incident.id } }),
+      ).toEqual(expect.objectContaining({ teamId: acmePayments.id }));
+    });
+
+    it('should declare the service and team keys RESTRICT on delete and on update', async () => {
+      const keys = await prisma.$queryRawUnsafe<
+        { conname: string; confdeltype: string; confupdtype: string }[]
+      >(
+        `SELECT conname, confdeltype::text AS confdeltype, confupdtype::text AS confupdtype
+         FROM pg_constraint
+         WHERE conname IN (
+           'incidents_organization_id_service_id_fkey',
+           'incidents_organization_id_team_id_fkey',
+           'incidents_created_by_id_fkey'
+         )
+         ORDER BY conname`,
+      );
+
+      expect(keys).toEqual([
+        {
+          conname: 'incidents_created_by_id_fkey',
+          confdeltype: 'r',
+          confupdtype: 'c',
+        },
+        {
+          conname: 'incidents_organization_id_service_id_fkey',
+          confdeltype: 'r',
+          confupdtype: 'r',
+        },
+        {
+          conname: 'incidents_organization_id_team_id_fkey',
+          confdeltype: 'r',
+          confupdtype: 'r',
+        },
+      ]);
+    });
+
+    it('should keep incidents when their creator is soft deleted, and refuse physically deleting the creator', async () => {
+      const { acme, user, acmePayments, acmeService } = await twoTenants();
+      await anIncident({
+        organizationId: acme.id,
+        serviceId: acmeService.id,
+        teamId: acmePayments.id,
+        createdById: user.id,
+      });
+
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { deletedAt: new Date() },
+      });
+      await expect(
+        prisma.$executeRawUnsafe(
+          'DELETE FROM users WHERE id = $1::uuid',
+          user.id,
+        ),
+      ).rejects.toSatisfy(isForeignKeyViolation);
+
+      expect(await prisma.incident.count()).toBe(1);
+    });
+
+    it("should keep incidents when their creator's membership is removed", async () => {
+      const { acme, user, acmePayments, acmeService } = await twoTenants();
+      const membership = await prisma.membership.create({
+        data: { organizationId: acme.id, userId: user.id },
+      });
+      await anIncident({
+        organizationId: acme.id,
+        serviceId: acmeService.id,
+        teamId: acmePayments.id,
+        createdById: user.id,
+      });
+
+      await prisma.membership.delete({ where: { id: membership.id } });
+
+      expect((await prisma.incident.findFirstOrThrow()).createdById).toBe(
+        user.id,
+      );
+    });
+
+    it('should allow the same number in two organizations but not twice in one', async () => {
+      const {
+        acme,
+        globex,
+        user,
+        acmePayments,
+        acmeService,
+        globexService,
+        globexPayments,
+      } = await twoTenants();
+      await anIncident({
+        organizationId: acme.id,
+        serviceId: acmeService.id,
+        teamId: acmePayments.id,
+        createdById: user.id,
+      });
+      await anIncident({
+        organizationId: globex.id,
+        serviceId: globexService.id,
+        teamId: globexPayments.id,
+        createdById: user.id,
+      });
+
+      await expect(
+        anIncident({
+          organizationId: acme.id,
+          serviceId: acmeService.id,
+          teamId: acmePayments.id,
+          createdById: user.id,
+        }),
+      ).rejects.toSatisfy(isUniqueViolation);
+    });
+
+    it('should refuse a non-positive number', async () => {
+      const { acme, user, acmePayments, acmeService } = await twoTenants();
+
+      await expect(
+        prisma.$executeRawUnsafe(
+          insertIncidentSql,
+          acme.id,
+          0,
+          acmeService.id,
+          acmePayments.id,
+          user.id,
+        ),
+      ).rejects.toSatisfy(isRefusedBy('23514'));
+    });
+
+    it('should refuse RESOLVED without a resolution time, and a resolution time without RESOLVED', async () => {
+      const { acme, user, acmePayments, acmeService } = await twoTenants();
+      const incident = await anIncident({
+        organizationId: acme.id,
+        serviceId: acmeService.id,
+        teamId: acmePayments.id,
+        createdById: user.id,
+      });
+
+      await expect(
+        prisma.$executeRawUnsafe(
+          `UPDATE incidents SET status = 'RESOLVED' WHERE id = $1::uuid`,
+          incident.id,
+        ),
+      ).rejects.toSatisfy(isRefusedBy('23514'));
+      await expect(
+        prisma.$executeRawUnsafe(
+          'UPDATE incidents SET resolved_at = now() WHERE id = $1::uuid',
+          incident.id,
+        ),
+      ).rejects.toSatisfy(isRefusedBy('23514'));
+
+      // Both together are what the check permits.
+      await prisma.$executeRawUnsafe(
+        `UPDATE incidents SET status = 'RESOLVED', resolved_at = now() WHERE id = $1::uuid`,
+        incident.id,
+      );
+      expect(
+        (
+          await prisma.incident.findUniqueOrThrow({
+            where: { id: incident.id },
+          })
+        ).status,
+      ).toBe('RESOLVED');
+    });
+
+    it('should refuse a severity or status outside the enums at the database level', async () => {
+      const { acme, user, acmePayments, acmeService } = await twoTenants();
+
+      await expect(
+        prisma.$executeRawUnsafe(
+          insertIncidentSql.replace("'SEV1'", "'SEV0'"),
+          acme.id,
+          1,
+          acmeService.id,
+          acmePayments.id,
+          user.id,
+        ),
+      ).rejects.toSatisfy(isRefusedBy('22P02'));
+
+      const incident = await anIncident({
+        organizationId: acme.id,
+        serviceId: acmeService.id,
+        teamId: acmePayments.id,
+        createdById: user.id,
+      });
+
+      await expect(
+        prisma.$executeRawUnsafe(
+          `UPDATE incidents SET status = 'OPEN' WHERE id = $1::uuid`,
+          incident.id,
+        ),
+      ).rejects.toSatisfy(isRefusedBy('22P02'));
+    });
+  });
+
   describe('the role enum', () => {
     it('should default a membership to MEMBER', async () => {
       const organization = await anOrganization('acme');
@@ -694,7 +1201,7 @@ describe('core domain schema (integration)', () => {
          WHERE table_schema = 'public'
            AND column_name IN (
              'created_at', 'updated_at', 'deleted_at', 'expires_at',
-             'revoked_at', 'accepted_at'
+             'revoked_at', 'accepted_at', 'archived_at', 'resolved_at'
            )`,
       );
 
@@ -705,8 +1212,9 @@ describe('core domain schema (integration)', () => {
       // invitations adds created_at, updated_at, expires_at, accepted_at, and
       // revoked_at (5). teams adds created_at and updated_at (2), and
       // team_memberships only created_at (1): a placement is made or removed,
-      // never edited. services adds created_at and updated_at (2).
-      expect(columns).toHaveLength(21);
+      // never edited. services adds created_at, updated_at, and archived_at
+      // (3); incidents adds created_at, updated_at, and resolved_at (3).
+      expect(columns).toHaveLength(25);
       for (const column of columns) {
         expect(column.data_type).toBe('timestamp with time zone');
       }

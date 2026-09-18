@@ -1,6 +1,10 @@
 import { CircleAlert } from "lucide-react";
 import { useId } from "react";
-import type { InputHTMLAttributes, ReactNode } from "react";
+import type {
+  InputHTMLAttributes,
+  ReactNode,
+  TextareaHTMLAttributes,
+} from "react";
 
 import { cx } from "./cx";
 
@@ -11,7 +15,9 @@ export type ControlSize = "md" | "lg";
  * border at 3:1 against its background, so the control is findable without
  * relying on anything else (WCAG 1.4.11).
  */
-export const controlClasses = (size: ControlSize = "md") =>
+export const controlClasses = (
+  size: ControlSize | "multiline" = "md",
+) =>
   cx(
     "w-full min-w-0 rounded-md border border-line-control bg-field text-fg transition-colors duration-(--duration-fast)",
     "placeholder:text-fg-subtle hover:border-fg-subtle",
@@ -20,7 +26,11 @@ export const controlClasses = (size: ControlSize = "md") =>
     // The attribute, not `:read-only`, which also matches every <select>.
     "[&[readonly]]:border-line [&[readonly]]:bg-sunken [&[readonly]]:text-fg-muted",
     "disabled:cursor-not-allowed disabled:border-line disabled:text-fg-disabled",
-    size === "lg" ? "h-9 px-3 text-base" : "h-8 px-2.5 text-base",
+    size === "multiline"
+      ? "min-h-24 px-2.5 py-1.5 text-base leading-6"
+      : size === "lg"
+        ? "h-9 px-3 text-base"
+        : "h-8 px-2.5 text-base",
   );
 
 /**
@@ -80,6 +90,46 @@ export const describedBy = (
 ): string | undefined =>
   [hint && `${id}-hint`, error && `${id}-error`].filter(Boolean).join(" ") ||
   undefined;
+
+/**
+ * A labelled multi-line text control, for prose longer than a line — an
+ * incident's summary. The same frame and control look as Field; it grows
+ * vertically only.
+ */
+export function TextArea({
+  label,
+  hint,
+  error,
+  optional,
+  className,
+  ...textarea
+}: TextareaHTMLAttributes<HTMLTextAreaElement> & {
+  label: string;
+  hint?: string;
+  error?: string;
+  optional?: boolean;
+}) {
+  const id = useId();
+
+  return (
+    <FieldFrame
+      id={id}
+      label={label}
+      optional={optional}
+      hint={hint}
+      error={error}
+    >
+      <textarea
+        id={id}
+        rows={4}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={describedBy(id, hint, error)}
+        className={cx(controlClasses("multiline"), "resize-y", className)}
+        {...textarea}
+      />
+    </FieldFrame>
+  );
+}
 
 /** A labelled input with an optional hint and error, wired for assistive tech. */
 export function Field({

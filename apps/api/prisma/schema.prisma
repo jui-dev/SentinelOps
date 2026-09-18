@@ -82,10 +82,18 @@ model Organization {
   /// organization is unreachable through every route beneath it.
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz(3)
 
+  /// The number most recently given to one of this organization's incidents.
+  /// Declaring an incident increments it in the same transaction as the
+  /// insert, so the row lock that UPDATE takes serializes concurrent
+  /// declarations within one organization and each gets a distinct, larger
+  /// number. Internal: never selected into a response.
+  lastIncidentNumber Int @default(0) @map("last_incident_number")
+
   memberships Membership[]
   invitations Invitation[]
   teams       Team[]
   services    Service[]
+  incidents   Incident[]
 
   @@map("organizations")
 }
@@ -128,6 +136,7 @@ model User {
   memberships     Membership[]
   refreshTokens   RefreshToken[]
   invitationsSent Invitation[]   @relation("InvitationsSent")
+  incidentsDeclared Incident[]   @relation("IncidentsDeclared")
 
   @@map("users")
 }
@@ -238,7 +247,9 @@ model Invitation {
 /// principle every relationship follows: deleting configuration never silently
 /// deletes operational resources or historical records. A team that owns
 /// services cannot be deleted — the services' foreign key is Restrict, so the
-/// delete is refused, never cascaded, until they are reassigned.
+/// delete is refused, never cascaded, until they are reassigned. A team that
+/// has been responsible for any incident cannot be deleted at all: incidents
+/// are never deleted, and their team key is Restrict too. It can be renamed.
 ///
 /// Belonging to a team grants nothing. Authorization is the organization role
 /// alone; there are no team roles or team-scoped permissions.
@@ -265,12 +276,13 @@ model Team {
   organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   memberships  TeamMembership[]
   services     Service[]
+  incidents    Incident[]
 
   @@unique([organizationId, slug])
   @@unique([organizationId, name])
   /// The target of composite foreign keys from tenant-owned children — team
-  /// memberships and services — and a lookup key that cannot be used without
-  /// the organization: findUnique({ organizationId_id }).
+  /// memberships, services, and incidents — and a lookup key that cannot be
+  /// used without the organization: findUnique({ organizationId_id }).
   @@unique([organizationId, id])
   @@map("teams")
 }
@@ -356,8 +368,11 @@ enum ServiceCriticality {
 /// and services in the same statement, and schema.integration-spec.ts proves
 /// Postgres completes it.
 ///
-/// Hard-deleted, because nothing operational references a service yet. When
-/// incidents do, their foreign key refuses the delete in the same way.
+/// Retired by archiving, not deleting. Incidents reference a service through a
+/// Restrict key, so a service with incident history cannot be deleted — the
+/// history would otherwise disappear with it. Archiving (archivedAt) keeps it
+/// resolvable from every incident that names it while refusing new incidents
+/// against it. Deletion remains for a service nothing references: a mistake.
 model Service {
   id             String             @id @default(uuid(7)) @db.Uuid
   organizationId String             @map("organization_id") @db.Uuid
@@ -370,22 +385,144 @@ model Service {
   description    String?
   ownerTeamId    String             @map("owner_team_id") @db.Uuid
   criticality    ServiceCriticality @default(NORMAL)
+  /// Set when the service is retired. The one rule it carries: no new
+  /// incident may be declared against an archived service, which the
+  /// declaration checks under a row lock. Everything else — reading it,
+  /// renaming it, its existing incidents — is unaffected. Public lifecycle
+  /// state, unlike a deletedAt: it is returned in responses.
+  archivedAt     DateTime?          @map("archived_at") @db.Timestamptz(3)
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   ownerTeam    Team         @relation(fields: [organizationId, ownerTeamId], references: [organizationId, id], onDelete: Restrict, onUpdate: Restrict)
+  incidents    Incident[]
 
   @@unique([organizationId, slug])
   @@unique([organizationId, name])
   /// A lookup key that cannot be used without the organization, and the
-  /// target of the composite foreign key incidents will carry.
+  /// target of the composite foreign key incidents carry.
   @@unique([organizationId, id])
   /// Serves the Restrict check when a team is deleted, and "which services
   /// does this team own".
   @@index([organizationId, ownerTeamId])
   @@map("services")
+}
+
+/// How serious one incident is — chosen for the incident, never derived from
+/// its service's criticality: a CRITICAL service can have a SEV4 incident.
+/// Numbered because that is the vocabulary responders already use, SEV1 the
+/// most severe; the enum is declared in that order, so ORDER BY puts SEV1
+/// first. Industry-neutral:
+///
+///   SEV1  Critical  core functionality unavailable, or major customer or
+///                   business impact
+///   SEV2  Major     serious degradation or substantial impact, short of a
+///                   complete critical outage
+///   SEV3  Moderate  limited or contained impact; normal operations largely
+///                   continue
+///   SEV4  Minor     a small operational issue with little immediate impact
+enum IncidentSeverity {
+  SEV1
+  SEV2
+  SEV3
+  SEV4
+
+  @@map("incident_severity")
+}
+
+/// Where the response to an incident stands. The three active statuses may
+/// move in any direction — a fix that fails sends MONITORING back to
+/// INVESTIGATING. RESOLVED is terminal: a resolved incident is not changed
+/// again (reopening arrives with the incident timeline, where it is recorded).
+///
+///   INVESTIGATING  the problem is known; cause and fix are not
+///   IDENTIFIED     the likely cause is known; remediation is under way
+///   MONITORING     a fix or mitigation is in place; recovery is being watched
+///   RESOLVED       the incident is over
+enum IncidentStatus {
+  INVESTIGATING
+  IDENTIFIED
+  MONITORING
+  RESOLVED
+
+  @@map("incident_status")
+}
+
+/// An operational problem affecting one of the organization's services,
+/// declared by a member. Operational history: never deleted by the
+/// application, and nothing it references can be deleted from under it.
+///
+/// Tenant consistency is a database invariant, as for services. The service
+/// and team keys are composite and share the incident's organization_id, so
+/// both must belong to the incident's own organization however the row is
+/// written. Rows are created with scalar ids, not nested `connect`.
+///
+/// teamId is the team responsible for this incident. It is copied from the
+/// service's owner when the incident is declared — a snapshot, so reassigning
+/// the service later does not rewrite who was responsible — and may be
+/// reassigned explicitly while the incident is active. serviceId never
+/// changes after declaration.
+///
+/// Both keys are Restrict on delete, so a service or team an incident names
+/// cannot be deleted, and Restrict on update, so neither can move to another
+/// organization carrying incidents with it. A physical deletion of the
+/// organization still removes everything: schema.integration-spec.ts proves
+/// the cascade completes.
+///
+/// Two invariants live as CHECK constraints in the migration, because Prisma
+/// cannot declare them (and does not treat them as drift): status is RESOLVED
+/// exactly when resolved_at is set, and number is positive.
+model Incident {
+  id             String           @id @default(uuid(7)) @db.Uuid
+  organizationId String           @map("organization_id") @db.Uuid
+  /// The organization's own sequence, shown as INC-{number}. Allocated from
+  /// organizations.last_incident_number when the incident is declared:
+  /// unique within the organization, never changed, and increasing in the
+  /// order declarations commit. Not promised to be gapless.
+  number         Int
+  title          String
+  /// The current understanding of the impact. Null when there is none; blank
+  /// is normalised to null at the Zod boundary.
+  summary        String?
+  serviceId      String           @map("service_id") @db.Uuid
+  teamId         String           @map("team_id") @db.Uuid
+  severity       IncidentSeverity
+  status         IncidentStatus   @default(INVESTIGATING)
+  /// Who declared it: the global User rather than the Membership. A
+  /// membership is hard-deleted when access is revoked, and attribution must
+  /// outlive the grant; a user is soft-deleted and keeps resolving. Restrict,
+  /// like invitations.invited_by_id: a physical erasure must be a deliberate
+  /// procedure, not a cascade. Users are global, so this is the one reference
+  /// the database cannot hold to the organization — IncidentsService takes it
+  /// from the admitted membership and never from a request body.
+  createdById    String           @map("created_by_id") @db.Uuid
+
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  /// Set by the server in the same write that sets RESOLVED; never supplied
+  /// by a client.
+  resolvedAt DateTime? @map("resolved_at") @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  service      Service      @relation(fields: [organizationId, serviceId], references: [organizationId, id], onDelete: Restrict, onUpdate: Restrict)
+  team         Team         @relation(fields: [organizationId, teamId], references: [organizationId, id], onDelete: Restrict, onUpdate: Restrict)
+  createdBy    User         @relation("IncidentsDeclared", fields: [createdById], references: [id], onDelete: Restrict)
+
+  /// The addressing key: the API names an incident by its number within the
+  /// organization. Also serves keyset pages ordered by number.
+  @@unique([organizationId, number])
+  /// Redundant with the primary key; the target a later composite foreign
+  /// key (incident timeline entries) will reference.
+  @@unique([organizationId, id])
+  /// Serves the Restrict check when a service is deleted.
+  @@index([organizationId, serviceId])
+  /// Serves the Restrict check when a team is deleted.
+  @@index([organizationId, teamId])
+  /// Serves the Restrict check when a user row is physically deleted.
+  @@index([createdById])
+  @@map("incidents")
 }
 
 /// One issued refresh token. A row per token rather than per session, because

@@ -295,6 +295,9 @@ function OwnedServices() {
                   >
                     {service.name}
                   </Link>
+                  {service.archivedAt && (
+                    <span className="text-fg-muted"> (archived)</span>
+                  )}
                 </TD>
                 <TD>{criticalityOf(service.criticality).label}</TD>
               </TR>

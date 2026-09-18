@@ -45,21 +45,29 @@ export const createServiceSchema = z.strictObject({
   criticality: serviceCriticalitySchema.optional(),
 });
 
-/** Ownership cannot be cleared, only moved: `ownerTeamId` is never null. */
+/**
+ * Ownership cannot be cleared, only moved: `ownerTeamId` is never null.
+ *
+ * `archived` retires the service (true) or returns it to use (false). The
+ * client says which state it wants; the server records when. The timestamp
+ * itself is never accepted.
+ */
 export const updateServiceSchema = z
   .strictObject({
     name: serviceNameSchema.optional(),
     description: serviceDescriptionSchema.optional(),
     ownerTeamId: ownerTeamIdSchema.optional(),
     criticality: serviceCriticalitySchema.optional(),
+    archived: z.boolean().optional(),
   })
   .refine(
     (body) =>
       body.name !== undefined ||
       body.description !== undefined ||
       body.ownerTeamId !== undefined ||
-      body.criticality !== undefined,
-    'Provide a name, description, owner team, or criticality to change',
+      body.criticality !== undefined ||
+      body.archived !== undefined,
+    'Provide a name, description, owner team, criticality, or archived state to change',
   );
 
 export type CreateServiceRequest = z.infer<typeof createServiceSchema>;

@@ -171,7 +171,7 @@ describe('services (integration)', () => {
 
   beforeEach(async () => {
     await prisma.$executeRawUnsafe(
-      'TRUNCATE TABLE services, team_memberships, teams, invitations, refresh_tokens, memberships, users, organizations RESTART IDENTITY CASCADE',
+      'TRUNCATE TABLE incidents, services, team_memberships, teams, invitations, refresh_tokens, memberships, users, organizations RESTART IDENTITY CASCADE',
     );
 
     fx = await seed();
@@ -199,6 +199,7 @@ describe('services (integration)', () => {
         description: 'Takes card payments.',
         criticality: 'CRITICAL',
         ownerTeam: { id: fx.paymentsA, name: 'Payments', slug: 'payments' },
+        archivedAt: null,
         createdAt: expect.any(String),
         updatedAt: expect.any(String),
       });
