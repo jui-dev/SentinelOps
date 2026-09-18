@@ -81,6 +81,8 @@ describe('incident schemas', () => {
       { status: 'INVESTIGATING' },
       { status: 'RESOLVED' },
       { teamId: TEAM },
+      { leadMembershipId: TEAM },
+      { leadMembershipId: null },
     ])('should accept %o alone', (body) => {
       expect(updateIncidentSchema.safeParse(body).success).toBe(true);
     });
@@ -101,6 +103,8 @@ describe('incident schemas', () => {
       { number: 2 },
       { organizationId: SERVICE },
       { status: 'OPEN' },
+      { leadMembershipId: 'not-a-uuid' },
+      { responders: [TEAM] },
     ])('should refuse %o', (body) => {
       expect(
         updateIncidentSchema.safeParse({ title: 'x', ...body }).success,

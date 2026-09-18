@@ -1,5 +1,7 @@
 import type { ServiceCriticality } from '../services/services.contract.js';
 import type {
+  IncidentDetailResponse,
+  IncidentMemberResponse,
   IncidentResponse,
   IncidentSeverity,
   IncidentStatus,
@@ -61,4 +63,32 @@ export const toIncidentResponse = (
   createdAt: incident.createdAt.toISOString(),
   updatedAt: incident.updatedAt.toISOString(),
   resolvedAt: incident.resolvedAt?.toISOString() ?? null,
+});
+
+interface IncidentMemberRow {
+  id: string;
+  user: { name: string };
+}
+
+interface IncidentDetailRow extends IncidentRow {
+  lead: IncidentMemberRow | null;
+  responders: { membership: IncidentMemberRow }[];
+}
+
+const toIncidentMemberResponse = (
+  membership: IncidentMemberRow,
+): IncidentMemberResponse => ({
+  membershipId: membership.id,
+  name: membership.user.name,
+});
+
+/** An incident with its lead and responders. */
+export const toIncidentDetailResponse = (
+  incident: IncidentDetailRow,
+): IncidentDetailResponse => ({
+  ...toIncidentResponse(incident),
+  lead: incident.lead ? toIncidentMemberResponse(incident.lead) : null,
+  responders: incident.responders.map(({ membership }) =>
+    toIncidentMemberResponse(membership),
+  ),
 });

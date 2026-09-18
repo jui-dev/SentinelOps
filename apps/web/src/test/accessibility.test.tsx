@@ -184,9 +184,16 @@ const signedIn = (permissions: string[]) =>
           page: { cursor: "7", hasMore: true },
         });
       case `GET ${base}/incidents/42`:
-        return jsonResponse(200, activeIncident);
+        // A lead and a responder, so the People section renders its lists.
+        return jsonResponse(200, {
+          ...activeIncident,
+          lead: { membershipId: currentUser.memberships[0].id, name: currentUser.name },
+          responders: [
+            { membershipId: currentUser.memberships[0].id, name: currentUser.name },
+          ],
+        });
       case `GET ${base}/incidents/7`:
-        return jsonResponse(200, resolvedIncident);
+        return jsonResponse(200, { ...resolvedIncident, lead: null, responders: [] });
       case `GET ${base}/teams/${team.id}/members`:
         return jsonResponse(200, [
           {
@@ -419,6 +426,7 @@ describe("accessibility", () => {
 
       await screen.findByRole("heading", { level: 1, name: "Card payments failing" });
       await screen.findByLabelText("Responsible team");
+      await screen.findByLabelText("Incident lead");
       (await screen.findByRole("button", { name: "Resolve…" })).click();
       await screen.findByRole("button", { name: "Resolve incident" });
       await expectNoAxeViolations(container);

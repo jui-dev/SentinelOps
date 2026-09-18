@@ -12,7 +12,8 @@ import type { Role } from './../src/generated/prisma/enums.js';
  * Incident routes wired through the real AppModule, with Prisma mocked.
  *
  * Proves the wiring: every route is admitted and authorized, every role —
- * MEMBER included — may declare and change incidents, bodies are validated
+ * MEMBER included — may declare and change incidents and assign their lead
+ * and responders, bodies are validated
  * strictly, there is no delete route, and a non-member receives admission's
  * 404. Behaviour against real rows, tenant isolation, concurrency, and the
  * database invariants are proven in incidents.integration-spec.ts and
@@ -46,6 +47,8 @@ const incidentRow = {
   },
   team: { id: TEAM_ID, name: 'Payments', slug: 'payments' },
   createdBy: { id: USER_ID, name: 'Ada Lovelace' },
+  lead: null,
+  responders: [],
 };
 
 const base = `/api/v1/organizations/${ORG_ID}/incidents`;
@@ -71,7 +74,10 @@ describe('Incidents (e2e)', () => {
       findFirst: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
+      findFirstOrThrow: vi.fn(),
     },
+    incidentResponder: { create: vi.fn(), deleteMany: vi.fn() },
   };
 
   /**
@@ -132,6 +138,10 @@ describe('Incidents (e2e)', () => {
     prisma.incident.findFirst.mockResolvedValue(incidentRow);
     prisma.incident.create.mockResolvedValue(incidentRow);
     prisma.incident.update.mockResolvedValue(incidentRow);
+    prisma.incident.updateMany.mockResolvedValue({ count: 1 });
+    prisma.incident.findFirstOrThrow.mockResolvedValue(incidentRow);
+    prisma.incidentResponder.create.mockResolvedValue({ id: 'r-1' });
+    prisma.incidentResponder.deleteMany.mockResolvedValue({ count: 1 });
   });
 
   afterEach(async () => {
@@ -175,6 +185,8 @@ describe('Incidents (e2e)', () => {
         createdAt: '2026-09-18T12:00:00.000Z',
         updatedAt: '2026-09-18T12:00:00.000Z',
         resolvedAt: null,
+        lead: null,
+        responders: [],
       });
     });
 
@@ -183,6 +195,23 @@ describe('Incidents (e2e)', () => {
       expect(
         (await send('patch', `${base}/1`, { status: 'IDENTIFIED' })).status,
       ).toBe(200);
+    });
+
+    it('should assign a lead and add and remove a responder', async () => {
+      expect(
+        (await send('patch', `${base}/1`, { leadMembershipId: MEMBERSHIP_ID }))
+          .status,
+      ).toBe(200);
+      expect(
+        (
+          await send('post', `${base}/1/responders`, {
+            membershipId: MEMBERSHIP_ID,
+          })
+        ).status,
+      ).toBe(201);
+      expect(
+        (await send('delete', `${base}/1/responders/${MEMBERSHIP_ID}`)).status,
+      ).toBe(204);
     });
   });
 
@@ -230,6 +259,27 @@ describe('Incidents (e2e)', () => {
       ]);
     });
 
+    it.each([
+      {},
+      { membershipId: 'not-a-uuid' },
+      { membershipId: MEMBERSHIP_ID, organizationId: OTHER_ORG_ID },
+      { membershipId: MEMBERSHIP_ID, lead: true },
+    ])('should refuse the responder body %o with 400', async (body) => {
+      const response = await send('post', `${base}/1/responders`, body);
+
+      expect(response.status).toBe(400);
+      expect(prisma.incidentResponder.create).not.toHaveBeenCalled();
+    });
+
+    it('should refuse a malformed lead with 400', async () => {
+      const response = await send('patch', `${base}/1`, {
+        leadMembershipId: 'not-a-uuid',
+      });
+
+      expect(response.status).toBe(400);
+      expect(prisma.incident.update).not.toHaveBeenCalled();
+    });
+
     it('should refuse changing the service with 400', async () => {
       const response = await send('patch', `${base}/1`, {
         serviceId: SERVICE_ID,
@@ -263,6 +313,11 @@ describe('Incidents (e2e)', () => {
       { method: 'get' as const, path: `${base}/1` },
       { method: 'post' as const, path: base },
       { method: 'patch' as const, path: `${base}/1` },
+      { method: 'post' as const, path: `${base}/1/responders` },
+      {
+        method: 'delete' as const,
+        path: `${base}/1/responders/${MEMBERSHIP_ID}`,
+      },
     ])('should receive 404 from $method $path', async ({ method, path }) => {
       admitAs('OWNER');
 
@@ -276,6 +331,8 @@ describe('Incidents (e2e)', () => {
       expect(response.body.code).toBe('ORGANIZATION_NOT_FOUND');
       expect(prisma.incident.create).not.toHaveBeenCalled();
       expect(prisma.incident.update).not.toHaveBeenCalled();
+      expect(prisma.incidentResponder.create).not.toHaveBeenCalled();
+      expect(prisma.incidentResponder.deleteMany).not.toHaveBeenCalled();
     });
   });
 });

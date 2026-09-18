@@ -49,6 +49,7 @@ export const createIncidentSchema = z.strictObject({
 /**
  * Changing an active incident. `status: 'RESOLVED'` resolves it. The service
  * cannot be changed; the responsible team can be reassigned, never cleared.
+ * The lead is a membership id, or null to clear it.
  */
 export const updateIncidentSchema = z
   .strictObject({
@@ -57,6 +58,7 @@ export const updateIncidentSchema = z
     severity: incidentSeveritySchema.optional(),
     status: incidentStatusSchema.optional(),
     teamId: resourceIdSchema.optional(),
+    leadMembershipId: resourceIdSchema.nullable().optional(),
   })
   .refine(
     (body) =>
@@ -64,9 +66,15 @@ export const updateIncidentSchema = z
       body.summary !== undefined ||
       body.severity !== undefined ||
       body.status !== undefined ||
-      body.teamId !== undefined,
-    'Provide a title, summary, severity, status, or team to change',
+      body.teamId !== undefined ||
+      body.leadMembershipId !== undefined,
+    'Provide a title, summary, severity, status, team, or lead to change',
   );
+
+/** Adding a responder: any member of the organization, by membership id. */
+export const addResponderSchema = z.strictObject({
+  membershipId: resourceIdSchema,
+});
 
 /**
  * Which incidents to list. `state` is required: active and resolved
@@ -80,6 +88,7 @@ export const listIncidentsQuerySchema = z.object({
 
 export type CreateIncidentRequest = z.infer<typeof createIncidentSchema>;
 export type UpdateIncidentRequest = z.infer<typeof updateIncidentSchema>;
+export type AddResponderRequest = z.infer<typeof addResponderSchema>;
 export type ListIncidentsQuery = z.infer<typeof listIncidentsQuerySchema>;
 
 /** The largest value a Postgres `integer` column holds. */

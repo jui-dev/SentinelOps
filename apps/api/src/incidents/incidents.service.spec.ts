@@ -41,6 +41,8 @@ const incidentRow = (overrides: Record<string, unknown> = {}) => ({
   },
   team: { id: TEAM, name: 'Payments', slug: 'payments' },
   createdBy: { id: USER, name: 'Ada Lovelace' },
+  lead: null,
+  responders: [],
   ...overrides,
 });
 
@@ -291,6 +293,49 @@ describe('IncidentsService', () => {
         service.update(ORG, '1', { title: 'Typo fixed' }),
         409,
         IncidentsErrorCode.INCIDENT_RESOLVED,
+      );
+      expect(prisma.incident.update).not.toHaveBeenCalled();
+    });
+
+    it('should look a lead up within the organization, then write it', async () => {
+      const { service, prisma } = serviceWith();
+
+      await service.update(ORG, '1', { leadMembershipId: MEMBERSHIP });
+
+      expect(prisma.membership.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            id: MEMBERSHIP,
+            organizationId: ORG,
+            organization: { deletedAt: null },
+            user: { deletedAt: null },
+          },
+        }),
+      );
+      expect(
+        prisma.incident.update.mock.calls[0][0].data.leadMembershipId,
+      ).toBe(MEMBERSHIP);
+    });
+
+    it('should clear the lead with null, looking nothing up', async () => {
+      const { service, prisma } = serviceWith();
+
+      await service.update(ORG, '1', { leadMembershipId: null });
+
+      expect(prisma.membership.findFirst).not.toHaveBeenCalled();
+      expect(
+        prisma.incident.update.mock.calls[0][0].data.leadMembershipId,
+      ).toBeNull();
+    });
+
+    it('should answer a lead outside the organization with 404 and change nothing', async () => {
+      const { service, prisma } = serviceWith();
+      prisma.membership.findFirst.mockResolvedValue(null);
+
+      await expectCode(
+        service.update(ORG, '1', { leadMembershipId: MEMBERSHIP }),
+        404,
+        'MEMBERSHIP_NOT_FOUND',
       );
       expect(prisma.incident.update).not.toHaveBeenCalled();
     });

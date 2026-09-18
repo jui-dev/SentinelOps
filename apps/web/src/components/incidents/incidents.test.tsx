@@ -4,7 +4,10 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { OrganizationScope } from "@/components/organizations/organization-scope";
-import type { IncidentResponse } from "@/lib/api/contracts";
+import type {
+  IncidentDetailResponse,
+  IncidentResponse,
+} from "@/lib/api/contracts";
 import { queryKeys } from "@/lib/api/query-keys";
 import { clearAccessToken } from "@/lib/auth/token-store";
 import {
@@ -93,7 +96,28 @@ const legacyPortal = {
   archivedAt: "2026-09-18T12:00:00.000Z",
 };
 
-const incident = (overrides: Partial<IncidentResponse> = {}): IncidentResponse => ({
+/** Two members of the organization: the caller, and Daniel on no team. */
+const ada = {
+  id: currentUser.memberships[0].id,
+  role: "OWNER",
+  createdAt: "2026-09-01T12:00:00.000Z",
+  user: { id: currentUser.id, name: "Ada Lovelace", email: currentUser.email },
+};
+const daniel = {
+  id: "0199a1b2-c3d4-7000-8000-0000000000ab",
+  role: "MEMBER",
+  createdAt: "2026-09-02T12:00:00.000Z",
+  user: {
+    id: "0199a1b2-c3d4-7000-8000-000000000002",
+    name: "Daniel Okafor",
+    email: "daniel@example.test",
+  },
+};
+
+/** An incident as the single-incident routes return it; lists ignore lead and responders. */
+const incident = (
+  overrides: Partial<IncidentDetailResponse> = {},
+): IncidentDetailResponse => ({
   id: "0199a1b2-c3d4-7000-8000-0000000000f1",
   number: 42,
   title: "Card payments failing",
@@ -112,6 +136,8 @@ const incident = (overrides: Partial<IncidentResponse> = {}): IncidentResponse =
   createdAt: "2026-09-18T12:00:00.000Z",
   updatedAt: "2026-09-18T12:00:00.000Z",
   resolvedAt: null,
+  lead: null,
+  responders: [],
   ...overrides,
 });
 
@@ -133,7 +159,7 @@ const api = (
   }: {
     active?: IncidentResponse[];
     resolved?: IncidentResponse[];
-    detail?: IncidentResponse;
+    detail?: IncidentDetailResponse;
     services?: (typeof paymentApi)[];
     handler?: Handler;
   } = {},
@@ -160,6 +186,8 @@ const api = (
         return jsonResponse(200, services);
       case `GET ${base}/teams`:
         return jsonResponse(200, [payments, platform]);
+      case `GET ${base}/memberships`:
+        return jsonResponse(200, [ada, daniel]);
       default:
         return apiError(404, "INCIDENT_NOT_FOUND");
     }
@@ -441,6 +469,7 @@ describe("incidents", () => {
       expect(screen.queryByRole("button", { name: "Resolve…" })).toBeNull();
       expect(screen.queryByRole("heading", { name: "Response" })).toBeNull();
       expect(screen.queryByRole("heading", { name: "Details" })).toBeNull();
+      expect(screen.queryByRole("heading", { name: "People" })).toBeNull();
     });
 
     it("explains a change refused because someone resolved it meanwhile, and refetches it", async () => {
@@ -464,6 +493,151 @@ describe("incidents", () => {
       await waitFor(() =>
         expect(count(requests, `GET ${base}/incidents/42`)).toBeGreaterThan(1),
       );
+    });
+
+    it("shows who leads and responds, with nothing to change for a reader", async () => {
+      api(READ_ONLY, {
+        detail: incident({
+          lead: { membershipId: daniel.id, name: "Daniel Okafor" },
+          responders: [
+            { membershipId: daniel.id, name: "Daniel Okafor" },
+            { membershipId: ada.id, name: "Ada Lovelace" },
+          ],
+        }),
+      });
+
+      inOrganization(<IncidentDetail />);
+
+      expect(await screen.findByText("Incident lead")).toBeDefined();
+      expect(screen.getByText("Daniel Okafor, Ada Lovelace")).toBeDefined();
+      expect(screen.queryByRole("heading", { name: "People" })).toBeNull();
+    });
+
+    it("says plainly when nobody leads or responds yet", async () => {
+      api(READ_ONLY);
+
+      inOrganization(<IncidentDetail />);
+
+      expect(await screen.findByText("No lead assigned")).toBeDefined();
+      expect(screen.getByText("No responders yet")).toBeDefined();
+    });
+
+    it("assigns and clears the lead, from any member of the organization", async () => {
+      const user = userEvent.setup();
+      const { requests } = api(MEMBER, {
+        handler: (request) =>
+          route(request) === `PATCH ${base}/incidents/42`
+            ? jsonResponse(
+                200,
+                incident({
+                  lead: request.body && (request.body as { leadMembershipId: string | null }).leadMembershipId
+                    ? { membershipId: daniel.id, name: "Daniel Okafor" }
+                    : null,
+                }),
+              )
+            : undefined,
+      });
+
+      inOrganization(<IncidentDetail />);
+
+      const people = (await screen.findByRole("heading", { name: "People" }))
+        .closest("section") as HTMLElement;
+
+      await user.selectOptions(await within(people).findByLabelText("Incident lead"), daniel.id);
+      await user.click(within(people).getByRole("button", { name: "Save lead" }));
+
+      // The record shows the new lead once the API answers.
+      await waitFor(() =>
+        expect(
+          screen.getByText("Incident lead", { selector: "dt" }).closest("div")?.textContent,
+        ).toContain("Daniel Okafor"),
+      );
+      expect(requests.filter((r) => route(r) === `PATCH ${base}/incidents/42`)[0].body).toEqual({
+        leadMembershipId: daniel.id,
+      });
+
+      await user.selectOptions(within(people).getByLabelText("Incident lead"), "");
+      await user.click(within(people).getByRole("button", { name: "Save lead" }));
+
+      await waitFor(() =>
+        expect(requests.filter((r) => route(r) === `PATCH ${base}/incidents/42`)[1]?.body).toEqual({
+          leadMembershipId: null,
+        }),
+      );
+    });
+
+    it("adds and removes responders", async () => {
+      const user = userEvent.setup();
+      const { requests } = api(MEMBER, {
+        detail: incident({
+          responders: [{ membershipId: ada.id, name: "Ada Lovelace" }],
+        }),
+        handler: (request) => {
+          if (route(request) === `POST ${base}/incidents/42/responders`) {
+            return jsonResponse(
+              201,
+              incident({
+                responders: [
+                  { membershipId: ada.id, name: "Ada Lovelace" },
+                  { membershipId: daniel.id, name: "Daniel Okafor" },
+                ],
+              }),
+            );
+          }
+          if (route(request) === `DELETE ${base}/incidents/42/responders/${ada.id}`) {
+            return jsonResponse(204);
+          }
+          return undefined;
+        },
+      });
+
+      inOrganization(<IncidentDetail />);
+
+      const responders = (await screen.findByRole("heading", { name: "Responders" }))
+        .closest("section") as HTMLElement;
+
+      // Ada already responds, so only Daniel is offered.
+      const add = await within(responders).findByLabelText("Add a responder");
+      expect(within(add).getAllByRole("option").map((o) => o.textContent)).toEqual([
+        "Daniel Okafor",
+      ]);
+
+      await user.click(within(responders).getByRole("button", { name: "Add responder" }));
+
+      await waitFor(() =>
+        expect(
+          requests.find((r) => route(r) === `POST ${base}/incidents/42/responders`)?.body,
+        ).toEqual({ membershipId: daniel.id }),
+      );
+      expect(await within(responders).findByText("Daniel Okafor")).toBeDefined();
+
+      await user.click(
+        within(responders).getByRole("button", { name: "Remove Ada Lovelace from responders" }),
+      );
+
+      await waitFor(() =>
+        expect(count(requests, `DELETE ${base}/incidents/42/responders/${ada.id}`)).toBe(1),
+      );
+    });
+
+    it("explains a responder refused because the incident was resolved meanwhile", async () => {
+      const user = userEvent.setup();
+      api(MEMBER, {
+        handler: (request) =>
+          route(request) === `POST ${base}/incidents/42/responders`
+            ? apiError(409, "INCIDENT_RESOLVED")
+            : undefined,
+      });
+
+      inOrganization(<IncidentDetail />);
+
+      const responders = (await screen.findByRole("heading", { name: "Responders" }))
+        .closest("section") as HTMLElement;
+
+      await within(responders).findByLabelText("Add a responder");
+      await user.click(within(responders).getByRole("button", { name: "Add responder" }));
+
+      expect(await screen.findByText(/resolved by someone else/)).toBeDefined();
     });
 
     it("answers an unknown number with a not-found page", async () => {

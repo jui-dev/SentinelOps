@@ -2,26 +2,35 @@ import { Injectable, Logger } from '@nestjs/common';
 
 import { PrismaService } from '../database/prisma.service.js';
 import { foreignKeyViolationHint } from '../database/foreign-key-violation.js';
+import { uniqueViolationHint } from '../database/unique-violation.js';
 import { Prisma } from '../generated/prisma/client.js';
+import { membershipNotFound } from '../organizations/organizations.errors.js';
 import {
   serviceArchived,
   serviceNotFound,
 } from '../services/services.errors.js';
 import { teamNotFound } from '../teams/teams.errors.js';
 import { organizationNotFound } from '../tenancy/tenancy.errors.js';
+import { isResourceId } from '../tenancy/tenancy.schemas.js';
 import type {
+  IncidentDetailResponse,
   IncidentPage,
-  IncidentResponse,
   IncidentSeverity,
 } from './incidents.contract.js';
 import {
+  alreadyAResponder,
   incidentNotFound,
   incidentResolved,
   invalidCursor,
+  responderNotFound,
 } from './incidents.errors.js';
-import { toIncidentResponse } from './incidents.responses.js';
+import {
+  toIncidentDetailResponse,
+  toIncidentResponse,
+} from './incidents.responses.js';
 import { parseIncidentNumber } from './incidents.schemas.js';
 import type {
+  AddResponderRequest,
   CreateIncidentRequest,
   ListIncidentsQuery,
   UpdateIncidentRequest,
@@ -72,6 +81,28 @@ const incidentSelection = {
   createdBy: { select: { id: true, name: true } },
 } as const;
 
+/** A member as an incident names one: the membership id and a name. */
+const incidentMemberSelection = {
+  select: { id: true, user: { select: { name: true } } },
+} as const;
+
+/**
+ * Columns a single incident is built from: the list's, with the lead and the
+ * responders. Lists never select these, so a page stays free of the joins.
+ *
+ * The user's name is not filtered on deletedAt: who led or responded stays
+ * true after they leave, as for the declarer.
+ */
+const incidentDetailSelection = {
+  ...incidentSelection,
+  lead: incidentMemberSelection,
+  responders: {
+    select: { membership: incidentMemberSelection },
+    // UUIDv7: ordering by id is the order responders were added.
+    orderBy: { id: 'asc' },
+  },
+} as const;
+
 /**
  * The composite service key refused the row: the service is not in this
  * organization. Matched on the referencing column; the constraint name also
@@ -83,6 +114,18 @@ const violatesServiceKey = (hint: string): boolean =>
 /** The composite team key refused the row. */
 const violatesTeamKey = (hint: string): boolean =>
   hint.includes('team_id') || hint.includes('teamid');
+
+/**
+ * A composite membership key refused the row: the lead's on incidents, or
+ * the responder's on incident_responders.
+ */
+const violatesMembershipKey = (hint: string): boolean =>
+  hint.includes('membership_id') || hint.includes('membershipid');
+
+/** Whether a unique violation came from the one-row-per-responder index. */
+const isResponderConflict = (hint: string): boolean =>
+  hint.includes('incident_responders_incident_id_membership_id_key') ||
+  (hint.includes('incident') && hint.includes('membership'));
 
 /**
  * Where the next page of a list starts: the sort key of the last incident on
@@ -226,7 +269,7 @@ export class IncidentsService {
   async get(
     organizationId: string,
     incidentNumber: string,
-  ): Promise<IncidentResponse> {
+  ): Promise<IncidentDetailResponse> {
     const number = parseIncidentNumber(incidentNumber);
 
     if (number === undefined) {
@@ -235,14 +278,14 @@ export class IncidentsService {
 
     const incident = await this.prisma.incident.findFirst({
       where: { organizationId, number, organization: { deletedAt: null } },
-      select: incidentSelection,
+      select: incidentDetailSelection,
     });
 
     if (!incident) {
       throw incidentNotFound();
     }
 
-    return toIncidentResponse(incident);
+    return toIncidentDetailResponse(incident);
   }
 
   /**
@@ -275,7 +318,7 @@ export class IncidentsService {
     organizationId: string,
     actor: { membershipId: string },
     input: CreateIncidentRequest,
-  ): Promise<IncidentResponse> {
+  ): Promise<IncidentDetailResponse> {
     let incident;
 
     try {
@@ -324,7 +367,7 @@ export class IncidentsService {
             severity: input.severity,
             createdById: declarer.userId,
           },
-          select: incidentSelection,
+          select: incidentDetailSelection,
         });
       });
     } catch (error) {
@@ -351,17 +394,17 @@ export class IncidentsService {
       severity: incident.severity,
     });
 
-    return toIncidentResponse(incident);
+    return toIncidentDetailResponse(incident);
   }
 
   /**
-   * Changes an active incident: its title, summary, severity, status, or
-   * responsible team. `status: 'RESOLVED'` resolves it, and resolvedAt is set
+   * Changes an active incident: its title, summary, severity, status,
+   * responsible team, or lead. `status: 'RESOLVED'` resolves it, and resolvedAt is set
    * in the same write. A resolved incident is not changed — any change to one
    * is a 409, whatever it names.
    *
-   * The incident is judged first (404, then 409), and only then the team a
-   * body names, so a foreign incident reveals nothing about the body. The
+   * The incident is judged first (404, then 409), and only then the team or
+   * lead a body names, so a foreign incident reveals nothing about the body. The
    * update itself re-asserts that the incident is unresolved: of two
    * concurrent resolutions, the second waits on the row, then matches
    * nothing and is told the incident is resolved. resolvedAt is written
@@ -371,7 +414,7 @@ export class IncidentsService {
     organizationId: string,
     incidentNumber: string,
     input: UpdateIncidentRequest,
-  ): Promise<IncidentResponse> {
+  ): Promise<IncidentDetailResponse> {
     const number = parseIncidentNumber(incidentNumber);
 
     if (number === undefined) {
@@ -400,6 +443,14 @@ export class IncidentsService {
           await this.requireTeam(tx, organizationId, input.teamId);
         }
 
+        if (input.leadMembershipId) {
+          await this.requireMembership(
+            tx,
+            organizationId,
+            input.leadMembershipId,
+          );
+        }
+
         return tx.incident.update({
           where: {
             organizationId_number: { organizationId, number },
@@ -412,9 +463,10 @@ export class IncidentsService {
             severity: input.severity,
             status: input.status,
             teamId: input.teamId,
+            leadMembershipId: input.leadMembershipId,
             resolvedAt: resolving ? new Date() : undefined,
           },
-          select: incidentSelection,
+          select: incidentDetailSelection,
         });
       });
     } catch (error) {
@@ -430,12 +482,16 @@ export class IncidentsService {
           : incidentNotFound();
       }
 
-      // The team was deleted between its lookup and the write: the answer
-      // the lookup would have given.
+      // The team or the lead's membership was deleted between its lookup
+      // and the write: the answer the lookup would have given.
       const foreignKey = foreignKeyViolationHint(error);
 
       if (foreignKey !== undefined && violatesTeamKey(foreignKey)) {
         throw teamNotFound();
+      }
+
+      if (foreignKey !== undefined && violatesMembershipKey(foreignKey)) {
+        throw membershipNotFound();
       }
 
       throw error;
@@ -452,6 +508,9 @@ export class IncidentsService {
       ...(input.severity !== undefined && { severity: incident.severity }),
       ...(input.status !== undefined && { status: incident.status }),
       ...(input.teamId !== undefined && { teamId: incident.team.id }),
+      ...(input.leadMembershipId !== undefined && {
+        leadMembershipId: input.leadMembershipId,
+      }),
     });
 
     if (resolving) {
@@ -462,7 +521,121 @@ export class IncidentsService {
       });
     }
 
-    return toIncidentResponse(incident);
+    return toIncidentDetailResponse(incident);
+  }
+
+  /**
+   * Adds a member of the organization, from any team, to the incident's
+   * responders.
+   *
+   * The incident is judged and locked first (see lockActive), then the
+   * membership is looked up within the organization. A membership deleted
+   * between that read and the insert is refused by the composite key and
+   * answered with the read's 404; a concurrent add of the same member is
+   * refused by the unique index and answered 409.
+   */
+  async addResponder(
+    organizationId: string,
+    incidentNumber: string,
+    input: AddResponderRequest,
+  ): Promise<IncidentDetailResponse> {
+    const number = parseIncidentNumber(incidentNumber);
+
+    if (number === undefined) {
+      throw incidentNotFound();
+    }
+
+    let incident;
+
+    try {
+      incident = await this.prisma.$transaction(async (tx) => {
+        const incidentId = await this.lockActive(tx, organizationId, number);
+
+        await this.requireMembership(tx, organizationId, input.membershipId);
+
+        // Scalar ids, not nested connects: both relations share
+        // organizationId, and it is that shared column the keys check.
+        await tx.incidentResponder.create({
+          data: {
+            organizationId,
+            incidentId,
+            membershipId: input.membershipId,
+          },
+          select: { id: true },
+        });
+
+        return tx.incident.findFirstOrThrow({
+          where: { id: incidentId, organizationId },
+          select: incidentDetailSelection,
+        });
+      });
+    } catch (error) {
+      const unique = uniqueViolationHint(error);
+
+      if (unique !== undefined && isResponderConflict(unique)) {
+        throw alreadyAResponder();
+      }
+
+      const foreignKey = foreignKeyViolationHint(error);
+
+      if (foreignKey !== undefined && violatesMembershipKey(foreignKey)) {
+        throw membershipNotFound();
+      }
+
+      throw error;
+    }
+
+    this.logger.log('Incident responder added', {
+      incidentId: incident.id,
+      incidentNumber: incident.number,
+      membershipId: input.membershipId,
+    });
+
+    return toIncidentDetailResponse(incident);
+  }
+
+  /**
+   * Takes a member off the incident's responders. They remain in the
+   * organization, and remain its lead if they are.
+   *
+   * The incident is judged and locked first. A membership that is not
+   * responding — malformed, in another organization, or simply not on it —
+   * is then one 404, which also rolls back lockActive's touch of updatedAt.
+   */
+  async removeResponder(
+    organizationId: string,
+    incidentNumber: string,
+    membershipId: string,
+  ): Promise<void> {
+    const number = parseIncidentNumber(incidentNumber);
+
+    if (number === undefined) {
+      throw incidentNotFound();
+    }
+
+    const incidentId = await this.prisma.$transaction(async (tx) => {
+      const id = await this.lockActive(tx, organizationId, number);
+
+      if (!isResourceId(membershipId)) {
+        throw responderNotFound();
+      }
+
+      const { count } = await tx.incidentResponder.deleteMany({
+        where: { organizationId, incidentId: id, membershipId },
+      });
+
+      if (count !== 1) {
+        throw responderNotFound();
+      }
+
+      return id;
+    });
+
+    this.logger.log('Incident responder removed', {
+      incidentId,
+      incidentNumber: number,
+      membershipId,
+    });
   }
 
   /**
@@ -550,6 +723,74 @@ export class IncidentsService {
 
     if (!team) {
       throw teamNotFound();
+    }
+  }
+
+  /**
+   * Judges the incident for a change to its responders — 404, then 409 — and
+   * holds its row until the transaction ends. Returns its id.
+   *
+   * The pattern update() follows: a read to answer precisely, then a write
+   * whose own predicate re-asserts that the incident is unresolved. Here the
+   * write only touches updatedAt — responders are part of the incident, so a
+   * change to them is a change to it — and its row lock orders this change
+   * against a resolution. If the resolution commits first, this write
+   * re-evaluates its predicate, matches nothing, and the caller is told the
+   * incident is resolved; if this commits first, the resolution waits and
+   * follows it. Either way no responder changes on a resolved incident.
+   */
+  private async lockActive(
+    tx: Prisma.TransactionClient,
+    organizationId: string,
+    number: number,
+  ): Promise<string> {
+    const current = await tx.incident.findFirst({
+      where: { organizationId, number, organization: { deletedAt: null } },
+      select: { id: true, status: true },
+    });
+
+    if (!current) {
+      throw incidentNotFound();
+    }
+
+    if (current.status === 'RESOLVED') {
+      throw incidentResolved();
+    }
+
+    const { count } = await tx.incident.updateMany({
+      where: { id: current.id, organizationId, status: { not: 'RESOLVED' } },
+      data: { updatedAt: new Date() },
+    });
+
+    if (count !== 1) {
+      throw incidentResolved();
+    }
+
+    return current.id;
+  }
+
+  /**
+   * The membership is a current member of this organization, or 404
+   * MEMBERSHIP_NOT_FOUND — the same answer for a missing membership, one in
+   * another organization, and one whose user was soft-deleted.
+   */
+  private async requireMembership(
+    tx: Prisma.TransactionClient,
+    organizationId: string,
+    membershipId: string,
+  ): Promise<void> {
+    const membership = await tx.membership.findFirst({
+      where: {
+        id: membershipId,
+        organizationId,
+        organization: { deletedAt: null },
+        user: { deletedAt: null },
+      },
+      select: { id: true },
+    });
+
+    if (!membership) {
+      throw membershipNotFound();
     }
   }
 

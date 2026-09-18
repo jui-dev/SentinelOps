@@ -1,17 +1,32 @@
-import { Body, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 
 import { Permission } from '../authorization/permissions.js';
 import { RequirePermission } from '../authorization/require-permission.decorator.js';
 import type { OrganizationContext } from '../common/request-context.js';
 import { CurrentMembership } from '../tenancy/current-membership.decorator.js';
 import { OrganizationController } from '../tenancy/organization-controller.decorator.js';
-import type { IncidentPage, IncidentResponse } from './incidents.contract.js';
+import type {
+  IncidentDetailResponse,
+  IncidentPage,
+} from './incidents.contract.js';
 import {
+  addResponderSchema,
   createIncidentSchema,
   listIncidentsQuerySchema,
   updateIncidentSchema,
 } from './incidents.schemas.js';
 import type {
+  AddResponderRequest,
   CreateIncidentRequest,
   ListIncidentsQuery,
   UpdateIncidentRequest,
@@ -55,7 +70,7 @@ export class IncidentsController {
   create(
     @CurrentMembership() membership: OrganizationContext,
     @Body({ schema: createIncidentSchema }) body: CreateIncidentRequest,
-  ): Promise<IncidentResponse> {
+  ): Promise<IncidentDetailResponse> {
     return this.incidents.create(
       membership.organizationId,
       { membershipId: membership.membershipId },
@@ -68,13 +83,14 @@ export class IncidentsController {
   get(
     @CurrentMembership() membership: OrganizationContext,
     @Param('incidentNumber') incidentNumber: string,
-  ): Promise<IncidentResponse> {
+  ): Promise<IncidentDetailResponse> {
     return this.incidents.get(membership.organizationId, incidentNumber);
   }
 
   /**
-   * Changes an active incident's title, summary, severity, status, or
-   * responsible team; `status: 'RESOLVED'` resolves it.
+   * Changes an active incident's title, summary, severity, status,
+   * responsible team, or lead (`leadMembershipId`, null to clear);
+   * `status: 'RESOLVED'` resolves it.
    */
   @Patch(':incidentNumber')
   @RequirePermission(Permission.INCIDENTS_MANAGE)
@@ -82,11 +98,42 @@ export class IncidentsController {
     @CurrentMembership() membership: OrganizationContext,
     @Param('incidentNumber') incidentNumber: string,
     @Body({ schema: updateIncidentSchema }) body: UpdateIncidentRequest,
-  ): Promise<IncidentResponse> {
+  ): Promise<IncidentDetailResponse> {
     return this.incidents.update(
       membership.organizationId,
       incidentNumber,
       body,
+    );
+  }
+
+  /** Adds a member of the organization, by membership id, as a responder. */
+  @Post(':incidentNumber/responders')
+  @RequirePermission(Permission.INCIDENTS_MANAGE)
+  addResponder(
+    @CurrentMembership() membership: OrganizationContext,
+    @Param('incidentNumber') incidentNumber: string,
+    @Body({ schema: addResponderSchema }) body: AddResponderRequest,
+  ): Promise<IncidentDetailResponse> {
+    return this.incidents.addResponder(
+      membership.organizationId,
+      incidentNumber,
+      body,
+    );
+  }
+
+  /** Takes a responder off the incident, addressed by their membership id. */
+  @Delete(':incidentNumber/responders/:membershipId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @RequirePermission(Permission.INCIDENTS_MANAGE)
+  removeResponder(
+    @CurrentMembership() membership: OrganizationContext,
+    @Param('incidentNumber') incidentNumber: string,
+    @Param('membershipId') membershipId: string,
+  ): Promise<void> {
+    return this.incidents.removeResponder(
+      membership.organizationId,
+      incidentNumber,
+      membershipId,
     );
   }
 }

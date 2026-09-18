@@ -133,10 +133,10 @@ model User {
   updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz(3)
 
-  memberships     Membership[]
-  refreshTokens   RefreshToken[]
-  invitationsSent Invitation[]   @relation("InvitationsSent")
-  incidentsDeclared Incident[]   @relation("IncidentsDeclared")
+  memberships       Membership[]
+  refreshTokens     RefreshToken[]
+  invitationsSent   Invitation[]   @relation("InvitationsSent")
+  incidentsDeclared Incident[]     @relation("IncidentsDeclared")
 
   @@map("users")
 }
@@ -166,9 +166,15 @@ model Membership {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization    Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user            User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   teamMemberships TeamMembership[]
+  incidentsLed    Incident[]          @relation("IncidentLead")
+  incidentsJoined IncidentResponder[]
+  // incidentsLed and incidentsJoined are Restrict: a membership that has led
+  // or responded to an incident cannot be physically deleted. Nothing in the
+  // application deletes a membership today; when removing members arrives, it
+  // decides what happens to that history.
 
   /// One capacity per user per organization: nobody is both ADMIN and MEMBER.
   @@unique([organizationId, userId])
@@ -475,21 +481,21 @@ enum IncidentStatus {
 /// cannot declare them (and does not treat them as drift): status is RESOLVED
 /// exactly when resolved_at is set, and number is positive.
 model Incident {
-  id             String           @id @default(uuid(7)) @db.Uuid
-  organizationId String           @map("organization_id") @db.Uuid
+  id               String           @id @default(uuid(7)) @db.Uuid
+  organizationId   String           @map("organization_id") @db.Uuid
   /// The organization's own sequence, shown as INC-{number}. Allocated from
   /// organizations.last_incident_number when the incident is declared:
   /// unique within the organization, never changed, and increasing in the
   /// order declarations commit. Not promised to be gapless.
-  number         Int
-  title          String
+  number           Int
+  title            String
   /// The current understanding of the impact. Null when there is none; blank
   /// is normalised to null at the Zod boundary.
-  summary        String?
-  serviceId      String           @map("service_id") @db.Uuid
-  teamId         String           @map("team_id") @db.Uuid
-  severity       IncidentSeverity
-  status         IncidentStatus   @default(INVESTIGATING)
+  summary          String?
+  serviceId        String           @map("service_id") @db.Uuid
+  teamId           String           @map("team_id") @db.Uuid
+  severity         IncidentSeverity
+  status           IncidentStatus   @default(INVESTIGATING)
   /// Who declared it: the global User rather than the Membership. A
   /// membership is hard-deleted when access is revoked, and attribution must
   /// outlive the grant; a user is soft-deleted and keeps resolving. Restrict,
@@ -497,7 +503,14 @@ model Incident {
   /// procedure, not a cascade. Users are global, so this is the one reference
   /// the database cannot hold to the organization — IncidentsService takes it
   /// from the admitted membership and never from a request body.
-  createdById    String           @map("created_by_id") @db.Uuid
+  createdById      String           @map("created_by_id") @db.Uuid
+  /// The member leading the response, or null when nobody has been assigned.
+  /// Assignment, not attribution: it names a current grant in this
+  /// organization, so it references the Membership — through a composite key
+  /// on the incident's own organization_id, which makes a lead from another
+  /// organization unrepresentable. Never set automatically; declaring an
+  /// incident does not make the declarer its lead. Carries no authority.
+  leadMembershipId String?          @map("lead_membership_id") @db.Uuid
 
   createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -505,10 +518,15 @@ model Incident {
   /// by a client.
   resolvedAt DateTime? @map("resolved_at") @db.Timestamptz(3)
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  service      Service      @relation(fields: [organizationId, serviceId], references: [organizationId, id], onDelete: Restrict, onUpdate: Restrict)
-  team         Team         @relation(fields: [organizationId, teamId], references: [organizationId, id], onDelete: Restrict, onUpdate: Restrict)
-  createdBy    User         @relation("IncidentsDeclared", fields: [createdById], references: [id], onDelete: Restrict)
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  service      Service             @relation(fields: [organizationId, serviceId], references: [organizationId, id], onDelete: Restrict, onUpdate: Restrict)
+  team         Team                @relation(fields: [organizationId, teamId], references: [organizationId, id], onDelete: Restrict, onUpdate: Restrict)
+  createdBy    User                @relation("IncidentsDeclared", fields: [createdById], references: [id], onDelete: Restrict)
+  /// Restrict must be explicit. Prisma's default for an optional relation is
+  /// SetNull, which on a composite key would null organization_id as well —
+  /// a NOT NULL column.
+  lead         Membership?         @relation("IncidentLead", fields: [organizationId, leadMembershipId], references: [organizationId, id], onDelete: Restrict, onUpdate: Restrict)
+  responders   IncidentResponder[]
 
   /// The addressing key: the API names an incident by its number within the
   /// organization. Also serves keyset pages ordered by number.
@@ -522,7 +540,41 @@ model Incident {
   @@index([organizationId, teamId])
   /// Serves the Restrict check when a user row is physically deleted.
   @@index([createdById])
+  /// Serves the Restrict check when a membership is deleted.
+  @@index([organizationId, leadMembershipId])
   @@map("incidents")
+}
+
+/// Places an organization member on an incident's response.
+///
+/// Built like TeamMembership: both foreign keys are composite and share the
+/// one organization_id column, so the incident and the membership a row joins
+/// must belong to the same organization. Rows are created with scalar ids,
+/// not nested `connect`.
+///
+/// Any member of the organization may respond, whichever team they are on.
+/// Independent of the lead: the lead may or may not also be a responder.
+///
+/// Hard lifecycle: removing a responder deletes the row. The membership key
+/// is Restrict, as for the lead; the incident key cascades, which only a
+/// physical deletion of the organization ever exercises.
+model IncidentResponder {
+  id             String @id @default(uuid(7)) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  incidentId     String @map("incident_id") @db.Uuid
+  membershipId   String @map("membership_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  incident   Incident   @relation(fields: [organizationId, incidentId], references: [organizationId, id], onDelete: Cascade, onUpdate: Restrict)
+  membership Membership @relation(fields: [organizationId, membershipId], references: [organizationId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  /// A member responds to an incident at most once. Its leading column serves
+  /// the cascade from incidents and listing an incident's responders.
+  @@unique([incidentId, membershipId])
+  /// Serves the Restrict check when a membership is deleted.
+  @@index([membershipId])
+  @@map("incident_responders")
 }
 
 /// One issued refresh token. A row per token rather than per session, because

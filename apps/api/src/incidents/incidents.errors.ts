@@ -16,6 +16,8 @@ export const IncidentsErrorCode = {
   INCIDENT_NOT_FOUND: 'INCIDENT_NOT_FOUND',
   INCIDENT_RESOLVED: 'INCIDENT_RESOLVED',
   INVALID_CURSOR: 'INVALID_CURSOR',
+  ALREADY_A_RESPONDER: 'ALREADY_A_RESPONDER',
+  RESPONDER_NOT_FOUND: 'RESPONDER_NOT_FOUND',
 } as const;
 
 export type IncidentsErrorCode =
@@ -51,4 +53,19 @@ export const incidentResolved = (): ConflictException =>
 export const invalidCursor = (): BadRequestException =>
   new BadRequestException('Invalid page cursor', {
     errorCode: IncidentsErrorCode.INVALID_CURSOR,
+  });
+
+/** The member is already responding to this incident. */
+export const alreadyAResponder = (): ConflictException =>
+  new ConflictException('This member is already responding to the incident', {
+    errorCode: IncidentsErrorCode.ALREADY_A_RESPONDER,
+  });
+
+/**
+ * The membership named in the path is not responding to this incident — or
+ * is malformed, or belongs to another organization, which answer the same.
+ */
+export const responderNotFound = (): NotFoundException =>
+  new NotFoundException('Responder not found', {
+    errorCode: IncidentsErrorCode.RESPONDER_NOT_FOUND,
   });

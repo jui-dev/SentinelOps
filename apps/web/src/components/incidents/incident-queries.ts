@@ -8,7 +8,10 @@ import {
 import type { QueryClient } from "@tanstack/react-query";
 
 import { organizationPath } from "@/components/app/navigation";
-import type { IncidentResponse, IncidentState } from "@/lib/api/contracts";
+import type {
+  IncidentDetailResponse,
+  IncidentState,
+} from "@/lib/api/contracts";
 import { getIncident, listIncidents } from "@/lib/api/endpoints";
 import { queryKeys } from "@/lib/api/query-keys";
 
@@ -49,7 +52,7 @@ export const useIncident = (organizationId: string, number: number) =>
 export const storeIncident = (
   queryClient: QueryClient,
   organizationId: string,
-  incident: IncidentResponse,
+  incident: IncidentDetailResponse,
 ) => {
   queryClient.setQueryData(
     queryKeys.incident(organizationId, incident.number),

@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { useState } from "react";
 import type { FormEvent } from "react";
 
+import { useMemberships } from "@/components/organizations/membership-list";
 import {
   useCan,
   useOrganization,
@@ -25,12 +26,18 @@ import { Duration, IsoDate, LocalDateTime } from "@/components/ui/timestamp";
 import { linkClasses, quietLinkClasses } from "@/components/ui/link";
 import { ApiErrorCode, Permission } from "@/lib/api/contracts";
 import type {
+  IncidentDetailResponse,
   IncidentResponse,
   IncidentSeverity,
   IncidentStatus,
+  OrganizationMembershipResponse,
   UpdateIncidentRequest,
 } from "@/lib/api/contracts";
-import { updateIncident } from "@/lib/api/endpoints";
+import {
+  addIncidentResponder,
+  removeIncidentResponder,
+  updateIncident,
+} from "@/lib/api/endpoints";
 import { fieldErrorsOf, isApiError } from "@/lib/api/errors";
 import { queryKeys } from "@/lib/api/query-keys";
 
@@ -262,6 +269,249 @@ function DetailsForm({ incident }: { incident: IncidentResponse }) {
   );
 }
 
+const peopleErrorMessage = (error: unknown): string | undefined => {
+  if (resolvedMeanwhile(error)) return RESOLVED_MEANWHILE_MESSAGE;
+  if (!isApiError(error)) return undefined;
+
+  switch (error.code) {
+    case ApiErrorCode.MEMBERSHIP_NOT_FOUND:
+      return "That person is no longer a member of this organization. The list of members has been refreshed.";
+    case ApiErrorCode.ALREADY_A_RESPONDER:
+      return "That person is already responding. The incident has been refreshed.";
+    case ApiErrorCode.RESPONDER_NOT_FOUND:
+      return "That person was no longer responding. The incident has been refreshed.";
+    default:
+      return undefined;
+  }
+};
+
+/**
+ * After a people change is refused as out of date (404 or 409): the incident
+ * and the member list are both fetched again, so the page shows why.
+ */
+const useRefreshPeople = (incident: IncidentResponse) => {
+  const organization = useOrganization();
+  const queryClient = useQueryClient();
+
+  return () => {
+    void queryClient.invalidateQueries({
+      queryKey: queryKeys.incident(organization.id, incident.number),
+      exact: true,
+    });
+    void queryClient.invalidateQueries({
+      queryKey: queryKeys.memberships(organization.id),
+      exact: true,
+    });
+  };
+};
+
+/** The lead: any member of the organization, or nobody. */
+function LeadForm({
+  incident,
+  members,
+}: {
+  incident: IncidentDetailResponse;
+  members: OrganizationMembershipResponse[];
+}) {
+  const update = useUpdateIncident(incident);
+  const refresh = useRefreshPeople(incident);
+  const current = incident.lead?.membershipId ?? "";
+  const [lead, setLead] = useState(current);
+
+  // No success notice: this form is keyed by the lead, so a saved change
+  // remounts it, and the Incident lead row above shows the result.
+  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    update.mutate(
+      { leadMembershipId: lead || null },
+      {
+        onError: (error) => {
+          if (isApiError(error, 404)) refresh();
+        },
+      },
+    );
+  };
+
+  return (
+    <form onSubmit={onSubmit} noValidate className="flex max-w-md flex-col gap-3">
+      {update.isError && (
+        <ErrorAlert error={update.error} message={peopleErrorMessage(update.error)} />
+      )}
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="min-w-56 flex-1">
+          <Select
+            label="Incident lead"
+            name="leadMembershipId"
+            value={lead}
+            onChange={(event) => setLead(event.target.value)}
+          >
+            <option value="">No lead</option>
+            {/* A lead who has left stays selectable until changed. */}
+            {incident.lead &&
+              !members.some(({ id }) => id === incident.lead?.membershipId) && (
+                <option value={incident.lead.membershipId}>
+                  {incident.lead.name}
+                </option>
+              )}
+            {members.map((membership) => (
+              <option key={membership.id} value={membership.id}>
+                {membership.user.name}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <Button type="submit" disabled={lead === current || update.isPending}>
+          {update.isPending ? "Saving…" : "Save lead"}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+/** The responders: listed, each removable, and any other member addable. */
+function Responders({
+  incident,
+  members,
+}: {
+  incident: IncidentDetailResponse;
+  members: OrganizationMembershipResponse[];
+}) {
+  const organization = useOrganization();
+  const queryClient = useQueryClient();
+  const refresh = useRefreshPeople(incident);
+  const [removingId, setRemovingId] = useState<string | null>(null);
+
+  const add = useMutation({
+    mutationFn: (membershipId: string) =>
+      addIncidentResponder(organization.id, incident.number, membershipId),
+    onSuccess: (updated) => storeIncident(queryClient, organization.id, updated),
+    onError: (error) => {
+      if (isApiError(error, 404) || isApiError(error, 409)) refresh();
+    },
+  });
+  const remove = useMutation({
+    mutationFn: (membershipId: string) =>
+      removeIncidentResponder(organization.id, incident.number, membershipId),
+    onSuccess: refresh,
+    onError: (error) => {
+      if (isApiError(error, 404) || isApiError(error, 409)) refresh();
+    },
+  });
+
+  const responding = new Set(
+    incident.responders.map(({ membershipId }) => membershipId),
+  );
+  const available = members.filter(({ id }) => !responding.has(id));
+  const failed = add.error ?? remove.error;
+
+  const onAdd = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const membershipId = String(
+      new FormData(event.currentTarget).get("membershipId") ?? "",
+    );
+
+    remove.reset();
+    if (membershipId) add.mutate(membershipId);
+  };
+
+  const onRemove = (membershipId: string) => {
+    add.reset();
+    setRemovingId(membershipId);
+    remove.mutate(membershipId, { onSettled: () => setRemovingId(null) });
+  };
+
+  return (
+    <Section
+      id="responders"
+      title="Responders"
+      level={3}
+      meta={incident.responders.length}
+      className="max-w-xl"
+    >
+      {failed && (
+        <ErrorAlert error={failed} message={peopleErrorMessage(failed)} />
+      )}
+      {incident.responders.length === 0 ? (
+        <p className="text-sm text-fg-muted">No responders yet.</p>
+      ) : (
+        <ul className="flex flex-col divide-y divide-line-subtle rounded-md border border-line-subtle">
+          {incident.responders.map((responder) => (
+            <li
+              key={responder.membershipId}
+              className="flex items-center justify-between gap-3 px-3 py-2"
+            >
+              <span className="text-sm font-medium text-fg">
+                {responder.name}
+              </span>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={removingId === responder.membershipId}
+                onClick={() => onRemove(responder.membershipId)}
+                aria-label={`Remove ${responder.name} from responders`}
+              >
+                {removingId === responder.membershipId ? "Removing…" : "Remove"}
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {available.length === 0 ? (
+        <p className="text-sm text-fg-muted">
+          Everyone in this organization is responding.
+        </p>
+      ) : (
+        <form onSubmit={onAdd} className="flex flex-wrap items-end gap-3">
+          <div className="min-w-56 flex-1">
+            <Select label="Add a responder" name="membershipId">
+              {available.map((membership) => (
+                <option key={membership.id} value={membership.id}>
+                  {membership.user.name}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <Button type="submit" variant="secondary" disabled={add.isPending}>
+            {add.isPending ? "Adding…" : "Add responder"}
+          </Button>
+        </form>
+      )}
+    </Section>
+  );
+}
+
+/**
+ * Who is handling the incident. Anyone in the organization can lead or
+ * respond, whichever team they are on; neither role changes what they may do.
+ */
+function People({ incident }: { incident: IncidentDetailResponse }) {
+  const organization = useOrganization();
+  const memberships = useMemberships(organization.id);
+
+  return (
+    <Section
+      id="people"
+      title="People"
+      description="Who is leading and working the response. Anyone in the organization can be assigned, whichever team they are on."
+    >
+      {memberships.isError ? (
+        <ErrorAlert error={memberships.error} />
+      ) : !memberships.data ? (
+        <Spinner label="Loading members…" />
+      ) : (
+        <div className="flex flex-col gap-6">
+          <LeadForm
+            key={incident.lead?.membershipId ?? "none"}
+            incident={incident}
+            members={memberships.data}
+          />
+          <Responders incident={incident} members={memberships.data} />
+        </div>
+      )}
+    </Section>
+  );
+}
+
 /** Resolving, after an inline confirmation: it cannot be undone here. */
 function Resolve({ incident }: { incident: IncidentResponse }) {
   const update = useUpdateIncident(incident);
@@ -335,7 +585,7 @@ function IncidentNotFound({ orgSlug }: { orgSlug: string }) {
   );
 }
 
-function IncidentPage({ incident }: { incident: IncidentResponse }) {
+function IncidentPage({ incident }: { incident: IncidentDetailResponse }) {
   const organization = useOrganization();
   const canManage = useCan(Permission.INCIDENTS_MANAGE);
   const resolved = incident.status === "RESOLVED";
@@ -409,6 +659,20 @@ function IncidentPage({ incident }: { incident: IncidentResponse }) {
                 {incident.team.name}
               </Link>
             </RecordRow>
+            <RecordRow label="Incident lead">
+              {incident.lead ? (
+                <span className="font-medium">{incident.lead.name}</span>
+              ) : (
+                <span className="text-fg-muted">No lead assigned</span>
+              )}
+            </RecordRow>
+            <RecordRow label="Responders">
+              {incident.responders.length > 0 ? (
+                incident.responders.map(({ name }) => name).join(", ")
+              ) : (
+                <span className="text-fg-muted">No responders yet</span>
+              )}
+            </RecordRow>
             <RecordRow label="Service criticality">
               <CriticalityMark criticality={incident.service.criticality} />
             </RecordRow>
@@ -442,6 +706,7 @@ function IncidentPage({ incident }: { incident: IncidentResponse }) {
                 key={`${incident.status}-${incident.severity}-${incident.team.id}`}
                 incident={incident}
               />
+              <People incident={incident} />
               <DetailsForm
                 key={`${incident.title}-${incident.summary}`}
                 incident={incident}

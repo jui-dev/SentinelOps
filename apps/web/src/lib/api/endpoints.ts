@@ -7,6 +7,7 @@ import type {
   CreatedInvitationResponse,
   CreateIncidentRequest,
   CurrentUserResponse,
+  IncidentDetailResponse,
   IncidentResponse,
   IncidentState,
   InvitationLookupResponse,
@@ -217,13 +218,15 @@ export const listIncidents = (
 };
 
 export const getIncident = (organizationId: string, number: number) =>
-  authenticatedRequest<IncidentResponse>(incidentPath(organizationId, number));
+  authenticatedRequest<IncidentDetailResponse>(
+    incidentPath(organizationId, number),
+  );
 
 export const createIncident = (
   organizationId: string,
   body: CreateIncidentRequest,
 ) =>
-  authenticatedRequest<IncidentResponse>(incidentsPath(organizationId), {
+  authenticatedRequest<IncidentDetailResponse>(incidentsPath(organizationId), {
     method: "POST",
     body,
   });
@@ -233,10 +236,33 @@ export const updateIncident = (
   number: number,
   body: UpdateIncidentRequest,
 ) =>
-  authenticatedRequest<IncidentResponse>(incidentPath(organizationId, number), {
-    method: "PATCH",
-    body,
-  });
+  authenticatedRequest<IncidentDetailResponse>(
+    incidentPath(organizationId, number),
+    { method: "PATCH", body },
+  );
+
+const respondersPath = (organizationId: string, number: number) =>
+  `${incidentPath(organizationId, number)}/responders`;
+
+export const addIncidentResponder = (
+  organizationId: string,
+  number: number,
+  membershipId: string,
+) =>
+  authenticatedRequest<IncidentDetailResponse>(
+    respondersPath(organizationId, number),
+    { method: "POST", body: { membershipId } },
+  );
+
+export const removeIncidentResponder = (
+  organizationId: string,
+  number: number,
+  membershipId: string,
+) =>
+  authenticatedRequest<void>(
+    `${respondersPath(organizationId, number)}/${membershipId}`,
+    { method: "DELETE" },
+  );
 
 // Invitation tokens always travel in a request body: never in a path or a
 // query string, which servers log.

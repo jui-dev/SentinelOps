@@ -886,4 +886,253 @@ describe('incidents (integration)', () => {
       }
     });
   });
+
+  describe('incident response: lead and responders', () => {
+    const membershipOf = async (organizationId: string, userId: string) =>
+      (
+        await prisma.membership.findFirstOrThrow({
+          where: { organizationId, userId },
+          select: { id: true },
+        })
+      ).id;
+
+    /** Incident 1 — the only one each test declares. */
+    const pathIn = (organizationId: string) => `${organizationId}/incidents/1`;
+
+    it('should declare with no lead and no responders, whoever declares', async () => {
+      const response = await declare(fx.orgA, fx.dave, fx.apiA);
+
+      expect(response.status).toBe(201);
+      expect(response.body.lead).toBeNull();
+      expect(response.body.responders).toEqual([]);
+    });
+
+    it('should set, change, and clear the lead, showing it on the incident but not in lists', async () => {
+      await declare(fx.orgA, fx.alice, fx.apiA);
+      const dave = await membershipOf(fx.orgA, fx.dave);
+      const carol = await membershipOf(fx.orgA, fx.carol);
+
+      // A MEMBER may assign: incident response is everyone's work.
+      const set = await call('patch', pathIn(fx.orgA), fx.dave, {
+        leadMembershipId: dave,
+      });
+      expect(set.status).toBe(200);
+      expect(set.body.lead).toStrictEqual({
+        membershipId: dave,
+        name: 'Dave Duarte',
+      });
+      // Creator and lead are separate: Alice declared, Dave leads.
+      expect(set.body.createdBy.id).toBe(fx.alice);
+
+      await call('patch', pathIn(fx.orgA), fx.alice, {
+        leadMembershipId: carol,
+      });
+      const read = await call('get', pathIn(fx.orgA), fx.alice);
+      expect(read.body.lead.name).toBe('Carol Chen');
+
+      const list = await call(
+        'get',
+        `${fx.orgA}/incidents?state=active`,
+        fx.alice,
+      );
+      expect(list.body.items[0]).not.toHaveProperty('lead');
+      expect(list.body.items[0]).not.toHaveProperty('responders');
+
+      const cleared = await call('patch', pathIn(fx.orgA), fx.alice, {
+        leadMembershipId: null,
+      });
+      expect(cleared.body.lead).toBeNull();
+    });
+
+    it('should add responders from any team in the order they were added, and remove them', async () => {
+      await declare(fx.orgA, fx.alice, fx.apiA);
+      const dave = await membershipOf(fx.orgA, fx.dave);
+      const carol = await membershipOf(fx.orgA, fx.carol);
+      const responders = `${pathIn(fx.orgA)}/responders`;
+
+      // Neither is on the responsible team, or any team.
+      await call('post', responders, fx.alice, { membershipId: dave });
+      const added = await call('post', responders, fx.alice, {
+        membershipId: carol,
+      });
+
+      expect(added.status).toBe(201);
+      expect(added.body.responders).toStrictEqual([
+        { membershipId: dave, name: 'Dave Duarte' },
+        { membershipId: carol, name: 'Carol Chen' },
+      ]);
+
+      const removed = await call('delete', `${responders}/${dave}`, fx.dave);
+      expect(removed.status).toBe(204);
+
+      const read = await call('get', pathIn(fx.orgA), fx.alice);
+      expect(read.body.responders).toStrictEqual([
+        { membershipId: carol, name: 'Carol Chen' },
+      ]);
+    });
+
+    it('should let the lead also be a responder, independently', async () => {
+      await declare(fx.orgA, fx.alice, fx.apiA);
+      const dave = await membershipOf(fx.orgA, fx.dave);
+
+      await call('patch', pathIn(fx.orgA), fx.alice, {
+        leadMembershipId: dave,
+      });
+      await call('post', `${pathIn(fx.orgA)}/responders`, fx.alice, {
+        membershipId: dave,
+      });
+      await call('delete', `${pathIn(fx.orgA)}/responders/${dave}`, fx.alice);
+
+      const read = await call('get', pathIn(fx.orgA), fx.alice);
+      expect(read.body.lead.membershipId).toBe(dave);
+      expect(read.body.responders).toEqual([]);
+    });
+
+    it('should answer the same responder twice with 409', async () => {
+      await declare(fx.orgA, fx.alice, fx.apiA);
+      const dave = await membershipOf(fx.orgA, fx.dave);
+      const responders = `${pathIn(fx.orgA)}/responders`;
+
+      await call('post', responders, fx.alice, { membershipId: dave });
+
+      expectCode(
+        await call('post', responders, fx.alice, { membershipId: dave }),
+        409,
+        'ALREADY_A_RESPONDER',
+      );
+      expect(await prisma.incidentResponder.count()).toBe(1);
+    });
+
+    it("should answer another organization's membership exactly as a missing one, and change nothing", async () => {
+      await declare(fx.orgA, fx.alice, fx.apiA);
+      const missing = randomUUID();
+
+      for (const membershipId of [fx.carolInB, missing]) {
+        const asLead = await call('patch', pathIn(fx.orgA), fx.alice, {
+          leadMembershipId: membershipId,
+        });
+        const asResponder = await call(
+          'post',
+          `${pathIn(fx.orgA)}/responders`,
+          fx.alice,
+          { membershipId },
+        );
+
+        expectCode(asLead, 404, 'MEMBERSHIP_NOT_FOUND');
+        expectCode(asResponder, 404, 'MEMBERSHIP_NOT_FOUND');
+      }
+
+      const stored = await prisma.incident.findFirstOrThrow({
+        where: { organizationId: fx.orgA },
+      });
+      expect(stored.leadMembershipId).toBeNull();
+      expect(await prisma.incidentResponder.count()).toBe(0);
+    });
+
+    it('should refuse assigning a member whose account was deleted', async () => {
+      await declare(fx.orgA, fx.alice, fx.apiA);
+      const dave = await membershipOf(fx.orgA, fx.dave);
+      await prisma.user.update({
+        where: { id: fx.dave },
+        data: { deletedAt: new Date() },
+      });
+
+      expectCode(
+        await call('post', `${pathIn(fx.orgA)}/responders`, fx.alice, {
+          membershipId: dave,
+        }),
+        404,
+        'MEMBERSHIP_NOT_FOUND',
+      );
+    });
+
+    it("should not reach another organization's incident", async () => {
+      await declare(fx.orgB, fx.bob, fx.apiB);
+      const carolInA = await membershipOf(fx.orgA, fx.carol);
+
+      // Carol is a member of both; incident 1 exists only in B.
+      expectCode(
+        await call('post', `${pathIn(fx.orgA)}/responders`, fx.carol, {
+          membershipId: carolInA,
+        }),
+        404,
+        'INCIDENT_NOT_FOUND',
+      );
+      expect(await prisma.incidentResponder.count()).toBe(0);
+    });
+
+    it('should answer removing someone who is not responding with 404', async () => {
+      await declare(fx.orgA, fx.alice, fx.apiA);
+      const dave = await membershipOf(fx.orgA, fx.dave);
+      const responders = `${pathIn(fx.orgA)}/responders`;
+
+      for (const membershipId of [dave, fx.carolInB, 'not-a-uuid']) {
+        expectCode(
+          await call('delete', `${responders}/${membershipId}`, fx.alice),
+          404,
+          'RESPONDER_NOT_FOUND',
+        );
+      }
+    });
+
+    it('should keep a resolved incident frozen: no lead or responder changes', async () => {
+      await declare(fx.orgA, fx.alice, fx.apiA);
+      const dave = await membershipOf(fx.orgA, fx.dave);
+      const carol = await membershipOf(fx.orgA, fx.carol);
+      const responders = `${pathIn(fx.orgA)}/responders`;
+      await call('post', responders, fx.alice, { membershipId: dave });
+      await call('patch', pathIn(fx.orgA), fx.alice, { status: 'RESOLVED' });
+      const before = await prisma.incident.findFirstOrThrow({
+        where: { organizationId: fx.orgA },
+      });
+
+      expectCode(
+        await call('patch', pathIn(fx.orgA), fx.alice, {
+          leadMembershipId: carol,
+        }),
+        409,
+        'INCIDENT_RESOLVED',
+      );
+      expectCode(
+        await call('post', responders, fx.alice, { membershipId: carol }),
+        409,
+        'INCIDENT_RESOLVED',
+      );
+      expectCode(
+        await call('delete', `${responders}/${dave}`, fx.alice),
+        409,
+        'INCIDENT_RESOLVED',
+      );
+
+      const after = await prisma.incident.findFirstOrThrow({
+        where: { organizationId: fx.orgA },
+      });
+      expect(after.leadMembershipId).toBeNull();
+      expect(after.updatedAt).toEqual(before.updatedAt);
+      expect(await prisma.incidentResponder.count()).toBe(1);
+    });
+
+    it('should wait for an in-flight resolution, then refuse adding a responder', async () => {
+      await declare(fx.orgA, fx.alice, fx.apiA);
+      const dave = await membershipOf(fx.orgA, fx.dave);
+      const held = await hold((tx) =>
+        tx.incident.updateMany({
+          where: { organizationId: fx.orgA, number: 1 },
+          data: { status: 'RESOLVED', resolvedAt: new Date() },
+        }),
+      );
+      const adding = inFlight(
+        call('post', `${pathIn(fx.orgA)}/responders`, fx.alice, {
+          membershipId: dave,
+        }),
+      );
+
+      await someoneIsWaitingOnALock();
+      held.release();
+      await held.done;
+
+      expectCode(await adding, 409, 'INCIDENT_RESOLVED');
+      expect(await prisma.incidentResponder.count()).toBe(0);
+    });
+  });
 });

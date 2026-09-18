@@ -60,6 +60,28 @@ export interface IncidentResponse {
 }
 
 /**
+ * A member assigned to an incident, addressed by their membership id — the
+ * id the lead and responder routes take. Identity only: never an email.
+ */
+export interface IncidentMemberResponse {
+  membershipId: string;
+  name: string;
+}
+
+/**
+ * One incident with the people responding to it: what every route about a
+ * single incident returns. Lists return `IncidentResponse` alone, so a page
+ * of incidents stays one query without joins across responders.
+ *
+ * `lead` is null until someone is assigned; declaring an incident does not
+ * make its declarer the lead. `responders` are in the order they were added.
+ */
+export interface IncidentDetailResponse extends IncidentResponse {
+  lead: IncidentMemberResponse | null;
+  responders: IncidentMemberResponse[];
+}
+
+/**
  * One page of a collection. `cursor` is opaque and asks for the page after
  * this one; it is null exactly when `hasMore` is false.
  */

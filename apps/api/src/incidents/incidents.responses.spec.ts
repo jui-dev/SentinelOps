@@ -1,4 +1,7 @@
-import { toIncidentResponse } from './incidents.responses.js';
+import {
+  toIncidentDetailResponse,
+  toIncidentResponse,
+} from './incidents.responses.js';
 
 const CREATED = new Date('2026-09-18T12:00:00.000Z');
 const UPDATED = new Date('2026-09-18T12:30:00.000Z');
@@ -71,5 +74,35 @@ describe('incident responses', () => {
       toIncidentResponse({ ...row, status: 'MONITORING', resolvedAt: null })
         .resolvedAt,
     ).toBeNull();
+  });
+
+  it('should add the lead and responders as membership id and name only', () => {
+    // Carries what a careless mapper might spread: the user's email and id.
+    const member = (id: string, name: string) => ({
+      id,
+      role: 'MEMBER',
+      user: { id: `user-${id}`, name, email: `${id}@example.com` },
+    });
+
+    const detail = toIncidentDetailResponse({
+      ...row,
+      lead: member('m-1', 'Maya Patel'),
+      responders: [
+        { membership: member('m-2', 'Daniel Okafor') },
+        { membership: member('m-1', 'Maya Patel') },
+      ],
+    });
+
+    expect(detail.lead).toStrictEqual({
+      membershipId: 'm-1',
+      name: 'Maya Patel',
+    });
+    expect(detail.responders).toStrictEqual([
+      { membershipId: 'm-2', name: 'Daniel Okafor' },
+      { membershipId: 'm-1', name: 'Maya Patel' },
+    ]);
+    expect(
+      toIncidentDetailResponse({ ...row, lead: null, responders: [] }),
+    ).toMatchObject({ lead: null, responders: [] });
   });
 });

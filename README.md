@@ -39,10 +39,11 @@ deliberately, and this README is updated as capabilities actually land.
   database itself refuses an owner from another organization, and refuses deleting a
   team that still owns services. See [Services](#services)
 - Incidents: any member declares an incident against a service, and the service's owner
-  team becomes responsible. Responders set its severity and move its status until it is
-  resolved. The database itself keeps every incident's service and team in its own
-  organization and refuses deleting either while an incident names it. See
-  [Incidents](#incidents)
+  team becomes responsible. Any member of the organization can be assigned as its lead
+  or as one of its responders. Responders set its severity and move its status until it
+  is resolved. The database itself keeps every incident's service, team, lead, and
+  responders in its own organization and refuses deleting a service or team while an
+  incident names it. See [Incidents](#incidents)
 - A Next.js web app: registration, login, session restore across reloads and tabs,
   an organization picker, per-organization overview, member list, invitations, teams,
   services, incidents, and rename — each offered only when the API reports the
@@ -57,7 +58,7 @@ deliberately, and this README is updated as capabilities actually land.
 **What does not exist yet**
 
 - What builds on incidents: the incident timeline (updates, status and severity
-  history, reopening), responders, an operational overview, and service health.
+  history, reopening), an operational overview, and service health.
   Detection — monitoring, alerts, paging — and notifications. And no way to remove or
   re-role a member
 - Email delivery: invitation links are shared by hand, and addresses are not verified
@@ -140,7 +141,8 @@ The intended scope, not a feature list. Only the items marked below are built.
   resolve, with a responsible team. Reopening and history are still to come. See
   [Incidents](#incidents)
 - **Severity management** — ✅ SEV1–SEV4, chosen per incident. See [Incidents](#incidents)
-- **Responder assignment** — assigning and reassigning incident responders
+- **Responder assignment** — ✅ an incident lead and responders, from any team. See
+  [Lead and responders](#lead-and-responders)
 - **Comments and incident timeline** — an ordered record of what happened
 - **Real-time incident updates** — live state pushed to connected clients
 - **Notifications and background jobs** — asynchronous delivery and processing
@@ -1730,6 +1732,33 @@ Until the incident timeline exists, a reassignment replaces the previous team wi
 record of it. Names are read live: renaming a team shows on its past incidents, because
 the team is the same one.
 
+### Lead and responders
+
+An incident has a responsible **team**, and individual **people** handling it: at most
+one **lead**, and any number of **responders**. Both are organization members,
+referenced by their membership, from any team — whoever is best placed to help.
+
+- **Nothing is assigned automatically.** Declaring an incident does not make the
+  declarer its lead: noticing a problem and leading the response are different jobs, so
+  `createdBy` and `lead` are separate.
+- **The lead is independent of the responders.** The lead may or may not also be listed
+  as a responder.
+- **Neither grants anything.** Assigning, leading, and responding all use
+  `incidents:manage`, which every role holds; a lead has no extra authority.
+- **A resolved incident is frozen**, people included: changing its lead or responders is
+  a `409`. Adding or removing a responder takes the incident's row lock through the
+  same conditional write every change uses, so it is ordered against a concurrent
+  resolution — never applied after one.
+- **Tenant consistency is a database invariant.** The lead and each responder are
+  composite foreign keys on the incident's own `organization_id`, as for team members,
+  so a person from another organization cannot be written, however the row is written.
+  Both keys are `RESTRICT`: a membership that has led or responded cannot be physically
+  deleted. Nothing deletes memberships today; member removal, when it arrives, decides
+  what happens to that history.
+
+Only the single-incident routes carry `lead` and `responders`; the lists do not, so a
+page of incidents stays one query.
+
 ### Numbers
 
 `INC-n` numbers are **per organization**, **unique**, **never changed or reused**, and
@@ -1755,7 +1784,9 @@ role holds both permissions.
 | `GET /incidents?state=resolved` | `incidents:read` | Resolved incidents, most recently declared first |
 | `POST /incidents` | `incidents:manage` | Declare `{ "title", "serviceId", "severity", "summary"? }`. `201` |
 | `GET /incidents/:number` | `incidents:read` | One incident |
-| `PATCH /incidents/:number` | `incidents:manage` | Change `{ "title"?, "summary"?, "severity"?, "status"?, "teamId"? }` of an active incident (at least one). `"status": "RESOLVED"` resolves it |
+| `PATCH /incidents/:number` | `incidents:manage` | Change `{ "title"?, "summary"?, "severity"?, "status"?, "teamId"?, "leadMembershipId"? }` of an active incident (at least one). `"status": "RESOLVED"` resolves it; `"leadMembershipId": null` clears the lead |
+| `POST /incidents/:number/responders` | `incidents:manage` | Add `{ "membershipId" }` as a responder. `201`, with the incident |
+| `DELETE /incidents/:number/responders/:membershipId` | `incidents:manage` | Remove a responder. `204` |
 
 There is **no delete**. Incidents are history; a mistaken declaration is resolved.
 
@@ -1785,7 +1816,10 @@ strict, and any of those is a `400`.
 | `serviceId` missing, or another organization's service | `404 SERVICE_NOT_FOUND`, identically |
 | `serviceId` archived | `409 SERVICE_ARCHIVED` |
 | `teamId` missing, or another organization's team | `404 TEAM_NOT_FOUND`, identically |
-| Any change to a resolved incident | `409 INCIDENT_RESOLVED` |
+| A lead or responder that is missing, another organization's, or a deleted account | `404 MEMBERSHIP_NOT_FOUND`, identically |
+| Adding someone already responding | `409 ALREADY_A_RESPONDER` |
+| Removing someone not responding (or a malformed id) | `404 RESPONDER_NOT_FOUND` |
+| Any change to a resolved incident, people included | `409 INCIDENT_RESOLVED` |
 | `state` missing or unknown; a malformed cursor | `400`; `400 INVALID_CURSOR` |
 | `serviceId` or `teamId` not a uuid; a severity or status outside the enums | `400`, naming the field |
 
@@ -1836,7 +1870,7 @@ system details. See [Sensitive data](#sensitive-data).
 ### Not yet
 
 The incident timeline — updates and notes, status, severity, and reassignment history,
-who resolved it, reopening. Responders and an incident commander, when impact began, a
+who resolved it, reopening. Acknowledgement, and authority tied to the lead, when impact began, a
 per-service or per-team incident list, the operational overview, and live updates.
 Detection, alerts, paging, and notifications. Deleting or voiding an incident, changing
 its service, and optimistic concurrency on edits.

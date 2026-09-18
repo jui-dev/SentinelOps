@@ -249,6 +249,21 @@ export interface IncidentResponse {
   resolvedAt: string | null;
 }
 
+/** A member assigned to an incident, by membership id. Never an email. */
+export interface IncidentMemberResponse {
+  membershipId: string;
+  name: string;
+}
+
+/**
+ * One incident with the people responding to it — what every single-incident
+ * route returns. List items carry neither field.
+ */
+export interface IncidentDetailResponse extends IncidentResponse {
+  lead: IncidentMemberResponse | null;
+  responders: IncidentMemberResponse[];
+}
+
 /** A page of a collection. `cursor` asks for the next page. */
 export interface Page<T> {
   items: T[];
@@ -268,13 +283,17 @@ export interface CreateIncidentRequest {
   severity: IncidentSeverity;
 }
 
-/** `status: "RESOLVED"` resolves. The service never changes. */
+/**
+ * `status: "RESOLVED"` resolves. The service never changes. The lead is a
+ * membership id, or null to clear it.
+ */
 export interface UpdateIncidentRequest {
   title?: string;
   summary?: string | null;
   severity?: IncidentSeverity;
   status?: IncidentStatus;
   teamId?: string;
+  leadMembershipId?: string | null;
 }
 
 /**
@@ -324,6 +343,8 @@ export const ApiErrorCode = {
   SERVICE_ARCHIVED: "SERVICE_ARCHIVED",
   INCIDENT_NOT_FOUND: "INCIDENT_NOT_FOUND",
   INCIDENT_RESOLVED: "INCIDENT_RESOLVED",
+  ALREADY_A_RESPONDER: "ALREADY_A_RESPONDER",
+  RESPONDER_NOT_FOUND: "RESPONDER_NOT_FOUND",
 } as const;
 
 export interface ValidationErrorDetail {
