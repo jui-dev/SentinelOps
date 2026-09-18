@@ -19,7 +19,7 @@ const teamRow = {
   description: null,
   createdAt: CREATED,
   updatedAt: CREATED,
-  _count: { memberships: 0 },
+  _count: { memberships: 0, services: 0 },
 };
 
 const memberRow = {
@@ -306,6 +306,27 @@ describe('TeamsService', () => {
         404,
         TeamsErrorCode.TEAM_NOT_FOUND,
       );
+    });
+
+    it('should answer a team that still owns services with 409', async () => {
+      const { service, prisma } = serviceWith();
+      prisma.team.deleteMany.mockRejectedValue(
+        knownError('P2003', 'services_organization_id_owner_team_id_fkey'),
+      );
+
+      await expectCode(
+        service.delete(ORG, TEAM),
+        409,
+        TeamsErrorCode.TEAM_OWNS_SERVICES,
+      );
+    });
+
+    it('should rethrow a foreign-key violation it does not recognise', async () => {
+      const { service, prisma } = serviceWith();
+      const unknown = knownError('P2003', 'something_else_fkey');
+      prisma.team.deleteMany.mockRejectedValue(unknown);
+
+      await expect(service.delete(ORG, TEAM)).rejects.toBe(unknown);
     });
   });
 

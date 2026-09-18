@@ -62,12 +62,15 @@ const FULL_PERMISSIONS: readonly string[] = [
   'memberships:read',
   'organization:read',
   'organization:update',
+  'services:manage',
+  'services:read',
   'teams:manage',
   'teams:read',
 ];
 const READ_PERMISSIONS: readonly string[] = [
   'memberships:read',
   'organization:read',
+  'services:read',
   'teams:read',
 ];
 
@@ -181,7 +184,7 @@ describe('authorization (integration)', () => {
 
   beforeEach(async () => {
     await prisma.$executeRawUnsafe(
-      'TRUNCATE TABLE team_memberships, teams, invitations, refresh_tokens, memberships, users, organizations RESTART IDENTITY CASCADE',
+      'TRUNCATE TABLE services, team_memberships, teams, invitations, refresh_tokens, memberships, users, organizations RESTART IDENTITY CASCADE',
     );
 
     fx = await seed();

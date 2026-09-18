@@ -11,6 +11,7 @@ import { HealthModule } from './health/health.module.js';
 import { InvitationsModule } from './invitations/invitations.module.js';
 import { LoggerModule } from './logger/logger.module.js';
 import { OrganizationsModule } from './organizations/organizations.module.js';
+import { ServicesModule } from './services/services.module.js';
 import { TeamsModule } from './teams/teams.module.js';
 
 @Module({
@@ -46,6 +47,7 @@ import { TeamsModule } from './teams/teams.module.js';
     // so the application's feature modules read in one place.
     InvitationsModule,
     TeamsModule,
+    ServicesModule,
   ],
   controllers: [],
   providers: [],

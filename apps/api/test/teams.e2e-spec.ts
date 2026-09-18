@@ -31,7 +31,7 @@ const teamRow = {
   description: null,
   createdAt: CREATED,
   updatedAt: CREATED,
-  _count: { memberships: 0 },
+  _count: { memberships: 0, services: 0 },
 };
 
 const memberRow = {
@@ -173,6 +173,7 @@ describe('Teams (e2e)', () => {
         slug: 'platform',
         description: null,
         memberCount: 0,
+        serviceCount: 0,
         createdAt: '2026-09-18T12:00:00.000Z',
         updatedAt: '2026-09-18T12:00:00.000Z',
       });

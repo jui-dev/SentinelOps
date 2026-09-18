@@ -243,7 +243,12 @@ describe('Tenancy (e2e)', () => {
         membership: {
           id: MEMBERSHIP_ID,
           role: 'MEMBER',
-          permissions: ['memberships:read', 'organization:read', 'teams:read'],
+          permissions: [
+            'memberships:read',
+            'organization:read',
+            'services:read',
+            'teams:read',
+          ],
         },
       });
     });

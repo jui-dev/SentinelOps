@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { FormEvent } from "react";
@@ -20,8 +21,11 @@ import { deleteTeam, updateTeam } from "@/lib/api/endpoints";
 import { fieldErrorsOf, isApiError } from "@/lib/api/errors";
 import { queryKeys } from "@/lib/api/query-keys";
 
-import { teamsHref, useTeam } from "./team-scope";
+import { teamHref, teamsHref, useTeam } from "./team-scope";
 import { NAME_TAKEN_MESSAGE } from "./teams-view";
+
+const ownsServicesError = (error: unknown) =>
+  isApiError(error, 409) && error.code === ApiErrorCode.TEAM_OWNS_SERVICES;
 
 function EditTeamForm() {
   const organization = useOrganization();
@@ -38,6 +42,11 @@ function EditTeamForm() {
         (current) =>
           current?.map((each) => (each.id === updated.id ? updated : each)),
       );
+      // Every service embeds its owner's name.
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.services(organization.id),
+        exact: true,
+      });
     },
     onError: (error) => {
       if (isApiError(error, 404)) {
@@ -131,6 +140,20 @@ function DeleteTeam() {
     onSuccess: leave,
     onError: (error) => {
       if (isApiError(error, 404)) leave();
+
+      // Services were assigned to it since this page loaded: refresh the
+      // count, which turns this section into the explanation below.
+      if (ownsServicesError(error)) {
+        setConfirming(false);
+        void queryClient.invalidateQueries({
+          queryKey: queryKeys.teams(organization.id),
+          exact: true,
+        });
+        void queryClient.invalidateQueries({
+          queryKey: queryKeys.services(organization.id),
+          exact: true,
+        });
+      }
     },
   });
 
@@ -139,18 +162,48 @@ function DeleteTeam() {
       ? "It has no members."
       : `Its ${team.memberCount === 1 ? "1 member" : `${team.memberCount} members`} will be taken off it and stay in the organization.`;
 
+  const description = (
+    <p>
+      Removes the team. Its members stay in the organization. A team that owns
+      services cannot be deleted until they are moved to another team. This
+      cannot be undone.
+    </p>
+  );
+
+  if (team.serviceCount > 0) {
+    const owned =
+      team.serviceCount === 1 ? "1 service" : `${team.serviceCount} services`;
+
+    return (
+      <SettingRow title="Delete team" description={description}>
+        <Alert tone="info" title="This team owns services">
+          <p>
+            It owns {owned}. Move {team.serviceCount === 1 ? "it" : "them"} to
+            another team before deleting this one.{" "}
+            <Link
+              href={teamHref(organization.slug, team.slug)}
+              className="font-medium text-accent-text underline-offset-2 hover:underline"
+            >
+              See its services
+            </Link>
+          </p>
+        </Alert>
+      </SettingRow>
+    );
+  }
+
   return (
-    <SettingRow
-      title="Delete team"
-      description={
-        <p>
-          Removes the team. Its members stay in the organization. This cannot
-          be undone.
-        </p>
-      }
-    >
+    <SettingRow title="Delete team" description={description}>
       {remove.isError && !isApiError(remove.error, 404) && (
-        <ErrorAlert error={remove.error} className="mb-4" />
+        <ErrorAlert
+          error={remove.error}
+          message={
+            ownsServicesError(remove.error)
+              ? "This team now owns services. Move them to another team before deleting it."
+              : undefined
+          }
+          className="mb-4"
+        />
       )}
       {confirming ? (
         <Alert tone="warning" title={`Delete ${team.name}?`}>

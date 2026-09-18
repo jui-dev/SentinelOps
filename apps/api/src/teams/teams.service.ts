@@ -1,7 +1,6 @@
-import { randomBytes } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
 
-import { slugify } from '../common/slug.js';
+import { opaqueSlug, slugify } from '../common/slug.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { foreignKeyViolationHint } from '../database/foreign-key-violation.js';
 import { uniqueViolationHint } from '../database/unique-violation.js';
@@ -15,6 +14,7 @@ import {
   teamMemberNotFound,
   teamNameTaken,
   teamNotFound,
+  teamOwnsServices,
 } from './teams.errors.js';
 import { toTeamMemberResponse, toTeamResponse } from './teams.responses.js';
 import type {
@@ -41,7 +41,9 @@ const teamSelection = {
   description: true,
   createdAt: true,
   updatedAt: true,
-  _count: { select: { memberships: { where: visibleMember } } },
+  _count: {
+    select: { memberships: { where: visibleMember }, services: true },
+  },
 } as const;
 
 /**
@@ -79,12 +81,19 @@ const violatesMembershipKey = (hint: string): boolean =>
   hint.includes('membership_id') || hint.includes('membershipid');
 
 /**
+ * A team delete refused because services still name it as their owner.
+ * Matched on the referencing column: the constraint name also contains
+ * `organization_id`, which the plain organization key shares.
+ */
+const violatesServiceOwnerKey = (hint: string): boolean =>
+  hint.includes('owner_team') || hint.includes('ownerteam');
+
+/**
  * The slug for a name that yields none — only non-Latin script, or only
  * punctuation. Clients never supply a slug, so a name that cannot be slugged
  * gets an opaque one rather than being refused.
  */
-export const fallbackTeamSlug = (): string =>
-  `team-${randomBytes(4).toString('hex')}`;
+export const fallbackTeamSlug = (): string => opaqueSlug('team');
 
 /**
  * Teams, and who is on them.
@@ -253,21 +262,36 @@ export class TeamsService {
 
   /**
    * Deletes a team, and with it only who was on it. Members stay in the
-   * organization. Nothing operational references a team yet; when something
-   * does, its foreign key refuses this rather than being cascaded.
+   * organization.
+   *
+   * A team that owns services is not deleted: the services' foreign key
+   * refuses it, and that refusal is the 409. It is not checked first, which
+   * would race a service being assigned to the team in between.
    */
   async delete(organizationId: string, teamId: string): Promise<void> {
     if (!isResourceId(teamId)) {
       throw teamNotFound();
     }
 
-    const { count } = await this.prisma.team.deleteMany({
-      where: {
-        id: teamId,
-        organizationId,
-        organization: { deletedAt: null },
-      },
-    });
+    let count: number;
+
+    try {
+      ({ count } = await this.prisma.team.deleteMany({
+        where: {
+          id: teamId,
+          organizationId,
+          organization: { deletedAt: null },
+        },
+      }));
+    } catch (error) {
+      const hint = foreignKeyViolationHint(error);
+
+      if (hint !== undefined && violatesServiceOwnerKey(hint)) {
+        throw teamOwnsServices();
+      }
+
+      throw error;
+    }
 
     if (count === 0) {
       throw teamNotFound();

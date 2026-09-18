@@ -1,0 +1,79 @@
+"use client";
+
+import Link from "next/link";
+
+import {
+  useCan,
+  useOrganization,
+} from "@/components/organizations/organization-scope";
+import { teamHref } from "@/components/teams/team-scope";
+import { buttonClasses } from "@/components/ui/button";
+import { PageBody, PageHeader } from "@/components/ui/page";
+import { RecordList, RecordRow } from "@/components/ui/record";
+import { IsoDate } from "@/components/ui/timestamp";
+import { Permission } from "@/lib/api/contracts";
+
+import { criticalityOf } from "./criticality";
+import { serviceHref, useService } from "./service-scope";
+
+/**
+ * A service: what it is, which team owns it, and how much the organization
+ * depends on it. Only what the service record actually holds — no health,
+ * incidents, or metrics, none of which exist.
+ */
+export function ServiceDetail() {
+  const organization = useOrganization();
+  const service = useService();
+  const canManage = useCan(Permission.SERVICES_MANAGE);
+  const criticality = criticalityOf(service.criticality);
+
+  return (
+    <>
+      <PageHeader
+        eyebrow={organization.name}
+        title={service.name}
+        description={service.description ?? undefined}
+        actions={
+          canManage && (
+            <Link
+              href={`${serviceHref(organization.slug, service.slug)}/settings`}
+              className={buttonClasses({ variant: "secondary" })}
+            >
+              Settings
+            </Link>
+          )
+        }
+      />
+      <PageBody width="form">
+        <div className="flex flex-col gap-8">
+          <RecordList>
+            <RecordRow label="Owner team">
+              <Link
+                href={teamHref(organization.slug, service.ownerTeam.slug)}
+                className="font-medium text-fg underline-offset-2 hover:text-accent-text hover:underline"
+              >
+                {service.ownerTeam.name}
+              </Link>
+            </RecordRow>
+            <RecordRow label="Criticality">
+              <span className="font-medium">{criticality.label}</span>
+              {criticality.definition && (
+                <span className="mt-0.5 block text-sm text-fg-muted">
+                  {criticality.definition}
+                </span>
+              )}
+            </RecordRow>
+          </RecordList>
+          <RecordList tone="secondary">
+            <RecordRow label="Created">
+              <IsoDate value={service.createdAt} />
+            </RecordRow>
+            <RecordRow label="Updated">
+              <IsoDate value={service.updatedAt} />
+            </RecordRow>
+          </RecordList>
+        </div>
+      </PageBody>
+    </>
+  );
+}

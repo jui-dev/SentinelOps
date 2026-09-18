@@ -154,6 +154,7 @@ function TeamList({ onCreate }: { onCreate?: () => void }) {
           <TH>Name</TH>
           <TH className="hidden md:table-cell">Description</TH>
           <TH align="end">Members</TH>
+          <TH align="end">Services</TH>
         </TR>
       </THead>
       <TBody>
@@ -172,6 +173,9 @@ function TeamList({ onCreate }: { onCreate?: () => void }) {
             </TD>
             <TD kind="data" align="end">
               {team.memberCount}
+            </TD>
+            <TD kind="data" align="end">
+              {team.serviceCount}
             </TD>
           </TR>
         ))}

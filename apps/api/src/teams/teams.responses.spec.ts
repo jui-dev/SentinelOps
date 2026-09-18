@@ -12,7 +12,7 @@ describe('team responses', () => {
       description: null,
       createdAt: CREATED,
       updatedAt: UPDATED,
-      _count: { memberships: 2 },
+      _count: { memberships: 2, services: 3 },
       organizationId: 'org-1',
     };
 
@@ -22,6 +22,7 @@ describe('team responses', () => {
       slug: 'platform',
       description: null,
       memberCount: 2,
+      serviceCount: 3,
       createdAt: '2026-09-18T12:00:00.000Z',
       updatedAt: '2026-09-18T13:00:00.000Z',
     });

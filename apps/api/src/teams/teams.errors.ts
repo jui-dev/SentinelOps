@@ -9,6 +9,7 @@ export const TeamsErrorCode = {
   TEAM_NAME_TAKEN: 'TEAM_NAME_TAKEN',
   TEAM_MEMBER_NOT_FOUND: 'TEAM_MEMBER_NOT_FOUND',
   ALREADY_A_TEAM_MEMBER: 'ALREADY_A_TEAM_MEMBER',
+  TEAM_OWNS_SERVICES: 'TEAM_OWNS_SERVICES',
 } as const;
 
 export type TeamsErrorCode =
@@ -45,3 +46,14 @@ export const alreadyATeamMember = (): ConflictException =>
   new ConflictException('Already a member of this team', {
     errorCode: TeamsErrorCode.ALREADY_A_TEAM_MEMBER,
   });
+
+/**
+ * The team still owns services. Deleting configuration never takes
+ * operational resources with it: the services are reassigned to another team
+ * first, and then the team can go.
+ */
+export const teamOwnsServices = (): ConflictException =>
+  new ConflictException(
+    'This team owns services. Reassign them to another team before deleting it',
+    { errorCode: TeamsErrorCode.TEAM_OWNS_SERVICES },
+  );

@@ -16,6 +16,8 @@ export interface TeamResponse {
   description: string | null;
   /** Members whose accounts still exist. */
   memberCount: number;
+  /** Services this team owns. While it is above zero the team cannot be deleted. */
+  serviceCount: number;
   createdAt: string;
   updatedAt: string;
 }

@@ -18,6 +18,8 @@ export const Permission = {
   INVITATIONS_MANAGE: 'invitations:manage',
   TEAMS_READ: 'teams:read',
   TEAMS_MANAGE: 'teams:manage',
+  SERVICES_READ: 'services:read',
+  SERVICES_MANAGE: 'services:manage',
 } as const;
 
 export type Permission = (typeof Permission)[keyof typeof Permission];

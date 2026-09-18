@@ -13,7 +13,7 @@ interface TeamRow {
   description: string | null;
   createdAt: Date;
   updatedAt: Date;
-  _count: { memberships: number };
+  _count: { memberships: number; services: number };
 }
 
 interface TeamMemberRow {
@@ -30,6 +30,7 @@ export const toTeamResponse = (team: TeamRow): TeamResponse => ({
   slug: team.slug,
   description: team.description,
   memberCount: team._count.memberships,
+  serviceCount: team._count.services,
   createdAt: team.createdAt.toISOString(),
   updatedAt: team.updatedAt.toISOString(),
 });

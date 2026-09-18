@@ -85,6 +85,7 @@ model Organization {
   memberships Membership[]
   invitations Invitation[]
   teams       Team[]
+  services    Service[]
 
   @@map("organizations")
 }
@@ -230,15 +231,14 @@ model Invitation {
   @@map("invitations")
 }
 
-/// A named group of an organization's members — the unit that will own
-/// services and respond to incidents.
+/// A named group of an organization's members — the unit that owns services
+/// and will respond to incidents.
 ///
-/// Organizational configuration, not history, and hard-deleted: nothing
-/// operational references a team yet. The deletion principle every later
-/// relationship follows: deleting configuration never silently deletes
-/// operational resources or historical records. When services reference teams,
-/// that foreign key is Restrict, so a team that owns services cannot be deleted
-/// until they are reassigned — the delete is refused, never cascaded.
+/// Organizational configuration, not history, and hard-deleted. The deletion
+/// principle every relationship follows: deleting configuration never silently
+/// deletes operational resources or historical records. A team that owns
+/// services cannot be deleted — the services' foreign key is Restrict, so the
+/// delete is refused, never cascaded, until they are reassigned.
 ///
 /// Belonging to a team grants nothing. Authorization is the organization role
 /// alone; there are no team roles or team-scoped permissions.
@@ -264,12 +264,13 @@ model Team {
 
   organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   memberships  TeamMembership[]
+  services     Service[]
 
   @@unique([organizationId, slug])
   @@unique([organizationId, name])
   /// The target of composite foreign keys from tenant-owned children — team
-  /// memberships now, services later — and a lookup key that cannot be used
-  /// without the organization: findUnique({ organizationId_id }).
+  /// memberships and services — and a lookup key that cannot be used without
+  /// the organization: findUnique({ organizationId_id }).
   @@unique([organizationId, id])
   @@map("teams")
 }
@@ -310,6 +311,81 @@ model TeamMembership {
   /// Serves the cascade from memberships, and "which teams is this member on".
   @@index([membershipId])
   @@map("team_memberships")
+}
+
+/// How much an organization depends on a service: a classification people
+/// choose, not an observed state. It is neither service health nor incident
+/// severity, and nothing sorts or computes by it — it is shown, not scored.
+///
+/// Four plain words rather than numbered tiers, whose direction readers
+/// disagree about, defined without any industry's vocabulary:
+///
+///   CRITICAL  failure stops the organization's core work or directly harms
+///             its customers
+///   HIGH      failure seriously degrades important work; workarounds are
+///             limited
+///   NORMAL    failure is disruptive but contained — the default
+///   LOW       internal or peripheral; failure has little impact
+enum ServiceCriticality {
+  CRITICAL
+  HIGH
+  NORMAL
+  LOW
+
+  @@map("service_criticality")
+}
+
+/// An operational component the organization runs — an API, a processor, a
+/// portal — owned by one of its teams. What incidents will be recorded
+/// against.
+///
+/// Every service has an owner. A service nobody owns is exactly the ambiguity
+/// an incident tool exists to remove, and a required owner means the composite
+/// foreign key below is checked on every row.
+///
+/// Tenant consistency is a database invariant, as for team memberships: the
+/// owner key is composite on the service's own organization_id, so the owning
+/// team must belong to the service's organization however the row is written.
+/// Rows are created with scalar ids (organizationId, ownerTeamId), not nested
+/// `connect`: the two relations share organizationId.
+///
+/// The owner key is Restrict on delete, so a team that owns services cannot be
+/// deleted until they are reassigned, and Restrict on update, so a team cannot
+/// be moved to another organization carrying its services with it. A physical
+/// deletion of the organization still removes both: the cascade reaches teams
+/// and services in the same statement, and schema.integration-spec.ts proves
+/// Postgres completes it.
+///
+/// Hard-deleted, because nothing operational references a service yet. When
+/// incidents do, their foreign key refuses the delete in the same way.
+model Service {
+  id             String             @id @default(uuid(7)) @db.Uuid
+  organizationId String             @map("organization_id") @db.Uuid
+  name           String
+  /// Derived from the name when the service is created, never supplied by a
+  /// client, and never changed afterwards — the same rules as Team.slug.
+  /// Navigation and internal reference, not content.
+  slug           String
+  /// Null when there is none; blank is normalised to null at the Zod boundary.
+  description    String?
+  ownerTeamId    String             @map("owner_team_id") @db.Uuid
+  criticality    ServiceCriticality @default(NORMAL)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  ownerTeam    Team         @relation(fields: [organizationId, ownerTeamId], references: [organizationId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([organizationId, slug])
+  @@unique([organizationId, name])
+  /// A lookup key that cannot be used without the organization, and the
+  /// target of the composite foreign key incidents will carry.
+  @@unique([organizationId, id])
+  /// Serves the Restrict check when a team is deleted, and "which services
+  /// does this team own".
+  @@index([organizationId, ownerTeamId])
+  @@map("services")
 }
 
 /// One issued refresh token. A row per token rather than per session, because

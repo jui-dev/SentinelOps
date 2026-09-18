@@ -37,13 +37,13 @@ src/
 ├── app/                      routes — thin server files that render client components
 │   ├── (auth)/login, register
 │   ├── (app)/                signed-in shell: RequireSession + AppShell
-│   │   └── orgs/[orgSlug]/   overview, members (and invitations), teams, settings
+│   │   └── orgs/[orgSlug]/   overview, members (and invitations), teams, services, settings
 │   ├── invite/               invitation acceptance — outside both groups
 │   └── page.tsx              `/` redirects to login, the only org, or /orgs
 ├── components/
 │   ├── ui/                   primitives — see UI foundation below
 │   ├── app/                  workspace shell, rail, situation strip, auth frame, theme control
-│   ├── auth/, organizations/, invitations/, teams/
+│   ├── auth/, organizations/, invitations/, teams/, services/
 ├── lib/
 │   ├── config/env.ts         validated public config
 │   ├── api/                  transport, the two request kinds, endpoints, contracts
@@ -60,8 +60,8 @@ template — a full-viewport workspace, rules and tables rather than cards, comp
 and colour that means something.
 
 It is a foundation, not the finished product. It is applied only to what exists today —
-sign-in, organizations, members, invitations, teams, settings. Operational screens
-(incidents, services, on-call, activity) are designed when their domain models are, and extend
+sign-in, organizations, members, invitations, teams, services, settings. Operational
+screens (incidents, on-call, activity) are designed when their domain models are, and extend
 this system — new navigation entries, the reserved signal colours, situation-strip levels,
 denser table and record layouts — rather than being mocked up in advance. No screen shows
 placeholder operational data. The pieces:
@@ -70,7 +70,7 @@ placeholder operational data. The pieces:
 | --- | --- |
 | **Workspace** | `WorkspaceShell`: an ink **situation strip** across the full width, the navigation **rail** beneath it on the left, and `main` — the only thing that scrolls. Below 1024px the rail becomes a drawer (a native `<dialog>`) opened from the strip. |
 | **Situation strip** | Shows where you are and the time in UTC. Its colour comes from a *level* supplied by `SituationContext`; only `neutral` exists, because nothing operational is observed yet. A live source will add levels there — the strip claims no state it cannot see. |
-| **Navigation** | Data, in [`components/app/navigation.ts`](src/components/app/navigation.ts). Only shipped routes are listed — no placeholders for Incidents or Services. An item may `require` a permission; like `useCan`, that is advice, and the API authorizes regardless. |
+| **Navigation** | Data, in [`components/app/navigation.ts`](src/components/app/navigation.ts). Only shipped routes are listed — Services sits in an Operations section that Incidents will join; there are no placeholders. An item may `require` a permission; like `useCan`, that is advice, and the API authorizes regardless. |
 | **Pages** | `PageHeader` (eyebrow, the page's single `<h1>`, description, actions) then `PageBody` (`full` for lists, `form` for settings). Parts of a page are `Section`s, separated by space and rules. |
 | **Primitives** | `Button` (primary / secondary / quiet / destructive — destructive is outlined; a solid red is for high-consequence confirmations, later), `Field`, `Select`, `CopyField`, `Alert` / `ErrorAlert`, `Table` (+ `THead`, `TR`, `TH`, `TD`, `TableEmpty`), `Status`, `RecordList`, `SettingRow`, `EmptyState`, `Tabs`, `IsoDate`, `Spinner`. |
 
@@ -84,7 +84,7 @@ the class. Four families, never mixed:
 - **Neutrals** — `canvas`, `surface`, `sunken`, `chrome`, `field`, `fg`, `fg-muted`, `fg-subtle`, `line-*`: structure.
 - **Accent** — the blue-violet `accent*`, `focus`, `selected`: interaction only — primary actions, links, the current place, focus.
 - **Feedback** — `danger-*`, `warning-*`, `success-*`, `info-*`: the outcome of what the user just did.
-- **Signal** — `signal-*`: the operational state of watched systems. Reserved and unused until incidents and services exist; named by intensity, not by a severity model that has not been designed.
+- **Signal** — `signal-*`: the operational state of watched systems. Reserved and unused until something is observed — incidents, later health; named by intensity, not by a severity model that has not been designed. A service's criticality is deliberately *not* a signal: it is a classification people choose, shown as words.
 
 State is never colour alone: `Status` pairs a glyph whose *shape* differs by tone with
 words, alerts carry a glyph and a rule, the current rail item has a bar and weight.
@@ -213,13 +213,37 @@ a create form in place from **New team** — name and description only; the API 
 slug. The form is inline rather than a `/teams/new` route because that route would shadow
 a team whose derived slug is `new`.
 
+The list shows each team's member and service counts.
+
 `/teams/[teamSlug]` is the team: its name, description, and members, with an add form
-(organization members not already on it) and Remove for `teams:manage`. Nothing else is
-shown — services join this page when they exist. `/teams/[teamSlug]/settings` edits the
-name and description and deletes the team after an inline confirmation. `TeamScope`
-resolves the slug against the cached team list, as `OrganizationScope` does for
-organizations; a slug never changes, so the URL stays valid across renames. The slug is
-never displayed.
+(organization members not already on it) and Remove for `teams:manage`, and — for
+`services:read` — the services it owns, filtered from the organization's service list.
+`/teams/[teamSlug]/settings` edits the name and description and deletes the team after an
+inline confirmation. While the team owns services, deletion is not offered: the section
+says how many and links to them, because they must be moved first. A delete that races a
+service being assigned gets the API's `409 TEAM_OWNS_SERVICES`, explained in place, and
+the count is refreshed. `TeamScope` resolves the slug against the cached team list, as
+`OrganizationScope` does for organizations; a slug never changes, so the URL stays valid
+across renames. The slug is never displayed.
+
+## Services
+
+`/orgs/[orgSlug]/services` lists the organization's services — name, owner team,
+criticality, description — and, for `services:manage`, opens a create form in place from
+**New service**, inline for the same reason as teams. The form asks for a name, an
+optional description, the owner team, and a criticality, preselected **Normal**, with the
+chosen level's definition shown beneath the picker. With no teams yet, it says a service
+needs an owning team and points to Teams instead.
+
+`/services/[serviceSlug]` is the service: its name and description, its owner team (a
+link), and its criticality with that level's definition, then created and updated dates.
+Nothing else — no health, incidents, or metrics, none of which exist.
+`/services/[serviceSlug]/settings` edits the details and criticality, moves the service to
+another team, and deletes it after an inline confirmation. `ServiceScope` resolves the
+slug against the cached service list, as `TeamScope` does.
+
+Criticality renders as plain words, never with `Status` glyphs or signal colours — see
+[Colour tokens](#colour-tokens).
 
 ## Query keys
 
@@ -231,4 +255,7 @@ invalidates only `['organization', id, 'invitations']`; accepting one refetches 
 Team pages read the team from `['organization', id, 'teams']`, so every team change —
 including adding or removing a member, which changes the count — refreshes it; member
 changes also refresh `['organization', id, 'teams', teamId, 'members']`.
+Service pages read the service from `['organization', id, 'services']`. Creating,
+changing, or deleting a service refreshes it and the team list (each team's service
+count); renaming a team refreshes it too, because every service embeds its owner's name.
 No query key ever contains an invitation token.

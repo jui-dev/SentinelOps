@@ -165,7 +165,7 @@ describe('teams (integration)', () => {
 
   beforeEach(async () => {
     await prisma.$executeRawUnsafe(
-      'TRUNCATE TABLE team_memberships, teams, invitations, refresh_tokens, memberships, users, organizations RESTART IDENTITY CASCADE',
+      'TRUNCATE TABLE services, team_memberships, teams, invitations, refresh_tokens, memberships, users, organizations RESTART IDENTITY CASCADE',
     );
 
     fx = await seed();
@@ -189,6 +189,7 @@ describe('teams (integration)', () => {
         slug: 'payments-risk',
         description: 'Card processing.',
         memberCount: 0,
+        serviceCount: 0,
         createdAt: expect.any(String),
         updatedAt: expect.any(String),
       });
@@ -393,6 +394,73 @@ describe('teams (integration)', () => {
       expect(await prisma.membership.count({ where: { id: fx.daveInA } })).toBe(
         1,
       );
+    });
+  });
+
+  describe('services', () => {
+    const aService = (
+      organizationId: string,
+      ownerTeamId: string,
+      name: string,
+    ) =>
+      prisma.service.create({
+        data: {
+          organizationId,
+          ownerTeamId,
+          name,
+          slug: name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+        },
+      });
+
+    it('should count the services a team owns', async () => {
+      const payments = await aTeam(fx.orgA, 'Payments');
+      const platform = await aTeam(fx.orgA, 'Platform');
+      await aService(fx.orgA, payments.id, 'Payment API');
+      await aService(fx.orgA, payments.id, 'Settlement');
+
+      const counts = (await call('get', `${fx.orgA}/teams`, fx.dave)).body.map(
+        (team: { name: string; serviceCount: number }) => [
+          team.name,
+          team.serviceCount,
+        ],
+      );
+
+      expect(counts).toEqual([
+        ['Payments', 2],
+        ['Platform', 0],
+      ]);
+      expect(
+        (await call('get', `${fx.orgA}/teams/${platform.id}`, fx.dave)).body
+          .serviceCount,
+      ).toBe(0);
+    });
+
+    it('should refuse to delete a team that owns services with 409, deleting nothing', async () => {
+      const payments = await aTeam(fx.orgA, 'Payments');
+      const platform = await aTeam(fx.orgA, 'Platform');
+      const service = await aService(fx.orgA, payments.id, 'Payment API');
+      await place(fx.orgA, payments.id, fx.daveInA);
+
+      expectCode(
+        await call('delete', `${fx.orgA}/teams/${payments.id}`, fx.alice),
+        409,
+        'TEAM_OWNS_SERVICES',
+      );
+      expect(await prisma.team.count({ where: { id: payments.id } })).toBe(1);
+      expect(await prisma.teamMembership.count()).toBe(1);
+      expect(await prisma.service.count()).toBe(1);
+
+      // Reassigned, the team can go — and the service stays.
+      await prisma.service.update({
+        where: { id: service.id },
+        data: { ownerTeamId: platform.id },
+      });
+
+      expect(
+        (await call('delete', `${fx.orgA}/teams/${payments.id}`, fx.alice))
+          .status,
+      ).toBe(204);
+      expect(await prisma.service.count()).toBe(1);
     });
   });
 

@@ -10,9 +10,9 @@ unfold, and turning the result into reviewable operational records.
 ## Project status
 
 > **Early development.** The backend's foundations are in place and tested, and the web
-> app can sign a user in, work within an organization, invite others into it, and group
-> its members into teams. There is no operational product yet: no services and no
-> incidents.
+> app can sign a user in, work within an organization, invite others into it, group its
+> members into teams, and catalog the services those teams own. There are no incidents
+> yet.
 
 Anything still described as **planned** below has not been built. Each piece is introduced
 deliberately, and this README is updated as capabilities actually land.
@@ -33,10 +33,14 @@ deliberately, and this README is updated as capabilities actually land.
 - Teams: an `OWNER` or `ADMIN` creates teams and places existing organization members on
   them. The database itself refuses a team member from another organization. See
   [Teams](#teams)
+- Services: an `OWNER` or `ADMIN` records the systems the organization runs, each owned
+  by one of its teams and classified by criticality. The database itself refuses an
+  owner from another organization, and refuses deleting a team that still owns services.
+  See [Services](#services)
 - A Next.js web app: registration, login, session restore across reloads and tabs,
   an organization picker, per-organization overview, member list, invitations, teams,
-  and rename — each offered only when the API reports the permission — and an invitation
-  acceptance page. See [Web application](#web-application)
+  services, and rename — each offered only when the API reports the permission — and an
+  invitation acceptance page. See [Web application](#web-application)
 - The web app's UI and design-system foundation: a full-viewport operations workspace
   (situation strip and navigation rail), light and dark themes from semantic design
   tokens, IBM Plex typography, and accessible primitives — with contrast and axe-core
@@ -46,8 +50,8 @@ deliberately, and this README is updated as capabilities actually land.
 
 **What does not exist yet**
 
-- Any operational resource: no services or incidents API. And no way to remove or
-  re-role a member
+- Incidents, and anything built on them: service health, responders, timelines. And no
+  way to remove or re-role a member
 - Email delivery: invitation links are shared by hand, and addresses are not verified
 - Rate limiting on authentication and on the public invitation routes
 - Continuous integration, and container images for the applications
@@ -121,7 +125,9 @@ The intended scope, not a feature list. Only the items marked below are built.
   [Invitations](#invitations)
 - **Team management** — ✅ teams and who is on them, with tenant consistency enforced by
   the database. See [Teams](#teams)
-- **Service catalog** — the systems being monitored and who owns them
+- **Service catalog** — ✅ the systems an organization runs, which team owns each, and
+  how critical each is, with ownership kept within the tenant by the database. Health,
+  dependencies, and monitoring are still to come. See [Services](#services)
 - **Incident lifecycle management** — open, acknowledge, escalate, resolve
 - **Severity and priority management** — classification of incident impact
 - **Responder assignment** — assigning and reassigning incident responders
@@ -407,8 +413,9 @@ the status code, which is what a probe reads.
 The core domain is three tables: an organization to own data, a user to act, and a
 membership binding them with a role. Teams, services, incidents, and audit entries all
 hang off these. `invitations` holds offers of a membership, `teams` and
-`team_memberships` group members (see [Teams](#teams)), and `refresh_tokens` holds
-sessions rather than domain data.
+`team_memberships` group members (see [Teams](#teams)), `services` records what those
+teams own (see [Services](#services)), and `refresh_tokens` holds sessions rather than
+domain data.
 
 ```
 ┌────────────────────┐                          ┌────────────────────┐
@@ -482,6 +489,28 @@ sessions rather than domain data.
    └──────────────────────────────┘   │ UQ(team_id, membership_id)               │
                                       └──────────────────────────────────────────┘
    memberships also carries UQ(organization_id, id), the target of the second key.
+
+   organizations 1 ──< services >── 1 teams (owner_team_id)
+                   ┌──────────────────────────────────────────┐
+                   │                 services                 │
+                   │──────────────────────────────────────────│
+                   │ id               uuid PK                 │
+                   │ organization_id  uuid FK  (cascade)      │
+                   │ name             text                    │
+                   │ slug             text                    │
+                   │ description      text NULL               │
+                   │ owner_team_id    uuid     NOT NULL       │
+                   │ criticality      service_criticality     │
+                   │                  DEFAULT 'NORMAL'        │
+                   │ created_at / updated_at                  │
+                   │ FK(organization_id, owner_team_id)       │
+                   │   → teams(organization_id, id)           │
+                   │   ON DELETE RESTRICT ON UPDATE RESTRICT  │
+                   │ UQ(organization_id, slug)                │
+                   │ UQ(organization_id, name)                │
+                   │ UQ(organization_id, id)                  │
+                   │ IX(organization_id, owner_team_id)       │
+                   └──────────────────────────────────────────┘
 ```
 
 `users.password_hash` is nullable, reserved for identities without a local password —
@@ -521,6 +550,7 @@ maps each role to its [permissions](#authorization).
 | `Invitation` | **Kept** — accepted or revoked, never deleted | Cascades from its organization; **refused** for a user who sent one |
 | `Team` | **Hard** — the row is removed, with its placements | Cascades from its organization |
 | `TeamMembership` | **Hard** | Cascades from its team and from its membership |
+| `Service` | **Hard** — the row is removed | Cascades from its organization; **refused** for a team that owns it |
 
 The **ordinary** delete of an organization or user writes `deleted_at`. That is an
 `UPDATE`, touches no foreign key, and therefore **preserves memberships and every
@@ -537,11 +567,19 @@ data-loss risk.
 **Deleting organizational configuration never silently deletes operational resources or
 historical records.** Configuration — a team, and later who owns what — can be removed
 only when nothing operational or historical depends on it; dependents are reassigned
-first, and the database enforces that with `Restrict`, not `Cascade`. A team is
-hard-deleted today only because nothing operational references one yet: deleting it
-removes who was on it, and every member stays in the organization. When services
-reference teams, that foreign key is `Restrict`, so a team that owns services cannot be
-deleted until they are reassigned.
+first, and the database enforces that with `Restrict`, not `Cascade`. Deleting a team
+removes who was on it, and every member stays in the organization; a team that owns
+services cannot be deleted at all until they are moved to another team — the services'
+owner key is `ON DELETE RESTRICT`, so the refusal is the database's, raw SQL included.
+
+A service is hard-deleted today only because nothing references one yet. When incidents
+reference services, their key refuses deleting a service with history in the same way,
+and retiring such a service becomes an archive rather than a delete.
+
+`Restrict` does not get in the way of the physical deletion of an organization: that
+cascade reaches the organization's teams and services in the same statement, and
+Postgres completes it — `schema.integration-spec.ts` proves it against the real
+migration.
 
 Reads filter on `deleted_at IS NULL` unless they deliberately do not. Login, `GET /auth/me`,
 refresh, organization admission, and every organization-scoped read all apply it — see
@@ -559,8 +597,9 @@ refresh, organization admission, and every organization-scoped read all apply it
 | A tenant-owned row references another tenant-owned row by a composite key on `organization_id` | The database, not only the service, keeps both rows in one organization — see [Tenant consistency by composite foreign key](#tenant-consistency-by-composite-foreign-key). |
 
 Foreign keys are indexed where no other index leads with them: `memberships.user_id`,
-`refresh_tokens.user_id`, `invitations.invited_by_id`, and
-`team_memberships.membership_id`. `memberships.organization_id`
+`refresh_tokens.user_id`, `invitations.invited_by_id`,
+`team_memberships.membership_id`, and `services(organization_id, owner_team_id)` — which
+serves the `Restrict` check when a team is deleted. `memberships.organization_id`
 needs no index of its own — it leads the composite unique, which already serves prefix
 lookups and the cascade from `organizations`.
 
@@ -582,10 +621,18 @@ reference a unique constraint over exactly its columns. As a side effect, moving
 membership to another organization while it is on a team is refused: `ON UPDATE CASCADE`
 carries the new organization into the placement, which then no longer matches its team.
 
-This is declarative, visible to Prisma (no drift), and costs nothing at runtime. Services
-still scope every query by organization — the constraint is the backstop, not the
-mechanism that produces the right `404`. Later tenant-owned references (a service's
-owning team, an incident's service) follow the same pattern.
+A service's owning team follows the same pattern with a single key:
+`(organization_id, owner_team_id)` references `teams(organization_id, id)`, and
+`owner_team_id` is `NOT NULL`, so the key is checked on every row — a service owned by
+another organization's team is unrepresentable. That key is `RESTRICT` on update as well
+as on delete. `ON UPDATE CASCADE` there would be a hazard rather than a safeguard: with
+no second composite key to contradict it, moving a team to another organization would
+silently carry its services along. Instead the move is refused while the team owns any.
+
+This is declarative, visible to Prisma (no drift), and costs nothing at runtime. The
+application still scopes every query by organization — the constraint is the backstop,
+not the mechanism that produces the right `404`. Incidents will reference services the
+same way, through `services(organization_id, id)`.
 
 A partial unique index is declared in `schema.prisma` with Prisma's `partialIndexes`
 preview feature, so Prisma knows about it and never treats it as drift. Preview features
@@ -916,6 +963,7 @@ put slugs in its own URLs.
 | `GET /api/v1/organizations/:organizationId/invitations` | Every open invitation, newest first | `invitations:read` |
 | `DELETE /api/v1/organizations/:organizationId/invitations/:invitationId` | Revoke an open invitation | `invitations:manage` |
 | `/api/v1/organizations/:organizationId/teams…` | Teams and who is on them — see [Teams](#teams) | `teams:read` / `teams:manage` |
+| `/api/v1/organizations/:organizationId/services…` | Services and who owns them — see [Services](#services) | `services:read` / `services:manage` |
 
 All require authentication, a current membership, and the listed permission — every role
 may read the organization and its memberships; only `OWNER` and `ADMIN` may rename it or
@@ -1068,9 +1116,12 @@ Which roles hold which permission is written out once, in
 | `invitations:manage` | ✓ | ✓ | |
 | `teams:read` | ✓ | ✓ | ✓ |
 | `teams:manage` | ✓ | ✓ | |
+| `services:read` | ✓ | ✓ | ✓ |
+| `services:manage` | ✓ | ✓ | |
 
 A `MEMBER` cannot see open invitations: they name people who are not members yet.
-Belonging to a team grants nothing: authorization is the organization role alone.
+Belonging to a team grants nothing, and neither does a team owning a service:
+authorization is the organization role alone.
 
 There is no `@RequireRole()`. A route that names roles has to be edited every time the
 policy changes; a route that names an operation does not. The table is explicit per role
@@ -1308,11 +1359,11 @@ isolation exactly as in [Tenancy](#tenancy) and [Authorization](#authorization).
 
 | Route | Permission | Purpose |
 | --- | --- | --- |
-| `GET /teams` | `teams:read` | Every team, by name, each with `memberCount` |
+| `GET /teams` | `teams:read` | Every team, by name, each with `memberCount` and `serviceCount` |
 | `POST /teams` | `teams:manage` | Create `{ "name", "description"? }`. `201` |
 | `GET /teams/:teamId` | `teams:read` | One team |
 | `PATCH /teams/:teamId` | `teams:manage` | Change `{ "name"?, "description"? }` (at least one; `null` clears the description) |
-| `DELETE /teams/:teamId` | `teams:manage` | Delete the team; its members stay in the organization. `204` |
+| `DELETE /teams/:teamId` | `teams:manage` | Delete the team; its members stay in the organization. `204`, or `409` while it owns services |
 | `GET /teams/:teamId/members` | `teams:read` | Who is on it, by name: `{ membershipId, addedAt, user: { id, name, email } }` |
 | `POST /teams/:teamId/members` | `teams:manage` | Add `{ "membershipId" }` — an existing member of this organization. `201` |
 | `DELETE /teams/:teamId/members/:membershipId` | `teams:manage` | Take them off the team; they stay in the organization. `204` |
@@ -1344,6 +1395,7 @@ own id is never exposed. Bodies are strict: `slug`, `organizationId`, or `id` is
 | Removing someone who is not on the team | `404 TEAM_MEMBER_NOT_FOUND` |
 | Name taken, or too similar to one at creation | `409 TEAM_NAME_TAKEN` |
 | Already on the team | `409 ALREADY_A_TEAM_MEMBER` |
+| Deleting a team that owns services | `409 TEAM_OWNS_SERVICES` — nothing is deleted |
 
 Every uniqueness rule is an index, so concurrent requests resolve to `409`, and an add
 racing the team's deletion — refused by the composite foreign key — to `404`, never `500`.
@@ -1351,12 +1403,14 @@ racing the team's deletion — refused by the composite foreign key — to `404`
 ### Deletion
 
 Teams follow the [deletion principle](#deletion-two-different-mechanisms): deleting one
-removes only who was on it, because nothing operational references a team yet. Once
-services do, deleting a team that owns services will be refused until they are reassigned.
+removes only who was on it. A team that owns services is not deleted — the services'
+foreign key refuses it and the API answers `409 TEAM_OWNS_SERVICES` — until each service
+is moved to another team. The refusal is not checked in advance, which would race a
+service being assigned in between; the database decides.
 
 ### Not yet
 
-Team leads, team roles or team-scoped permissions, nested teams, on-call, and services.
+Team leads, team roles or team-scoped permissions, nested teams, and on-call.
 
 ### Tests
 
@@ -1369,6 +1423,109 @@ soft-deleted members, the constraint mapping against the real driver adapter, an
 [`schema.integration-spec.ts`](apps/api/test/schema.integration-spec.ts) proves the
 invariants in the database itself, including a cross-organization placement refused when
 written as raw SQL.
+
+---
+
+## Services
+
+A service is a system the organization runs — an API, a processor, a portal — owned by
+one of its teams. It is what incidents will be recorded against. An `OWNER` or `ADMIN`
+creates, changes, reassigns, and deletes services; every member can see them. The model is
+industry-neutral: a payments company's `Payment API` and a shop's `Checkout Service` are
+the same kind of record.
+
+### What a service is
+
+| Field | Why it exists |
+| --- | --- |
+| `name` | What people call it. Unique within the organization. |
+| `description` | Optional: what it does, for someone who does not know it. |
+| owner team | Who is responsible. **Required** — a service nobody owns is exactly the ambiguity an incident tool exists to remove. |
+| `criticality` | How much the organization depends on it. Defaults to `NORMAL`. |
+| `slug` | Derived, for URLs only — the same rules as a team's. Never supplied or shown, never changed. A name with nothing to derive one from (`決済サービス`) gets an opaque slug (`service-3fa9c1d2`). |
+
+**Criticality** is four plain words, defined so they mean the same thing in any
+organization. It is a classification people choose — not health, not incident severity,
+and nothing sorts or computes by it:
+
+| Level | Meaning |
+| --- | --- |
+| `CRITICAL` | Failure stops the organization's core work or directly harms its customers |
+| `HIGH` | Failure seriously degrades important work; workarounds are limited |
+| `NORMAL` | Failure is disruptive but contained |
+| `LOW` | Internal or peripheral; failure has little impact |
+
+Words rather than numbered tiers, whose direction readers disagree about. The web app
+shows them as text, never with the signal colours reserved for observed state.
+
+**No health or status field.** Nothing could set one truthfully yet: a manual flag goes
+stale, and deriving it needs incidents or monitoring. It arrives with the model that
+gives it meaning.
+
+### Endpoints
+
+All under `/api/v1/organizations/:organizationId`, with admission, permission, and
+isolation exactly as in [Tenancy](#tenancy) and [Authorization](#authorization).
+
+| Route | Permission | Purpose |
+| --- | --- | --- |
+| `GET /services` | `services:read` | Every service, by name |
+| `POST /services` | `services:manage` | Create `{ "name", "ownerTeamId", "description"?, "criticality"? }`. `201` |
+| `GET /services/:serviceId` | `services:read` | One service |
+| `PATCH /services/:serviceId` | `services:manage` | Change `{ "name"?, "description"?, "ownerTeamId"?, "criticality"? }` (at least one; `null` clears the description; the owner can be moved, never cleared) |
+| `DELETE /services/:serviceId` | `services:manage` | Delete the service; its team is unaffected. `204` |
+
+A service is returned as `{ id, name, slug, description, criticality, ownerTeam: { id,
+name, slug }, createdAt, updatedAt }`. Bodies are strict: `slug`, `organizationId`, or
+`id` is a `400`.
+
+### Invariants
+
+- A service belongs to exactly one organization and is owned by exactly one team of that
+  same organization — enforced by the database, see
+  [Tenant consistency by composite foreign key](#tenant-consistency-by-composite-foreign-key).
+- A team that owns services cannot be deleted, or moved to another organization.
+- Names are unique within an organization; at creation, so is the derived slug, which
+  refuses a name that differs only by case or punctuation.
+
+### Errors
+
+| Case | Answer |
+| --- | --- |
+| Service id malformed, missing, or in another organization | `404 SERVICE_NOT_FOUND`, identically |
+| `ownerTeamId` malformed | `400`, naming the field |
+| `ownerTeamId` missing, or another organization's team | `404 TEAM_NOT_FOUND`, identically |
+| Name taken, or too similar to one at creation | `409 SERVICE_NAME_TAKEN` |
+
+The service is judged before the team, so a service this organization lacks answers
+`SERVICE_NOT_FOUND` whatever the body names. A create or reassignment racing the target
+team's deletion resolves to `404 TEAM_NOT_FOUND` or to the team delete's `409`, never
+`500` and never a service without an owner.
+
+### Deletion
+
+Deleting a service removes the row and nothing else. That is safe only because nothing
+references a service yet. When incidents do, their foreign key will refuse deleting a
+service with history (`409`), and retiring one becomes an archive that hides it from new
+incidents while keeping it resolvable in old ones — introduced with the key that needs it.
+
+### Not yet
+
+Health or status, dependencies and topology, monitoring integrations, environments,
+repositories, runbooks, tags and custom fields, templates, and service archival.
+
+### Tests
+
+[`services.e2e-spec.ts`](apps/api/test/services.e2e-spec.ts) proves the wiring: every
+route is admitted and authorized, and a `MEMBER` is refused every write before its body is
+read. [`services.integration-spec.ts`](apps/api/test/services.integration-spec.ts) runs
+two tenants against a real database: foreign service and team ids answered exactly as
+missing ones, a team member granted nothing by owning a service, the service isolating
+with no guard, the owner key recognised through the real driver adapter, and races
+between services and their teams. [`schema.integration-spec.ts`](apps/api/test/schema.integration-spec.ts)
+proves the invariants in the database itself: cross-organization ownership refused as
+raw SQL on insert and on update, a null owner refused, team deletion and team moves
+refused while services remain, and a physical organization deletion still completing.
 
 ---
 

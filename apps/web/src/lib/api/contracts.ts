@@ -142,6 +142,8 @@ export interface TeamResponse {
   slug: string;
   description: string | null;
   memberCount: number;
+  /** Services this team owns. While above zero the team cannot be deleted. */
+  serviceCount: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -169,6 +171,43 @@ export interface UpdateTeamRequest {
 }
 
 /**
+ * How much the organization depends on a service. A classification people
+ * choose, shown as words — never sorted or computed by, and not health.
+ */
+export type ServiceCriticality = "CRITICAL" | "HIGH" | "NORMAL" | "LOW";
+
+/**
+ * One service, as `GET /organizations/:organizationId/services` lists it.
+ * `slug` is derived by the API and used only to build URLs.
+ */
+export interface ServiceResponse {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  criticality: ServiceCriticality;
+  ownerTeam: { id: string; name: string; slug: string };
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** No slug: the API derives it from the name. Criticality defaults to NORMAL. */
+export interface CreateServiceRequest {
+  name: string;
+  description?: string | null;
+  ownerTeamId: string;
+  criticality?: ServiceCriticality;
+}
+
+/** Ownership moves; it is never cleared. */
+export interface UpdateServiceRequest {
+  name?: string;
+  description?: string | null;
+  ownerTeamId?: string;
+  criticality?: ServiceCriticality;
+}
+
+/**
  * Permission names the UI checks. Names only: which role holds which is the
  * API's decision, and is never reproduced here.
  */
@@ -180,6 +219,8 @@ export const Permission = {
   INVITATIONS_MANAGE: "invitations:manage",
   TEAMS_READ: "teams:read",
   TEAMS_MANAGE: "teams:manage",
+  SERVICES_READ: "services:read",
+  SERVICES_MANAGE: "services:manage",
 } as const;
 
 /** Machine-readable error codes this client branches on. */
@@ -203,6 +244,9 @@ export const ApiErrorCode = {
   TEAM_NAME_TAKEN: "TEAM_NAME_TAKEN",
   TEAM_MEMBER_NOT_FOUND: "TEAM_MEMBER_NOT_FOUND",
   ALREADY_A_TEAM_MEMBER: "ALREADY_A_TEAM_MEMBER",
+  TEAM_OWNS_SERVICES: "TEAM_OWNS_SERVICES",
+  SERVICE_NOT_FOUND: "SERVICE_NOT_FOUND",
+  SERVICE_NAME_TAKEN: "SERVICE_NAME_TAKEN",
 } as const;
 
 export interface ValidationErrorDetail {

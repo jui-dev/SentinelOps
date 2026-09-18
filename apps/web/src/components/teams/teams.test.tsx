@@ -49,6 +49,7 @@ const platform = {
   slug: "platform",
   description: "Owns the runtime.",
   memberCount: 1,
+  serviceCount: 0,
   createdAt: "2026-09-18T12:00:00.000Z",
   updatedAt: "2026-09-18T12:00:00.000Z",
 };
@@ -77,6 +78,32 @@ const adaOnTeam = {
   user: ada.user,
 };
 
+const runtimeApi = {
+  id: "0199a1b2-c3d4-7000-8000-0000000000e1",
+  name: "Runtime API",
+  slug: "runtime-api",
+  description: null,
+  criticality: "HIGH",
+  ownerTeam: { id: platform.id, name: platform.name, slug: platform.slug },
+  createdAt: "2026-09-18T12:00:00.000Z",
+  updatedAt: "2026-09-18T12:00:00.000Z",
+};
+
+const otherTeamsService = {
+  ...runtimeApi,
+  id: "0199a1b2-c3d4-7000-8000-0000000000e2",
+  name: "Checkout",
+  slug: "checkout",
+  ownerTeam: {
+    id: "0199a1b2-c3d4-7000-8000-0000000000d9",
+    name: "Commerce",
+    slug: "commerce",
+  },
+};
+
+/** READ, plus reading services — what every role holds today. */
+const READ_WITH_SERVICES = [...READ, "services:read"];
+
 type Handler = (request: SentRequest) => Response | undefined;
 
 const api = (
@@ -104,6 +131,8 @@ const api = (
         return jsonResponse(200, [ada, grace]);
       case `GET ${base}/teams/${platform.id}/members`:
         return jsonResponse(200, [adaOnTeam]);
+      case `GET ${base}/services`:
+        return jsonResponse(200, [runtimeApi, otherTeamsService]);
       default:
         return apiError(404);
     }
@@ -324,6 +353,43 @@ describe("teams", () => {
       );
     });
 
+    it("shows the services it owns, and only those, with services:read", async () => {
+      api(READ_WITH_SERVICES);
+
+      inTeam(<TeamDetail />);
+
+      const table = await screen.findByRole("table", {
+        name: "Services owned by this team",
+      });
+
+      expect(
+        within(table).getByRole("link", { name: "Runtime API" }).getAttribute(
+          "href",
+        ),
+      ).toBe("/orgs/acme-ops/services/runtime-api");
+      expect(within(table).getByText("High")).toBeDefined();
+      expect(screen.queryByText("Checkout")).toBeNull();
+      expect(
+        screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent),
+      ).toEqual(["Members", "Services"]);
+    });
+
+    it("says plainly when it owns no services", async () => {
+      navigation.params = { orgSlug: "acme-ops", teamSlug: "platform" };
+      api(READ_WITH_SERVICES, {
+        handler: (request) =>
+          route(request) === `GET ${base}/services`
+            ? jsonResponse(200, [otherTeamsService])
+            : undefined,
+      });
+
+      inTeam(<TeamDetail />);
+
+      expect(
+        await screen.findByText("This team owns no services."),
+      ).toBeDefined();
+    });
+
     it("answers an unknown slug with a not-found page", async () => {
       navigation.params = { orgSlug: "acme-ops", teamSlug: "nope" };
       api(READ);
@@ -391,6 +457,86 @@ describe("teams", () => {
       expect(
         requests.some((r) => route(r) === `DELETE ${base}/teams/${platform.id}`),
       ).toBe(true);
+    });
+
+    it("refreshes services after a rename, since each names its owner", async () => {
+      const user = userEvent.setup();
+      const { requests } = api([...MANAGE, "services:read"], {
+        handler: (request) =>
+          route(request) === `PATCH ${base}/teams/${platform.id}`
+            ? jsonResponse(200, { ...platform, name: "Runtime" })
+            : undefined,
+      });
+
+      // The team's own page, rendered alongside, keeps the services query
+      // live — so an invalidation shows up as a refetch.
+      inTeam(
+        <>
+          <TeamDetail />
+          <TeamSettings />
+        </>,
+      );
+
+      await screen.findByRole("table", { name: "Services owned by this team" });
+
+      const name = await screen.findByLabelText("Name");
+
+      await user.clear(name);
+      await user.type(name, "Runtime");
+      await user.click(screen.getByRole("button", { name: "Save" }));
+
+      await screen.findByText("Team updated.");
+      await waitFor(() =>
+        expect(
+          requests.filter((r) => route(r) === `GET ${base}/services`).length,
+        ).toBeGreaterThan(1),
+      );
+    });
+
+    it("refuses to offer deletion while the team owns services, and says what to do", async () => {
+      api(MANAGE, {
+        teams: [{ ...platform, serviceCount: 2 }],
+      });
+
+      inTeam(<TeamSettings />);
+
+      expect(
+        await screen.findByText("This team owns services"),
+      ).toBeDefined();
+      expect(screen.getByText(/It owns 2 services/)).toBeDefined();
+      expect(
+        screen
+          .getByRole("link", { name: "See its services" })
+          .getAttribute("href"),
+      ).toBe("/orgs/acme-ops/teams/platform");
+      expect(screen.queryByRole("button", { name: /Delete team/ })).toBeNull();
+    });
+
+    it("explains a delete refused because services were assigned meanwhile", async () => {
+      const user = userEvent.setup();
+      const { requests } = api(MANAGE, {
+        handler: (request) =>
+          request.method === "DELETE"
+            ? apiError(409, "TEAM_OWNS_SERVICES")
+            : undefined,
+      });
+
+      inTeam(<TeamSettings />);
+
+      await user.click(
+        await screen.findByRole("button", { name: "Delete team…" }),
+      );
+      await user.click(screen.getByRole("button", { name: "Delete team" }));
+
+      expect(
+        await screen.findByText(/This team now owns services/),
+      ).toBeDefined();
+      expect(navigation.push).not.toHaveBeenCalled();
+      await waitFor(() =>
+        expect(
+          requests.filter((r) => route(r) === `GET ${base}/teams`).length,
+        ).toBeGreaterThan(1),
+      );
     });
 
     it("stays put and says so when a delete fails", async () => {

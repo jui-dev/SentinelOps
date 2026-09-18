@@ -135,6 +135,37 @@ describe("WorkspaceShell", () => {
       expect(within(primaryNav()).queryByRole("link", { name: "Teams" })).toBeNull();
     });
 
+    it("offers Services, under Operations, only when the API reports services:read", async () => {
+      at("/orgs/acme-ops/services/payment-api/settings", "acme-ops");
+      api({ permissions: [...READ, "services:read"] });
+
+      renderShell();
+
+      const services = await within(primaryNav()).findByRole("link", {
+        name: "Services",
+      });
+
+      expect(services.getAttribute("href")).toBe("/orgs/acme-ops/services");
+      expect(services.getAttribute("aria-current")).toBe("page");
+      expect(within(primaryNav()).getByText("Operations")).toBeDefined();
+    });
+
+    it("does not offer Services without services:read", async () => {
+      at("/orgs/acme-ops", "acme-ops");
+      api({ permissions: READ });
+
+      renderShell();
+
+      expect(
+        await within(primaryNav()).findByRole("link", { name: "Members" }),
+      ).toBeDefined();
+      expect(
+        within(primaryNav()).queryByRole("link", { name: "Services" }),
+      ).toBeNull();
+      // A section with nothing to offer is not shown at all.
+      expect(within(primaryNav()).queryByText("Operations")).toBeNull();
+    });
+
     it("does not offer Settings without organization:update", async () => {
       at("/orgs/acme-ops", "acme-ops");
       const { requests } = api({ permissions: READ });

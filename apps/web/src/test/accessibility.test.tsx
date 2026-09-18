@@ -11,6 +11,10 @@ import { OrganizationOverview } from "@/components/organizations/organization-ov
 import { OrganizationPicker } from "@/components/organizations/organization-picker";
 import { OrganizationScope } from "@/components/organizations/organization-scope";
 import { OrganizationSettings } from "@/components/organizations/organization-settings";
+import { ServiceDetail } from "@/components/services/service-detail";
+import { ServiceScope } from "@/components/services/service-scope";
+import { ServiceSettings } from "@/components/services/service-settings";
+import { ServicesView } from "@/components/services/services-view";
 import { TeamDetail } from "@/components/teams/team-detail";
 import { TeamScope } from "@/components/teams/team-scope";
 import { TeamSettings } from "@/components/teams/team-settings";
@@ -37,7 +41,7 @@ import { renderWithSession } from "./render";
  */
 
 const navigation = vi.hoisted(() => ({
-  params: {} as { orgSlug?: string; teamSlug?: string },
+  params: {} as { orgSlug?: string; teamSlug?: string; serviceSlug?: string },
   pathname: "/",
 }));
 
@@ -54,10 +58,17 @@ const OWNER = [
   "memberships:read",
   "organization:read",
   "organization:update",
+  "services:manage",
+  "services:read",
   "teams:manage",
   "teams:read",
 ];
-const MEMBER = ["memberships:read", "organization:read", "teams:read"];
+const MEMBER = [
+  "memberships:read",
+  "organization:read",
+  "services:read",
+  "teams:read",
+];
 
 const team = {
   id: "0199a1b2-c3d4-7000-8000-0000000000d1",
@@ -65,6 +76,18 @@ const team = {
   slug: "platform",
   description: "Owns the runtime.",
   memberCount: 1,
+  serviceCount: 1,
+  createdAt: "2026-09-18T12:00:00.000Z",
+  updatedAt: "2026-09-18T12:00:00.000Z",
+};
+
+const service = {
+  id: "0199a1b2-c3d4-7000-8000-0000000000e1",
+  name: "Payment API",
+  slug: "payment-api",
+  description: "Takes card payments.",
+  criticality: "CRITICAL",
+  ownerTeam: { id: team.id, name: team.name, slug: team.slug },
   createdAt: "2026-09-18T12:00:00.000Z",
   updatedAt: "2026-09-18T12:00:00.000Z",
 };
@@ -95,6 +118,8 @@ const signedIn = (permissions: string[]) =>
         ]);
       case `GET ${base}/teams`:
         return jsonResponse(200, [team]);
+      case `GET ${base}/services`:
+        return jsonResponse(200, [service]);
       case `GET ${base}/teams/${team.id}/members`:
         return jsonResponse(200, [
           {
@@ -236,6 +261,7 @@ describe("accessibility", () => {
 
       await screen.findByRole("table", { name: "Team members" });
       await screen.findByText("Everyone in this organization is on this team.");
+      await screen.findByRole("table", { name: "Services owned by this team" });
       await expectNoAxeViolations(container);
     });
 
@@ -261,7 +287,50 @@ describe("accessibility", () => {
         </TeamScope>,
       );
 
-      await screen.findByRole("button", { name: "Delete team…" });
+      // The team owns a service, so deletion is explained rather than offered.
+      await screen.findByText("This team owns services");
+      await expectNoAxeViolations(container);
+    });
+
+    it("Services, as an owner creating one", async () => {
+      signedIn(OWNER);
+      const { container } = inWorkspace(<ServicesView />);
+
+      await screen.findByRole("table", { name: "Services" });
+      (await screen.findAllByRole("button", { name: "New service" }))[0].click();
+      await screen.findByLabelText("Criticality");
+      await expectNoAxeViolations(container);
+    });
+
+    it("Service, as a member", async () => {
+      navigation.params = {
+        orgSlug: organization.slug,
+        serviceSlug: service.slug,
+      };
+      signedIn(MEMBER);
+      const { container } = inWorkspace(
+        <ServiceScope>
+          <ServiceDetail />
+        </ServiceScope>,
+      );
+
+      await screen.findByRole("heading", { level: 1, name: "Payment API" });
+      await expectNoAxeViolations(container);
+    });
+
+    it("Service settings", async () => {
+      navigation.params = {
+        orgSlug: organization.slug,
+        serviceSlug: service.slug,
+      };
+      signedIn(OWNER);
+      const { container } = inWorkspace(
+        <ServiceScope>
+          <ServiceSettings />
+        </ServiceScope>,
+      );
+
+      await screen.findByRole("combobox", { name: "Owner team" });
       await expectNoAxeViolations(container);
     });
 

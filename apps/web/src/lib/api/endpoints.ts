@@ -2,6 +2,7 @@ import { authenticatedRequest, publicRequest, sessionRequest } from "./client";
 import type {
   AuthenticatedResponse,
   CreateInvitationRequest,
+  CreateServiceRequest,
   CreateTeamRequest,
   CreatedInvitationResponse,
   CurrentUserResponse,
@@ -14,9 +15,11 @@ import type {
   OrganizationResponse,
   RegisterRequest,
   RegisterWithInvitationRequest,
+  ServiceResponse,
   TeamMemberResponse,
   TeamResponse,
   UpdateOrganizationRequest,
+  UpdateServiceRequest,
   UpdateTeamRequest,
 } from "./contracts";
 
@@ -154,6 +157,39 @@ export const removeTeamMember = (
     `${teamPath(organizationId, teamId)}/members/${encodeURIComponent(membershipId)}`,
     { method: "DELETE" },
   );
+
+const servicesPath = (organizationId: string) =>
+  `${organizationPath(organizationId)}/services`;
+
+const servicePath = (organizationId: string, serviceId: string) =>
+  `${servicesPath(organizationId)}/${encodeURIComponent(serviceId)}`;
+
+export const listServices = (organizationId: string) =>
+  authenticatedRequest<ServiceResponse[]>(servicesPath(organizationId));
+
+export const createService = (
+  organizationId: string,
+  body: CreateServiceRequest,
+) =>
+  authenticatedRequest<ServiceResponse>(servicesPath(organizationId), {
+    method: "POST",
+    body,
+  });
+
+export const updateService = (
+  organizationId: string,
+  serviceId: string,
+  body: UpdateServiceRequest,
+) =>
+  authenticatedRequest<ServiceResponse>(servicePath(organizationId, serviceId), {
+    method: "PATCH",
+    body,
+  });
+
+export const deleteService = (organizationId: string, serviceId: string) =>
+  authenticatedRequest<void>(servicePath(organizationId, serviceId), {
+    method: "DELETE",
+  });
 
 // Invitation tokens always travel in a request body: never in a path or a
 // query string, which servers log.

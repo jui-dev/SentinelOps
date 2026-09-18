@@ -22,6 +22,8 @@ const EXPECTED: Record<Role, Record<Permission, boolean>> = {
     'invitations:manage': true,
     'teams:read': true,
     'teams:manage': true,
+    'services:read': true,
+    'services:manage': true,
   },
   ADMIN: {
     'organization:read': true,
@@ -31,6 +33,8 @@ const EXPECTED: Record<Role, Record<Permission, boolean>> = {
     'invitations:manage': true,
     'teams:read': true,
     'teams:manage': true,
+    'services:read': true,
+    'services:manage': true,
   },
   MEMBER: {
     'organization:read': true,
@@ -40,6 +44,8 @@ const EXPECTED: Record<Role, Record<Permission, boolean>> = {
     'invitations:manage': false,
     'teams:read': true,
     'teams:manage': false,
+    'services:read': true,
+    'services:manage': false,
   },
 };
 
@@ -75,6 +81,15 @@ describe('role permissions', () => {
     }
 
     expect(hasPermission('MEMBER', Permission.TEAMS_MANAGE)).toBe(false);
+  });
+
+  it('should let every role read services, but only owners and admins manage them', () => {
+    // Owning a service grants the owning team nothing: this is the whole rule.
+    for (const role of ROLES) {
+      expect(hasPermission(role, Permission.SERVICES_READ)).toBe(true);
+    }
+
+    expect(hasPermission('MEMBER', Permission.SERVICES_MANAGE)).toBe(false);
   });
 
   it('should let every role read the organization and its memberships', () => {

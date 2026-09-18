@@ -13,6 +13,9 @@
  *   stales this.
  * - `teamMembers`: who is on one team. Adding or removing someone stales it
  *   and `teams` (the count).
+ * - `services`: an organization's services, each embedding its owning team's
+ *   name. Service pages read the service from here. Any service change stales
+ *   it and `teams` (each team's service count); a team rename stales it too.
  *
  * The invitation an `/invite` page shows is deliberately not cached here: it
  * is fetched with a token, and lives in that page's own state.
@@ -29,4 +32,6 @@ export const queryKeys = {
     ["organization", organizationId, "teams"] as const,
   teamMembers: (organizationId: string, teamId: string) =>
     ["organization", organizationId, "teams", teamId, "members"] as const,
+  services: (organizationId: string) =>
+    ["organization", organizationId, "services"] as const,
 };

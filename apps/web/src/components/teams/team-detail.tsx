@@ -6,6 +6,8 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 
 import { useMemberships } from "@/components/organizations/membership-list";
+import { criticalityOf } from "@/components/services/criticality";
+import { serviceHref, useServices } from "@/components/services/service-scope";
 import {
   useCan,
   useOrganization,
@@ -255,11 +257,61 @@ function Members({ canManage }: { canManage: boolean }) {
   );
 }
 
-/** A team: its name, what it is for, and who is on it. */
+/**
+ * The services this team owns, read from the organization's service list —
+ * the one the Services pages use, so there is one cache to keep current.
+ */
+function OwnedServices() {
+  const organization = useOrganization();
+  const team = useTeam();
+  const services = useServices(organization.id);
+  const owned = services.data?.filter(
+    (service) => service.ownerTeam.id === team.id,
+  );
+
+  return (
+    <Section id="services" title="Services" meta={owned?.length}>
+      {services.isError ? (
+        <ErrorAlert error={services.error} />
+      ) : !owned ? (
+        <Spinner label="Loading services…" />
+      ) : owned.length === 0 ? (
+        <p className="text-sm text-fg-muted">This team owns no services.</p>
+      ) : (
+        <Table label="Services owned by this team">
+          <THead>
+            <TR>
+              <TH>Name</TH>
+              <TH>Criticality</TH>
+            </TR>
+          </THead>
+          <TBody>
+            {owned.map((service) => (
+              <TR key={service.id}>
+                <TD>
+                  <Link
+                    href={serviceHref(organization.slug, service.slug)}
+                    className="font-medium text-fg underline-offset-2 hover:text-accent-text hover:underline"
+                  >
+                    {service.name}
+                  </Link>
+                </TD>
+                <TD>{criticalityOf(service.criticality).label}</TD>
+              </TR>
+            ))}
+          </TBody>
+        </Table>
+      )}
+    </Section>
+  );
+}
+
+/** A team: its name, what it is for, who is on it, and what it owns. */
 export function TeamDetail() {
   const organization = useOrganization();
   const team = useTeam();
   const canManage = useCan(Permission.TEAMS_MANAGE);
+  const canReadServices = useCan(Permission.SERVICES_READ);
 
   return (
     <>
@@ -280,6 +332,7 @@ export function TeamDetail() {
       />
       <PageBody>
         <Members canManage={canManage} />
+        {canReadServices && <OwnedServices />}
       </PageBody>
     </>
   );

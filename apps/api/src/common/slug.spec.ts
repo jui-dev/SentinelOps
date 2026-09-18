@@ -1,4 +1,4 @@
-import { slugify } from './slug.js';
+import { opaqueSlug, slugify } from './slug.js';
 
 describe('slugify', () => {
   it('should lowercase and hyphenate', () => {
@@ -34,4 +34,17 @@ describe('slugify', () => {
       expect(slugify(name)).toBeUndefined();
     },
   );
+});
+
+describe('opaqueSlug', () => {
+  it('should produce a slug-shaped value under the prefix', () => {
+    const slug = opaqueSlug('service');
+
+    expect(slug).toMatch(/^service-[0-9a-f]{8}$/);
+    expect(slugify(slug)).toBe(slug);
+  });
+
+  it('should be unpredictable', () => {
+    expect(opaqueSlug('team')).not.toBe(opaqueSlug('team'));
+  });
 });
