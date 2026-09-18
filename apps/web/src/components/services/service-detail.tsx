@@ -12,9 +12,11 @@ import { buttonClasses } from "@/components/ui/button";
 import { PageBody, PageHeader } from "@/components/ui/page";
 import { RecordList, RecordRow } from "@/components/ui/record";
 import { IsoDate } from "@/components/ui/timestamp";
+import { quietLinkClasses } from "@/components/ui/link";
 import { Permission } from "@/lib/api/contracts";
 
 import { criticalityOf } from "./criticality";
+import { CriticalityMark } from "./criticality-mark";
 import { serviceHref, useService } from "./service-scope";
 
 /**
@@ -59,13 +61,16 @@ export function ServiceDetail() {
             <RecordRow label="Owner team">
               <Link
                 href={teamHref(organization.slug, service.ownerTeam.slug)}
-                className="font-medium text-fg underline-offset-2 hover:text-accent-text hover:underline"
+                className={`font-medium text-fg ${quietLinkClasses}`}
               >
                 {service.ownerTeam.name}
               </Link>
             </RecordRow>
             <RecordRow label="Criticality">
-              <span className="font-medium">{criticality.label}</span>
+              <CriticalityMark
+                criticality={service.criticality}
+                className="font-medium"
+              />
               {criticality.definition && (
                 <span className="mt-0.5 block text-sm text-fg-muted">
                   {criticality.definition}

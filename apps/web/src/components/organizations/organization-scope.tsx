@@ -10,6 +10,7 @@ import { ErrorAlert } from "@/components/ui/alert";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageBody } from "@/components/ui/page";
 import { PageSpinner } from "@/components/ui/spinner";
+import { linkClasses } from "@/components/ui/link";
 import type {
   MembershipResponse,
   OrganizationDetailResponse,
@@ -107,7 +108,7 @@ export function OrganizationNotFound() {
         action={
           <Link
             href="/orgs"
-            className="text-sm font-medium text-accent-text underline-offset-2 hover:underline"
+            className={`text-sm ${linkClasses}`}
           >
             Your organizations
           </Link>

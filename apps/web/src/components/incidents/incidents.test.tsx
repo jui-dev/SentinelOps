@@ -200,7 +200,30 @@ describe("incidents", () => {
       expect(within(first).getByText("Investigating")).toBeDefined();
       expect(within(first).getByText(/^(<1m|\d+[mhd])/)).toBeDefined();
       expect(within(second).getByText("Monitoring")).toBeDefined();
-      expect(await screen.findByText("No incidents have been resolved yet.")).toBeDefined();
+      expect(await screen.findByText("No resolved incidents")).toBeDefined();
+    });
+
+    it("makes each row one link, and folds where and who under the title for narrow screens", async () => {
+      api(READ_ONLY, {
+        active: [incident(), incident({ number: 7, severity: "SEV3", title: "Reports delayed", status: "MONITORING" })],
+      });
+
+      inOrganization(<IncidentsView />);
+
+      const table = await screen.findByRole("table", { name: "Active incidents" });
+      const [, first, second] = within(table).getAllByRole("row");
+
+      // One tab stop per row, named by the incident.
+      expect(within(first).getAllByRole("link")).toHaveLength(1);
+      expect(within(second).getAllByRole("link")).toHaveLength(1);
+      // The service and team stay in the row where their columns are hidden.
+      expect(within(first).getByText(/Payment API · Payments/)).toBeDefined();
+      // Status is its word; the icon beside it is decoration.
+      const status = within(first).getByText("Investigating");
+      expect(status.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
+      // SEV1 is said in words, not only by its colour or its edge.
+      expect(within(first).getByText("SEV1")).toBeDefined();
+      expect(within(first).getByText("Critical")).toBeDefined();
     });
 
     it("offers no declaration without incidents:manage", async () => {

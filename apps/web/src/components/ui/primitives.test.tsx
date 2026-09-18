@@ -8,10 +8,20 @@ import { ApiError } from "@/lib/api/errors";
 import { Alert, ErrorAlert } from "./alert";
 import { Button } from "./button";
 import { CopyField } from "./copy-field";
+import { EmptyNote, EmptyState } from "./empty-state";
 import { Field } from "./field";
 import { Select } from "./select";
 import { Status } from "./status";
-import { Table, TableEmpty, TBody, TD, TH, THead, TR } from "./table";
+import {
+  stretchedLinkClasses,
+  Table,
+  TableEmpty,
+  TBody,
+  TD,
+  TH,
+  THead,
+  TR,
+} from "./table";
 import { Tabs } from "./tabs";
 import { formatIsoDate, IsoDate } from "./timestamp";
 
@@ -195,6 +205,44 @@ describe("Table", () => {
     expect(screen.getByRole("cell").getAttribute("colspan")).toBe("2");
   });
 
+  it("keeps an interactive row to one link, and a sticky header to table semantics", () => {
+    render(
+      <Table label="Incidents" variant="operational" stickyHeader fixed>
+        <THead>
+          <TR>
+            <TH>Incident</TH>
+            <TH align="end">Duration</TH>
+          </TR>
+        </THead>
+        <TBody>
+          <TR interactive>
+            <TD>
+              <a href="/incidents/42" className={stretchedLinkClasses}>
+                INC-42 Card payments failing
+              </a>
+            </TD>
+            <TD kind="numeric" align="end">
+              14
+            </TD>
+          </TR>
+        </TBody>
+      </Table>,
+    );
+
+    const table = screen.getByRole("table", { name: "Incidents" });
+    const [, row] = screen.getAllByRole("row");
+
+    expect(screen.getAllByRole("columnheader").map((th) => th.getAttribute("scope"))).toEqual([
+      "col",
+      "col",
+    ]);
+    expect(table.querySelectorAll("a")).toHaveLength(1);
+    expect(
+      screen.getByRole("link", { name: "INC-42 Card payments failing" }).closest("tr"),
+    ).toBe(row);
+    expect(screen.getByRole("cell", { name: "14" })).toBeDefined();
+  });
+
   it("is not a tab stop when it does not need scrolling", () => {
     const { container } = render(
       <Table label="Members">
@@ -207,6 +255,34 @@ describe("Table", () => {
     );
 
     expect(container.querySelector("[tabindex]")).toBeNull();
+  });
+});
+
+describe("EmptyState", () => {
+  it("titles itself at the heading level asked for, and plainly otherwise", () => {
+    render(
+      <>
+        <EmptyState headingLevel={1} title="Incident not found" />
+        <EmptyState title="No teams yet" />
+      </>,
+    );
+
+    expect(screen.getByRole("heading", { level: 1, name: "Incident not found" })).toBeDefined();
+    expect(screen.getByText("No teams yet").tagName).toBe("P");
+  });
+});
+
+describe("EmptyNote", () => {
+  it("says what is empty and what that means; its glyph is decoration", () => {
+    const { container } = render(
+      <EmptyNote title="No active incidents" glyph={<svg />}>
+        Nothing needs a response right now.
+      </EmptyNote>,
+    );
+
+    expect(screen.getByText("No active incidents")).toBeDefined();
+    expect(screen.getByText("Nothing needs a response right now.")).toBeDefined();
+    expect(container.querySelector("svg")?.closest("[aria-hidden]")).not.toBeNull();
   });
 });
 

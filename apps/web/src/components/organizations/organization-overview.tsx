@@ -8,6 +8,7 @@ import { organizationPath } from "@/components/app/navigation";
 import { PageBody, PageHeader, Section } from "@/components/ui/page";
 import { RecordList, RecordRow } from "@/components/ui/record";
 import { IsoDate } from "@/components/ui/timestamp";
+import { quietLinkClasses } from "@/components/ui/link";
 import { Permission } from "@/lib/api/contracts";
 import { listMemberships } from "@/lib/api/endpoints";
 import { queryKeys } from "@/lib/api/query-keys";
@@ -26,7 +27,7 @@ function MemberCount({ slug }: { slug: string }) {
   return (
     <Link
       href={`${organizationPath(slug)}/members`}
-      className="group inline-flex items-center gap-1.5 text-fg underline-offset-2 hover:text-accent-text hover:underline"
+      className={`group inline-flex items-center gap-1.5 text-fg ${quietLinkClasses}`}
     >
       {memberships.data ? (
         <>
@@ -80,10 +81,15 @@ export function OrganizationOverview() {
             </RecordList>
           </Section>
 
+          {/*
+            Secondary, so grouped in a quiet panel rather than ruled off:
+            present for whoever needs it, out of the way of everyone else.
+          */}
           <Section
             title="Technical details"
             level={3}
             description="For support requests and API work. What you may do here is reported by the API, which checks every request itself."
+            className="rounded-lg border border-line-subtle bg-surface p-5"
           >
             <RecordList tone="secondary" stacked>
               <RecordRow label="Organization ID">
@@ -97,8 +103,8 @@ export function OrganizationOverview() {
                 </span>
               </RecordRow>
               <RecordRow label="Your access">
-                <ul className="flex flex-wrap gap-x-4 gap-y-1">
-                  {membership.permissions.map((permission) => (
+                <ul className="flex flex-col gap-0.5">
+                  {[...membership.permissions].sort().map((permission) => (
                     <li key={permission} className="data text-fg-muted">
                       {permission}
                     </li>

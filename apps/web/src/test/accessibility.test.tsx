@@ -125,6 +125,16 @@ const activeIncident = {
   resolvedAt: null,
 };
 
+// A second severity, so the list renders more than one mark.
+const majorIncident = {
+  ...activeIncident,
+  id: "0199a1b2-c3d4-7000-8000-0000000000f3",
+  number: 41,
+  title: "Webhook retries backing up",
+  severity: "SEV2",
+  status: "IDENTIFIED",
+};
+
 const resolvedIncident = {
   ...activeIncident,
   id: "0199a1b2-c3d4-7000-8000-0000000000f2",
@@ -165,7 +175,7 @@ const signedIn = (permissions: string[]) =>
         return jsonResponse(200, [service]);
       case `GET ${base}/incidents?state=active`:
         return jsonResponse(200, {
-          items: [activeIncident],
+          items: [activeIncident, majorIncident],
           page: { cursor: null, hasMore: false },
         });
       case `GET ${base}/incidents?state=resolved`:

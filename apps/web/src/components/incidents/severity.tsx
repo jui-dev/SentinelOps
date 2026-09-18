@@ -1,3 +1,5 @@
+import { Activity, CircleCheck, CircleDashed, Crosshair } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { cx } from "@/components/ui/cx";
@@ -132,18 +134,23 @@ const marks: Record<IncidentSeverity, { path: ReactNode; colour: string }> = {
 /**
  * A severity as text with its mark: `◆ SEV1`, and with `label`, `◆ SEV1
  * Critical`. Without the visible word, the word is still read out.
+ * `emphasis`, for lists scanned under pressure, sets the mark a touch larger
+ * and the most severe level heavier — weight, not more colour.
  */
 export function SeverityMark({
   severity,
   label = false,
+  emphasis = false,
   className,
 }: {
   severity: IncidentSeverity;
   label?: boolean;
+  emphasis?: boolean;
   className?: string;
 }) {
   const mark = marks[severity];
   const { label: word } = severityOf(severity);
+  const strongest = emphasis && severity === "SEV1";
 
   return (
     <span
@@ -156,17 +163,74 @@ export function SeverityMark({
         <svg
           aria-hidden="true"
           viewBox="0 0 10 10"
-          className={cx("size-2.5 shrink-0", mark.colour)}
+          className={cx(
+            "shrink-0",
+            emphasis ? "size-[11px]" : "size-2.5",
+            mark.colour,
+          )}
         >
           {mark.path}
         </svg>
       )}
-      <span className="data font-medium text-fg">{severity}</span>
+      <span
+        className={cx(
+          "data text-fg",
+          strongest ? "font-semibold" : "font-medium",
+        )}
+      >
+        {severity}
+      </span>
       {label ? (
         <span className="text-fg-muted">{word}</span>
       ) : (
         <span className="sr-only">{word}</span>
       )}
+    </span>
+  );
+}
+
+/**
+ * One outline icon per status. Distinct shapes, not steps of a progress bar:
+ * the active statuses move in either direction, so none looks "more done"
+ * than another. Outlines, where severity marks are filled solids, so the two
+ * never read as one scale. Neutral ink for the active statuses — severity
+ * is the signal — and the nominal green only once resolved.
+ */
+const statusIcons: Record<IncidentStatus, { Icon: LucideIcon; colour: string }> = {
+  // An open question.
+  INVESTIGATING: { Icon: CircleDashed, colour: "text-fg-muted" },
+  // The cause pinpointed.
+  IDENTIFIED: { Icon: Crosshair, colour: "text-fg-muted" },
+  // Recovery being watched.
+  MONITORING: { Icon: Activity, colour: "text-fg-muted" },
+  RESOLVED: { Icon: CircleCheck, colour: "text-signal-nominal" },
+};
+
+/** A status as its word with its icon: `◌ Investigating`. The word carries it. */
+export function StatusMark({
+  status,
+  className,
+}: {
+  status: IncidentStatus;
+  className?: string;
+}) {
+  const icon = statusIcons[status];
+
+  return (
+    <span
+      className={cx(
+        "inline-flex items-center gap-1.5 whitespace-nowrap",
+        className,
+      )}
+    >
+      {icon && (
+        <icon.Icon
+          aria-hidden="true"
+          strokeWidth={2}
+          className={cx("size-3.5 shrink-0", icon.colour)}
+        />
+      )}
+      {statusOf(status).label}
     </span>
   );
 }

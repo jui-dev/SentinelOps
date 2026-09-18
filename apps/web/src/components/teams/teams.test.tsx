@@ -386,7 +386,7 @@ describe("teams", () => {
       inTeam(<TeamDetail />);
 
       expect(
-        await screen.findByText("This team owns no services."),
+        await screen.findByText("This team owns no services"),
       ).toBeDefined();
     });
 

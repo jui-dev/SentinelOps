@@ -72,8 +72,9 @@ of the signal colours. No screen shows placeholder operational data. The pieces:
 | **Workspace** | `WorkspaceShell`: an ink **situation strip** across the full width, the navigation **rail** beneath it on the left, and `main` — the only thing that scrolls. Below 1024px the rail becomes a drawer (a native `<dialog>`) opened from the strip. |
 | **Situation strip** | Shows where you are and the time in UTC. Its colour comes from a *level* supplied by `SituationContext`; only `neutral` exists. Incidents are recorded, but summarising them is the operational overview's job, still to come — the strip claims no state it does not summarise. |
 | **Navigation** | Data, in [`components/app/navigation.ts`](src/components/app/navigation.ts). Only shipped routes are listed — Incidents, then Services, under Operations; there are no placeholders. An item may `require` a permission; like `useCan`, that is advice, and the API authorizes regardless. |
-| **Pages** | `PageHeader` (eyebrow, the page's single `<h1>`, description, actions) then `PageBody` (`full` for lists, `form` for settings). Parts of a page are `Section`s, separated by space and rules. |
-| **Primitives** | `Button` (primary / secondary / quiet / destructive — destructive is outlined; a solid red is for high-consequence confirmations, later), `Field`, `TextArea`, `Select`, `CopyField`, `Alert` / `ErrorAlert`, `Table` (+ `THead`, `TR`, `TH`, `TD`, `TableEmpty`), `Status`, `RecordList`, `SettingRow`, `EmptyState`, `Tabs`, `IsoDate`, `LocalDateTime`, `Duration`, `Spinner`. `Duration` and the strip's clock share one minute-aligned `useMinuteClock`, so they tick together. |
+| **Pages** | `PageHeader` (eyebrow, the page's single `<h1>`, description, actions) then `PageBody`, sharing one gutter and a width: `full` for wide operational content (incidents, the overview), `list` for reference lists (members, teams, services), `form` for settings. Parts of a page are `Section`s. Hierarchy comes from surfaces, space, and type, not divider rules. |
+| **Primitives** | `Button` (primary / secondary / quiet / destructive — destructive is outlined; a solid red is for high-consequence confirmations, later), `Field`, `TextArea`, `Select`, `CopyField`, `Alert` / `ErrorAlert`, `Table` (+ `THead`, `TR`, `TH`, `TD`, `TableEmpty`), `Status`, `RecordList`, `SettingRow`, `EmptyState` (a page's subject) and `EmptyNote` (an empty list within a page), `Tabs`, `IsoDate`, `LocalDateTime`, `Duration`, `Spinner`, and the shared link classes in [`ui/link.ts`](src/components/ui/link.ts) (`linkClasses` for actions, `quietLinkClasses` for an entity's name). Domain marks: `SeverityMark` and `StatusMark` ([`incidents/severity.tsx`](src/components/incidents/severity.tsx)), `CriticalityMark` ([`services/criticality-mark.tsx`](src/components/services/criticality-mark.tsx)). `Duration` and the strip's clock share one minute-aligned `useMinuteClock`, so they tick together. |
+| **Tables** | One `Table` primitive, on its own quiet surface with a header surface and an edge beneath it, soft row rules, neutral row hover, and no vertical lines. `reference` (50px rows) is for configuration lists; `operational` (44px rows) is for incidents, with a sticky header, fixed column widths, and whole-row links (one tab stop per row). Lower-priority columns fold under the primary one at narrower widths rather than shrinking the type. |
 
 ### Colour tokens
 
@@ -82,19 +83,27 @@ as `light-dark(<light>, <dark>)`. Tailwind's default palette is **removed**, so
 `bg-slate-50` does not exist, and there is no `dark:` variant — the token changes, not
 the class. Four families, never mixed:
 
-- **Neutrals** — `canvas`, `surface`, `sunken`, `chrome`, `field`, `fg`, `fg-muted`, `fg-subtle`, `line-*`: structure.
-- **Accent** — the blue-violet `accent*`, `focus`, `selected`: interaction only — primary actions, links, the current place, focus.
+- **Neutrals** — the shell and surfaces (`rail-*`, `chrome`, `canvas`, `surface`, `thead`, `sunken`, `field`, `hover`), `fg`, `fg-muted`, `fg-subtle`, `line-*`: structure.
+- **Accent** — the deep ink-indigo `accent*`, `focus`, `selected`: interaction only — primary actions, links, the current place, focus. Never large areas.
 - **Feedback** — `danger-*`, `warning-*`, `success-*`, `info-*`: the outcome of what the user just did.
-- **Signal** — `signal-*`: operational state. Named by intensity, not by any one model. Its first use is incident severity, in `SeverityMark` ([`components/incidents/severity.tsx`](src/components/incidents/severity.tsx)): `SEV1` critical, `SEV2` high, `SEV3` caution, `SEV4` advisory, each with its own glyph *shape* — diamond, triangle, square, ring — and always followed by the code, with the word written or read out. `nominal` and `inactive` stay reserved for service health. A service's criticality is deliberately *not* a signal: it is a classification people choose, shown as words — and so is an incident's status.
+- **Signal** — `signal-*`: operational state. Named by intensity, not by any one model. Its first use is incident severity, in `SeverityMark` ([`components/incidents/severity.tsx`](src/components/incidents/severity.tsx)): `SEV1` critical, `SEV2` high, `SEV3` caution, `SEV4` advisory, each with its own glyph *shape* — diamond, triangle, square, ring — and always followed by the code, with the word written or read out. `nominal` also marks a resolved incident and the "no active incidents" state; `inactive` stays reserved for service health. A service's criticality is deliberately *not* a signal: it is a classification people choose, drawn by `CriticalityMark` as a neutral four-step gauge beside its word. An incident's lifecycle status is not a signal either: `StatusMark` gives each status its own outline icon beside its word — distinct shapes, not steps of progress — neutral while active, `nominal` once resolved. Severity stays the strongest signal in a row.
+
+The visual direction is **Midnight Operations**: one hue family layered by lightness —
+a navy-black navigation rail with a tonal ramp (`bg-rail`), a graphite strip, a
+cool-graphite workspace, and table and panel surfaces above it — so the layers read as
+depths of one material rather than regions divided by lines.
 
 State is never colour alone: `Status` pairs a glyph whose *shape* differs by tone with
-words, alerts carry a glyph and a rule, the current rail item has a bar and weight.
+words, alerts carry a glyph and a rule, the current rail item has an edge at the rail's
+side, a fill fading from it (`bg-nav-selected`), and weight.
 
 ### Type
 
 IBM Plex Sans for text and IBM Plex Mono for data, self-hosted by `next/font`. Body copy
 is 14px. Identifiers, slugs, request ids, and dates in tables use the `data` utility (mono,
-tabular figures); column headers and eyebrows use `label-caps`. Dense tables show dates
+tabular figures); counts use `numeric` (tabular figures in the body face). Eyebrows use
+`eyebrow` and column headers are sentence case; `label-caps` (small spaced capitals) is
+only for the navigation rail's group headings. Dense tables show dates
 as ISO calendar dates **in UTC** (`2026-09-18`), matching the strip's clock, with the
 local date and time on hover; prose uses a localized long form.
 

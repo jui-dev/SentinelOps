@@ -15,7 +15,7 @@ const plexSans = IBM_Plex_Sans({
 
 const plexMono = IBM_Plex_Mono({
   subsets: ["latin"],
-  weight: ["400", "500"],
+  weight: ["400", "500", "600"],
   display: "swap",
   variable: "--font-plex-mono",
 });
@@ -32,8 +32,8 @@ export const viewport: Viewport = {
   colorScheme: "light dark",
   // The situation strip's ink, so browser chrome continues it.
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#11151d" },
-    { media: "(prefers-color-scheme: dark)", color: "#06080c" },
+    { media: "(prefers-color-scheme: light)", color: "#121620" },
+    { media: "(prefers-color-scheme: dark)", color: "#0c0f15" },
   ],
 };
 

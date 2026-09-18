@@ -13,12 +13,13 @@ import {
 import { teamHref, teamsHref, useTeams } from "@/components/teams/team-scope";
 import { ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { EmptyState } from "@/components/ui/empty-state";
+import { EmptyNote, EmptyState } from "@/components/ui/empty-state";
 import { Field } from "@/components/ui/field";
 import { PageBody, PageHeader, Section } from "@/components/ui/page";
 import { Select } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
+import { linkClasses, quietLinkClasses } from "@/components/ui/link";
 import { ApiErrorCode, Permission } from "@/lib/api/contracts";
 import type {
   CreateServiceRequest,
@@ -34,6 +35,7 @@ import {
   criticalityOf,
   DEFAULT_CRITICALITY,
 } from "./criticality";
+import { CriticalityMark } from "./criticality-mark";
 import { serviceHref, useServices } from "./service-scope";
 
 export const SERVICE_NAME_TAKEN_MESSAGE =
@@ -160,7 +162,7 @@ function CreateServiceForm({ onCancel }: { onCancel: () => void }) {
             {canManageTeams && (
               <Link
                 href={teamsHref(organization.slug)}
-                className="text-sm font-medium text-accent-text underline-offset-2 hover:underline"
+                className={`text-sm ${linkClasses}`}
               >
                 Go to Teams
               </Link>
@@ -293,7 +295,9 @@ function ServiceList({
       {inUse.length > 0 ? (
         <ServiceTable label="Services" services={inUse} />
       ) : (
-        <p className="text-sm text-fg-muted">Every service is archived.</p>
+        <EmptyNote title="Every service is archived">
+          Archived services are listed below, kept for their incidents.
+        </EmptyNote>
       )}
       {archived.length > 0 && (
         <Section
@@ -319,13 +323,12 @@ function ServiceTable({
   const organization = useOrganization();
 
   return (
-    <Table label={label} density="compact">
+    <Table label={label}>
       <THead>
         <TR>
           <TH>Name</TH>
-          <TH>Owner team</TH>
+          <TH className="hidden sm:table-cell">Owner team</TH>
           <TH>Criticality</TH>
-          <TH className="hidden md:table-cell">Description</TH>
         </TR>
       </THead>
       <TBody>
@@ -334,22 +337,31 @@ function ServiceTable({
             <TD>
               <Link
                 href={serviceHref(organization.slug, service.slug)}
-                className="font-medium text-fg underline-offset-2 hover:text-accent-text hover:underline"
+                className={`font-medium text-fg ${quietLinkClasses}`}
               >
                 {service.name}
               </Link>
+              {/* What it is, as the name's second line, not a column of its own. */}
+              {service.description && (
+                <span className="block max-w-xl truncate text-sm text-fg-subtle">
+                  {service.description}
+                </span>
+              )}
+              {/* On narrow screens the owner folds under the name. */}
+              <span className="block truncate text-xs text-fg-muted sm:hidden">
+                {service.ownerTeam.name}
+              </span>
             </TD>
-            <TD>
+            <TD className="hidden sm:table-cell">
               <Link
                 href={teamHref(organization.slug, service.ownerTeam.slug)}
-                className="text-fg-muted underline-offset-2 hover:text-accent-text hover:underline"
+                className={`text-fg-muted ${quietLinkClasses}`}
               >
                 {service.ownerTeam.name}
               </Link>
             </TD>
-            <TD>{criticalityOf(service.criticality).label}</TD>
-            <TD kind="muted" className="hidden max-w-md truncate md:table-cell">
-              {service.description}
+            <TD>
+              <CriticalityMark criticality={service.criticality} />
             </TD>
           </TR>
         ))}
@@ -373,6 +385,7 @@ export function ServicesView() {
   return (
     <>
       <PageHeader
+        width="list"
         eyebrow={organization.name}
         title="Services"
         meta={services.data?.length}
@@ -384,7 +397,7 @@ export function ServicesView() {
           )
         }
       />
-      <PageBody>
+      <PageBody width="list">
         {canManage && creating && (
           <CreateServiceForm onCancel={() => setCreating(false)} />
         )}

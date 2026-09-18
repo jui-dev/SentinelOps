@@ -19,12 +19,13 @@ export function MembersView() {
   return (
     <>
       <PageHeader
+        width="list"
         eyebrow={organization.name}
         title="Members"
         meta={memberships.data?.length}
         description="Everyone with access to this organization. A person's role decides what they can change."
       />
-      <PageBody>
+      <PageBody width="list">
         <MembershipList />
         {(canInvite || canSeeInvitations) && (
           <Section
@@ -32,7 +33,8 @@ export function MembersView() {
             title="Invitations"
             description="Each invitation link works once and expires 7 days after it is created."
             spacing="loose"
-            className="border-t border-line pt-6"
+            // A wider gap than between sections: a separate part of the page.
+            className="mt-4"
           >
             <InviteMemberForm />
             <OpenInvitationList />

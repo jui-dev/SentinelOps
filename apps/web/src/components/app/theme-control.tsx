@@ -26,7 +26,7 @@ export function ThemeControl() {
   const preference = useThemePreference();
 
   return (
-    <fieldset className="flex items-center gap-px rounded-md border border-ink-line p-px">
+    <fieldset className="flex items-center gap-px rounded-md bg-ink-raised p-0.5">
       <legend className="sr-only">Theme</legend>
       {OPTIONS.map(({ value, label, Icon }) => (
         <label

@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { PageBody, PageHeader } from "@/components/ui/page";
 import { SettingRow } from "@/components/ui/setting-row";
+import { linkClasses } from "@/components/ui/link";
 import { ApiErrorCode, Permission } from "@/lib/api/contracts";
 import type { TeamResponse, UpdateTeamRequest } from "@/lib/api/contracts";
 import { deleteTeam, updateTeam } from "@/lib/api/endpoints";
@@ -194,7 +195,7 @@ function DeleteTeam() {
             another team before deleting this one.{" "}
             <Link
               href={teamHref(organization.slug, team.slug)}
-              className="font-medium text-accent-text underline-offset-2 hover:underline"
+              className={linkClasses}
             >
               See its services
             </Link>

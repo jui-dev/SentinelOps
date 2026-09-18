@@ -5,6 +5,7 @@ import { useState } from "react";
 
 import { Alert, ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { EmptyNote } from "@/components/ui/empty-state";
 import { Section } from "@/components/ui/page";
 import { Spinner } from "@/components/ui/spinner";
 import { Status } from "@/components/ui/status";
@@ -63,7 +64,7 @@ function InvitationRow({
   return (
     <TR>
       <TD className="font-medium">{invitation.email}</TD>
-      <TD>{formatRole(invitation.role)}</TD>
+      <TD kind="muted">{formatRole(invitation.role)}</TD>
       <TD>
         {invitation.status === "expired" ? (
           <Status tone="warning">Expired</Status>
@@ -122,10 +123,9 @@ function OpenInvitations({ canManage }: { canManage: boolean }) {
           <ErrorAlert error={revoke.error} />
         ))}
       {invitations.data.length === 0 ? (
-        <p className="text-sm text-fg-muted">
-          No open invitations. New invitations are listed here until they are
-          accepted or revoked.
-        </p>
+        <EmptyNote title="No open invitations">
+          New invitations are listed here until they are accepted or revoked.
+        </EmptyNote>
       ) : (
         <Table label="Open invitations">
           <THead>

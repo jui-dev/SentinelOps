@@ -17,6 +17,7 @@ import { Field } from "@/components/ui/field";
 import { PageBody, PageHeader, Section } from "@/components/ui/page";
 import { Spinner } from "@/components/ui/spinner";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
+import { quietLinkClasses } from "@/components/ui/link";
 import { ApiErrorCode, Permission } from "@/lib/api/contracts";
 import type { CreateTeamRequest, TeamResponse } from "@/lib/api/contracts";
 import { createTeam } from "@/lib/api/endpoints";
@@ -148,11 +149,10 @@ function TeamList({ onCreate }: { onCreate?: () => void }) {
   }
 
   return (
-    <Table label="Teams" density="compact">
+    <Table label="Teams">
       <THead>
         <TR>
           <TH>Name</TH>
-          <TH className="hidden md:table-cell">Description</TH>
           <TH align="end">Members</TH>
           <TH align="end">Services</TH>
         </TR>
@@ -163,18 +163,21 @@ function TeamList({ onCreate }: { onCreate?: () => void }) {
             <TD>
               <Link
                 href={teamHref(organization.slug, team.slug)}
-                className="font-medium text-fg underline-offset-2 hover:text-accent-text hover:underline"
+                className={`font-medium text-fg ${quietLinkClasses}`}
               >
                 {team.name}
               </Link>
+              {/* What it is for, as the name's second line. */}
+              {team.description && (
+                <span className="block max-w-xl truncate text-sm text-fg-subtle">
+                  {team.description}
+                </span>
+              )}
             </TD>
-            <TD kind="muted" className="hidden max-w-md truncate md:table-cell">
-              {team.description}
-            </TD>
-            <TD kind="data" align="end">
+            <TD kind="numeric" align="end">
               {team.memberCount}
             </TD>
-            <TD kind="data" align="end">
+            <TD kind="numeric" align="end">
               {team.serviceCount}
             </TD>
           </TR>
@@ -197,6 +200,7 @@ export function TeamsView() {
   return (
     <>
       <PageHeader
+        width="list"
         eyebrow={organization.name}
         title="Teams"
         meta={teams.data?.length}
@@ -208,7 +212,7 @@ export function TeamsView() {
           )
         }
       />
-      <PageBody>
+      <PageBody width="list">
         {canManage && creating && (
           <CreateTeamForm onCancel={() => setCreating(false)} />
         )}

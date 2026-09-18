@@ -43,7 +43,7 @@ export function MembershipList() {
             <TD>
               <span className="font-medium">{membership.user.name}</span>
               {membership.user.id === me.data?.id && (
-                <span className="label-caps ml-2 text-fg-subtle">You</span>
+                <span className="ml-2 text-xs text-fg-subtle">You</span>
               )}
               {/* On narrow screens the email folds under the name. */}
               <span className="block truncate text-xs text-fg-muted sm:hidden">
@@ -53,7 +53,7 @@ export function MembershipList() {
             <TD kind="muted" className="hidden sm:table-cell">
               {membership.user.email}
             </TD>
-            <TD>{formatRole(membership.role)}</TD>
+            <TD kind="muted">{formatRole(membership.role)}</TD>
             <TD kind="data" className="hidden sm:table-cell">
               <IsoDate value={membership.createdAt} />
             </TD>

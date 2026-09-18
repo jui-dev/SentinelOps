@@ -14,7 +14,9 @@ import { SituationStrip } from "./situation";
  *   │ rail │ main (the only thing that scrolls)│
  *   └──────┴───────────────────────────────────┘
  *
- * Below 1024px the rail moves into a drawer opened from the strip.
+ * The three layers are told apart by surface, not by rules: ink strip,
+ * then the rail, then the lighter workspace. Below 1024px the rail moves
+ * into a drawer opened from the strip.
  */
 export function WorkspaceShell({ children }: { children: ReactNode }) {
   const [navigationOpen, setNavigationOpen] = useState(false);
@@ -29,7 +31,9 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
         Skip to content
       </a>
       <SituationStrip onOpenNavigation={() => setNavigationOpen(true)} />
-      <div className="hidden min-h-0 border-r border-line lg:block">
+      {/* The edge is transparent: it shows only in forced-colours mode, where
+          the surfaces that separate rail from workspace are not drawn. */}
+      <div className="hidden min-h-0 border-r border-transparent forced-colors:border-[CanvasText] lg:block">
         <Rail />
       </div>
       <main

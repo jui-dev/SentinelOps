@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { PageBody, PageHeader } from "@/components/ui/page";
 import { PageSpinner } from "@/components/ui/spinner";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
+import { quietLinkClasses } from "@/components/ui/link";
 import { useCurrentUser } from "@/lib/auth/session-provider";
 
 import { formatRole } from "./format";
@@ -55,7 +56,7 @@ export function OrganizationPicker() {
                   <TD>
                     <Link
                       href={organizationPath(organization.slug)}
-                      className="font-medium text-fg underline-offset-2 hover:text-accent-text hover:underline"
+                      className={`font-medium text-fg ${quietLinkClasses}`}
                     >
                       {organization.name}
                     </Link>

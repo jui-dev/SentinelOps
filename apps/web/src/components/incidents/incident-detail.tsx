@@ -10,7 +10,7 @@ import {
   useCan,
   useOrganization,
 } from "@/components/organizations/organization-scope";
-import { criticalityOf } from "@/components/services/criticality";
+import { CriticalityMark } from "@/components/services/criticality-mark";
 import { serviceHref } from "@/components/services/service-scope";
 import { teamHref, useTeams } from "@/components/teams/team-scope";
 import { Alert, ErrorAlert } from "@/components/ui/alert";
@@ -22,6 +22,7 @@ import { RecordList, RecordRow } from "@/components/ui/record";
 import { Select } from "@/components/ui/select";
 import { PageSpinner, Spinner } from "@/components/ui/spinner";
 import { Duration, IsoDate, LocalDateTime } from "@/components/ui/timestamp";
+import { linkClasses, quietLinkClasses } from "@/components/ui/link";
 import { ApiErrorCode, Permission } from "@/lib/api/contracts";
 import type {
   IncidentResponse,
@@ -44,11 +45,11 @@ import {
   incidentKey,
   SeverityMark,
   severityOf,
+  StatusMark,
   statusOf,
 } from "./severity";
 
-const linkClasses =
-  "font-medium text-fg underline-offset-2 hover:text-accent-text hover:underline";
+const entityLinkClasses = `font-medium text-fg ${quietLinkClasses}`;
 
 export const RESOLVED_MEANWHILE_MESSAGE =
   "This incident was resolved by someone else, so it can no longer be changed. It has been refreshed.";
@@ -322,7 +323,7 @@ function IncidentNotFound({ orgSlug }: { orgSlug: string }) {
         action={
           <Link
             href={incidentsHref(orgSlug)}
-            className="text-sm font-medium text-accent-text underline-offset-2 hover:underline"
+            className={`text-sm ${linkClasses}`}
           >
             All incidents
           </Link>
@@ -340,18 +341,23 @@ function IncidentPage({ incident }: { incident: IncidentResponse }) {
   const resolved = incident.status === "RESOLVED";
   const severity = severityOf(incident.severity);
   const status = statusOf(incident.status);
-  const criticality = criticalityOf(incident.service.criticality);
 
   return (
     <>
       <PageHeader
-        eyebrow={`${organization.name} · ${incidentKey(incident.number)}`}
+        eyebrow={
+          <>
+            {organization.name} ·{" "}
+            <span className="data">{incidentKey(incident.number)}</span>
+          </>
+        }
         title={incident.title}
+        wrapTitle
         description={
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <SeverityMark severity={incident.severity} label />
             <span aria-hidden="true">·</span>
-            <span className="font-medium text-fg">{status.label}</span>
+            <StatusMark status={incident.status} className="font-medium text-fg" />
           </span>
         }
         actions={canManage && !resolved && <Resolve incident={incident} />}
@@ -377,7 +383,7 @@ function IncidentPage({ incident }: { incident: IncidentResponse }) {
               )}
             </RecordRow>
             <RecordRow label="Status">
-              <span className="font-medium">{status.label}</span>
+              <StatusMark status={incident.status} className="font-medium" />
               {status.definition && (
                 <span className="mt-0.5 block text-sm text-fg-muted">
                   {status.definition}
@@ -387,7 +393,7 @@ function IncidentPage({ incident }: { incident: IncidentResponse }) {
             <RecordRow label="Service">
               <Link
                 href={serviceHref(organization.slug, incident.service.slug)}
-                className={linkClasses}
+                className={entityLinkClasses}
               >
                 {incident.service.name}
               </Link>
@@ -398,13 +404,13 @@ function IncidentPage({ incident }: { incident: IncidentResponse }) {
             <RecordRow label="Responsible team">
               <Link
                 href={teamHref(organization.slug, incident.team.slug)}
-                className={linkClasses}
+                className={entityLinkClasses}
               >
                 {incident.team.name}
               </Link>
             </RecordRow>
             <RecordRow label="Service criticality">
-              {criticality.label}
+              <CriticalityMark criticality={incident.service.criticality} />
             </RecordRow>
             <RecordRow label="Declared by">{incident.createdBy.name}</RecordRow>
             <RecordRow label="Declared">

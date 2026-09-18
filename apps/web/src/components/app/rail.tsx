@@ -40,22 +40,27 @@ function RailLink({
       href={href}
       aria-current={current ? "page" : undefined}
       className={cx(
-        "group relative flex h-8 items-center gap-2.5 rounded-md px-2.5 text-base transition-colors duration-(--duration-fast)",
+        // Items run from the rail's edge: the current one grows out of it.
+        "group relative flex h-8 items-center gap-2.5 rounded-r-md pr-2.5 pl-5 text-base transition-colors duration-(--duration-fast) focus-visible:-outline-offset-2",
         current
-          ? "bg-selected font-medium text-fg"
-          : "text-fg-muted hover:bg-hover hover:text-fg",
+          ? "bg-nav-selected font-medium text-fg"
+          : "text-fg-muted hover:bg-rail-hover hover:text-fg",
       )}
     >
-      {/* The current place: a bar, a tint, and weight — not colour alone. */}
+      {/*
+       * The current place: an edge, a fill fading from it, and weight —
+       * not colour alone.
+       */}
       <span
         aria-hidden="true"
         className={cx(
-          "absolute inset-y-1.5 -left-2 w-0.5 rounded-full bg-accent forced-color-adjust-none forced-colors:bg-[Highlight]",
+          "absolute inset-y-0 left-0 w-0.5 bg-accent-mark forced-color-adjust-none forced-colors:bg-[Highlight]",
           !current && "hidden",
         )}
       />
       <Icon
         aria-hidden="true"
+        strokeWidth={1.75}
         className={cx(
           "size-4 shrink-0",
           current ? "text-accent-text" : "text-fg-subtle group-hover:text-fg-muted",
@@ -88,13 +93,13 @@ function SectionLinks({
   return (
     <div className="flex flex-col gap-1">
       {section.label && (
-        <h2 id={headingId} className="label-caps px-2.5 pb-1 text-fg-subtle">
+        <h2 id={headingId} className="label-caps pr-2.5 pb-1.5 pl-5 text-fg-subtle">
           {section.label}
         </h2>
       )}
       <ul
         aria-labelledby={section.label ? headingId : undefined}
-        className="flex flex-col gap-px"
+        className="flex flex-col gap-0.5"
       >
         {items.map((item) => {
           const href = item.href(slug);
@@ -177,12 +182,12 @@ function Account({ role }: { role?: string }) {
   };
 
   return (
-    <div className="flex items-center gap-2.5 border-t border-line px-3 py-3">
+    <div className="mt-2 flex items-center gap-2.5 pt-2 pr-3 pb-4 pl-4">
       {me.data && (
         <>
           <span
             aria-hidden="true"
-            className="grid size-7 shrink-0 place-items-center rounded-md border border-line bg-surface font-mono text-2xs font-medium text-fg-muted"
+            className="grid size-7 shrink-0 place-items-center rounded-md bg-selected text-2xs font-semibold text-accent-text"
           >
             {initialsOf(me.data.name)}
           </span>
@@ -204,7 +209,7 @@ function Account({ role }: { role?: string }) {
         onClick={onLogout}
         disabled={signingOut}
         title="Log out"
-        className="ml-auto grid size-7 shrink-0 place-items-center rounded-md text-fg-subtle transition-colors duration-(--duration-fast) hover:bg-hover hover:text-fg disabled:text-fg-disabled"
+        className="ml-auto grid size-7 shrink-0 place-items-center rounded-md text-fg-subtle transition-colors duration-(--duration-fast) hover:bg-rail-hover hover:text-fg disabled:text-fg-disabled"
       >
         <LogOut aria-hidden="true" className="size-4" />
         <span className="sr-only">{signingOut ? "Logging out…" : "Log out"}</span>
@@ -249,19 +254,19 @@ export function Rail() {
       : null;
 
   return (
-    <nav aria-label="Primary" className="flex h-full min-h-0 flex-col bg-chrome">
+    <nav aria-label="Primary" className="flex h-full min-h-0 flex-col bg-rail">
       {me.data && me.data.memberships.length > 1 && (
-        <div className="border-b border-line px-3 py-3">
+        <div className="pt-4 pr-3 pl-5">
           <OrganizationSwitcher
             memberships={me.data.memberships}
             current={membership}
           />
         </div>
       )}
-      <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-3 py-4">
+      <div className="flex min-h-0 flex-1 flex-col gap-7 overflow-y-auto py-5 pr-3">
         {sections("main")}
         {!orgSlug && (
-          <ul className="flex flex-col gap-px">
+          <ul className="flex flex-col gap-0.5">
             <li>
               <RailLink
                 href="/orgs"
@@ -273,7 +278,7 @@ export function Rail() {
           </ul>
         )}
       </div>
-      <div className="flex flex-col gap-1 px-3 pb-3">{sections("footer")}</div>
+      <div className="flex flex-col gap-1 pr-3 pb-2">{sections("footer")}</div>
       <Account role={membership?.role} />
     </nav>
   );

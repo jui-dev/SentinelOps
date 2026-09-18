@@ -11,15 +11,18 @@ import type {
 import { cx } from "./cx";
 
 /**
- * The default way to show a list of things. Horizontal rules only, no
- * vertical lines, no rounded outer box: the page's structure holds it.
+ * The default way to show a list of things: its own quiet surface on the
+ * workspace, a header on a surface of its own with an edge beneath it, and
+ * soft rules between rows — none after the last, and no vertical lines.
+ * Columns come from alignment and padding, not a grid.
  *
- * Density follows urgency. `default` suits administrative lists; `compact`
- * is for operational lists that must show many rows at once.
+ * The variant follows urgency. `reference` is for configuration lists —
+ * members, teams, services — read calmly; `operational` is for lists that
+ * are scanned under pressure and must show many rows at once — incidents.
  */
-export type TableDensity = "compact" | "default";
+export type TableVariant = "reference" | "operational";
 
-const DensityContext = createContext<TableDensity>("default");
+const VariantContext = createContext<TableVariant>("reference");
 
 /** Whether the element's content is wider than the element. */
 const useOverflowing = () => {
@@ -46,20 +49,30 @@ const useOverflowing = () => {
 
 export function Table({
   label,
-  density = "default",
+  variant = "reference",
+  stickyHeader = false,
+  fixed = false,
   children,
   className,
 }: {
   /** The table's accessible name, and the scroll region's. */
   label: string;
-  density?: TableDensity;
+  variant?: TableVariant;
+  /**
+   * Keeps the column headers in view while the page scrolls. Only while the
+   * table fits its width: a table that scrolls sideways has its own scroll
+   * container, which a sticky header cannot escape.
+   */
+  stickyHeader?: boolean;
+  /** Fixed layout: widths from a <colgroup>, so truncation is exact. */
+  fixed?: boolean;
   children: ReactNode;
   className?: string;
 }) {
   const { ref, overflowing } = useOverflowing();
 
   return (
-    <DensityContext.Provider value={density}>
+    <VariantContext.Provider value={variant}>
       {/*
        * A table wider than the screen scrolls sideways. Only then is its
        * container a focusable, named region, so a keyboard user can scroll
@@ -67,28 +80,39 @@ export function Table({
        */}
       <div
         ref={ref}
-        className={cx("-mx-3 overflow-x-auto", className)}
+        className={cx(
+          "rounded-md border border-line-subtle bg-surface",
+          stickyHeader && !overflowing
+            ? "overflow-x-visible"
+            : "overflow-x-auto",
+          className,
+        )}
         {...(overflowing
           ? { role: "region", "aria-label": label, tabIndex: 0 }
           : {})}
       >
+        {/*
+         * Separate borders, drawn on the cells: a collapsed border belongs
+         * to the table and stays behind when a sticky header moves.
+         */}
         <table
           aria-label={label}
-          className="w-full border-collapse border-t border-line-strong text-sm"
+          data-sticky-header={stickyHeader || undefined}
+          className={cx(
+            "group/table w-full border-separate border-spacing-0",
+            variant === "operational" ? "text-sm" : "text-base",
+            fixed && "table-fixed",
+          )}
         >
           {children}
         </table>
       </div>
-    </DensityContext.Provider>
+    </VariantContext.Provider>
   );
 }
 
 export function THead({ children }: { children: ReactNode }) {
-  return (
-    <thead className="border-b border-line text-left">
-      {children}
-    </thead>
-  );
+  return <thead className="text-left">{children}</thead>;
 }
 
 export function TBody({ children }: { children: ReactNode }) {
@@ -96,19 +120,36 @@ export function TBody({ children }: { children: ReactNode }) {
 }
 
 export function TR({
+  interactive = false,
   className,
   ...props
-}: HTMLAttributes<HTMLTableRowElement>) {
+}: HTMLAttributes<HTMLTableRowElement> & {
+  /**
+   * The row is one link: its primary link stretches over the whole row
+   * (give that link `stretchedLinkClasses`), and the row shows the link's
+   * focus. Still one tab stop, named by the link.
+   */
+  interactive?: boolean;
+}) {
   return (
     <tr
       className={cx(
-        "border-b border-line-subtle transition-colors duration-(--duration-fast) [tbody_&]:hover:bg-hover",
+        "group/row",
+        interactive &&
+          "relative has-[a:focus-visible]:outline-2 has-[a:focus-visible]:-outline-offset-2 has-[a:focus-visible]:outline-focus",
         className,
       )}
       {...props}
     />
   );
 }
+
+/**
+ * For the one link in an `interactive` row: it covers the row, so the whole
+ * row is its target, and leaves drawing focus to the row.
+ */
+export const stretchedLinkClasses =
+  "after:absolute after:inset-0 after:content-[''] focus-visible:outline-none";
 
 type Align = "start" | "end";
 
@@ -121,7 +162,11 @@ export function TH({
     <th
       scope="col"
       className={cx(
-        "label-caps h-8 px-3 align-middle whitespace-nowrap text-fg-subtle",
+        // Its own surface and an edge beneath: a header at a glance, and
+        // strong enough to trace any value up to its column.
+        "h-9 border-b border-line bg-thead px-3 align-middle sm:px-4 text-xs font-semibold tracking-[0.01em] whitespace-nowrap text-fg-muted first:rounded-tl-sm last:rounded-tr-sm",
+        // Sticky, it keeps its surface and edge over the rows beneath.
+        "group-data-sticky-header/table:sticky group-data-sticky-header/table:top-0 group-data-sticky-header/table:z-10",
         align === "end" ? "text-right" : "text-left",
         className,
       )}
@@ -137,21 +182,25 @@ export function TD({
   ...props
 }: Omit<TdHTMLAttributes<HTMLTableCellElement>, "align"> & {
   /**
-   * `data` for identifiers, dates, and numbers (mono, tabular); `muted` for
-   * secondary text; `actions` for a trailing cell of buttons.
+   * `data` for identifiers, dates, and durations (mono, tabular); `numeric`
+   * for counts (body face, aligned figures); `muted` for secondary text;
+   * `actions` for a trailing cell of buttons.
    */
-  kind?: "text" | "muted" | "data" | "actions";
+  kind?: "text" | "muted" | "data" | "numeric" | "actions";
   align?: Align;
 }) {
-  const density = useContext(DensityContext);
+  const variant = useContext(VariantContext);
 
   return (
     <td
       className={cx(
-        "px-3 align-middle",
-        density === "compact" ? "h-9" : "h-11",
+        "border-b border-line-subtle px-3 align-middle transition-colors sm:px-4 duration-(--duration-fast) group-last/row:border-b-0 group-hover/row:bg-hover",
+        // The last row's hover fill keeps to the surface's rounded corners.
+        "group-last/row:first:rounded-bl-sm group-last/row:last:rounded-br-sm",
+        variant === "operational" ? "h-11" : "h-12.5",
         kind === "muted" && "text-fg-muted",
         kind === "data" && "data whitespace-nowrap text-fg-muted",
+        kind === "numeric" && "numeric whitespace-nowrap text-fg-muted",
         kind === "actions" && "w-px whitespace-nowrap",
         align === "end" || kind === "actions" ? "text-right" : "text-left",
         className,
@@ -171,7 +220,7 @@ export function TableEmpty({
 }) {
   return (
     <tr>
-      <td colSpan={columns} className="px-3 py-6 text-sm text-fg-muted">
+      <td colSpan={columns} className="px-3 py-6 text-sm text-fg-muted sm:px-4">
         {children}
       </td>
     </tr>

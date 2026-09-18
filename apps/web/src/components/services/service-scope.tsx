@@ -12,6 +12,7 @@ import { ErrorAlert } from "@/components/ui/alert";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageBody } from "@/components/ui/page";
 import { PageSpinner } from "@/components/ui/spinner";
+import { linkClasses } from "@/components/ui/link";
 import type { ServiceResponse } from "@/lib/api/contracts";
 import { listServices } from "@/lib/api/endpoints";
 import { queryKeys } from "@/lib/api/query-keys";
@@ -59,7 +60,7 @@ export function ServiceNotFound({ orgSlug }: { orgSlug: string }) {
         action={
           <Link
             href={servicesHref(orgSlug)}
-            className="text-sm font-medium text-accent-text underline-offset-2 hover:underline"
+            className={`text-sm ${linkClasses}`}
           >
             All services
           </Link>

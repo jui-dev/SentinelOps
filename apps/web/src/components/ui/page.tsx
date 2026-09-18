@@ -2,10 +2,13 @@ import type { ReactNode } from "react";
 
 import { cx } from "./cx";
 
+/** The page's side padding, shared by its header and body so they align. */
+const gutter = "px-4 sm:px-6 lg:px-8 2xl:px-10";
+
 /**
  * The top of a page: where you are (eyebrow), what this is (the page's one
- * <h1>), and what you can do here. Closed by a full-width rule rather than
- * boxed.
+ * <h1>), and what you can do here. No rule and no band: type and space set
+ * it apart, and it flows into the content beneath.
  */
 export function PageHeader({
   eyebrow,
@@ -13,6 +16,8 @@ export function PageHeader({
   meta,
   description,
   actions,
+  wrapTitle = false,
+  width = "full",
 }: {
   /** Context above the title — the organization, usually. */
   eyebrow?: ReactNode;
@@ -21,22 +26,44 @@ export function PageHeader({
   meta?: ReactNode;
   description?: ReactNode;
   actions?: ReactNode;
+  /** Up to two lines rather than one, for long titles such as an incident's. */
+  wrapTitle?: boolean;
+  /** The same as the page body's, so the actions align with the content. */
+  width?: PageWidth;
 }) {
   return (
-    <header className="border-b border-line bg-canvas">
-      <div className="flex flex-wrap items-end gap-x-6 gap-y-3 px-4 pt-6 pb-5 sm:px-6 xl:px-8">
-        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+    <header>
+      <div
+        className={cx(
+          "flex flex-wrap items-end gap-x-6 gap-y-3 pt-8",
+          gutter,
+          widths[width],
+        )}
+      >
+        {/* Wide enough to wrap the actions beneath it on a phone. */}
+        <div className="flex min-w-0 flex-1 basis-80 flex-col gap-1">
           {eyebrow && (
-            <p className="label-caps truncate text-fg-subtle">{eyebrow}</p>
+            <p className="eyebrow truncate text-fg-muted">{eyebrow}</p>
           )}
           <div className="flex min-w-0 items-baseline gap-3">
-            <h1 className="truncate text-xl font-semibold tracking-[-0.01em] text-fg">
+            <h1
+              className={cx(
+                "text-[1.375rem] leading-7 font-semibold tracking-[-0.015em] text-fg",
+                wrapTitle ? "line-clamp-2" : "truncate",
+              )}
+            >
               {title}
             </h1>
-            {meta && <span className="data shrink-0 text-fg-subtle">{meta}</span>}
+            {meta != null && (
+              <span className="numeric shrink-0 text-sm text-fg-subtle">
+                {meta}
+              </span>
+            )}
           </div>
           {description && (
-            <p className="max-w-2xl text-sm text-fg-muted">{description}</p>
+            <div className="mt-0.5 max-w-[68ch] text-base text-fg-muted">
+              {description}
+            </div>
           )}
         </div>
         {actions && <div className="flex items-center gap-2">{actions}</div>}
@@ -46,11 +73,15 @@ export function PageHeader({
 }
 
 const widths = {
-  /** Lists and tables: the workspace, capped for very wide screens. */
+  /** Wide operational content — incidents, the overview — capped for very wide screens. */
   full: "max-w-[90rem]",
+  /** A reference list of a few columns: proportioned, however few its rows. */
+  list: "max-w-[72rem]",
   /** Settings and forms: a readable measure. */
   form: "max-w-3xl",
 };
+
+export type PageWidth = keyof typeof widths;
 
 /**
  * The page's content, padded to align with the header. `className` is for
@@ -61,14 +92,15 @@ export function PageBody({
   className,
   children,
 }: {
-  width?: keyof typeof widths;
+  width?: PageWidth;
   className?: string;
   children: ReactNode;
 }) {
   return (
     <div
       className={cx(
-        "flex flex-col gap-10 px-4 py-6 sm:px-6 xl:px-8",
+        "flex flex-col gap-10 pt-6 pb-10",
+        gutter,
         widths[width],
         className,
       )}
@@ -79,8 +111,8 @@ export function PageBody({
 }
 
 /**
- * A titled part of a page. Separated from its neighbours by space and a
- * rule under its heading, not by a box.
+ * A titled part of a page. Separated from its neighbours by space and its
+ * heading, not by a box or a rule.
  */
 export function Section({
   title,
@@ -112,7 +144,7 @@ export function Section({
       aria-labelledby={id ? `${id}-title` : undefined}
       className={cx(
         "flex flex-col",
-        spacing === "loose" ? "gap-6" : "gap-3",
+        spacing === "loose" ? "gap-6" : "gap-4",
         className,
       )}
     >
@@ -128,7 +160,9 @@ export function Section({
             >
               {title}
             </Heading>
-            {meta && <span className="data text-fg-subtle">{meta}</span>}
+            {meta != null && (
+              <span className="numeric text-sm text-fg-subtle">{meta}</span>
+            )}
           </div>
           {description && (
             <p className="max-w-2xl text-sm text-fg-muted">{description}</p>

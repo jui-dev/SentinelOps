@@ -59,32 +59,44 @@ const pairs: Array<[foreground: string, background: string, minimum: number]> = 
 const each = (fgs: string[], bgs: string[], minimum: number) =>
   fgs.forEach((fg) => bgs.forEach((bg) => pairs.push([fg, bg, minimum])));
 
-// Body, secondary, and metadata text on every surface text sits on.
-each(
-  ["fg", "fg-muted", "fg-subtle"],
-  ["canvas", "surface", "chrome", "field", "sunken", "hover"],
-  TEXT,
-);
-// The current rail item.
+// Body, secondary, and metadata text on every surface text sits on: the
+// workspace and what sits on it, and every stop of the rail's gradient.
+const RAIL = ["rail-top", "rail-mid", "rail-bottom", "rail-hover"];
+const WORKSPACE = [
+  "canvas",
+  "surface",
+  "thead",
+  "field",
+  "sunken",
+  "hover",
+];
+
+each(["fg", "fg-muted", "fg-subtle"], [...WORKSPACE, ...RAIL, "chrome"], TEXT);
+// The current rail item, and the account's initials, on its strongest fill.
 each(["fg", "accent-text"], ["selected"], TEXT);
-// Links.
-each(["accent-text"], ["canvas", "surface", "chrome", "field"], TEXT);
+// Links, and the current rail item's icon.
+each(["accent-text"], ["canvas", "surface", "field", ...RAIL], TEXT);
 // Primary buttons in every state.
 each(["on-accent"], ["accent", "accent-hover", "accent-pressed"], TEXT);
+// The primary button's edge defines it on every surface it is placed on —
+// a design-system rule: WCAG 1.4.11 does not require a boundary on a
+// button its text already identifies.
+each(["accent-rim"], ["canvas", "surface", "sunken"], UI);
 // Feedback: tone text on its tint and on plain surfaces; body text in alerts.
 for (const tone of ["danger", "warning", "success", "info"]) {
   each([`${tone}-text`], [`${tone}-subtle`, "canvas", "surface", "field"], TEXT);
   each(["fg", "fg-muted"], [`${tone}-subtle`], TEXT);
 }
 // The situation strip.
-each(["ink-fg", "ink-muted"], ["ink", "ink-hover"], TEXT);
-each(["ink-accent"], ["ink"], UI);
+each(["ink-fg", "ink-muted"], ["ink", "ink-raised", "ink-hover"], TEXT);
+each(["ink-accent"], ["ink", "ink-raised"], UI);
 // Control boundaries, focus, and state marks.
-each(["line-control"], ["field", "canvas", "surface"], UI);
-each(["focus"], ["canvas", "surface", "chrome", "field"], UI);
-each(["accent"], ["selected", "chrome"], UI);
+each(["line-control"], ["field", "canvas", "surface", "sunken"], UI);
+each(["focus"], [...WORKSPACE, ...RAIL, "selected"], UI);
+// The current rail item's edge, on its fill and on the rail around it.
+each(["accent-mark"], ["selected", ...RAIL], UI);
 each(["danger-solid"], ["field"], UI);
-// Reserved signal colours must already work as marks on every surface.
+// Signal colours work as marks on every surface they are drawn on.
 each(
   [
     "signal-critical",
@@ -94,7 +106,9 @@ each(
     "signal-advisory",
     "signal-inactive",
   ],
-  ["canvas", "surface", "chrome"],
+  // `hover`: a hovered incident row keeps its severity mark legible;
+  // `sunken`: the all-clear mark in an empty list.
+  ["canvas", "surface", "hover", "sunken"],
   UI,
 );
 

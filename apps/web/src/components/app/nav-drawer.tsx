@@ -62,15 +62,15 @@ export function NavDrawer({ onClose }: { onClose: () => void }) {
       aria-label="Navigation"
       onClose={onClose}
       onClick={onClick}
-      className="fixed inset-y-0 left-0 m-0 h-dvh max-h-none w-[min(18rem,85vw)] max-w-none border-r border-line bg-chrome p-0 text-fg shadow-overlay backdrop:bg-scrim"
+      className="fixed inset-y-0 left-0 m-0 h-dvh max-h-none w-[min(18rem,85vw)] max-w-none bg-chrome p-0 text-fg shadow-overlay backdrop:bg-scrim"
     >
       <div className="flex h-full flex-col">
-        <div className="flex h-strip shrink-0 items-center justify-between border-b border-line pr-2 pl-4">
+        <div className="flex h-strip shrink-0 items-center justify-between pr-2 pl-4">
           <span className="label-caps text-fg-subtle">Navigation</span>
           <button
             type="button"
             onClick={onClose}
-            className="grid size-7 place-items-center rounded-md text-fg-subtle hover:bg-hover hover:text-fg"
+            className="grid size-7 place-items-center rounded-md text-fg-subtle hover:bg-rail-hover hover:text-fg"
           >
             <X aria-hidden="true" className="size-4" />
             <span className="sr-only">Close navigation</span>

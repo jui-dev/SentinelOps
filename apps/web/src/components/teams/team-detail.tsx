@@ -6,7 +6,7 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 
 import { useMemberships } from "@/components/organizations/membership-list";
-import { criticalityOf } from "@/components/services/criticality";
+import { CriticalityMark } from "@/components/services/criticality-mark";
 import { serviceHref, useServices } from "@/components/services/service-scope";
 import {
   useCan,
@@ -14,11 +14,13 @@ import {
 } from "@/components/organizations/organization-scope";
 import { Alert, ErrorAlert } from "@/components/ui/alert";
 import { Button, buttonClasses } from "@/components/ui/button";
+import { EmptyNote } from "@/components/ui/empty-state";
 import { PageBody, PageHeader, Section } from "@/components/ui/page";
 import { Select } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { IsoDate } from "@/components/ui/timestamp";
+import { quietLinkClasses } from "@/components/ui/link";
 import { ApiErrorCode, Permission } from "@/lib/api/contracts";
 import type { TeamMemberResponse } from "@/lib/api/contracts";
 import {
@@ -181,7 +183,9 @@ function MemberList({
           <ErrorAlert error={remove.error} />
         ))}
       {members.length === 0 ? (
-        <p className="text-sm text-fg-muted">No one is on this team yet.</p>
+        <EmptyNote title="No one is on this team yet">
+          Members added to the team are listed here.
+        </EmptyNote>
       ) : (
         <Table label="Team members">
           <THead>
@@ -276,7 +280,9 @@ function OwnedServices() {
       ) : !owned ? (
         <Spinner label="Loading services…" />
       ) : owned.length === 0 ? (
-        <p className="text-sm text-fg-muted">This team owns no services.</p>
+        <EmptyNote title="This team owns no services">
+          A service names its owner team when it is created or edited.
+        </EmptyNote>
       ) : (
         <Table label="Services owned by this team">
           <THead>
@@ -291,7 +297,7 @@ function OwnedServices() {
                 <TD>
                   <Link
                     href={serviceHref(organization.slug, service.slug)}
-                    className="font-medium text-fg underline-offset-2 hover:text-accent-text hover:underline"
+                    className={`font-medium text-fg ${quietLinkClasses}`}
                   >
                     {service.name}
                   </Link>
@@ -299,7 +305,9 @@ function OwnedServices() {
                     <span className="text-fg-muted"> (archived)</span>
                   )}
                 </TD>
-                <TD>{criticalityOf(service.criticality).label}</TD>
+                <TD>
+                  <CriticalityMark criticality={service.criticality} />
+                </TD>
               </TR>
             ))}
           </TBody>
@@ -319,6 +327,7 @@ export function TeamDetail() {
   return (
     <>
       <PageHeader
+        width="list"
         eyebrow={organization.name}
         title={team.name}
         description={team.description ?? undefined}
@@ -333,7 +342,7 @@ export function TeamDetail() {
           )
         }
       />
-      <PageBody>
+      <PageBody width="list">
         <Members canManage={canManage} />
         {canReadServices && <OwnedServices />}
       </PageBody>

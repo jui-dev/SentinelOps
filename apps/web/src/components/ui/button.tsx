@@ -9,12 +9,13 @@ const base =
   "inline-flex shrink-0 select-none items-center justify-center gap-1.5 whitespace-nowrap rounded-md font-medium transition-colors duration-(--duration-fast) ease-(--ease-standard) disabled:cursor-not-allowed";
 
 const variants: Record<ButtonVariant, string> = {
-  // The transparent border becomes visible in forced-colours mode, where the
-  // fill is removed and would otherwise leave bare text.
+  // Ink-indigo fill; a muted 1px edge carries its boundary on the dark
+  // workspace (and shows in forced-colours mode, where the fill is
+  // removed). A faint top light gives it body; pressed, it sinks.
   primary:
-    "border border-transparent bg-accent text-on-accent shadow-control hover:bg-accent-hover active:bg-accent-pressed disabled:bg-sunken disabled:text-fg-disabled disabled:shadow-none",
+    "border border-accent-rim bg-accent text-on-accent shadow-[inset_0_1px_0_rgb(255_255_255/0.08),inset_0_-1px_0_rgb(0_0_0/0.25)] hover:bg-accent-hover active:bg-accent-pressed active:shadow-[inset_0_1px_2px_rgb(0_0_0/0.35)] disabled:border-transparent disabled:bg-sunken disabled:text-fg-disabled disabled:shadow-none",
   secondary:
-    "border border-line-strong bg-field text-fg shadow-control hover:border-line-control hover:bg-hover active:bg-sunken disabled:border-line disabled:bg-field disabled:text-fg-disabled disabled:shadow-none",
+    "border border-line-strong bg-surface text-fg shadow-control hover:border-line-control hover:bg-hover active:bg-sunken disabled:border-line disabled:bg-surface disabled:text-fg-disabled disabled:shadow-none",
   quiet:
     "text-fg-muted hover:bg-hover hover:text-fg active:bg-sunken disabled:bg-transparent disabled:text-fg-disabled",
   // Outlined on purpose: in a dense table a solid red block shouts. A solid

@@ -9,6 +9,7 @@ import { Alert, ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { PageSpinner } from "@/components/ui/spinner";
+import { linkClasses } from "@/components/ui/link";
 import { ApiErrorCode } from "@/lib/api/contracts";
 import { fieldErrorsOf, isApiError } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session-provider";
@@ -130,9 +131,9 @@ export function LoginForm() {
       <Button type="submit" size="lg" disabled={submitting}>
         {submitting ? "Logging in…" : "Log in"}
       </Button>
-      <p className="border-t border-line-subtle pt-4 text-sm text-fg-muted">
+      <p className="pt-2 text-sm text-fg-muted">
         New to SentinelOps?{" "}
-        <Link href={registerHref} className="font-medium text-accent-text underline-offset-2 hover:underline">
+        <Link href={registerHref} className={linkClasses}>
           Create an organization
         </Link>
       </p>

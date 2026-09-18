@@ -27,7 +27,7 @@ export function AuthFrame({
           <div className="rounded-lg border border-line bg-surface px-5 py-6 sm:px-7 sm:py-7">
             {children}
           </div>
-          <p className="label-caps text-center text-fg-subtle">
+          <p className="text-center text-xs text-fg-subtle">
             Incident &amp; operations management
           </p>
         </div>

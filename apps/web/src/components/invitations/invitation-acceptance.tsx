@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs } from "@/components/ui/tabs";
+import { linkClasses } from "@/components/ui/link";
 import { ApiErrorCode } from "@/lib/api/contracts";
 import type { InvitationLookupResponse } from "@/lib/api/contracts";
 import { acceptInvitation, lookupInvitation } from "@/lib/api/endpoints";
@@ -97,7 +98,7 @@ function InvalidInvitation() {
         title="Invitation not available"
         description="This invitation link is invalid, has expired, or is no longer active. Ask the person who invited you for a new link."
       />
-      <Link href="/" className="text-sm font-medium text-accent-text underline-offset-2 hover:underline">
+      <Link href="/" className={`text-sm ${linkClasses}`}>
         Go to SentinelOps
       </Link>
     </div>
@@ -114,7 +115,7 @@ function Offer({
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-1">
-        <p className="label-caps text-fg-subtle">Invitation</p>
+        <p className="eyebrow text-fg-subtle">Invitation</p>
         <h1 className="text-xl font-semibold tracking-[-0.01em] text-fg">
           Join {invitation.organization.name}
         </h1>
@@ -376,7 +377,7 @@ function Join({
         You are already a member of {invitation.organization.name}.{" "}
         <Link
           href={organizationHref(invitation)}
-          className="font-medium text-accent-text underline-offset-2 hover:underline"
+          className={linkClasses}
         >
           Open it
         </Link>

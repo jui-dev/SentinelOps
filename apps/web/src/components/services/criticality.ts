@@ -5,9 +5,10 @@ import type { ServiceCriticality } from "@/lib/api/contracts";
  * makes each one mean the same thing in any organization.
  *
  * Criticality is a classification people choose, not an observed state, so it
- * is shown as plain words — never with the signal colours or `Status` glyphs,
- * which are reserved for what SentinelOps observes. The order here is the
- * order a picker offers them in; nothing sorts services by it.
+ * never takes the signal colours or `Status` glyphs, which are reserved for
+ * what SentinelOps observes; it is drawn in neutral ink by `CriticalityMark`
+ * (criticality-mark.tsx). The order here is the order a picker offers them
+ * in; nothing sorts services by it.
  */
 export const CRITICALITY_LEVELS: readonly {
   value: ServiceCriticality;

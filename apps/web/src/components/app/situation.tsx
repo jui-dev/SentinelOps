@@ -34,7 +34,7 @@ export const useSituation = (): Situation => useContext(SituationContext);
 
 /** Colours per level. Each future level adds its band here. */
 const LEVEL_STYLES: Record<SituationLevel, string> = {
-  neutral: "border-ink-line bg-ink text-ink-fg",
+  neutral: "bg-ink text-ink-fg",
 };
 
 const pad = (value: number) => String(value).padStart(2, "0");
@@ -49,7 +49,7 @@ function UtcClock() {
 
   return (
     <p className="hidden items-baseline gap-1.5 sm:flex">
-      <span className="label-caps text-ink-muted">UTC</span>
+      <span className="data text-ink-muted">UTC</span>
       <time dateTime={now.toISOString()} className="data text-ink-fg">
         {pad(now.getUTCHours())}:{pad(now.getUTCMinutes())}
       </time>
@@ -66,7 +66,7 @@ export function StripFrame({
   trailing,
 }: {
   level?: SituationLevel;
-  /** Sizes and rules the wordmark's cell to sit over the navigation rail. */
+  /** Sizes the wordmark's cell to sit over the navigation rail. */
   alignToRail?: boolean;
   leading?: ReactNode;
   children?: ReactNode;
@@ -76,14 +76,15 @@ export function StripFrame({
     <header
       data-level={level}
       className={cx(
-        "col-span-full flex h-strip min-w-0 items-stretch border-b",
+        // Transparent rule: visible only in forced-colours mode.
+        "col-span-full flex h-strip min-w-0 items-stretch border-b border-transparent forced-colors:border-[CanvasText]",
         LEVEL_STYLES[level],
       )}
     >
       <div
         className={cx(
           "flex shrink-0 items-center gap-1.5 px-3 lg:px-4",
-          alignToRail && "lg:w-rail lg:border-r lg:border-ink-line",
+          alignToRail && "lg:w-rail",
         )}
       >
         {leading}
@@ -128,9 +129,12 @@ export function SituationStrip({
       }
     >
       {membership && (
-        <p className="flex min-w-0 items-baseline gap-2.5">
+        <p className="flex min-w-0 items-baseline gap-2">
           <span className="truncate text-sm font-medium text-ink-fg">
             {membership.organization.name}
+          </span>
+          <span aria-hidden="true" className="hidden text-ink-muted md:inline">
+            /
           </span>
           <span className="data hidden truncate text-ink-muted md:inline">
             {membership.organization.slug}
