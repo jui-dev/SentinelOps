@@ -1,7 +1,9 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 
 import { PrismaService } from '../database/prisma.service.js';
-import { Prisma } from '../generated/prisma/client.js';
+import { uniqueViolationHint } from '../database/unique-violation.js';
+import type { RegisterWithInvitationRequest } from '../invitations/invitations.schemas.js';
+import { InvitationsService } from '../invitations/invitations.service.js';
 import type {
   AuthenticatedResponse,
   CurrentUserResponse,
@@ -20,51 +22,6 @@ import { PasswordService } from './password.service.js';
 import type { IssuedRefreshToken } from './refresh-token.service.js';
 import { RefreshTokenService } from './refresh-token.service.js';
 import { TokenService } from './token.service.js';
-
-/** Postgres unique violation, as Prisma reports it. */
-const UNIQUE_VIOLATION = 'P2002';
-
-/**
- * Names the constraint a unique violation came from.
- *
- * Two shapes, because Prisma reports this differently depending on how it
- * reached the database. The classic query engine fills `meta.target` with a
- * field list; the Prisma 7 driver adapter this project uses leaves that
- * undefined and puts the Postgres constraint name
- * (`users_email_key`) under `meta.driverAdapterError.cause.constraint`
- * instead. Reading only one of them is how a 409 silently becomes a 500.
- *
- * Returns a lowercase haystack rather than a field name: the two sources
- * disagree about whether the answer is `email` or `users_email_key`, and the
- * caller only needs to know which column was involved.
- */
-const constraintHintOf = (
-  error: InstanceType<typeof Prisma.PrismaClientKnownRequestError>,
-): string => {
-  const meta = error.meta as Record<string, unknown> | undefined;
-  const hints: string[] = [];
-  const target = meta?.target;
-
-  if (typeof target === 'string') {
-    hints.push(target);
-  } else if (Array.isArray(target)) {
-    hints.push(...target.map(String));
-  }
-
-  const cause = (meta?.driverAdapterError as { cause?: unknown } | undefined)
-    ?.cause as
-    { constraint?: { index?: string; fields?: string[] } } | undefined;
-
-  if (cause?.constraint?.index) {
-    hints.push(cause.constraint.index);
-  }
-
-  if (Array.isArray(cause?.constraint?.fields)) {
-    hints.push(...cause.constraint.fields);
-  }
-
-  return hints.join(' ').toLowerCase();
-};
 
 /**
  * A completed authentication: what the client is told, and the cookie the
@@ -101,6 +58,7 @@ export class AuthService {
     private readonly passwords: PasswordService,
     private readonly tokens: TokenService,
     private readonly refreshTokens: RefreshTokenService,
+    private readonly invitations: InvitationsService,
   ) {}
 
   /**
@@ -171,6 +129,51 @@ export class AuthService {
     this.logger.log('Registered a new organization and its owner', {
       userId: user.id,
       slug,
+    });
+
+    return this.authenticate(user);
+  }
+
+  /**
+   * Creates an account by accepting an invitation, then logs it in.
+   *
+   * The account joins the inviting organization rather than creating one, and
+   * its email is the one the invitation was issued to — the request carries
+   * none. InvitationsService owns the acceptance and its transaction; this
+   * supplies what an account is.
+   *
+   * The token is checked before the password is hashed. This route is
+   * anonymous, and Argon2 is the expensive part, so an unusable token must not
+   * cost one. The check is repeated inside the transaction, where it counts.
+   */
+  async registerWithInvitation(
+    request: RegisterWithInvitationRequest,
+    now: Date = new Date(),
+  ): Promise<AuthenticationResult> {
+    await this.invitations.requireUsable(this.prisma, request.token, now);
+
+    const passwordHash = await this.passwords.hash(request.password);
+
+    let user;
+
+    try {
+      ({ account: user } = await this.invitations.acceptAsNewAccount(
+        request.token,
+        (tx, email) =>
+          tx.user.create({
+            data: { email, name: request.name, passwordHash },
+            select: userSelection,
+          }),
+        now,
+      ));
+    } catch (error) {
+      // An address registered between the check and the insert. Anything
+      // else — including every invitation error — passes through untouched.
+      throw this.translateRegistrationFailure(error);
+    }
+
+    this.logger.log('Registered a new account by invitation', {
+      userId: user.id,
     });
 
     return this.authenticate(user);
@@ -308,20 +311,18 @@ export class AuthService {
    * Turns a unique-constraint violation into the right 409.
    *
    * Matched by substring, because the hint is either a bare field name or a
-   * Postgres constraint name depending on the driver -- see constraintHintOf.
+   * Postgres constraint name depending on the driver -- see
+   * uniqueViolationHint.
    *
    * Anything else is rethrown untouched, so a genuine fault surfaces as a
    * masked 500 with its stack in the log rather than as a misleading 409.
    */
   private translateRegistrationFailure(error: unknown): unknown {
-    if (
-      !(error instanceof Prisma.PrismaClientKnownRequestError) ||
-      error.code !== UNIQUE_VIOLATION
-    ) {
+    const hint = uniqueViolationHint(error);
+
+    if (hint === undefined) {
       return error;
     }
-
-    const hint = constraintHintOf(error);
 
     if (hint.includes('email')) {
       return emailAlreadyRegistered();

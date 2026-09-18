@@ -8,6 +8,7 @@ import { ROOT_ENV_FILE } from './config/env.js';
 import { envSchema } from './config/env.validation.js';
 import { DatabaseModule } from './database/database.module.js';
 import { HealthModule } from './health/health.module.js';
+import { InvitationsModule } from './invitations/invitations.module.js';
 import { LoggerModule } from './logger/logger.module.js';
 import { OrganizationsModule } from './organizations/organizations.module.js';
 
@@ -40,6 +41,9 @@ import { OrganizationsModule } from './organizations/organizations.module.js';
     // guards before controller guards regardless of module order; the
     // placement just keeps the dependency readable.
     OrganizationsModule,
+    // Also imported by AuthModule for registration by invitation; listed here
+    // so the application's feature modules read in one place.
+    InvitationsModule,
   ],
   controllers: [],
   providers: [],

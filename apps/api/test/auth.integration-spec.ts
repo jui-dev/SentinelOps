@@ -84,7 +84,7 @@ describe('authentication (integration)', () => {
 
   beforeEach(async () => {
     await prisma.$executeRawUnsafe(
-      'TRUNCATE TABLE refresh_tokens, memberships, users, organizations RESTART IDENTITY CASCADE',
+      'TRUNCATE TABLE invitations, refresh_tokens, memberships, users, organizations RESTART IDENTITY CASCADE',
     );
   });
 

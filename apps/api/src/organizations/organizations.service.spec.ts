@@ -81,6 +81,8 @@ describe('OrganizationsService', () => {
           id: MEMBERSHIP_ID,
           role: 'ADMIN',
           permissions: [
+            'invitations:manage',
+            'invitations:read',
             'memberships:read',
             'organization:read',
             'organization:update',

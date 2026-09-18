@@ -32,6 +32,8 @@ describe('organization response mappers', () => {
           id: 'membership-1',
           role: 'OWNER',
           permissions: [
+            'invitations:manage',
+            'invitations:read',
             'memberships:read',
             'organization:read',
             'organization:update',

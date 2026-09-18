@@ -15,6 +15,7 @@ import type {
   CurrentUserResponse,
   LoginRequest,
   RegisterRequest,
+  RegisterWithInvitationRequest,
 } from "../api/contracts";
 import * as api from "../api/endpoints";
 import { isApiError } from "../api/errors";
@@ -52,6 +53,8 @@ interface SessionContextValue {
   signOutReason: SignOutReason;
   login: (body: LoginRequest) => Promise<void>;
   register: (body: RegisterRequest) => Promise<void>;
+  /** Creates an account by accepting an invitation, and signs it in. */
+  registerWithInvitation: (body: RegisterWithInvitationRequest) => Promise<void>;
   logout: () => Promise<void>;
   retry: () => void;
 }
@@ -138,6 +141,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     [begin],
   );
 
+  const registerWithInvitation = useCallback(
+    async (body: RegisterWithInvitationRequest) => {
+      const response = await api.registerWithInvitation(body);
+      await begin(response.accessToken);
+    },
+    [begin],
+  );
+
   const logout = useCallback(async () => {
     try {
       await api.logout();
@@ -157,8 +168,24 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ status, signOutReason, login, register, logout, retry }),
-    [status, signOutReason, login, register, logout, retry],
+    () => ({
+      status,
+      signOutReason,
+      login,
+      register,
+      registerWithInvitation,
+      logout,
+      retry,
+    }),
+    [
+      status,
+      signOutReason,
+      login,
+      register,
+      registerWithInvitation,
+      logout,
+      retry,
+    ],
   );
 
   return (

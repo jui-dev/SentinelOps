@@ -170,7 +170,7 @@ describe('tenancy (integration)', () => {
 
   beforeEach(async () => {
     await prisma.$executeRawUnsafe(
-      'TRUNCATE TABLE refresh_tokens, memberships, users, organizations RESTART IDENTITY CASCADE',
+      'TRUNCATE TABLE invitations, refresh_tokens, memberships, users, organizations RESTART IDENTITY CASCADE',
     );
 
     fx = await seed();
@@ -194,6 +194,8 @@ describe('tenancy (integration)', () => {
           id: fx.aliceInA,
           role: 'OWNER',
           permissions: [
+            'invitations:manage',
+            'invitations:read',
             'memberships:read',
             'organization:read',
             'organization:update',

@@ -61,10 +61,13 @@ export const slugSchema = z
  */
 export const organizationNameSchema = z.string().trim().min(1).max(100);
 
+/** A person's display name. Shared by both ways of creating an account. */
+export const personNameSchema = z.string().trim().min(1).max(100);
+
 export const registerSchema = z.object({
   email: emailSchema,
   password: passwordSchema,
-  name: z.string().trim().min(1).max(100),
+  name: personNameSchema,
   organizationName: organizationNameSchema,
   /** Optional: derived from organizationName when absent. */
   organizationSlug: slugSchema.optional(),

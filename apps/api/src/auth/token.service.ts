@@ -1,19 +1,16 @@
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import type { ConfigType } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 
+import { hashOpaqueToken, mintOpaqueToken } from '../common/opaque-token.js';
 import { authConfig } from '../config/configuration.js';
 import type { AccessTokenPayload } from './auth.contract.js';
 
 /**
- * 32 bytes from the CSPRNG, base64url encoded. 256 bits of entropy is past the
- * point where guessing is a threat model, which is what licenses the cheap
- * hash below.
+ * A freshly minted refresh token and the values that get persisted for it.
+ * The token itself is an opaque secret; see common/opaque-token.ts.
  */
-const REFRESH_TOKEN_BYTES = 32;
-
-/** A freshly minted refresh token and the values that get persisted for it. */
 export interface MintedRefreshToken {
   /** The secret. Goes to the client in a cookie and is never stored. */
   token: string;
@@ -74,24 +71,17 @@ export class TokenService {
 
   /** A new opaque refresh token, its stored hash, and its absolute expiry. */
   mintRefreshToken(now: Date = new Date()): MintedRefreshToken {
-    const token = randomBytes(REFRESH_TOKEN_BYTES).toString('base64url');
+    const { token, tokenHash } = mintOpaqueToken();
     const expiresAt = new Date(
       now.getTime() + this.config.refreshTtlDays * 24 * 60 * 60 * 1000,
     );
 
-    return { token, tokenHash: this.hashRefreshToken(token), expiresAt };
+    return { token, tokenHash, expiresAt };
   }
 
-  /**
-   * SHA-256, hex encoded.
-   *
-   * Not a password hash, and deliberately so. Argon2 would be wrong twice here:
-   * there is no low-entropy guess for a slow hash to frustrate, and the value
-   * is looked up *by* this hash, which requires it to be deterministic --
-   * exactly what a per-password salt is designed to prevent.
-   */
+  /** SHA-256, hex encoded. See hashOpaqueToken for why not Argon2. */
   hashRefreshToken(token: string): string {
-    return createHash('sha256').update(token).digest('hex');
+    return hashOpaqueToken(token);
   }
 
   /**

@@ -37,7 +37,7 @@ describe('core domain schema (integration)', () => {
 
   beforeEach(async () => {
     await prisma.$executeRawUnsafe(
-      'TRUNCATE TABLE memberships, users, organizations RESTART IDENTITY CASCADE',
+      'TRUNCATE TABLE invitations, memberships, users, organizations RESTART IDENTITY CASCADE',
     );
   });
 
@@ -256,7 +256,8 @@ describe('core domain schema (integration)', () => {
         `SELECT column_name, data_type FROM information_schema.columns
          WHERE table_schema = 'public'
            AND column_name IN (
-             'created_at', 'updated_at', 'deleted_at', 'expires_at', 'revoked_at'
+             'created_at', 'updated_at', 'deleted_at', 'expires_at',
+             'revoked_at', 'accepted_at'
            )`,
       );
 
@@ -264,7 +265,9 @@ describe('core domain schema (integration)', () => {
       // plus deleted_at on organizations and users (2). refresh_tokens adds
       // created_at, expires_at, and revoked_at (3) and has no updated_at,
       // because a credential is issued and revoked rather than edited.
-      expect(columns).toHaveLength(11);
+      // invitations adds created_at, updated_at, expires_at, accepted_at, and
+      // revoked_at (5).
+      expect(columns).toHaveLength(16);
       for (const column of columns) {
         expect(column.data_type).toBe('timestamp with time zone');
       }

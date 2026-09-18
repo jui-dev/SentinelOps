@@ -1,12 +1,18 @@
-import { authenticatedRequest, sessionRequest } from "./client";
+import { authenticatedRequest, publicRequest, sessionRequest } from "./client";
 import type {
   AuthenticatedResponse,
+  CreateInvitationRequest,
+  CreatedInvitationResponse,
   CurrentUserResponse,
+  InvitationLookupResponse,
+  InvitationResponse,
   LoginRequest,
+  MembershipResponse,
   OrganizationDetailResponse,
   OrganizationMembershipResponse,
   OrganizationResponse,
   RegisterRequest,
+  RegisterWithInvitationRequest,
   UpdateOrganizationRequest,
 } from "./contracts";
 
@@ -26,6 +32,12 @@ export const register = (body: RegisterRequest) =>
 
 export const login = (body: LoginRequest) =>
   sessionRequest<AuthenticatedResponse>("/auth/login", {
+    method: "POST",
+    body,
+  });
+
+export const registerWithInvitation = (body: RegisterWithInvitationRequest) =>
+  sessionRequest<AuthenticatedResponse>("/auth/register/invitation", {
     method: "POST",
     body,
   });
@@ -59,3 +71,45 @@ export const listMemberships = (organizationId: string) =>
   authenticatedRequest<OrganizationMembershipResponse[]>(
     `${organizationPath(organizationId)}/memberships`,
   );
+
+const invitationsPath = (organizationId: string) =>
+  `${organizationPath(organizationId)}/invitations`;
+
+export const listInvitations = (organizationId: string) =>
+  authenticatedRequest<InvitationResponse[]>(invitationsPath(organizationId));
+
+export const createInvitation = (
+  organizationId: string,
+  body: CreateInvitationRequest,
+) =>
+  authenticatedRequest<CreatedInvitationResponse>(
+    invitationsPath(organizationId),
+    { method: "POST", body },
+  );
+
+export const revokeInvitation = (
+  organizationId: string,
+  invitationId: string,
+) =>
+  authenticatedRequest<void>(
+    `${invitationsPath(organizationId)}/${encodeURIComponent(invitationId)}`,
+    { method: "DELETE" },
+  );
+
+// Invitation tokens always travel in a request body: never in a path or a
+// query string, which servers log.
+
+export const acceptInvitation = (token: string) =>
+  authenticatedRequest<MembershipResponse>("/invitations/accept", {
+    method: "POST",
+    body: { token },
+  });
+
+// Public endpoint: no cookie, no bearer, works signed out.
+
+export const lookupInvitation = (token: string, signal?: AbortSignal) =>
+  publicRequest<InvitationLookupResponse>("/invitations/lookup", {
+    method: "POST",
+    body: { token },
+    signal,
+  });

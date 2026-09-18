@@ -40,6 +40,12 @@ generator client {
   moduleFormat           = "esm"
   generatedFileExtension = "ts"
   importFileExtension    = "js"
+
+  // Lets a unique index carry a WHERE clause, so an invariant such as "one open
+  // invitation per organization and email" is declared here — where Prisma can
+  // see it and will not treat it as drift — rather than in hand-written
+  // migration SQL. A preview feature: re-check it when upgrading Prisma.
+  previewFeatures = ["partialIndexes"]
 }
 
 /// The initial organization-level membership role, and an authorization extension
@@ -77,6 +83,7 @@ model Organization {
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz(3)
 
   memberships Membership[]
+  invitations Invitation[]
 
   @@map("organizations")
 }
@@ -103,9 +110,11 @@ model User {
   /// Argon2id PKC-encoded hash — algorithm, parameters, and salt travel inside the
   /// string, so rehashing at stronger parameters later needs no schema change.
   ///
-  /// Nullable, for two reasons. A user invited to an organization exists before
-  /// choosing a password, and a federated identity may never have one at all. Login
-  /// treats null exactly as it treats a wrong password: one indistinguishable 401.
+  /// Nullable, reserved for identities without a local password — federated
+  /// (SSO) or passwordless sign-in, neither of which exists yet. Every account
+  /// created today sets one: invitations do not pre-create users, so an invitee's
+  /// User is created, with a password, when they accept. Login treats null exactly
+  /// as it treats a wrong password: one indistinguishable 401.
   ///
   /// Never selected except by the login lookup, and never mapped into a response.
   passwordHash String? @map("password_hash")
@@ -114,8 +123,9 @@ model User {
   updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz(3)
 
-  memberships   Membership[]
-  refreshTokens RefreshToken[]
+  memberships     Membership[]
+  refreshTokens   RefreshToken[]
+  invitationsSent Invitation[]   @relation("InvitationsSent")
 
   @@map("users")
 }
@@ -158,6 +168,59 @@ model Membership {
   /// composite unique above, which already serves prefix lookups and that cascade.
   @@index([userId])
   @@map("memberships")
+}
+
+/// An offer of a membership: an organization's invitation for one email address
+/// to join it in a given role.
+///
+/// A prospective grant, not an identity. Creating an invitation never creates a
+/// User — a user is global, so one tenant creating an identity for an address
+/// would be a cross-tenant side effect, and would claim the email before its
+/// owner ever signed up. The User is created when the invitation is accepted.
+///
+/// Kept after it is accepted or revoked: it is the organization's record of who
+/// was offered what, and by whom. Its status is derived, never stored — revoked,
+/// else accepted, else expired, else pending. "Open" means neither accepted nor
+/// revoked; an expired invitation is still open until it is replaced or revoked.
+model Invitation {
+  id             String @id @default(uuid(7)) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  /// Stored lowercase, normalised at the Zod boundary like users.email.
+  email          String
+  /// ADMIN or MEMBER. OWNER is refused by the request schema, not here.
+  role           Role
+  /// SHA-256 of the opaque token, hex encoded. The token itself is never
+  /// stored; it is returned once, in the response that created the invitation.
+  tokenHash      String @unique @map("token_hash")
+  /// Who made the offer. Required, and Restrict rather than Cascade or SetNull:
+  /// the ordinary delete of a user is soft and leaves this intact, and a
+  /// physical deletion of someone with invitation history has to be a
+  /// deliberate procedure that decides what happens to that history, not a
+  /// side effect that erases or anonymises it.
+  invitedById    String @map("invited_by_id") @db.Uuid
+
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz(3)
+  acceptedAt DateTime? @map("accepted_at") @db.Timestamptz(3)
+  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz(3)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invitedBy    User         @relation("InvitationsSent", fields: [invitedById], references: [id], onDelete: Restrict)
+
+  /// At most one open invitation per organization and email. Enforced here
+  /// rather than by checking first, which races: re-inviting revokes the open
+  /// one and inserts its replacement, and of two re-invites whose inserts
+  /// overlap the second fails on this index. Expiry is deliberately not part of the
+  /// predicate — an index predicate cannot read the clock.
+  ///
+  /// Prisma still generates an `organizationId_email` unique input for this
+  /// index, and a findUnique through it would ignore the predicate. Never use
+  /// it; an architecture spec forbids it.
+  @@unique([organizationId, email], map: "invitations_open_organization_email_key", where: { acceptedAt: null, revokedAt: null })
+  /// Serves the Restrict check when a user row is physically deleted.
+  @@index([invitedById])
+  @@map("invitations")
 }
 
 /// One issued refresh token. A row per token rather than per session, because

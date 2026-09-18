@@ -37,11 +37,12 @@ src/
 ├── app/                      routes — thin server files that render client components
 │   ├── (auth)/login, register
 │   ├── (app)/                signed-in shell: RequireSession + AppShell
-│   │   └── orgs/[orgSlug]/   overview, members, settings
+│   │   └── orgs/[orgSlug]/   overview, members (and invitations), settings
+│   ├── invite/               invitation acceptance — outside both groups
 │   └── page.tsx              `/` redirects to login, the only org, or /orgs
 ├── components/
 │   ├── ui/                   Button, Field, Alert, Spinner — nothing more yet
-│   ├── app/, auth/, organizations/
+│   ├── app/, auth/, organizations/, invitations/
 └── lib/
     ├── config/env.ts         validated public config
     ├── api/                  transport, the two request kinds, endpoints, contracts
@@ -52,14 +53,14 @@ src/
 ## The API client
 
 Every endpoint function in [`lib/api/endpoints.ts`](src/lib/api/endpoints.ts) uses one
-of two request kinds, and that choice is its whole auth policy:
+of three request kinds, and that choice is its whole auth policy:
 
-| | `sessionRequest` | `authenticatedRequest` |
-| --- | --- | --- |
-| For | register, login, refresh, logout | `/auth/me`, every `/organizations/…` route |
-| `credentials` | `include` — the refresh cookie is sent and stored | `omit` — the cookie never travels |
-| `Authorization` | never | `Bearer <in-memory token>` |
-| On `401` | returned as an error | at most one refresh and one retry |
+| | `publicRequest` | `sessionRequest` | `authenticatedRequest` |
+| --- | --- | --- | --- |
+| For | invitation lookup | register (both kinds), login, refresh, logout | `/auth/me`, invitation acceptance, every `/organizations/…` route |
+| `credentials` | `omit` | `include` — the refresh cookie is sent and stored | `omit` — the cookie never travels |
+| `Authorization` | never | never | `Bearer <in-memory token>` |
+| On `401` | returned as an error | returned as an error | at most one refresh and one retry |
 
 `authenticatedRequest` treats only `401` specially:
 
@@ -109,9 +110,35 @@ What to offer is decided from `membership.permissions` on `GET /organizations/:i
 through `useCan(permission)`. The app knows permission **names** only; it never maps roles
 to permissions. Hiding a control is a convenience — the API authorizes every request.
 
+## Invitations
+
+The Members page offers an invite form (`invitations:manage`) and the open-invitation list
+(`invitations:read`, with Revoke for `invitations:manage`). A created invitation's link,
+`<origin>/invite#<token>`, is shown once in a read-only field with a copy button. The token
+lives only in that component's state until **Done**: the create mutation has `gcTime: 0`
+and is reset once the link is taken, and the link is never an `href`.
+
+`/invite` sits outside both route groups, so it works signed out without `(app)`'s
+redirect to login, and signed in without `(auth)`'s redirect away. It reads the token from
+the URL **fragment**, which the browser never sends to Next or the API and never puts in a
+`Referer`, and sends it only in request bodies. The lookup result lives in the page's own
+state rather than the query cache, so no cache holds the token or what it unlocks — and
+signing in, which clears the cache, does not look the invitation up again. The page offers:
+
+- signed out: **create an account** (the email is fixed to the invited one) or **sign in**
+  inline — not through `/login?next=`, which would put the token in a query string. A `409
+  EMAIL_ALREADY_REGISTERED` switches to sign-in;
+- signed in as the invited address: **Join**, after which `me` is refetched before
+  navigating, because the organization scope resolves slugs from it;
+- signed in as someone else: an explanation and **Log out**, which returns to the
+  signed-out view on the same page;
+- anything unusable: one "invitation not available" state.
+
 ## Query keys
 
 Defined in [`lib/api/query-keys.ts`](src/lib/api/query-keys.ts). Invalidate by what a
 write actually changes: a rename merges the new name into `['organization', id]` and
 invalidates `['me']` (whose memberships embed organization names), and leaves
-`['organization', id, 'memberships']` alone.
+`['organization', id, 'memberships']` alone. Creating or revoking an invitation
+invalidates only `['organization', id, 'invitations']`; accepting one refetches `['me']`.
+No query key ever contains an invitation token.

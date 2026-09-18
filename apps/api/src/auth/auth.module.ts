@@ -6,6 +6,7 @@ import { JwtModule } from '@nestjs/jwt';
 
 import { authConfig } from '../config/configuration.js';
 import { DatabaseModule } from '../database/database.module.js';
+import { InvitationsModule } from '../invitations/invitations.module.js';
 import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
 import { JwtAuthGuard } from './jwt-auth.guard.js';
@@ -16,6 +17,9 @@ import { TokenService } from './token.service.js';
 @Module({
   imports: [
     DatabaseModule,
+    // For registration by invitation, which creates an account and a session
+    // by accepting an invitation.
+    InvitationsModule,
     JwtModule.registerAsync({
       // The secret is the only thing configured here. Expiry and issuer are
       // passed per call in TokenService instead, so the values a token is

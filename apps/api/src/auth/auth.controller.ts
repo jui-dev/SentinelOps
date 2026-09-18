@@ -13,6 +13,8 @@ import type { ConfigType } from '@nestjs/config';
 import type { Request, Response } from 'express';
 
 import { authConfig } from '../config/configuration.js';
+import { registerWithInvitationSchema } from '../invitations/invitations.schemas.js';
+import type { RegisterWithInvitationRequest } from '../invitations/invitations.schemas.js';
 import {
   clearRefreshCookie,
   readRefreshCookie,
@@ -33,7 +35,7 @@ import { Public } from './public.decorator.js';
 /**
  * The authentication routes.
  *
- * Four of the five are `@Public()`: they are how a caller obtains the
+ * All but one are `@Public()`: they are how a caller obtains the
  * credential the global guard demands, so requiring one would be circular.
  * Logout is public for a different reason -- it authenticates off the refresh
  * cookie, so an expired access token must not be able to strand a session.
@@ -60,6 +62,25 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<AuthenticatedResponse> {
     const { response, refresh } = await this.auth.register(body);
+
+    setRefreshCookie(res, refresh.token, refresh.expiresAt, this.config);
+
+    return response;
+  }
+
+  /**
+   * Creates an account by accepting an invitation, and returns a session. The
+   * account joins the inviting organization; no organization is created. 201,
+   * because it creates an account.
+   */
+  @Public()
+  @Post('register/invitation')
+  async registerWithInvitation(
+    @Body({ schema: registerWithInvitationSchema })
+    body: RegisterWithInvitationRequest,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<AuthenticatedResponse> {
+    const { response, refresh } = await this.auth.registerWithInvitation(body);
 
     setRefreshCookie(res, refresh.token, refresh.expiresAt, this.config);
 

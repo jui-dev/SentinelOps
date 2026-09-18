@@ -88,6 +88,50 @@ export interface UpdateOrganizationRequest {
   name: string;
 }
 
+/** One open invitation, as `GET /organizations/:organizationId/invitations` lists it. */
+export interface InvitationResponse {
+  id: string;
+  email: string;
+  role: string;
+  status: "pending" | "expired";
+  expiresAt: string;
+  createdAt: string;
+  invitedBy: { id: string; name: string };
+}
+
+/**
+ * `POST /organizations/:organizationId/invitations`. The only response that
+ * carries an invitation token; it is shown once and kept nowhere.
+ */
+export interface CreatedInvitationResponse {
+  invitation: InvitationResponse;
+  token: string;
+  replacedExisting: boolean;
+}
+
+/** `POST /invitations/lookup`. */
+export interface InvitationLookupResponse {
+  organization: { id: string; name: string; slug: string };
+  email: string;
+  role: string;
+  expiresAt: string;
+  invitedBy: { name: string };
+}
+
+/** Roles an invitation may offer. */
+export type InvitableRole = "ADMIN" | "MEMBER";
+
+export interface CreateInvitationRequest {
+  email: string;
+  role: InvitableRole;
+}
+
+export interface RegisterWithInvitationRequest {
+  token: string;
+  name: string;
+  password: string;
+}
+
 /**
  * Permission names the UI checks. Names only: which role holds which is the
  * API's decision, and is never reproduced here.
@@ -96,6 +140,8 @@ export const Permission = {
   ORGANIZATION_READ: "organization:read",
   ORGANIZATION_UPDATE: "organization:update",
   MEMBERSHIPS_READ: "memberships:read",
+  INVITATIONS_READ: "invitations:read",
+  INVITATIONS_MANAGE: "invitations:manage",
 } as const;
 
 /** Machine-readable error codes this client branches on. */
@@ -110,6 +156,11 @@ export const ApiErrorCode = {
   ORGANIZATION_NOT_FOUND: "ORGANIZATION_NOT_FOUND",
   MEMBERSHIP_NOT_FOUND: "MEMBERSHIP_NOT_FOUND",
   PERMISSION_DENIED: "PERMISSION_DENIED",
+  INVITATION_NOT_FOUND: "INVITATION_NOT_FOUND",
+  INVITATION_NOT_PENDING: "INVITATION_NOT_PENDING",
+  INVITATION_ALREADY_PENDING: "INVITATION_ALREADY_PENDING",
+  INVITATION_EMAIL_MISMATCH: "INVITATION_EMAIL_MISMATCH",
+  ALREADY_A_MEMBER: "ALREADY_A_MEMBER",
 } as const;
 
 export interface ValidationErrorDetail {

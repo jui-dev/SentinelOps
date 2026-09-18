@@ -2,9 +2,9 @@ import { env } from "../config/env";
 import { NetworkError, toApiError } from "./errors";
 
 /**
- * The transport underneath both request kinds. Nothing outside `lib/api` and
- * `lib/auth` calls it: endpoints choose `sessionRequest` or
- * `authenticatedRequest`, and that choice is the whole of their auth policy.
+ * The transport underneath the three request kinds. Nothing outside `lib/api`
+ * and `lib/auth` calls it: endpoints choose `publicRequest`, `sessionRequest`,
+ * or `authenticatedRequest`, and that choice is the whole of their auth policy.
  */
 
 export interface RequestOptions {
@@ -71,6 +71,19 @@ export const read = async <T>(response: Response): Promise<T> => {
 
   return (await response.json()) as T;
 };
+
+/**
+ * A request that needs no identity at all: looking up an invitation. Carries
+ * neither the refresh cookie nor a bearer token, and a 401 — which it should
+ * never receive — is returned as an error, not refreshed.
+ *
+ * Distinct from `sessionRequest` because it must not send the cookie or set
+ * one, and from `authenticatedRequest` because it must work signed out.
+ */
+export const publicRequest = async <T>(
+  path: string,
+  options: RequestOptions = {},
+): Promise<T> => read<T>(await send(path, options, { credentials: "omit" }));
 
 /**
  * A request to one of the session endpoints: register, login, refresh,

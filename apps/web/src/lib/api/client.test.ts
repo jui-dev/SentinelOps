@@ -14,7 +14,7 @@ import {
   onSessionEnded,
   setAccessToken,
 } from "../auth/token-store";
-import { authenticatedRequest, sessionRequest } from "./client";
+import { authenticatedRequest, publicRequest, sessionRequest } from "./client";
 import { ApiError, NetworkError } from "./errors";
 
 describe("API client", () => {
@@ -72,6 +72,41 @@ describe("API client", () => {
       await expect(sessionRequest("/auth/refresh")).rejects.toBeInstanceOf(
         NetworkError,
       );
+    });
+  });
+
+  describe("publicRequest", () => {
+    it("sends neither the cookie nor a bearer token, even when one is held", async () => {
+      setAccessToken("held");
+      const { requests } = mockApi(() => jsonResponse(200, {}));
+
+      await publicRequest("/invitations/lookup", {
+        method: "POST",
+        body: { token: "invitation-token" },
+      });
+
+      expect(requests).toEqual([
+        {
+          method: "POST",
+          path: "/invitations/lookup",
+          credentials: "omit",
+          authorization: null,
+          body: { token: "invitation-token" },
+        },
+      ]);
+    });
+
+    it("answers a 401 with the error, never refreshing or ending the session", async () => {
+      setAccessToken("held");
+      const { requests } = mockApi(() => apiError(401, "UNAUTHENTICATED"));
+
+      await expect(
+        publicRequest("/invitations/lookup", { method: "POST", body: {} }),
+      ).rejects.toMatchObject({ statusCode: 401 });
+
+      expect(requests.map(route)).toEqual(["POST /invitations/lookup"]);
+      expect(sessionEnded).not.toHaveBeenCalled();
+      expect(getAccessToken()).toBe("held");
     });
   });
 

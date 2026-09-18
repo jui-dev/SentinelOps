@@ -4,7 +4,7 @@ import { isApiError } from "./errors";
 import { read, send } from "./http";
 import type { RequestOptions } from "./http";
 
-export { sessionRequest } from "./http";
+export { publicRequest, sessionRequest } from "./http";
 export type { RequestOptions } from "./http";
 
 /**

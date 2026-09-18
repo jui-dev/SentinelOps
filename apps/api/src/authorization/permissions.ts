@@ -14,6 +14,8 @@ export const Permission = {
   ORGANIZATION_READ: 'organization:read',
   ORGANIZATION_UPDATE: 'organization:update',
   MEMBERSHIPS_READ: 'memberships:read',
+  INVITATIONS_READ: 'invitations:read',
+  INVITATIONS_MANAGE: 'invitations:manage',
 } as const;
 
 export type Permission = (typeof Permission)[keyof typeof Permission];

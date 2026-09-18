@@ -18,16 +18,22 @@ const EXPECTED: Record<Role, Record<Permission, boolean>> = {
     'organization:read': true,
     'organization:update': true,
     'memberships:read': true,
+    'invitations:read': true,
+    'invitations:manage': true,
   },
   ADMIN: {
     'organization:read': true,
     'organization:update': true,
     'memberships:read': true,
+    'invitations:read': true,
+    'invitations:manage': true,
   },
   MEMBER: {
     'organization:read': true,
     'organization:update': false,
     'memberships:read': true,
+    'invitations:read': false,
+    'invitations:manage': false,
   },
 };
 
@@ -49,6 +55,12 @@ describe('role permissions', () => {
 
   it('should not let a member rename the organization', () => {
     expect(hasPermission('MEMBER', Permission.ORGANIZATION_UPDATE)).toBe(false);
+  });
+
+  it('should not let a member see or manage invitations', () => {
+    // Open invitations name people who are not members yet.
+    expect(hasPermission('MEMBER', Permission.INVITATIONS_READ)).toBe(false);
+    expect(hasPermission('MEMBER', Permission.INVITATIONS_MANAGE)).toBe(false);
   });
 
   it('should let every role read the organization and its memberships', () => {

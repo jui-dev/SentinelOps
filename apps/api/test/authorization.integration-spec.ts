@@ -57,6 +57,8 @@ const comparable = (body: Record<string, unknown>) => {
 
 /** What the role-to-permission table grants, as the API reports it: sorted. */
 const FULL_PERMISSIONS: readonly string[] = [
+  'invitations:manage',
+  'invitations:read',
   'memberships:read',
   'organization:read',
   'organization:update',
@@ -176,7 +178,7 @@ describe('authorization (integration)', () => {
 
   beforeEach(async () => {
     await prisma.$executeRawUnsafe(
-      'TRUNCATE TABLE refresh_tokens, memberships, users, organizations RESTART IDENTITY CASCADE',
+      'TRUNCATE TABLE invitations, refresh_tokens, memberships, users, organizations RESTART IDENTITY CASCADE',
     );
 
     fx = await seed();
