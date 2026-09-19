@@ -110,6 +110,17 @@ export const authConfig = registerAs('auth', () => {
 });
 
 /**
+ * Product features that can be switched off without removing their code.
+ */
+export const featuresConfig = registerAs('features', () => {
+  const env = readEnv();
+
+  return {
+    invitationsEnabled: env.INVITATIONS_ENABLED,
+  };
+});
+
+/**
  * Every configuration domain, in the shape `ConfigModule.forRoot` expects.
  * Deliberately limited to the infrastructure that actually exists — a domain is
  * added when the thing behind it does.
@@ -119,4 +130,5 @@ export const configurations = [
   databaseConfig,
   loggingConfig,
   authConfig,
+  featuresConfig,
 ];

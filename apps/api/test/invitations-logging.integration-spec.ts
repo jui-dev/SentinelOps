@@ -8,6 +8,12 @@ import { PrismaService } from './../src/database/prisma.service.js';
 import { AppLogger } from './../src/logger/app.logger.js';
 import { resolveTestDatabaseUrl } from './test-database.js';
 
+// Invitations are off unless switched on, and this suite exercises them.
+// Hoisted, so the flag is set before any configuration is read.
+vi.hoisted(() => {
+  process.env.INVITATIONS_ENABLED = 'true';
+});
+
 /**
  * What the server writes while invitations are used, against a real database
  * and with the production logger in JSON at `debug`: every invitation route,

@@ -2,6 +2,7 @@
 
 import { PageBody, PageHeader, Section } from "@/components/ui/page";
 import { Permission } from "@/lib/api/contracts";
+import { env } from "@/lib/config/env";
 
 import { AddMemberForm } from "./add-member-form";
 import { InviteMemberForm } from "./invite-member-form";
@@ -12,10 +13,13 @@ import { useCan, useOrganization } from "./organization-scope";
 export function MembersView() {
   const organization = useOrganization();
   const memberships = useMemberships(organization.id);
-  // The invitation parts render only when the API reports the caller may
-  // use them — as advice; the API authorizes both regardless.
+  // The invitation parts render only when invitations are switched on and the
+  // API reports the caller may use them — as advice; the API authorizes both
+  // regardless.
   const canInvite = useCan(Permission.INVITATIONS_MANAGE);
   const canSeeInvitations = useCan(Permission.INVITATIONS_READ);
+  const showInvitations =
+    env.invitationsEnabled && (canInvite || canSeeInvitations);
 
   return (
     <>
@@ -28,7 +32,7 @@ export function MembersView() {
       <PageBody width="list">
         <MembershipList />
         <AddMemberForm />
-        {(canInvite || canSeeInvitations) && (
+        {showInvitations && (
           <Section
             id="invitations"
             title="Invitations"

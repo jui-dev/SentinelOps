@@ -30,9 +30,9 @@ deliberately, and this README is updated as capabilities actually land.
   role, proven by a rename route that members may not use
 - Members: an `ADMIN` adds a person with a one-time password, which they must replace
   at first sign-in. See [Adding a member](#adding-a-member)
-- Invitations: an `ADMIN` invites an email address as `ADMIN` or `MEMBER`
-  and shares a single-use link; the invitee creates an account or signs in, and joins.
-  See [Invitations](#invitations)
+- Invitations — **switched off by default**: an `ADMIN` invites an email address as
+  `ADMIN` or `MEMBER` and shares a single-use link; the invitee creates an account or
+  signs in, and joins. Kept for when email delivery arrives. See [Invitations](#invitations)
 - Teams: an `ADMIN` creates teams and places existing organization members on
   them. The database itself refuses a team member from another organization. See
   [Teams](#teams)
@@ -1364,6 +1364,17 @@ interleaved requests in different roles stay apart.
 ---
 
 ## Invitations
+
+> **Switched off unless `INVITATIONS_ENABLED=true`** (and, in the web app,
+> `NEXT_PUBLIC_INVITATIONS_ENABLED=true`). Until email delivery exists, members are added
+> by an admin with a one-time password — see [Adding a member](#adding-a-member). While
+> off, a middleware answers every route below — the three organization-scoped ones, the
+> two token routes, and `POST /auth/register/invitation` — with the same `404` an
+> undeclared path gets. It runs before every guard, so even an anonymous call to
+> `/invitations/accept` cannot tell the route exists from a `401`. The web app hides the
+> Invitations section, and `/invite` says invitations are not in use. The code, tables,
+> and tests stay; the flag restores the feature unchanged, and the invitation suites run
+> with it on.
 
 Members join an organization by invitation. An `ADMIN` invites an email
 address as `ADMIN` or `MEMBER`, and receives a link to share however they choose — there is

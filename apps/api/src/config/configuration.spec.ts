@@ -3,6 +3,7 @@ import {
   authConfig,
   configurations,
   databaseConfig,
+  featuresConfig,
   loggingConfig,
 } from './configuration.js';
 
@@ -150,13 +151,28 @@ describe('configuration', () => {
     });
   });
 
+  describe('featuresConfig', () => {
+    it('should leave invitations off unless switched on', () => {
+      vi.stubEnv('INVITATIONS_ENABLED', undefined);
+
+      expect(featuresConfig()).toEqual({ invitationsEnabled: false });
+    });
+
+    it('should switch invitations on', () => {
+      vi.stubEnv('INVITATIONS_ENABLED', 'true');
+
+      expect(featuresConfig()).toEqual({ invitationsEnabled: true });
+    });
+  });
+
   describe('configurations', () => {
-    it('should register exactly the app, database, logging, and auth domains', () => {
+    it('should register exactly the app, database, logging, auth, and features domains', () => {
       expect(configurations).toEqual([
         appConfig,
         databaseConfig,
         loggingConfig,
         authConfig,
+        featuresConfig,
       ]);
     });
   });

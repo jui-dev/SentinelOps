@@ -9,6 +9,12 @@ import { TokenService } from './../src/auth/token.service.js';
 import { PrismaService } from './../src/database/prisma.service.js';
 import type { Role } from './../src/generated/prisma/enums.js';
 
+// Invitations are off unless switched on, and this suite exercises them.
+// Hoisted, so the flag is set before any configuration is read.
+vi.hoisted(() => {
+  process.env.INVITATIONS_ENABLED = 'true';
+});
+
 /**
  * Invitation routes wired through the real AppModule, with Prisma mocked.
  *

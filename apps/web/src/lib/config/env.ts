@@ -28,6 +28,11 @@ const publicEnvSchema = z.object({
         error: "must be the API origin only, e.g. http://localhost:3001",
       },
     ),
+  /**
+   * Whether to offer invitations. Off unless switched on, matching the API's
+   * INVITATIONS_ENABLED: members are added by an admin instead.
+   */
+  NEXT_PUBLIC_INVITATIONS_ENABLED: z.stringbool().default(false),
 });
 
 export interface PublicEnv {
@@ -35,6 +40,8 @@ export interface PublicEnv {
   apiOrigin: string;
   /** Every API path is relative to this: the origin plus the global prefix. */
   apiBaseUrl: string;
+  /** Whether invitations are offered at all. */
+  invitationsEnabled: boolean;
 }
 
 /** Validates raw values. Throws naming every problem, so a bad build fails fast. */
@@ -51,9 +58,14 @@ export const parsePublicEnv = (raw: Record<string, unknown>): PublicEnv => {
 
   const apiOrigin = new URL(result.data.NEXT_PUBLIC_API_URL).origin;
 
-  return { apiOrigin, apiBaseUrl: `${apiOrigin}/api/v1` };
+  return {
+    apiOrigin,
+    apiBaseUrl: `${apiOrigin}/api/v1`,
+    invitationsEnabled: result.data.NEXT_PUBLIC_INVITATIONS_ENABLED,
+  };
 };
 
 export const env: PublicEnv = parsePublicEnv({
   NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
+  NEXT_PUBLIC_INVITATIONS_ENABLED: process.env.NEXT_PUBLIC_INVITATIONS_ENABLED,
 });

@@ -9,7 +9,30 @@ describe("parsePublicEnv", () => {
     ).toEqual({
       apiOrigin: "http://localhost:3001",
       apiBaseUrl: "http://localhost:3001/api/v1",
+      invitationsEnabled: false,
     });
+  });
+
+  it.each([
+    ["true", true],
+    ["false", false],
+    [undefined, false],
+  ])("reads NEXT_PUBLIC_INVITATIONS_ENABLED %j as %s", (value, expected) => {
+    expect(
+      parsePublicEnv({
+        NEXT_PUBLIC_API_URL: "http://localhost:3001",
+        NEXT_PUBLIC_INVITATIONS_ENABLED: value,
+      }).invitationsEnabled,
+    ).toBe(expected);
+  });
+
+  it("rejects an invitations flag that is not a boolean", () => {
+    expect(() =>
+      parsePublicEnv({
+        NEXT_PUBLIC_API_URL: "http://localhost:3001",
+        NEXT_PUBLIC_INVITATIONS_ENABLED: "maybe",
+      }),
+    ).toThrow(/NEXT_PUBLIC_INVITATIONS_ENABLED/);
   });
 
   it("accepts a trailing slash", () => {

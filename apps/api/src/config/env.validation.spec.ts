@@ -17,6 +17,7 @@ const defaults = {
   JWT_ACCESS_TTL_SECONDS: 900,
   REFRESH_TOKEN_TTL_DAYS: 30,
   CORS_ORIGIN: 'http://localhost:3000',
+  INVITATIONS_ENABLED: false,
 };
 
 /** The first issue Zod reports for `key`, or undefined when `key` validated. */
@@ -29,6 +30,29 @@ const issueFor = (env: Record<string, unknown>, key: string) => {
 };
 
 describe('envSchema', () => {
+  describe('INVITATIONS_ENABLED', () => {
+    it.each([
+      ['true', true],
+      ['1', true],
+      ['false', false],
+      ['0', false],
+    ])('should read %j as %s', (value, expected) => {
+      expect(
+        envSchema.parse({ ...valid(), INVITATIONS_ENABLED: value })
+          .INVITATIONS_ENABLED,
+      ).toBe(expected);
+    });
+
+    it('should refuse a value that is not a boolean', () => {
+      expect(
+        issueFor(
+          { ...valid(), INVITATIONS_ENABLED: 'maybe' },
+          'INVITATIONS_ENABLED',
+        ),
+      ).toBeDefined();
+    });
+  });
+
   describe('valid configuration', () => {
     it('should accept a fully specified environment', () => {
       expect(

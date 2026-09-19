@@ -67,6 +67,11 @@ export const envSchema = z.object({
   // The refresh cookie only reaches the API if the origin is listed here, so
   // this is load-bearing for the web app rather than decorative.
   CORS_ORIGIN: z.string().min(1).default('http://localhost:3000'),
+  // Whether the invitation routes exist. Off unless switched on: invitations
+  // are kept for when email delivery arrives, and until then members are
+  // added by an admin with a one-time password. While off, every invitation
+  // route answers exactly as an unknown path does.
+  INVITATIONS_ENABLED: z.stringbool().default(false),
 });
 
 export type Env = z.infer<typeof envSchema>;

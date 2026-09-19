@@ -13,6 +13,12 @@ import { InvitationsService } from './../src/invitations/invitations.service.js'
 import { leakedKeys } from './leaks.js';
 import { resolveTestDatabaseUrl } from './test-database.js';
 
+// Invitations are off unless switched on, and this suite exercises them.
+// Hoisted, so the flag is set before any configuration is read.
+vi.hoisted(() => {
+  process.env.INVITATIONS_ENABLED = 'true';
+});
+
 /**
  * Invitations against a real database.
  *
