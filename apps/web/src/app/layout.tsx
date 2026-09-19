@@ -48,7 +48,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
-      <body className="min-h-dvh">
+      {/* Browser extensions add attributes to <body> before React hydrates
+          (ColorZilla's cz-shortcut-listen, for one). This ignores attribute
+          differences on <body> alone, never its contents. */}
+      <body className="min-h-dvh" suppressHydrationWarning>
         <Providers>{children}</Providers>
       </body>
     </html>
