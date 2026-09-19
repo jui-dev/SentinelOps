@@ -121,7 +121,7 @@ describe('core domain schema (integration)', () => {
       const user = await aUser('ada@example.com');
 
       await prisma.membership.create({
-        data: { organizationId: acme.id, userId: user.id, role: 'OWNER' },
+        data: { organizationId: acme.id, userId: user.id, role: 'ADMIN' },
       });
       await prisma.membership.create({
         data: { organizationId: globex.id, userId: user.id, role: 'MEMBER' },
@@ -133,8 +133,8 @@ describe('core domain schema (integration)', () => {
 
       expect(memberships).toHaveLength(2);
       expect(memberships.map((membership) => membership.role).sort()).toEqual([
+        'ADMIN',
         'MEMBER',
-        'OWNER',
       ]);
     });
   });
@@ -1310,7 +1310,7 @@ describe('core domain schema (integration)', () => {
       expect(membership.role).toBe('MEMBER');
     });
 
-    it.each([['OWNER'], ['ADMIN'], ['MEMBER']] as const)(
+    it.each([['ADMIN'], ['MEMBER']] as const)(
       'should round-trip %s',
       async (role) => {
         const organization = await anOrganization(`acme-${role.toLowerCase()}`);
@@ -1339,6 +1339,17 @@ describe('core domain schema (integration)', () => {
           user.id,
         ),
       ).rejects.toThrow();
+    });
+
+    it('should hold exactly ADMIN and MEMBER: OWNER was merged into ADMIN', async () => {
+      const labels = await prisma.$queryRaw<{ label: string }[]>`
+        SELECT e.enumlabel AS label
+        FROM pg_enum e
+        JOIN pg_type t ON t.oid = e.enumtypid
+        WHERE t.typname = 'role'
+        ORDER BY e.enumsortorder`;
+
+      expect(labels.map(({ label }) => label)).toEqual(['ADMIN', 'MEMBER']);
     });
   });
 

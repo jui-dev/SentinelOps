@@ -80,7 +80,6 @@ const thrownBy = (callback: () => unknown): unknown => {
 describe('OrganizationPermissionGuard', () => {
   describe('allowing', () => {
     it.each<[Role, Permission]>([
-      ['OWNER', Permission.ORGANIZATION_UPDATE],
       ['ADMIN', Permission.ORGANIZATION_UPDATE],
       ['MEMBER', Permission.ORGANIZATION_READ],
       ['MEMBER', Permission.MEMBERSHIPS_READ],
@@ -93,7 +92,7 @@ describe('OrganizationPermissionGuard', () => {
     });
 
     it('should decide synchronously', () => {
-      const result = inRequest(membershipAs('OWNER'), () =>
+      const result = inRequest(membershipAs('ADMIN'), () =>
         guard.canActivate(
           contextWith(handlerRequiring(Permission.ORGANIZATION_UPDATE)),
         ),
@@ -142,10 +141,10 @@ describe('OrganizationPermissionGuard', () => {
       // Every place a client could assert a better role or another tenant.
       // The decision rests on the admitted membership alone.
       const error = denial({
-        params: { organizationId: ORG_A, role: 'OWNER' },
-        query: { role: 'OWNER', organizationId: ORG_B },
-        headers: { 'x-role': 'OWNER', 'x-organization-id': ORG_B },
-        body: { role: 'OWNER', membership: { role: 'OWNER' } },
+        params: { organizationId: ORG_A, role: 'ADMIN' },
+        query: { role: 'ADMIN', organizationId: ORG_B },
+        headers: { 'x-role': 'ADMIN', 'x-organization-id': ORG_B },
+        body: { role: 'ADMIN', membership: { role: 'ADMIN' } },
       });
 
       expect(error).toBeInstanceOf(ForbiddenException);
@@ -183,7 +182,7 @@ describe('OrganizationPermissionGuard', () => {
     });
 
     it('should throw a plain error on a handler that declares no permission', () => {
-      const error = inRequest(membershipAs('OWNER'), () =>
+      const error = inRequest(membershipAs('ADMIN'), () =>
         thrownBy(() => guard.canActivate(contextWith(handlerRequiring()))),
       );
 

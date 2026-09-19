@@ -63,11 +63,11 @@ export class AuthService {
 
   /**
    * Creates an organization, its first user, and the membership that makes them
-   * its owner, then logs them in.
+   * its admin, then logs them in.
    *
    * One transaction, because the three rows are meaningless apart: a user with
    * no membership can do nothing in a tenant-scoped product, and an
-   * organization with no owner cannot be administered. Either all three exist
+   * organization with no admin cannot be administered. Either all three exist
    * or none do.
    *
    * Uniqueness is enforced by the database rather than by checking first. A
@@ -118,9 +118,9 @@ export class AuthService {
           data: {
             organizationId: organization.id,
             userId: created.id,
-            // The first member of an organization owns it. OWNER is not
-            // requestable: it is a consequence of having created the tenant.
-            role: 'OWNER',
+            // Whoever creates an organization administers it: someone has to
+            // be able to add its members, teams, and services.
+            role: 'ADMIN',
           },
           select: { id: true },
         });
@@ -131,7 +131,7 @@ export class AuthService {
       throw this.translateRegistrationFailure(error);
     }
 
-    this.logger.log('Registered a new organization and its owner', {
+    this.logger.log('Registered a new organization and its admin', {
       userId: user.id,
       slug,
     });

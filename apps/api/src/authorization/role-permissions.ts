@@ -5,15 +5,14 @@ import { Permission } from './permissions.js';
  * The permissions each membership role holds.
  *
  * Written out in full per role rather than derived from a hierarchy. Today
- * OWNER ⊇ ADMIN ⊇ MEMBER, and a spec asserts exactly that — but as a checked
- * property of this table, not an assumption built into the code, so a later
- * role that does not sit on the ladder is a change here and nowhere else.
+ * ADMIN ⊇ MEMBER, and a spec asserts exactly that — but as a checked property
+ * of this table, not an assumption built into the code, so a later role that
+ * does not sit on the ladder is a change here and nowhere else.
  *
  * Keyed by `Role`, so adding an enum value without deciding what it may do is
  * a compile error rather than a role that silently holds nothing.
  *
- * Configuration — teams, services, invitations — is governed by OWNER and
- * ADMIN. Incident response is everyone's work: a MEMBER holds
+ * Configuration — teams, services, invitations — is governed by ADMIN. Incident response is everyone's work: a MEMBER holds
  * `incidents:manage`, because the engineer who notices a failure must be able
  * to declare it and move it to resolution without finding an admin first.
  * It remains a distinct permission so a later, narrower role (a read-only
@@ -21,19 +20,6 @@ import { Permission } from './permissions.js';
  */
 export const ROLE_PERMISSIONS: Readonly<Record<Role, ReadonlySet<Permission>>> =
   {
-    OWNER: new Set([
-      Permission.ORGANIZATION_READ,
-      Permission.ORGANIZATION_UPDATE,
-      Permission.MEMBERSHIPS_READ,
-      Permission.INVITATIONS_READ,
-      Permission.INVITATIONS_MANAGE,
-      Permission.TEAMS_READ,
-      Permission.TEAMS_MANAGE,
-      Permission.SERVICES_READ,
-      Permission.SERVICES_MANAGE,
-      Permission.INCIDENTS_READ,
-      Permission.INCIDENTS_MANAGE,
-    ]),
     ADMIN: new Set([
       Permission.ORGANIZATION_READ,
       Permission.ORGANIZATION_UPDATE,

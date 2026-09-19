@@ -28,13 +28,13 @@ deliberately, and this README is updated as capabilities actually land.
   that enforce tenant isolation
 - Authorization: per-route permissions within an organization, mapped from the member's
   role, proven by a rename route that members may not use
-- Invitations: an `OWNER` or `ADMIN` invites an email address as `ADMIN` or `MEMBER`
+- Invitations: an `ADMIN` invites an email address as `ADMIN` or `MEMBER`
   and shares a single-use link; the invitee creates an account or signs in, and joins.
   See [Invitations](#invitations)
-- Teams: an `OWNER` or `ADMIN` creates teams and places existing organization members on
+- Teams: an `ADMIN` creates teams and places existing organization members on
   them. The database itself refuses a team member from another organization. See
   [Teams](#teams)
-- Services: an `OWNER` or `ADMIN` records the systems the organization runs, each owned
+- Services: an `ADMIN` records the systems the organization runs, each owned
   by one of its teams and classified by criticality, and retires them by archiving. The
   database itself refuses an owner from another organization, and refuses deleting a
   team that still owns services. See [Services](#services)
@@ -246,7 +246,7 @@ it ensures a known login at every boot, and the web login page shows it with a
 
 | Email | Password | Organization |
 | --- | --- | --- |
-| `admin@example.com` | `dev-password-123` | SentinelOps Dev (`OWNER`) |
+| `admin@example.com` | `dev-password-123` | SentinelOps Dev (`ADMIN`) |
 
 Every boot resets that account's password and restores it if it was deleted. It is never
 created in `test` or `production`, and the login panel is compiled out of production
@@ -594,8 +594,11 @@ An `Invitation` is a **prospective grant**, not an identity. Issuing one never c
 cross-tenant side effect, and would claim that email before its owner ever signed up. The
 account is created — with a password — when the invitation is accepted.
 
-`Role` is `OWNER`, `ADMIN`, `MEMBER`. It is the **initial coarse organization-level role
-and an authorization extension point**, not a commitment to the eventual authorization
+`Role` is `ADMIN` or `MEMBER`. An `ADMIN` sets the organization up — its members, teams,
+and services — and a `MEMBER` does the operational work. There was once an `OWNER` too; it
+held exactly what `ADMIN` held, distinguished nothing, and was merged into `ADMIN` by a
+migration that rewrites every `OWNER` membership before replacing the enum type. The role
+is the **coarse organization-level role and an authorization extension point**, not a commitment to the eventual authorization
 model — a later stage may add dedicated role or permission structures that read it,
 supersede it, or migrate it away. Today it is read in exactly one place: the table that
 maps each role to its [permissions](#authorization).
@@ -834,7 +837,7 @@ Nothing here uses Passport. `@nestjs/jwt` signs and verifies; the guard is forty
 
 | Route | Auth | Purpose |
 | --- | --- | --- |
-| `POST /api/v1/auth/register` | public | Create an organization, its owner, and a session |
+| `POST /api/v1/auth/register` | public | Create an organization, its first admin, and a session |
 | `POST /api/v1/auth/register/invitation` | public | Create an account by accepting an invitation, and a session — see [Invitations](#invitations) |
 | `POST /api/v1/auth/login` | public | Exchange credentials for a session |
 | `POST /api/v1/auth/refresh` | public | Rotate the refresh cookie, mint a new access token |
@@ -847,7 +850,7 @@ still returns `204`, revealing nothing.
 
 ### Registration creates a tenant
 
-One request creates an `Organization`, a `User`, and a `Membership` with role `OWNER`, in a
+One request creates an `Organization`, a `User`, and a `Membership` with role `ADMIN`, in a
 single transaction:
 
 ```jsonc
@@ -862,8 +865,9 @@ POST /api/v1/auth/register
 ```
 
 The three rows are meaningless apart — a user with no membership can do nothing in a
-tenant-scoped product — so either all three exist or none do. `OWNER` is not requestable;
-it is a consequence of having created the tenant.
+tenant-scoped product — so either all three exist or none do. Whoever creates an
+organization is its first admin: someone has to be able to add its members, teams, and
+services.
 
 Uniqueness is enforced by the database, not by checking first: a read-then-write check
 races, and two registrations for one address can both find it free. The constraint
@@ -1045,7 +1049,7 @@ put slugs in its own URLs.
 | `/api/v1/organizations/:organizationId/incidents…` | Incidents — see [Incidents](#incidents) | `incidents:read` / `incidents:manage` |
 
 All require authentication, a current membership, and the listed permission — every role
-may read the organization and its memberships; only `OWNER` and `ADMIN` may rename it or
+may read the organization and its memberships; only an `ADMIN` may rename it or
 see and manage its invitations (see [Authorization](#authorization) and
 [Invitations](#invitations)). The
 organization read carries the caller's grant as
@@ -1189,26 +1193,26 @@ updateOrganization(...)
 Which roles hold which permission is written out once, in
 [`role-permissions.ts`](apps/api/src/authorization/role-permissions.ts):
 
-| Permission | `OWNER` | `ADMIN` | `MEMBER` |
-| --- | --- | --- | --- |
-| `organization:read` | ✓ | ✓ | ✓ |
-| `organization:update` | ✓ | ✓ | |
-| `memberships:read` | ✓ | ✓ | ✓ |
-| `invitations:read` | ✓ | ✓ | |
-| `invitations:manage` | ✓ | ✓ | |
-| `teams:read` | ✓ | ✓ | ✓ |
-| `teams:manage` | ✓ | ✓ | |
-| `services:read` | ✓ | ✓ | ✓ |
-| `services:manage` | ✓ | ✓ | |
-| `incidents:read` | ✓ | ✓ | ✓ |
-| `incidents:manage` | ✓ | ✓ | ✓ |
+| Permission | `ADMIN` | `MEMBER` |
+| --- | --- | --- |
+| `organization:read` | ✓ | ✓ |
+| `organization:update` | ✓ | |
+| `memberships:read` | ✓ | ✓ |
+| `invitations:read` | ✓ | |
+| `invitations:manage` | ✓ | |
+| `teams:read` | ✓ | ✓ |
+| `teams:manage` | ✓ | |
+| `services:read` | ✓ | ✓ |
+| `services:manage` | ✓ | |
+| `incidents:read` | ✓ | ✓ |
+| `incidents:manage` | ✓ | ✓ |
 
 A `MEMBER` cannot see open invitations: they name people who are not members yet.
 Belonging to a team grants nothing, and neither does a team owning a service or being
 responsible for an incident: authorization is the organization role alone.
 
 **Configuration is admin-governed; incident response is member-driven.** Teams,
-services, and invitations shape the organization, so only `OWNER` and `ADMIN` change
+services, and invitations shape the organization, so only an `ADMIN` changes
 them. Incidents are operational work: the engineer who notices card payments failing
 must be able to declare it and move it to resolution without finding an admin first, so
 every role holds `incidents:manage`. It is still a distinct permission, so a narrower
@@ -1216,10 +1220,8 @@ role later — a read-only stakeholder — is a change to the table alone.
 
 There is no `@RequireRole()`. A route that names roles has to be edited every time the
 policy changes; a route that names an operation does not. The table is explicit per role
-rather than derived from `OWNER > ADMIN > MEMBER` — a spec asserts that ordering holds
-today, but a later role that does not fit the ladder is a change to the table alone.
-Permissions are added with the routes that need them, so there is no `OWNER`-only entry:
-no operation is `OWNER`-only yet.
+rather than derived from `ADMIN > MEMBER` — a spec asserts that ordering holds today,
+but a later role that does not fit the ladder is a change to the table alone.
 
 ### Where the role comes from
 
@@ -1287,12 +1289,9 @@ same `404` and is never written.
 
 ### Not yet
 
-- **Membership management** — removal, leaving, and role changes. Invitations exist, but
-  cannot offer `OWNER`, so they need none of the rules below.
-- **Ownership rules**, which arrive with it: the last `OWNER` cannot be removed or demoted;
-  an `ADMIN` cannot change an `OWNER` or grant `OWNER`; ownership transfer is one
-  transaction. These depend on the target row and on other rows, so they are service-level
-  checks with an explicit actor, not permissions.
+- **Membership management** — removal, leaving, and role changes. When they arrive, the
+  last `ADMIN` must not be removable or demotable: that depends on other rows, so it is a
+  service-level check with an explicit actor, not a permission.
 - **Deleting an organization or changing its slug**, custom roles, and anything
   finer-grained than one permission per route.
 
@@ -1310,7 +1309,7 @@ interleaved requests in different roles stay apart.
 
 ## Invitations
 
-Members join an organization by invitation. An `OWNER` or `ADMIN` invites an email
+Members join an organization by invitation. An `ADMIN` invites an email
 address as `ADMIN` or `MEMBER`, and receives a link to share however they choose — there is
 no email delivery. The invitee opens it and either creates an account or signs in with the
 invited address, and joins.
@@ -1326,8 +1325,7 @@ invited address, and joins.
 | `POST /api/v1/invitations/accept` | **required** | `{ "token" }` → the new membership, as `/auth/me` lists one |
 | `POST /api/v1/auth/register/invitation` | public | `{ "token", "name", "password" }` → an account, its membership, and a session |
 
-`OWNER` is not invitable: ownership is a consequence of creating an organization, and
-transferring it belongs with the ownership rules still to come. The organization-scoped
+An invitation may offer either role. The organization-scoped
 routes follow [Tenancy](#tenancy) and [Authorization](#authorization) exactly — admission
 `404`, permission `403`, and `{ id, organizationId }` in every query. The token routes take
 the organization from the invitation and from nothing in the request.
@@ -1440,7 +1438,7 @@ address is written.
 ## Teams
 
 A team is a named group of an organization's members — the unit that owns services and
-is responsible for incidents. An `OWNER` or `ADMIN` creates, renames, and deletes teams, and
+is responsible for incidents. An `ADMIN` creates, renames, and deletes teams, and
 places existing organization members on them; every member can see them.
 
 ### Endpoints
@@ -1528,7 +1526,7 @@ written as raw SQL.
 ## Services
 
 A service is a system the organization runs — an API, a processor, a portal — owned by
-one of its teams. It is what incidents are recorded against. An `OWNER` or `ADMIN`
+one of its teams. It is what incidents are recorded against. An `ADMIN`
 creates, changes, reassigns, archives, and deletes services; every member can see them. The model is
 industry-neutral: a payments company's `Payment API` and a shop's `Checkout Service` are
 the same kind of record.

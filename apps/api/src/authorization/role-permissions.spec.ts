@@ -14,19 +14,6 @@ const PERMISSIONS = Object.values(Permission);
  * change this table as well, which is the point: it cannot happen by accident.
  */
 const EXPECTED: Record<Role, Record<Permission, boolean>> = {
-  OWNER: {
-    'organization:read': true,
-    'organization:update': true,
-    'memberships:read': true,
-    'invitations:read': true,
-    'invitations:manage': true,
-    'teams:read': true,
-    'teams:manage': true,
-    'services:read': true,
-    'services:manage': true,
-    'incidents:read': true,
-    'incidents:manage': true,
-  },
   ADMIN: {
     'organization:read': true,
     'organization:update': true,
@@ -81,7 +68,7 @@ describe('role permissions', () => {
     expect(hasPermission('MEMBER', Permission.INVITATIONS_MANAGE)).toBe(false);
   });
 
-  it('should let every role read teams, but only owners and admins manage them', () => {
+  it('should let every role read teams, but only admins manage them', () => {
     for (const role of ROLES) {
       expect(hasPermission(role, Permission.TEAMS_READ)).toBe(true);
     }
@@ -89,7 +76,7 @@ describe('role permissions', () => {
     expect(hasPermission('MEMBER', Permission.TEAMS_MANAGE)).toBe(false);
   });
 
-  it('should let every role read services, but only owners and admins manage them', () => {
+  it('should let every role read services, but only admins manage them', () => {
     // Owning a service grants the owning team nothing: this is the whole rule.
     for (const role of ROLES) {
       expect(hasPermission(role, Permission.SERVICES_READ)).toBe(true);
@@ -113,16 +100,14 @@ describe('role permissions', () => {
     }
   });
 
-  it('should currently order the roles OWNER ⊇ ADMIN ⊇ MEMBER', () => {
+  it('should have exactly two roles, ADMIN and MEMBER', () => {
+    expect([...ROLES].sort()).toEqual(['ADMIN', 'MEMBER']);
+  });
+
+  it('should currently order the roles ADMIN ⊇ MEMBER', () => {
     // A checked property of today's table, not a rule the code relies on.
-    const holds = (role: Role) => [...ROLE_PERMISSIONS[role]];
-
-    for (const permission of holds('MEMBER')) {
+    for (const permission of ROLE_PERMISSIONS.MEMBER) {
       expect(hasPermission('ADMIN', permission)).toBe(true);
-    }
-
-    for (const permission of holds('ADMIN')) {
-      expect(hasPermission('OWNER', permission)).toBe(true);
     }
   });
 
@@ -146,6 +131,7 @@ describe('role permissions', () => {
     'toString',
     'hasOwnProperty',
     '',
+    'OWNER',
     'owner',
     'SUPERADMIN',
   ])('should deny the unknown role %j', (role) => {
@@ -155,7 +141,7 @@ describe('role permissions', () => {
   });
 
   it('should deny a permission that is not declared', () => {
-    expect(hasPermission('OWNER', 'organization:delete' as Permission)).toBe(
+    expect(hasPermission('ADMIN', 'organization:delete' as Permission)).toBe(
       false,
     );
   });
@@ -187,7 +173,7 @@ describe('role permissions', () => {
       );
     });
 
-    it.each(['constructor', '__proto__', 'owner', ''])(
+    it.each(['constructor', '__proto__', 'OWNER', 'owner', ''])(
       'should list nothing for the unknown role %j',
       (role) => {
         expect(permissionsFor(role as Role)).toEqual([]);

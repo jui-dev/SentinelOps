@@ -108,7 +108,7 @@ describe('tenancy (integration)', () => {
     const grant = async (
       organizationId: string,
       userId: string,
-      role: 'OWNER' | 'ADMIN' | 'MEMBER',
+      role: 'ADMIN' | 'MEMBER',
     ) =>
       (
         await prisma.membership.create({
@@ -117,8 +117,8 @@ describe('tenancy (integration)', () => {
         })
       ).id;
 
-    const aliceInA = await grant(orgA.id, alice.id, 'OWNER');
-    const bobInB = await grant(orgB.id, bob.id, 'OWNER');
+    const aliceInA = await grant(orgA.id, alice.id, 'ADMIN');
+    const bobInB = await grant(orgB.id, bob.id, 'ADMIN');
     const carolInA = await grant(orgA.id, carol.id, 'ADMIN');
     const carolInB = await grant(orgB.id, carol.id, 'MEMBER');
 
@@ -192,7 +192,7 @@ describe('tenancy (integration)', () => {
         createdAt: expect.any(String),
         membership: {
           id: fx.aliceInA,
-          role: 'OWNER',
+          role: 'ADMIN',
           permissions: [
             'incidents:manage',
             'incidents:read',
@@ -342,7 +342,7 @@ describe('tenancy (integration)', () => {
         fx.carolInA,
       ]);
       expect(response.body.map((m: { role: string }) => m.role)).toEqual([
-        'OWNER',
+        'ADMIN',
         'ADMIN',
       ]);
     });

@@ -35,13 +35,13 @@ describe('MembershipResolver', () => {
     const { resolver } = resolverWith({
       id: MEMBERSHIP_ID,
       organizationId: ORG_ID,
-      role: 'OWNER',
+      role: 'ADMIN',
     });
 
     await expect(resolver.resolve(USER_ID, ORG_ID)).resolves.toEqual({
       organizationId: ORG_ID,
       membershipId: MEMBERSHIP_ID,
-      role: 'OWNER',
+      role: 'ADMIN',
     });
   });
 

@@ -42,7 +42,7 @@ interface Fixture {
   carolInB: string;
 }
 
-type Role = 'OWNER' | 'ADMIN' | 'MEMBER';
+type Role = 'ADMIN' | 'MEMBER';
 
 const comparable = (body: Record<string, unknown>) => {
   const {
@@ -166,8 +166,8 @@ describe('authorization (integration)', () => {
       bob,
       carol,
       dave,
-      aliceInA: await grant(orgA.id, alice.id, 'OWNER'),
-      bobInB: await grant(orgB.id, bob.id, 'OWNER'),
+      aliceInA: await grant(orgA.id, alice.id, 'ADMIN'),
+      bobInB: await grant(orgB.id, bob.id, 'ADMIN'),
       carolInA: await grant(orgA.id, carol.id, 'ADMIN'),
       carolInB: await grant(orgB.id, carol.id, 'MEMBER'),
       daveInA: await grant(orgA.id, dave.id, 'MEMBER'),
@@ -200,7 +200,7 @@ describe('authorization (integration)', () => {
   });
 
   describe('permitted roles', () => {
-    it('should let the OWNER rename the organization', async () => {
+    it('should let an ADMIN rename the organization', async () => {
       const before = await stateOf(fx.orgA.id);
       const response = await rename(fx.orgA.id, fx.alice.id, {
         name: '  Acme Incident Response  ',
@@ -257,10 +257,10 @@ describe('authorization (integration)', () => {
 
       const response = checked(
         await request(app.getHttpServer())
-          .patch(`/api/v1/organizations/${fx.orgA.id}?role=OWNER`)
+          .patch(`/api/v1/organizations/${fx.orgA.id}?role=ADMIN`)
           .set('Authorization', `Bearer ${await tokenFor(fx.dave.id)}`)
-          .set('X-Role', 'OWNER')
-          .send({ name: 'Renamed', role: 'OWNER' }),
+          .set('X-Role', 'ADMIN')
+          .send({ name: 'Renamed', role: 'ADMIN' }),
       );
 
       expectDenied(response);
@@ -269,7 +269,7 @@ describe('authorization (integration)', () => {
   });
 
   describe('admission still answers first', () => {
-    it("should answer another tenant's OWNER with 404, not 403", async () => {
+    it("should answer another tenant's ADMIN with 404, not 403", async () => {
       const before = await stateOf(fx.orgA.id);
       const foreign = await rename(fx.orgA.id, fx.bob.id);
       const missing = await rename(randomUUID(), fx.bob.id);
@@ -291,7 +291,7 @@ describe('authorization (integration)', () => {
       expect(response.body.code).toBe('ORGANIZATION_NOT_FOUND');
     });
 
-    it('should answer 404 for a soft-deleted organization, even to its OWNER', async () => {
+    it('should answer 404 for a soft-deleted organization, even to its ADMIN', async () => {
       await prisma.organization.update({
         where: { id: fx.orgA.id },
         data: { deletedAt: new Date() },
@@ -358,7 +358,6 @@ describe('authorization (integration)', () => {
 
   describe('advertised permissions', () => {
     it.each([
-      ['OWNER', 'alice', FULL_PERMISSIONS],
       ['ADMIN', 'carol', FULL_PERMISSIONS],
       ['MEMBER', 'dave', MEMBER_PERMISSIONS],
     ] as const)(

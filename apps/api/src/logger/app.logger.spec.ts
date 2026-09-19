@@ -215,7 +215,7 @@ describe('AppLogger', () => {
         setRequestOrganization({
           organizationId: 'org-1',
           membershipId: 'membership-1',
-          role: 'OWNER',
+          role: 'ADMIN',
         });
         loggerFor().log('inside an organization');
       });

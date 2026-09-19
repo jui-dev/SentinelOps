@@ -16,7 +16,7 @@ import { DEV_ACCOUNT } from './dev-account.js';
  *
  * Idempotent, and deliberately forceful: every boot resets the account's
  * password and name, restores the user and organization if they were
- * soft-deleted, and makes the user OWNER of the organization — so the
+ * soft-deleted, and makes the user ADMIN of the organization — so the
  * credentials shown on the login page always work.
  */
 @Injectable()
@@ -74,9 +74,9 @@ export class DevAccountService implements OnApplicationBootstrap {
         create: {
           organizationId: organization.id,
           userId: user.id,
-          role: 'OWNER',
+          role: 'ADMIN',
         },
-        update: { role: 'OWNER' },
+        update: { role: 'ADMIN' },
       });
     });
 

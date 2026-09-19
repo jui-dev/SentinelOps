@@ -93,14 +93,14 @@ describe('authentication (integration)', () => {
   });
 
   describe('registration', () => {
-    it('should create an organization, a user, and an owner membership', async () => {
+    it('should create an organization, a user, and an admin membership', async () => {
       const response = await register().expect(201);
 
       const membership = await prisma.membership.findFirstOrThrow({
         include: { organization: true, user: true },
       });
 
-      expect(membership.role).toBe('OWNER');
+      expect(membership.role).toBe('ADMIN');
       expect(membership.user.email).toBe('ada@example.com');
       expect(membership.organization.slug).toBe('acme-operations');
       expect(response.body.user.id).toBe(membership.userId);
@@ -313,7 +313,7 @@ describe('authentication (integration)', () => {
       });
       expect(response.body.memberships).toHaveLength(1);
       expect(response.body.memberships[0]).toMatchObject({
-        role: 'OWNER',
+        role: 'ADMIN',
         organization: { slug: 'acme-operations', name: 'Acme Operations' },
       });
     });

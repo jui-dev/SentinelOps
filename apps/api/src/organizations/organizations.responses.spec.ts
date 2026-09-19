@@ -21,7 +21,7 @@ describe('organization response mappers', () => {
       expect(
         toOrganizationDetailResponse(row, {
           membershipId: 'membership-1',
-          role: 'OWNER',
+          role: 'ADMIN',
         }),
       ).toStrictEqual({
         id: 'org-1',
@@ -30,7 +30,7 @@ describe('organization response mappers', () => {
         createdAt: '2026-09-01T12:00:00.000Z',
         membership: {
           id: 'membership-1',
-          role: 'OWNER',
+          role: 'ADMIN',
           permissions: [
             'incidents:manage',
             'incidents:read',

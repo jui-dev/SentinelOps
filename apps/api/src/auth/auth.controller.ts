@@ -52,8 +52,8 @@ export class AuthController {
   ) {}
 
   /**
-   * Creates an organization, its owner, and the membership binding them, then
-   * returns a session. 201, because it creates an account.
+   * Creates an organization, its first admin, and the membership binding them,
+   * then returns a session. 201, because it creates an account.
    */
   @Public()
   @Post('register')

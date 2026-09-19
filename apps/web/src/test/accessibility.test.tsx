@@ -60,7 +60,7 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
-const OWNER = [
+const ADMIN = [
   "invitations:manage",
   "invitations:read",
   "memberships:read",
@@ -206,7 +206,7 @@ const signedIn = (permissions: string[]) =>
         return jsonResponse(200, [
           {
             id: currentUser.memberships[0].id,
-            role: "OWNER",
+            role: "ADMIN",
             createdAt: "2026-09-01T12:00:00.000Z",
             user: {
               id: currentUser.id,
@@ -320,7 +320,7 @@ describe("accessibility", () => {
 
   describe("workspace", () => {
     it("Overview", async () => {
-      signedIn(OWNER);
+      signedIn(ADMIN);
       const { container } = inWorkspace(<OrganizationOverview />);
 
       await screen.findByRole("heading", { level: 1, name: "Overview" });
@@ -330,7 +330,7 @@ describe("accessibility", () => {
     });
 
     it("Overview, choosing a custom period", async () => {
-      signedIn(OWNER);
+      signedIn(ADMIN);
       const { container } = inWorkspace(<OrganizationOverview />);
 
       await userEvent.click(await screen.findByRole("tab", { name: "Custom" }));
@@ -339,7 +339,7 @@ describe("accessibility", () => {
     });
 
     it("Members, as an owner who manages invitations", async () => {
-      signedIn(OWNER);
+      signedIn(ADMIN);
       const { container } = inWorkspace(<MembersView />);
 
       await screen.findByText("linus@example.com");
@@ -355,7 +355,7 @@ describe("accessibility", () => {
     });
 
     it("Settings", async () => {
-      signedIn(OWNER);
+      signedIn(ADMIN);
       const { container } = inWorkspace(<OrganizationSettings />);
 
       await screen.findByLabelText("Name");
@@ -371,7 +371,7 @@ describe("accessibility", () => {
     });
 
     it("Teams, as an owner creating one", async () => {
-      signedIn(OWNER);
+      signedIn(ADMIN);
       const { container } = inWorkspace(<TeamsView />);
 
       await screen.findByRole("table", { name: "Teams" });
@@ -382,7 +382,7 @@ describe("accessibility", () => {
 
     it("Team, as an owner", async () => {
       navigation.params = { orgSlug: organization.slug, teamSlug: team.slug };
-      signedIn(OWNER);
+      signedIn(ADMIN);
       const { container } = inWorkspace(
         <TeamScope>
           <TeamDetail />
@@ -410,7 +410,7 @@ describe("accessibility", () => {
 
     it("Team settings", async () => {
       navigation.params = { orgSlug: organization.slug, teamSlug: team.slug };
-      signedIn(OWNER);
+      signedIn(ADMIN);
       const { container } = inWorkspace(
         <TeamScope>
           <TeamSettings />
@@ -423,7 +423,7 @@ describe("accessibility", () => {
     });
 
     it("Services, as an owner creating one", async () => {
-      signedIn(OWNER);
+      signedIn(ADMIN);
       const { container } = inWorkspace(<ServicesView />);
 
       await screen.findByRole("table", { name: "Services" });
@@ -453,7 +453,7 @@ describe("accessibility", () => {
         orgSlug: organization.slug,
         serviceSlug: service.slug,
       };
-      signedIn(OWNER);
+      signedIn(ADMIN);
       const { container } = inWorkspace(
         <ServiceScope>
           <ServiceSettings />
@@ -508,7 +508,7 @@ describe("accessibility", () => {
 
     it("Organization not found", async () => {
       navigation.params = { orgSlug: "someone-elses" };
-      signedIn(OWNER);
+      signedIn(ADMIN);
       const { container } = inWorkspace(<OrganizationOverview />);
 
       await screen.findByRole("heading", { name: "Organization not found" });
@@ -518,7 +518,7 @@ describe("accessibility", () => {
     it("Your organizations", async () => {
       navigation.params = {};
       navigation.pathname = "/orgs";
-      signedIn(OWNER);
+      signedIn(ADMIN);
       const { container } = renderWithSession(
         <WorkspaceShell>
           <OrganizationPicker />

@@ -13,11 +13,7 @@ import { Role } from '../generated/prisma/enums.js';
  * along.
  */
 
-/**
- * The roles an invitation may offer. OWNER is not among them: ownership is
- * a consequence of creating an organization, and transferring it arrives with
- * the rules that govern it.
- */
+/** The roles an invitation may offer: every role there is. */
 export const invitableRoleSchema = z.enum([Role.ADMIN, Role.MEMBER]);
 
 /**

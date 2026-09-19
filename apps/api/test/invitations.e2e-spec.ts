@@ -159,7 +159,7 @@ describe('Invitations (e2e)', () => {
       },
     );
 
-    it.each(['OWNER', 'ADMIN'] as const)(
+    it.each(['ADMIN'] as const)(
       'should validate the body once an %s is authorized',
       async (role) => {
         admitAs(role);

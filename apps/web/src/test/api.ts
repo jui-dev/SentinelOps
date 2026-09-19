@@ -85,13 +85,13 @@ export const currentUser = {
   memberships: [
     {
       id: "0199a1b2-c3d4-7000-8000-0000000000aa",
-      role: "OWNER",
+      role: "ADMIN",
       organization,
     },
   ],
 };
 
-export const organizationDetail = (permissions: string[], role = "OWNER") => ({
+export const organizationDetail = (permissions: string[], role = "ADMIN") => ({
   ...organization,
   membership: {
     id: "0199a1b2-c3d4-7000-8000-0000000000aa",

@@ -40,7 +40,7 @@ describe('DevAccountService', () => {
     },
   );
 
-  it('should create or restore the account in development, as OWNER', async () => {
+  it('should create or restore the account in development, as ADMIN', async () => {
     const { service, prisma, passwords } = serviceIn('development');
 
     await service.onApplicationBootstrap();
@@ -67,7 +67,7 @@ describe('DevAccountService', () => {
         where: {
           organizationId_userId: { organizationId: 'org-1', userId: 'user-1' },
         },
-        update: { role: 'OWNER' },
+        update: { role: 'ADMIN' },
       }),
     );
   });

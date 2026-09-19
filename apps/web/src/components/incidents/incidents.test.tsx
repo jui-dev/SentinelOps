@@ -103,7 +103,7 @@ const legacyPortal = {
 /** Two members of the organization: the caller, and Daniel on no team. */
 const ada = {
   id: currentUser.memberships[0].id,
-  role: "OWNER",
+  role: "ADMIN",
   createdAt: "2026-09-01T12:00:00.000Z",
   user: { id: currentUser.id, name: "Ada Lovelace", email: currentUser.email },
 };

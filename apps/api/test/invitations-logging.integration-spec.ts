@@ -76,7 +76,7 @@ describe('invitation logging (integration)', () => {
       data: {
         organizationId: organization.id,
         userId: alice.id,
-        role: 'OWNER',
+        role: 'ADMIN',
       },
     });
 

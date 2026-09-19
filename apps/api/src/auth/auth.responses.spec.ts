@@ -36,7 +36,7 @@ const organizationRow = {
 
 const membershipRow = {
   id: 'membership-1',
-  role: 'OWNER',
+  role: 'ADMIN',
   organizationId: 'org-1',
   userId: 'user-1',
   createdAt: CREATED_AT,
@@ -95,7 +95,7 @@ describe('auth responses', () => {
     it('should emit the role and its organization, and nothing else', () => {
       expect(toMembershipResponse(membershipRow)).toEqual({
         id: 'membership-1',
-        role: 'OWNER',
+        role: 'ADMIN',
         organization: {
           id: 'org-1',
           name: 'Acme Operations',
@@ -129,7 +129,7 @@ describe('auth responses', () => {
         memberships: [
           {
             id: 'membership-1',
-            role: 'OWNER',
+            role: 'ADMIN',
             organization: {
               id: 'org-1',
               name: 'Acme Operations',

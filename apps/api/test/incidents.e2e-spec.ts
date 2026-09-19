@@ -171,7 +171,7 @@ describe('Incidents (e2e)', () => {
     await app.close();
   });
 
-  describe.each<Role>(['OWNER', 'ADMIN', 'MEMBER'])('as %s', (role) => {
+  describe.each<Role>(['ADMIN', 'MEMBER'])('as %s', (role) => {
     beforeEach(() => admitAs(role));
 
     it('should list a page in the collection envelope', async () => {
@@ -444,7 +444,7 @@ describe('Incidents (e2e)', () => {
         path: `${base}/1/responders/${MEMBERSHIP_ID}`,
       },
     ])('should receive 404 from $method $path', async ({ method, path }) => {
-      admitAs('OWNER');
+      admitAs('ADMIN');
 
       const response = await send(
         method,

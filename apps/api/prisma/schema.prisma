@@ -48,15 +48,20 @@ generator client {
   previewFeatures = ["partialIndexes"]
 }
 
-/// The initial organization-level membership role, and an authorization extension
-/// point. Deliberately coarse: Postgres makes adding an enum value trivial and
-/// removing one painful, so this starts narrow.
+/// A member's capacity in an organization. Two, deliberately:
+///
+///   ADMIN   sets the organization up — its members, teams, and services — and
+///           may act on anything within it. Whoever creates an organization
+///           is its first admin.
+///   MEMBER  does the operational work.
+///
+/// There was once an OWNER as well. It held exactly what ADMIN held, so it
+/// distinguished nothing, and was merged into ADMIN.
 ///
 /// This does not commit the eventual authorization model to any shape. A later stage
 /// may introduce dedicated Role, Permission, or RolePermission structures that read
 /// this value, supersede it, or migrate it away — nothing here should constrain that.
 enum Role {
-  OWNER
   ADMIN
   MEMBER
 

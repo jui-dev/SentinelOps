@@ -16,8 +16,8 @@ import { resolveTestDatabaseUrl } from './test-database.js';
 /**
  * Invitations against a real database.
  *
- * Two tenants. In A: Alice (OWNER), Carol (ADMIN), Dave (MEMBER). In B: Bob
- * (OWNER) and Erin (MEMBER) — Erin is an existing account that A invites.
+ * Two tenants. In A: Alice (ADMIN), Carol (ADMIN), Dave (MEMBER). In B: Bob
+ * (ADMIN) and Erin (MEMBER) — Erin is an existing account that A invites.
  *
  * Beyond the HTTP flows, this suite forces each race the design depends on,
  * deterministically, by holding a transaction open until the request under
@@ -28,7 +28,7 @@ import { resolveTestDatabaseUrl } from './test-database.js';
  *   - a membership or account that appears after the claim   → 409, claim rolled back.
  */
 
-type Role = 'OWNER' | 'ADMIN' | 'MEMBER';
+type Role = 'ADMIN' | 'MEMBER';
 
 interface Fixture {
   orgA: string;
@@ -245,10 +245,10 @@ describe('invitations (integration)', () => {
       erin: await user('erin@bravo.example', 'Erin Ekström'),
     };
 
-    await grant(orgA, fixture.alice, 'OWNER');
+    await grant(orgA, fixture.alice, 'ADMIN');
     await grant(orgA, fixture.carol, 'ADMIN');
     await grant(orgA, fixture.dave, 'MEMBER');
-    await grant(orgB, fixture.bob, 'OWNER');
+    await grant(orgB, fixture.bob, 'ADMIN');
     await grant(orgB, fixture.erin, 'MEMBER');
 
     return fixture;
@@ -348,7 +348,7 @@ describe('invitations (integration)', () => {
       await expectOpen(id);
     });
 
-    it("should answer another tenant's OWNER with the admission 404", async () => {
+    it("should answer another tenant's ADMIN with the admission 404", async () => {
       const { id } = await issue(NEW_EMAIL);
       const foreign = await list(fx.orgA, fx.bob);
       const missing = await list(randomUUID(), fx.bob);

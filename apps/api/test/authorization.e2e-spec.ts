@@ -60,7 +60,7 @@ class UnscopedPermissionProbeController {
   }
 }
 
-const ROLES: Role[] = ['OWNER', 'ADMIN', 'MEMBER'];
+const ROLES: Role[] = ['ADMIN', 'MEMBER'];
 
 describe('Authorization (e2e)', () => {
   let app: INestApplication;
@@ -162,7 +162,7 @@ describe('Authorization (e2e)', () => {
   });
 
   describe('PATCH /organizations/:organizationId', () => {
-    describe.each<Role>(['OWNER', 'ADMIN'])('as %s', (role) => {
+    describe.each<Role>(['ADMIN'])('as %s', (role) => {
       it('should rename the organization', async () => {
         admitAs(role);
 
@@ -260,11 +260,11 @@ describe('Authorization (e2e)', () => {
         admitAs('MEMBER');
 
         const response = await request(app.getHttpServer())
-          .patch(`/api/v1/organizations/${ORG_ID}?role=OWNER&membershipId=x`)
+          .patch(`/api/v1/organizations/${ORG_ID}?role=ADMIN&membershipId=x`)
           .set('Authorization', await bearer())
-          .set('X-Role', 'OWNER')
-          .set('X-Organization-Role', 'OWNER')
-          .send({ name: 'Renamed', role: 'OWNER' });
+          .set('X-Role', 'ADMIN')
+          .set('X-Organization-Role', 'ADMIN')
+          .send({ name: 'Renamed', role: 'ADMIN' });
 
         expectDenied(response);
         expect(prisma.organization.update).not.toHaveBeenCalled();
@@ -272,7 +272,7 @@ describe('Authorization (e2e)', () => {
     });
 
     it('should reject an unauthenticated caller before admission or authorization', async () => {
-      admitAs('OWNER');
+      admitAs('ADMIN');
 
       const response = await request(app.getHttpServer())
         .patch(`/api/v1/organizations/${ORG_ID}`)
@@ -285,8 +285,8 @@ describe('Authorization (e2e)', () => {
     });
 
     it('should answer a non-member with 404, not 403', async () => {
-      // Admitted as OWNER of ORG_ID only; the target is another organization.
-      admitAs('OWNER');
+      // Admitted as ADMIN of ORG_ID only; the target is another organization.
+      admitAs('ADMIN');
 
       const response = await patch(undefined, OTHER_ORG_ID);
 
@@ -338,7 +338,7 @@ describe('Authorization (e2e)', () => {
 
   describe('wiring mistakes fail closed', () => {
     it('should refuse an organization handler that declares no permission, before any query', async () => {
-      admitAs('OWNER');
+      admitAs('ADMIN');
 
       const response = await request(app.getHttpServer())
         .get(`/api/v1/organizations/${ORG_ID}/undeclared-probe`)

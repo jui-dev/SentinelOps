@@ -44,7 +44,7 @@ describe('development account (integration)', () => {
     expect(await prisma.user.count()).toBe(0);
   });
 
-  it('should be ensured idempotently, restored when changed, and log in as OWNER', async () => {
+  it('should be ensured idempotently, restored when changed, and log in as ADMIN', async () => {
     const devAccount = app.get(DevAccountService);
 
     await devAccount.ensure();
@@ -58,7 +58,7 @@ describe('development account (integration)', () => {
     expect(await prisma.organization.count()).toBe(1);
     expect(
       await prisma.membership.findFirstOrThrow({ select: { role: true } }),
-    ).toEqual({ role: 'OWNER' });
+    ).toEqual({ role: 'ADMIN' });
 
     const login = await request(app.getHttpServer())
       .post('/api/v1/auth/login')

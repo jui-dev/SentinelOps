@@ -127,7 +127,7 @@ describe('Services (e2e)', () => {
     await app.close();
   });
 
-  describe.each<Role>(['OWNER', 'ADMIN', 'MEMBER'])('reads as %s', (role) => {
+  describe.each<Role>(['ADMIN', 'MEMBER'])('reads as %s', (role) => {
     it.each(READS)('should serve %s', async (path) => {
       admitAs(role);
 
@@ -135,7 +135,7 @@ describe('Services (e2e)', () => {
     });
   });
 
-  describe.each<Role>(['OWNER', 'ADMIN'])('writes as %s', (role) => {
+  describe.each<Role>(['ADMIN'])('writes as %s', (role) => {
     beforeEach(() => admitAs(role));
 
     it('should create a service and answer with the declared shape', async () => {
@@ -239,7 +239,7 @@ describe('Services (e2e)', () => {
       ...READS.map((path) => ({ method: 'get' as const, path })),
       ...WRITES,
     ])('should receive 404 from $method $path', async ({ method, path }) => {
-      admitAs('OWNER');
+      admitAs('ADMIN');
 
       const response = await send(
         method,

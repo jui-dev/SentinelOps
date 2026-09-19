@@ -40,7 +40,7 @@ interface Fixture {
   carolInB: string;
 }
 
-type Role = 'OWNER' | 'ADMIN' | 'MEMBER';
+type Role = 'ADMIN' | 'MEMBER';
 
 /** The error body with the per-request fields removed, for comparison. */
 const comparable = (body: Record<string, unknown>) => {
@@ -142,8 +142,8 @@ describe('teams (integration)', () => {
       bob,
       carol,
       dave,
-      aliceInA: await grant(orgA, alice, 'OWNER'),
-      bobInB: await grant(orgB, bob, 'OWNER'),
+      aliceInA: await grant(orgA, alice, 'ADMIN'),
+      bobInB: await grant(orgB, bob, 'ADMIN'),
       carolInA: await grant(orgA, carol, 'ADMIN'),
       carolInB: await grant(orgB, carol, 'MEMBER'),
       daveInA: await grant(orgA, dave, 'MEMBER'),
