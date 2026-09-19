@@ -1,5 +1,6 @@
 import type { ServiceCriticality } from '../services/services.contract.js';
 import type {
+  AffectedServiceResponse,
   IncidentActivityResponse,
   IncidentActivityType,
   IncidentDetailResponse,
@@ -7,6 +8,8 @@ import type {
   IncidentResponse,
   IncidentSeverity,
   IncidentStatus,
+  IncidentSummaryResponse,
+  SeverityCounts,
 } from './incidents.contract.js';
 
 /**
@@ -120,3 +123,142 @@ export const toIncidentActivityResponse = (
   },
   createdAt: activity.createdAt.toISOString(),
 });
+
+/** Most severe first, as the database enum declares them. */
+const SEVERITIES: readonly IncidentSeverity[] = [
+  'SEV1',
+  'SEV2',
+  'SEV3',
+  'SEV4',
+];
+
+/** Most critical first: the order affected services are shown in. */
+const CRITICALITIES: readonly ServiceCriticality[] = [
+  'CRITICAL',
+  'HIGH',
+  'NORMAL',
+  'LOW',
+];
+
+/** One group of incidents counted by severity, as `groupBy` returns it. */
+interface SeverityCountRow {
+  severity: IncidentSeverity;
+  _count: { _all: number };
+}
+
+interface ActiveCountRow extends SeverityCountRow {
+  serviceId: string;
+}
+
+interface AffectedServiceRow {
+  id: string;
+  name: string;
+  slug: string;
+  criticality: ServiceCriticality;
+  archivedAt: Date | null;
+  ownerTeam: { id: string; name: string; slug: string };
+}
+
+/** Every level present, each summed over the rows that carry it. */
+const countBySeverity = (rows: readonly SeverityCountRow[]): SeverityCounts => {
+  const counts: SeverityCounts = { SEV1: 0, SEV2: 0, SEV3: 0, SEV4: 0 };
+
+  for (const row of rows) counts[row.severity] += row._count._all;
+
+  return counts;
+};
+
+const total = (counts: SeverityCounts): number =>
+  SEVERITIES.reduce((sum, severity) => sum + counts[severity], 0);
+
+/**
+ * The summary, from the rows its queries return. `active` is grouped by
+ * service and severity, which gives both the organization's active counts
+ * and each affected service's. Services are ordered by their most severe
+ * active incident, then by criticality, then by name.
+ */
+export const toIncidentSummaryResponse = ({
+  active,
+  services,
+  declared,
+  resolved,
+  stillOpen,
+  period,
+  history,
+}: {
+  active: readonly ActiveCountRow[];
+  services: readonly AffectedServiceRow[];
+  declared: readonly SeverityCountRow[];
+  resolved: number;
+  stillOpen: number;
+  period: { from: string; to: string };
+  history: {
+    total: number;
+    items: readonly {
+      incident: IncidentRow;
+      declaredInPeriod: boolean;
+      resolvedInPeriod: boolean;
+    }[];
+  };
+}): IncidentSummaryResponse => {
+  const activeBySeverity = countBySeverity(active);
+  const declaredBySeverity = countBySeverity(declared);
+
+  const affectedServices = services
+    .map((service): AffectedServiceResponse | undefined => {
+      const rows = active.filter((row) => row.serviceId === service.id);
+      const worstSeverity = SEVERITIES.find((severity) =>
+        rows.some((row) => row.severity === severity),
+      );
+
+      if (!worstSeverity) return undefined;
+
+      return {
+        id: service.id,
+        name: service.name,
+        slug: service.slug,
+        criticality: service.criticality,
+        archivedAt: service.archivedAt?.toISOString() ?? null,
+        ownerTeam: {
+          id: service.ownerTeam.id,
+          name: service.ownerTeam.name,
+          slug: service.ownerTeam.slug,
+        },
+        activeIncidents: total(countBySeverity(rows)),
+        worstSeverity,
+      };
+    })
+    .filter((service) => service !== undefined)
+    .sort(
+      (a, b) =>
+        SEVERITIES.indexOf(a.worstSeverity) -
+          SEVERITIES.indexOf(b.worstSeverity) ||
+        CRITICALITIES.indexOf(a.criticality) -
+          CRITICALITIES.indexOf(b.criticality) ||
+        a.name.localeCompare(b.name),
+    );
+
+  return {
+    current: {
+      active: total(activeBySeverity),
+      activeBySeverity,
+      affectedServices,
+    },
+    period: {
+      from: period.from,
+      to: period.to,
+      declared: total(declaredBySeverity),
+      declaredBySeverity,
+      resolved,
+      stillOpen,
+      history: {
+        total: history.total,
+        items: history.items.map((item) => ({
+          incident: toIncidentResponse(item.incident),
+          declaredInPeriod: item.declaredInPeriod,
+          resolvedInPeriod: item.resolvedInPeriod,
+        })),
+      },
+    },
+  };
+};

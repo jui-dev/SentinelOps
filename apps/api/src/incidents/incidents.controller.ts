@@ -19,10 +19,12 @@ import type {
   IncidentActivityResponse,
   IncidentDetailResponse,
   IncidentPage,
+  IncidentSummaryResponse,
 } from './incidents.contract.js';
 import {
   addResponderSchema,
   createIncidentSchema,
+  incidentSummaryQuerySchema,
   listIncidentsQuerySchema,
   postIncidentUpdateSchema,
   updateIncidentSchema,
@@ -30,6 +32,7 @@ import {
 import type {
   AddResponderRequest,
   CreateIncidentRequest,
+  IncidentSummaryQuery,
   ListIncidentsQuery,
   PostIncidentUpdateRequest,
   UpdateIncidentRequest,
@@ -61,6 +64,20 @@ export class IncidentsController {
     @Query({ schema: listIncidentsQuerySchema }) query: ListIncidentsQuery,
   ): Promise<IncidentPage> {
     return this.incidents.list(membership.organizationId, query);
+  }
+
+  /**
+   * Counts of the incidents active now, and of those declared and resolved
+   * in a period of whole UTC days, with a preview of that period's history.
+   * Declared before `:incidentNumber`, which would otherwise claim the path.
+   */
+  @Get('summary')
+  @RequirePermission(Permission.INCIDENTS_READ)
+  summary(
+    @CurrentMembership() membership: OrganizationContext,
+    @Query({ schema: incidentSummaryQuerySchema }) query: IncidentSummaryQuery,
+  ): Promise<IncidentSummaryResponse> {
+    return this.incidents.summary(membership.organizationId, query);
   }
 
   /**

@@ -367,14 +367,13 @@ function DeleteService() {
 
 /** A service's settings: its details, its owner, archiving, and deleting it. */
 export function ServiceSettings() {
-  const organization = useOrganization();
   const service = useService();
   const canManage = useCan(Permission.SERVICES_MANAGE);
 
   return (
     <>
       <PageHeader
-        eyebrow={`${organization.name} · ${service.name}`}
+        eyebrow={service.name}
         title="Service settings"
       />
       <PageBody width="form">

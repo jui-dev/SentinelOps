@@ -328,7 +328,6 @@ export function TeamDetail() {
     <>
       <PageHeader
         width="list"
-        eyebrow={organization.name}
         title={team.name}
         description={team.description ?? undefined}
         actions={

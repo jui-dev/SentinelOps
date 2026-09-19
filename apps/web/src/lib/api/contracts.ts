@@ -293,6 +293,67 @@ export interface PostIncidentUpdateRequest {
   message: string;
 }
 
+/** A count for each severity level; a level with none is 0. */
+export type SeverityCounts = Record<IncidentSeverity, number>;
+
+/** A service with at least one active incident, and the worst of them. */
+export interface AffectedServiceResponse {
+  id: string;
+  name: string;
+  slug: string;
+  criticality: ServiceCriticality;
+  archivedAt: string | null;
+  ownerTeam: { id: string; name: string; slug: string };
+  activeIncidents: number;
+  worstSeverity: IncidentSeverity;
+}
+
+/**
+ * One incident in a period's history, with which of its two lifecycle
+ * moments happened inside the period. At least one is true, and an incident
+ * declared and resolved in the same period is one item with both set.
+ */
+export interface IncidentHistoryItemResponse {
+  incident: IncidentResponse;
+  declaredInPeriod: boolean;
+  resolvedInPeriod: boolean;
+}
+
+/**
+ * `GET /organizations/:organizationId/incidents/summary`. `current` is every
+ * unresolved incident now, whatever the period. `period` covers whole UTC
+ * days `from` to `to`, both included; `declaredBySeverity` counts each
+ * incident at its severity now.
+ * `history` is what happened in the period: every incident declared
+ * or resolved in it, most recent first, with `total` counting them all and
+ * `items` previewing the most recent few.
+ */
+export interface IncidentSummaryResponse {
+  current: {
+    active: number;
+    activeBySeverity: SeverityCounts;
+    affectedServices: AffectedServiceResponse[];
+  };
+  period: {
+    from: string;
+    to: string;
+    declared: number;
+    declaredBySeverity: SeverityCounts;
+    resolved: number;
+    stillOpen: number;
+    history: {
+      total: number;
+      items: IncidentHistoryItemResponse[];
+    };
+  };
+}
+
+/** A period of whole UTC days, both included, as `YYYY-MM-DD`. */
+export interface IncidentPeriod {
+  from: string;
+  to: string;
+}
+
 /** A page of a collection. `cursor` asks for the next page. */
 export interface Page<T> {
   items: T[];

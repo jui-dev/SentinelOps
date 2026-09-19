@@ -17,6 +17,7 @@ import type {
   IncidentDetailResponse,
   IncidentPage,
   IncidentSeverity,
+  IncidentSummaryResponse,
 } from './incidents.contract.js';
 import {
   alreadyAResponder,
@@ -29,11 +30,14 @@ import {
   toIncidentActivityResponse,
   toIncidentDetailResponse,
   toIncidentResponse,
+  toIncidentSummaryResponse,
 } from './incidents.responses.js';
-import { parseIncidentNumber } from './incidents.schemas.js';
+import { mergeHistory } from './incidents.history.js';
+import { parseIncidentNumber, summaryBounds } from './incidents.schemas.js';
 import type {
   AddResponderRequest,
   CreateIncidentRequest,
+  IncidentSummaryQuery,
   ListIncidentsQuery,
   PostIncidentUpdateRequest,
   UpdateIncidentRequest,
@@ -48,6 +52,9 @@ const RECORD_NOT_FOUND = 'P2025';
 
 /** Incidents per page, for both lists. Not a client parameter. */
 export const INCIDENT_PAGE_SIZE = 50;
+
+/** How many of a period's incidents a summary previews. */
+export const HISTORY_PREVIEW_LIMIT = 10;
 
 /** Most severe first — the order the database enum declares them in. */
 const SEVERITIES: readonly IncidentSeverity[] = [
@@ -217,12 +224,20 @@ export class IncidentsService {
    * status changes between two page requests can be skipped or repeated;
    * that is the nature of paging a changing set, and the active list is
    * rarely more than one page.
+   *
+   * A period narrows each list by the moment that defines its state: active
+   * incidents declared in it, resolved incidents resolved in it.
    */
   async list(
     organizationId: string,
     query: ListIncidentsQuery,
   ): Promise<IncidentPage> {
     const scope = { organizationId, organization: { deletedAt: null } };
+    // A period narrows each state by the moment that defines it.
+    const period =
+      query.from && query.to
+        ? summaryBounds({ from: query.from, to: query.to })
+        : undefined;
     let rows;
 
     if (query.state === 'active') {
@@ -232,6 +247,7 @@ export class IncidentsService {
         where: {
           ...scope,
           status: { not: 'RESOLVED' },
+          ...(period && { createdAt: period }),
           // Prisma compares enums by equality and membership only, so "after
           // this severity" is the explicit list of the less severe ones.
           ...(after && {
@@ -258,6 +274,7 @@ export class IncidentsService {
         where: {
           ...scope,
           status: 'RESOLVED',
+          ...(period && { resolvedAt: period }),
           ...(before !== undefined && { number: { lt: before } }),
         },
         select: incidentSelection,
@@ -282,6 +299,114 @@ export class IncidentsService {
         hasMore,
       },
     };
+  }
+
+  /**
+   * The organization's incidents now, and in one period of whole UTC days.
+   *
+   * Counts, not pages: every figure covers every incident it describes. The
+   * reads share one repeatable-read snapshot, so the figures and the history
+   * agree with each other even while incidents change. Active incidents are
+   * grouped by service and severity in one query, which gives the
+   * organization's counts and each affected service's. The history previews
+   * the most recent incidents declared or resolved in the period.
+   */
+  async summary(
+    organizationId: string,
+    query: IncidentSummaryQuery,
+  ): Promise<IncidentSummaryResponse> {
+    const scope = { organizationId, organization: { deletedAt: null } };
+    const unresolved = { status: { not: 'RESOLVED' as const } };
+    const period = summaryBounds(query);
+
+    const declaredInPeriod = { ...scope, createdAt: period };
+    const resolvedInPeriod = {
+      ...scope,
+      status: 'RESOLVED' as const,
+      resolvedAt: period,
+    };
+
+    const [
+      active,
+      services,
+      declared,
+      resolved,
+      stillOpen,
+      bothInPeriod,
+      declaredRecently,
+      resolvedRecently,
+    ] = await this.prisma.$transaction(
+      [
+        this.prisma.incident.groupBy({
+          by: ['serviceId', 'severity'],
+          where: { ...scope, ...unresolved },
+          _count: { _all: true },
+        }),
+        this.prisma.service.findMany({
+          where: {
+            ...scope,
+            incidents: { some: unresolved },
+          },
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            criticality: true,
+            archivedAt: true,
+            ownerTeam: { select: { id: true, name: true, slug: true } },
+          },
+        }),
+        this.prisma.incident.groupBy({
+          by: ['severity'],
+          where: declaredInPeriod,
+          _count: { _all: true },
+        }),
+        this.prisma.incident.count({ where: resolvedInPeriod }),
+        this.prisma.incident.count({
+          where: { ...scope, ...unresolved, createdAt: period },
+        }),
+        // Declared and resolved in the same period: one incident, counted
+        // once, so the history's total is neither doubled nor short.
+        this.prisma.incident.count({
+          where: { ...resolvedInPeriod, createdAt: period },
+        }),
+        this.prisma.incident.findMany({
+          where: declaredInPeriod,
+          select: incidentSelection,
+          orderBy: [{ createdAt: 'desc' }, { number: 'desc' }],
+          take: HISTORY_PREVIEW_LIMIT,
+        }),
+        this.prisma.incident.findMany({
+          where: resolvedInPeriod,
+          select: incidentSelection,
+          orderBy: [{ resolvedAt: 'desc' }, { number: 'desc' }],
+          take: HISTORY_PREVIEW_LIMIT,
+        }),
+      ],
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
+
+    return toIncidentSummaryResponse({
+      active,
+      services,
+      declared,
+      resolved,
+      stillOpen,
+      period: { from: query.from, to: query.to },
+      history: {
+        // Declared plus resolved, less those that were both.
+        total:
+          declared.reduce((sum, row) => sum + row._count._all, 0) +
+          resolved -
+          bothInPeriod,
+        items: mergeHistory(
+          declaredRecently,
+          resolvedRecently,
+          period,
+          HISTORY_PREVIEW_LIMIT,
+        ),
+      },
+    });
   }
 
   /** One incident, by its number within the organization. */

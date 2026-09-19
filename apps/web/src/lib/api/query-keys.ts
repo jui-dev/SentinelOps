@@ -17,13 +17,17 @@
  *   name. Service pages read the service from here. Any service change stales
  *   it and `teams` (each team's service count); a team rename stales it too.
  * - `incidents`: the prefix of every incident query in an organization —
- *   both paged lists (`incidentList`) and each incident (`incident`). Every
+ *   both paged lists (`incidentList`, one per state and range — a range
+ *   narrowing each list is its own query) and each incident (`incident`). Every
  *   incident embeds its service's name, criticality, and archival, and its
  *   team's name, so a change to a service or a team rename stales the whole
  *   prefix. Declaring or changing an incident writes that incident's entry
  *   and stales the lists.
  * - `incidentTimeline`: one incident's timeline, beneath its entry. Posting
  *   an update or changing the incident stales it.
+ * - `incidentSummary`: the overview's counts and history for one period,
+ *   beneath the prefix — so whatever stales every incident stales them too.
+ *   Declaring or changing an incident stales every period's.
  *
  * The invitation an `/invite` page shows is deliberately not cached here: it
  * is fetched with a token, and lives in that page's own state.
@@ -44,8 +48,21 @@ export const queryKeys = {
     ["organization", organizationId, "services"] as const,
   incidents: (organizationId: string) =>
     ["organization", organizationId, "incidents"] as const,
-  incidentList: (organizationId: string, state: "active" | "resolved") =>
-    ["organization", organizationId, "incidents", "list", state] as const,
+  incidentList: (
+    organizationId: string,
+    state: "active" | "resolved",
+    period?: { from: string; to: string },
+  ) =>
+    [
+      "organization",
+      organizationId,
+      "incidents",
+      "list",
+      state,
+      period ? `${period.from}..${period.to}` : "all",
+    ] as const,
+  incidentSummary: (organizationId: string, from: string, to: string) =>
+    ["organization", organizationId, "incidents", "summary", from, to] as const,
   incident: (organizationId: string, number: number) =>
     ["organization", organizationId, "incidents", "detail", number] as const,
   incidentTimeline: (organizationId: string, number: number) =>

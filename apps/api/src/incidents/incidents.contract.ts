@@ -111,6 +111,75 @@ export interface IncidentActivityResponse {
   createdAt: string;
 }
 
+/** A count for each severity level; a level with none is 0. */
+export type SeverityCounts = Record<IncidentSeverity, number>;
+
+/**
+ * A service with at least one active incident: identity, its owner, how many
+ * active incidents it has, and the most severe of them. Criticality is the
+ * classification people chose, not health.
+ */
+export interface AffectedServiceResponse {
+  id: string;
+  name: string;
+  slug: string;
+  criticality: ServiceCriticality;
+  archivedAt: string | null;
+  ownerTeam: { id: string; name: string; slug: string };
+  activeIncidents: number;
+  worstSeverity: IncidentSeverity;
+}
+
+/**
+ * One incident in a period's history: the incident, and which of its two
+ * lifecycle moments happened inside the period. At least one is true.
+ *
+ * An incident declared and resolved in the same period is one item with
+ * both set — never two — so the history never lists an incident twice.
+ */
+export interface IncidentHistoryItemResponse {
+  incident: IncidentResponse;
+  declaredInPeriod: boolean;
+  resolvedInPeriod: boolean;
+}
+
+/**
+ * `GET .../incidents/summary`: the organization's incidents in two parts.
+ *
+ * `current` is the state now — every unresolved incident, whenever it was
+ * declared — and does not depend on the period asked for.
+ *
+ * `period` covers whole UTC days, `from` to `to`, both included. `declared`
+ * counts incidents declared in it; `declaredBySeverity` splits them by each
+ * incident's severity now, which may have changed since it was declared.
+ * `resolved` counts incidents resolved in it, whenever they were declared.
+ * `stillOpen` counts those declared in it that are not yet resolved.
+ *
+ * `history` is what happened in the period: every incident declared or
+ * resolved in it, most recent first. `total` counts them all — declared
+ * plus resolved, less those that were both — while `items` is a preview of
+ * the most recent few.
+ */
+export interface IncidentSummaryResponse {
+  current: {
+    active: number;
+    activeBySeverity: SeverityCounts;
+    affectedServices: AffectedServiceResponse[];
+  };
+  period: {
+    from: string;
+    to: string;
+    declared: number;
+    declaredBySeverity: SeverityCounts;
+    resolved: number;
+    stillOpen: number;
+    history: {
+      total: number;
+      items: IncidentHistoryItemResponse[];
+    };
+  };
+}
+
 /**
  * One page of a collection. `cursor` is opaque and asks for the page after
  * this one; it is null exactly when `hasMore` is false.

@@ -80,8 +80,11 @@ describe('Incidents (e2e)', () => {
     membership: { findFirst: vi.fn() },
     organization: { findFirst: vi.fn(), update: vi.fn() },
     team: { findFirst: vi.fn() },
+    service: { findMany: vi.fn() },
     incident: {
       findMany: vi.fn(),
+      groupBy: vi.fn(),
+      count: vi.fn(),
       findFirst: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
@@ -137,8 +140,10 @@ describe('Incidents (e2e)', () => {
 
     tokens = app.get(TokenService);
 
-    prisma.$transaction.mockImplementation((work: (tx: unknown) => unknown) =>
-      work(prisma),
+    // Interactive transactions run their work; batches, their queries.
+    prisma.$transaction.mockImplementation(
+      (work: ((tx: unknown) => unknown) | Promise<unknown>[]) =>
+        Array.isArray(work) ? Promise.all(work) : work(prisma),
     );
     prisma.$queryRaw.mockResolvedValue([
       { owner_team_id: TEAM_ID, archived_at: null },
@@ -147,6 +152,9 @@ describe('Incidents (e2e)', () => {
     prisma.organization.update.mockResolvedValue({ lastIncidentNumber: 1 });
     prisma.team.findFirst.mockResolvedValue({ id: TEAM_ID });
     prisma.incident.findMany.mockResolvedValue([incidentRow]);
+    prisma.incident.groupBy.mockResolvedValue([]);
+    prisma.incident.count.mockResolvedValue(0);
+    prisma.service.findMany.mockResolvedValue([]);
     prisma.incident.findFirst.mockResolvedValue(incidentRow);
     prisma.incident.create.mockResolvedValue(incidentRow);
     prisma.incident.update.mockResolvedValue(incidentRow);
@@ -174,6 +182,25 @@ describe('Incidents (e2e)', () => {
         items: [expect.objectContaining({ number: 1 })],
         page: { cursor: null, hasMore: false },
       });
+    });
+
+    it('should summarise the incidents, not mistaking the path for a number', async () => {
+      const response = await send(
+        'get',
+        `${base}/summary?from=2026-09-13&to=2026-09-19`,
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.body.period).toMatchObject({
+        from: '2026-09-13',
+        to: '2026-09-19',
+        declared: 0,
+      });
+      expect(response.body.period.history).toEqual({
+        total: expect.any(Number),
+        items: expect.any(Array),
+      });
+      expect(prisma.incident.findFirst).not.toHaveBeenCalled();
     });
 
     it('should declare an incident and answer with the declared shape', async () => {
@@ -262,6 +289,48 @@ describe('Incidents (e2e)', () => {
 
       expect(response.status).toBe(400);
       expect(prisma.incident.findMany).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      'from=2026-09-13',
+      'from=2026-09-19&to=2026-09-13',
+      'from=2025-01-01&to=2026-09-19',
+      'from=2026-09-13T00:00:00Z&to=2026-09-19',
+    ])('should refuse the summary period %s with 400', async (query) => {
+      const response = await send('get', `${base}/summary?${query}`);
+
+      expect(response.status).toBe(400);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      'from=2026-09-13',
+      'from=2026-09-19&to=2026-09-13',
+      'from=2025-01-01&to=2026-09-19',
+    ])('should refuse the list period %s with 400', async (query) => {
+      const response = await send('get', `${base}?state=active&${query}`);
+
+      expect(response.status).toBe(400);
+      expect(prisma.incident.findMany).not.toHaveBeenCalled();
+    });
+
+    it('should narrow a list by the period it is given', async () => {
+      const response = await send(
+        'get',
+        `${base}?state=resolved&from=2026-09-13&to=2026-09-19`,
+      );
+
+      expect(response.status).toBe(200);
+      expect(prisma.incident.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            resolvedAt: {
+              gte: new Date('2026-09-13T00:00:00.000Z'),
+              lt: new Date('2026-09-20T00:00:00.000Z'),
+            },
+          }),
+        }),
+      );
     });
 
     it('should refuse a malformed cursor with 400', async () => {
@@ -361,6 +430,10 @@ describe('Incidents (e2e)', () => {
     it.each([
       { method: 'get' as const, path: `${base}?state=active` },
       { method: 'get' as const, path: `${base}/1` },
+      {
+        method: 'get' as const,
+        path: `${base}/summary?from=2026-09-13&to=2026-09-19`,
+      },
       { method: 'post' as const, path: base },
       { method: 'patch' as const, path: `${base}/1` },
       { method: 'post' as const, path: `${base}/1/responders` },

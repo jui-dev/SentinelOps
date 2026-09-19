@@ -264,14 +264,13 @@ function DeleteTeam() {
 
 /** A team's settings: its name and description, and deleting it. */
 export function TeamSettings() {
-  const organization = useOrganization();
   const team = useTeam();
   const canManage = useCan(Permission.TEAMS_MANAGE);
 
   return (
     <>
       <PageHeader
-        eyebrow={`${organization.name} · ${team.name}`}
+        eyebrow={team.name}
         title="Team settings"
       />
       <PageBody width="form">

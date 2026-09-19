@@ -201,7 +201,6 @@ export function TeamsView() {
     <>
       <PageHeader
         width="list"
-        eyebrow={organization.name}
         title="Teams"
         meta={teams.data?.length}
         description="Groups of this organization's members. Belonging to a team grants no extra access."

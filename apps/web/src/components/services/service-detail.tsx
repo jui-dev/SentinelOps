@@ -33,7 +33,6 @@ export function ServiceDetail() {
   return (
     <>
       <PageHeader
-        eyebrow={organization.name}
         title={service.name}
         description={service.description ?? undefined}
         actions={

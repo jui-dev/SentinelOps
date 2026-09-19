@@ -10,7 +10,9 @@ import type {
   IncidentActivityResponse,
   IncidentDetailResponse,
   IncidentResponse,
+  IncidentPeriod,
   IncidentState,
+  IncidentSummaryResponse,
   InvitationLookupResponse,
   InvitationResponse,
   LoginRequest,
@@ -205,19 +207,38 @@ const incidentsPath = (organizationId: string) =>
 const incidentPath = (organizationId: string, number: number) =>
   `${incidentsPath(organizationId)}/${number}`;
 
+/**
+ * One page of a state's incidents, optionally narrowed to a period — by
+ * when an active incident was declared, and when a resolved one was
+ * resolved, as the API defines it.
+ */
 export const listIncidents = (
   organizationId: string,
   state: IncidentState,
   cursor?: string,
+  period?: IncidentPeriod,
 ) => {
   const query = new URLSearchParams({ state });
 
   if (cursor) query.set("cursor", cursor);
+  if (period) {
+    query.set("from", period.from);
+    query.set("to", period.to);
+  }
 
   return authenticatedRequest<Page<IncidentResponse>>(
     `${incidentsPath(organizationId)}?${query}`,
   );
 };
+
+/** Incidents active now, and those declared and resolved in `period`. */
+export const getIncidentSummary = (
+  organizationId: string,
+  { from, to }: IncidentPeriod,
+) =>
+  authenticatedRequest<IncidentSummaryResponse>(
+    `${incidentsPath(organizationId)}/summary?${new URLSearchParams({ from, to })}`,
+  );
 
 export const getIncident = (organizationId: string, number: number) =>
   authenticatedRequest<IncidentDetailResponse>(

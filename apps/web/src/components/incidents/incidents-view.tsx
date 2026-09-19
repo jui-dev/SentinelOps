@@ -2,8 +2,8 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 
 import {
@@ -37,6 +37,7 @@ import { linkClasses } from "@/components/ui/link";
 import { ApiErrorCode, Permission } from "@/lib/api/contracts";
 import type {
   CreateIncidentRequest,
+  IncidentPeriod,
   IncidentResponse,
   IncidentSeverity,
   IncidentState,
@@ -44,6 +45,7 @@ import type {
 import { createIncident } from "@/lib/api/endpoints";
 import { fieldErrorsOf, isApiError } from "@/lib/api/errors";
 import { queryKeys } from "@/lib/api/query-keys";
+import { formatPeriodRange, readPeriodParams } from "@/lib/period/period";
 
 import {
   incidentHref,
@@ -383,9 +385,15 @@ function IncidentRow({
  * One state's incidents: active ones most severe first, then longest
  * running; resolved ones most recent first. Pages load on request.
  */
-function IncidentList({ state }: { state: IncidentState }) {
+function IncidentList({
+  state,
+  period,
+}: {
+  state: IncidentState;
+  period?: IncidentPeriod;
+}) {
   const organization = useOrganization();
-  const list = useIncidentList(organization.id, state);
+  const list = useIncidentList(organization.id, state, period);
   const active = state === "active";
 
   let content;
@@ -409,7 +417,9 @@ function IncidentList({ state }: { state: IncidentState }) {
       incidents.length === 0 ? (
         active ? (
           <EmptyNote
-            title="No active incidents"
+            title={
+              period ? "None declared in this range" : "No active incidents"
+            }
             // The nominal mark: a real state, said in words as well.
             glyph={
               <svg viewBox="0 0 10 10" className="size-2.5 text-signal-nominal">
@@ -417,11 +427,19 @@ function IncidentList({ state }: { state: IncidentState }) {
               </svg>
             }
           >
-            Nothing needs a response right now.
+            {period
+              ? "No incident still running was declared between these dates."
+              : "Nothing needs a response right now."}
           </EmptyNote>
         ) : (
-          <EmptyNote title="No resolved incidents">
-            Incidents appear here once resolved, most recent first.
+          <EmptyNote
+            title={
+              period ? "None resolved in this range" : "No resolved incidents"
+            }
+          >
+            {period
+              ? "No incident was resolved between these dates."
+              : "Incidents appear here once resolved, most recent first."}
           </EmptyNote>
         )
       ) : (
@@ -491,6 +509,10 @@ function IncidentList({ state }: { state: IncidentState }) {
       id={`${state}-incidents`}
       title={active ? "Active" : "Resolved"}
       meta={count}
+      description={
+        period &&
+        (active ? "Declared in this range." : "Resolved in this range.")
+      }
     >
       {content}
     </Section>
@@ -503,14 +525,25 @@ function IncidentList({ state }: { state: IncidentState }) {
  * from the header.
  */
 export function IncidentsView() {
-  const organization = useOrganization();
   const canManage = useCan(Permission.INCIDENTS_MANAGE);
   const [declaring, setDeclaring] = useState(false);
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
+  const router = useRouter();
+  const { period, invalid } = readPeriodParams(
+    searchParams.get("from"),
+    searchParams.get("to"),
+  );
+
+  // A range the API would refuse is taken out of the URL rather than
+  // quietly ignored, so the address and the incidents shown always agree.
+  useEffect(() => {
+    if (invalid) router.replace(pathname);
+  }, [invalid, pathname, router]);
 
   return (
     <>
       <PageHeader
-        eyebrow={organization.name}
         title="Incidents"
         description="Operational problems affecting this organization's services: who is responsible, how serious each is, and where the response stands."
         actions={
@@ -524,8 +557,20 @@ export function IncidentsView() {
         {canManage && declaring && (
           <DeclareIncidentForm onCancel={() => setDeclaring(false)} />
         )}
-        <IncidentList state="active" />
-        <IncidentList state="resolved" />
+        {period && (
+          <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-fg-muted">
+            <span className="data text-fg">{formatPeriodRange(period)}</span>
+            <span>(UTC)</span>
+            <span aria-hidden="true" className="text-fg-subtle">
+              ·
+            </span>
+            <Link href={pathname} className={linkClasses}>
+              Clear
+            </Link>
+          </p>
+        )}
+        <IncidentList state="active" period={period} />
+        <IncidentList state="resolved" period={period} />
       </PageBody>
     </>
   );

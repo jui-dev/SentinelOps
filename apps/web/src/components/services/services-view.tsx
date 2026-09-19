@@ -386,7 +386,6 @@ export function ServicesView() {
     <>
       <PageHeader
         width="list"
-        eyebrow={organization.name}
         title="Services"
         meta={services.data?.length}
         description="The systems this organization runs, who owns each, and how much depends on it."

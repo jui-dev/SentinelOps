@@ -10,6 +10,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import { organizationPath } from "@/components/app/navigation";
 import type {
   IncidentDetailResponse,
+  IncidentPeriod,
   IncidentState,
 } from "@/lib/api/contracts";
 import {
@@ -29,11 +30,16 @@ export const incidentHref = (orgSlug: string, number: number) =>
  * One state's incidents, a page at a time. `fetchNextPage` follows the API's
  * cursor; there is no page size or total here — both are the API's.
  */
-export const useIncidentList = (organizationId: string, state: IncidentState) =>
+export const useIncidentList = (
+  organizationId: string,
+  state: IncidentState,
+  /** Narrows the list to one period of whole UTC days. */
+  period?: IncidentPeriod,
+) =>
   useInfiniteQuery({
-    queryKey: queryKeys.incidentList(organizationId, state),
+    queryKey: queryKeys.incidentList(organizationId, state, period),
     queryFn: ({ pageParam }) =>
-      listIncidents(organizationId, state, pageParam ?? undefined),
+      listIncidents(organizationId, state, pageParam ?? undefined, period),
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.page.cursor,
   });
@@ -51,8 +57,8 @@ export const useIncident = (organizationId: string, number: number) =>
 /**
  * After an incident is declared or changed: its own entry holds the API's
  * answer, and both lists refetch — its status, severity, or team may have
- * moved it between them or within one. Its timeline refetches too: the
- * change may have been recorded there.
+ * moved it between them or within one — as do the overview's counts. Its
+ * timeline refetches too: the change may have been recorded there.
  */
 export const storeIncident = (
   queryClient: QueryClient,
@@ -65,6 +71,9 @@ export const storeIncident = (
   );
   void queryClient.invalidateQueries({
     queryKey: [...queryKeys.incidents(organizationId), "list"],
+  });
+  void queryClient.invalidateQueries({
+    queryKey: [...queryKeys.incidents(organizationId), "summary"],
   });
   void queryClient.invalidateQueries({
     queryKey: queryKeys.incidentTimeline(organizationId, incident.number),

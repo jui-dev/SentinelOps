@@ -1,4 +1,5 @@
 import { screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, it, vi } from "vitest";
 
 import { AuthFrame } from "@/components/app/auth-frame";
@@ -147,8 +148,53 @@ const resolvedIncident = {
 
 const base = `/organizations/${organization.id}`;
 
+/** Active incidents on one service, and a period with one resolved. */
+const summary = (from: string, to: string) => ({
+  current: {
+    active: 2,
+    activeBySeverity: { SEV1: 1, SEV2: 1, SEV3: 0, SEV4: 0 },
+    affectedServices: [
+      {
+        ...service,
+        ownerTeam: { id: team.id, name: team.name, slug: team.slug },
+        activeIncidents: 2,
+        worstSeverity: "SEV1",
+      },
+    ],
+  },
+  period: {
+    from,
+    to,
+    declared: 3,
+    declaredBySeverity: { SEV1: 1, SEV2: 1, SEV3: 1, SEV4: 0 },
+    resolved: 1,
+    stillOpen: 2,
+    history: {
+      total: 2,
+      items: [
+        {
+          incident: activeIncident,
+          declaredInPeriod: true,
+          resolvedInPeriod: false,
+        },
+        {
+          incident: resolvedIncident,
+          declaredInPeriod: true,
+          resolvedInPeriod: true,
+        },
+      ],
+    },
+  },
+});
+
 const signedIn = (permissions: string[]) =>
   mockApi((request) => {
+    if (route(request).startsWith(`GET ${base}/incidents/summary?`)) {
+      const query = new URLSearchParams(request.path.split("?")[1]);
+
+      return jsonResponse(200, summary(query.get("from")!, query.get("to")!));
+    }
+
     switch (route(request)) {
       case "POST /auth/refresh":
         return refreshed("token");
@@ -278,7 +324,17 @@ describe("accessibility", () => {
       const { container } = inWorkspace(<OrganizationOverview />);
 
       await screen.findByRole("heading", { level: 1, name: "Overview" });
-      await screen.findByRole("link", { name: /1 member/ });
+      await screen.findByRole("table", { name: "Active incidents" });
+      await screen.findByRole("region", { name: "Incidents in this period" });
+      await expectNoAxeViolations(container);
+    });
+
+    it("Overview, choosing a custom period", async () => {
+      signedIn(OWNER);
+      const { container } = inWorkspace(<OrganizationOverview />);
+
+      await userEvent.click(await screen.findByRole("tab", { name: "Custom" }));
+      await screen.findByRole("dialog", { name: "Choose dates (UTC)" });
       await expectNoAxeViolations(container);
     });
 

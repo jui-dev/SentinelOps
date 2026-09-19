@@ -36,10 +36,13 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
       <div className="hidden min-h-0 border-r border-transparent forced-colors:border-[CanvasText] lg:block">
         <Rail />
       </div>
+      {/* Relative, so everything positioned inside — screen-reader-only
+          labels included — is placed within the one scrolling region rather
+          than against the page, which would give the page a scrollbar too. */}
       <main
         id="main"
         tabIndex={-1}
-        className="min-h-0 overflow-y-auto focus:outline-none"
+        className="relative min-h-0 overflow-y-auto focus:outline-none"
       >
         {children}
       </main>

@@ -1,8 +1,10 @@
 import {
   createIncidentSchema,
+  incidentSummaryQuerySchema,
   listIncidentsQuerySchema,
   parseIncidentNumber,
   postIncidentUpdateSchema,
+  summaryBounds,
   updateIncidentSchema,
 } from './incidents.schemas.js';
 
@@ -129,6 +131,29 @@ describe('incident schemas', () => {
         listIncidentsQuerySchema.parse({ state: 'resolved', cursor: '41' }),
       ).toEqual({ state: 'resolved', cursor: '41' });
     });
+
+    it('should accept a period of whole UTC days', () => {
+      expect(
+        listIncidentsQuerySchema.parse({
+          state: 'active',
+          from: '2026-09-13',
+          to: '2026-09-19',
+        }),
+      ).toEqual({ state: 'active', from: '2026-09-13', to: '2026-09-19' });
+    });
+
+    it.each([
+      ['one end alone', { from: '2026-09-13' }],
+      ['the other end alone', { to: '2026-09-19' }],
+      ['an end before the start', { from: '2026-09-19', to: '2026-09-18' }],
+      ['a date that does not exist', { from: '2026-02-30', to: '2026-03-01' }],
+      ['367 days', { from: '2025-09-18', to: '2026-09-19' }],
+    ])('should refuse %s', (_, period) => {
+      expect(
+        listIncidentsQuerySchema.safeParse({ state: 'active', ...period })
+          .success,
+      ).toBe(false);
+    });
   });
 
   describe('postIncidentUpdateSchema', () => {
@@ -173,6 +198,33 @@ describe('incident schemas', () => {
       '99999999999',
     ])('should refuse %j', (value) => {
       expect(parseIncidentNumber(value)).toBeUndefined();
+    });
+  });
+  describe('incidentSummaryQuerySchema', () => {
+    it.each([
+      ['one day', { from: '2026-09-19', to: '2026-09-19' }],
+      ['a leap day', { from: '2024-02-29', to: '2024-03-01' }],
+      ['366 days', { from: '2025-09-19', to: '2026-09-19' }],
+    ])('should accept %s', (_, query) => {
+      expect(incidentSummaryQuerySchema.parse(query)).toEqual(query);
+    });
+
+    it.each([
+      ['a missing end', { from: '2026-09-19' }],
+      ['a date that does not exist', { from: '2026-02-29', to: '2026-03-01' }],
+      ['a time', { from: '2026-09-19T00:00:00Z', to: '2026-09-19' }],
+      ['an unpadded date', { from: '2026-9-1', to: '2026-09-19' }],
+      ['an end before the start', { from: '2026-09-19', to: '2026-09-18' }],
+      ['367 days', { from: '2025-09-18', to: '2026-09-19' }],
+    ])('should refuse %s', (_, query) => {
+      expect(incidentSummaryQuerySchema.safeParse(query).success).toBe(false);
+    });
+
+    it('should bound a period by whole UTC days, the end day included', () => {
+      expect(summaryBounds({ from: '2026-09-13', to: '2026-09-19' })).toEqual({
+        gte: new Date('2026-09-13T00:00:00.000Z'),
+        lt: new Date('2026-09-20T00:00:00.000Z'),
+      });
     });
   });
 });

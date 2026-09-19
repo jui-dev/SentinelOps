@@ -596,12 +596,7 @@ function IncidentPage({ incident }: { incident: IncidentDetailResponse }) {
   return (
     <>
       <PageHeader
-        eyebrow={
-          <>
-            {organization.name} ·{" "}
-            <span className="data">{incidentKey(incident.number)}</span>
-          </>
-        }
+        eyebrow={<span className="data">{incidentKey(incident.number)}</span>}
         title={incident.title}
         wrapTitle
         description={

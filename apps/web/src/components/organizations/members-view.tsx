@@ -20,7 +20,6 @@ export function MembersView() {
     <>
       <PageHeader
         width="list"
-        eyebrow={organization.name}
         title="Members"
         meta={memberships.data?.length}
         description="Everyone with access to this organization. A person's role decides what they can change."

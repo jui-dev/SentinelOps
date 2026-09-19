@@ -33,13 +33,16 @@ const navigation = vi.hoisted(() => ({
     orgSlug: string;
     incidentNumber?: string;
   },
+  search: "",
   push: vi.fn(),
+  replace: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
   useParams: () => navigation.params,
   usePathname: () => "/orgs/acme-ops/incidents",
-  useRouter: () => ({ replace: vi.fn(), push: navigation.push }),
+  useSearchParams: () => new URLSearchParams(navigation.search),
+  useRouter: () => ({ replace: navigation.replace, push: navigation.push }),
 }));
 
 /** What a MEMBER holds: every read, and incident response. */
@@ -222,7 +225,9 @@ describe("incidents", () => {
   beforeEach(() => {
     clearAccessToken();
     navigation.params = { orgSlug: "acme-ops" };
+    navigation.search = "";
     navigation.push.mockReset();
+    navigation.replace.mockReset();
   });
 
   describe("the list", () => {
@@ -291,6 +296,62 @@ describe("incidents", () => {
       expect(
         await screen.findByRole("button", { name: "Declare incident" }),
       ).toBeDefined();
+    });
+
+    it("narrows each list to the range in the URL, by the moment that defines it", async () => {
+      navigation.search = "from=2026-09-12&to=2026-09-18";
+      const range = "from=2026-09-12&to=2026-09-18";
+      const { requests } = api(READ_ONLY, {
+        handler: (request) => {
+          if (route(request) === `GET ${base}/incidents?state=active&${range}`) {
+            return jsonResponse(200, page([incident()]));
+          }
+          if (route(request) === `GET ${base}/incidents?state=resolved&${range}`) {
+            return jsonResponse(200, page([]));
+          }
+
+          return undefined;
+        },
+      });
+
+      inOrganization(<IncidentsView />);
+
+      await screen.findByRole("table", { name: "Active incidents" });
+
+      // The range, said once, with a way out of it.
+      expect(screen.getByText(/12.*18.*2026/).textContent).toMatch(/2026/);
+      expect(screen.getByText("(UTC)")).toBeDefined();
+      expect(
+        screen.getByRole("link", { name: "Clear" }).getAttribute("href"),
+      ).toBe("/orgs/acme-ops/incidents");
+
+      // Each list says which moment it is filtered on.
+      expect(screen.getByText("Declared in this range.")).toBeDefined();
+      expect(screen.getByText("Resolved in this range.")).toBeDefined();
+      expect(await screen.findByText("None resolved in this range")).toBeDefined();
+
+      expect(count(requests, `GET ${base}/incidents?state=active&${range}`)).toBe(1);
+      expect(count(requests, `GET ${base}/incidents?state=resolved&${range}`)).toBe(1);
+      expect(navigation.replace).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      "from=2026-09-12",
+      "from=2026-09-18&to=2026-09-12",
+      "from=2026-02-30&to=2026-03-02",
+      "from=2025-01-01&to=2026-09-18",
+    ])("puts the URL right when its range (%s) cannot be applied", async (search) => {
+      navigation.search = search;
+      const { requests } = api(READ_ONLY);
+
+      inOrganization(<IncidentsView />);
+
+      await screen.findByRole("table", { name: "Active incidents" });
+
+      expect(navigation.replace).toHaveBeenCalledWith("/orgs/acme-ops/incidents");
+      // What was shown meanwhile is the unfiltered page, never a guess.
+      expect(count(requests, `GET ${base}/incidents?state=active`)).toBe(1);
+      expect(screen.queryByRole("link", { name: "Clear" })).toBeNull();
     });
 
     it("loads the next page of resolved incidents on request, by the API's cursor", async () => {
@@ -814,7 +875,7 @@ describe("incidents", () => {
   });
 
   describe("the cache", () => {
-    it("stores a changed incident and stales both lists and its timeline, and nothing outside incidents", () => {
+    it("stores a changed incident and stales both lists, the overview's counts, and its timeline, and nothing outside incidents", () => {
       const queryClient = new QueryClient();
       const orgId = organization.id;
       const changed = incident({ status: "MONITORING" });
@@ -823,6 +884,7 @@ describe("incidents", () => {
       queryClient.setQueryData(queryKeys.incidentList(orgId, "resolved"), { pages: [], pageParams: [] });
       queryClient.setQueryData(queryKeys.services(orgId), []);
       queryClient.setQueryData(queryKeys.incidentTimeline(orgId, 42), []);
+      queryClient.setQueryData(queryKeys.incidentSummary(orgId, "2026-09-13", "2026-09-19"), {});
 
       storeIncident(queryClient, orgId, changed);
 
@@ -830,6 +892,9 @@ describe("incidents", () => {
       expect(queryClient.getQueryState(queryKeys.incidentList(orgId, "active"))?.isInvalidated).toBe(true);
       expect(queryClient.getQueryState(queryKeys.incidentList(orgId, "resolved"))?.isInvalidated).toBe(true);
       expect(queryClient.getQueryState(queryKeys.incidentTimeline(orgId, 42))?.isInvalidated).toBe(true);
+      expect(
+        queryClient.getQueryState(queryKeys.incidentSummary(orgId, "2026-09-13", "2026-09-19"))?.isInvalidated,
+      ).toBe(true);
       expect(queryClient.getQueryState(queryKeys.services(orgId))?.isInvalidated).toBe(false);
       expect(queryClient.getQueryState(queryKeys.incident(orgId, 42))?.isInvalidated).toBe(false);
     });

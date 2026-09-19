@@ -9,6 +9,7 @@ import { TokenService } from './../src/auth/token.service.js';
 import { PrismaService } from './../src/database/prisma.service.js';
 import type { Prisma } from './../src/generated/prisma/client.js';
 import {
+  HISTORY_PREVIEW_LIMIT,
   INCIDENT_PAGE_SIZE,
   IncidentsService,
 } from './../src/incidents/incidents.service.js';
@@ -539,6 +540,84 @@ describe('incidents (integration)', () => {
       ).toEqual([2]);
     });
 
+    it('should narrow each state by the moment that defines it', async () => {
+      // Declared before the period, resolved inside it.
+      await prisma.incident.create({
+        data: {
+          organizationId: fx.orgA,
+          number: 1,
+          title: 'Declared earlier, resolved inside',
+          serviceId: fx.apiA,
+          teamId: fx.paymentsA,
+          createdById: fx.alice,
+          severity: 'SEV2',
+          status: 'RESOLVED',
+          createdAt: new Date('2026-09-01T08:00:00Z'),
+          resolvedAt: new Date('2026-09-15T08:00:00Z'),
+        },
+      });
+      // Declared inside the period, still running.
+      await prisma.incident.create({
+        data: {
+          organizationId: fx.orgA,
+          number: 2,
+          title: 'Declared inside, still running',
+          serviceId: fx.apiA,
+          teamId: fx.paymentsA,
+          createdById: fx.alice,
+          severity: 'SEV3',
+          status: 'INVESTIGATING',
+          createdAt: new Date('2026-09-15T09:00:00Z'),
+        },
+      });
+      // Declared and resolved outside it.
+      await prisma.incident.create({
+        data: {
+          organizationId: fx.orgA,
+          number: 3,
+          title: 'Outside the period',
+          serviceId: fx.apiA,
+          teamId: fx.paymentsA,
+          createdById: fx.alice,
+          severity: 'SEV4',
+          status: 'RESOLVED',
+          createdAt: new Date('2026-08-01T08:00:00Z'),
+          resolvedAt: new Date('2026-08-02T08:00:00Z'),
+        },
+      });
+
+      const period = 'from=2026-09-13&to=2026-09-19';
+      const numbers = async (state: string) =>
+        (
+          await call(
+            'get',
+            `${fx.orgA}/incidents?state=${state}&${period}`,
+            fx.dave,
+          )
+        ).body.items.map((each: { number: number }) => each.number);
+
+      // Active: declared in the period. Resolved: resolved in it.
+      expect(await numbers('active')).toEqual([2]);
+      expect(await numbers('resolved')).toEqual([1]);
+    });
+
+    it.each([
+      'from=2026-09-13',
+      'to=2026-09-19',
+      'from=2026-09-19&to=2026-09-13',
+      'from=2025-01-01&to=2026-09-19',
+    ])('should refuse the period %s with 400', async (period) => {
+      expect(
+        (
+          await call(
+            'get',
+            `${fx.orgA}/incidents?state=active&${period}`,
+            fx.dave,
+          )
+        ).status,
+      ).toBe(400);
+    });
+
     it('should refuse a cursor that does not fit the state', async () => {
       expectCode(
         await call(
@@ -549,6 +628,216 @@ describe('incidents (integration)', () => {
         400,
         'INVALID_CURSOR',
       );
+    });
+  });
+
+  describe('summary', () => {
+    let next = 0;
+
+    /** An incident written directly, with the times a test needs. */
+    const at = (
+      createdAt: string,
+      extra: {
+        resolvedAt?: string;
+        severity?: 'SEV1' | 'SEV2' | 'SEV3' | 'SEV4';
+        organizationId?: string;
+      } = {},
+    ) => {
+      const organizationId = extra.organizationId ?? fx.orgA;
+      next += 1;
+
+      return prisma.incident.create({
+        data: {
+          organizationId,
+          number: next,
+          title: `Incident ${next}`,
+          serviceId: organizationId === fx.orgA ? fx.apiA : fx.apiB,
+          teamId: organizationId === fx.orgA ? fx.paymentsA : fx.paymentsB,
+          createdById: organizationId === fx.orgA ? fx.alice : fx.bob,
+          severity: extra.severity ?? 'SEV2',
+          status: extra.resolvedAt ? 'RESOLVED' : 'INVESTIGATING',
+          createdAt: new Date(createdAt),
+          resolvedAt: extra.resolvedAt ? new Date(extra.resolvedAt) : null,
+        },
+      });
+    };
+
+    /** The history as [number, declaredInPeriod, resolvedInPeriod] rows. */
+    const history = (body: {
+      period: {
+        history: {
+          items: {
+            incident: { number: number };
+            declaredInPeriod: boolean;
+            resolvedInPeriod: boolean;
+          }[];
+        };
+      };
+    }) =>
+      body.period.history.items.map((item) => [
+        item.incident.number,
+        item.declaredInPeriod,
+        item.resolvedInPeriod,
+      ]);
+
+    const summary = async (
+      from: string,
+      to: string,
+      organizationId = fx.orgA,
+    ) => {
+      const response = await call(
+        'get',
+        `${organizationId}/incidents/summary?from=${from}&to=${to}`,
+        organizationId === fx.orgA ? fx.dave : fx.bob,
+      );
+
+      expect(response.status).toBe(200);
+
+      return response.body;
+    };
+
+    beforeEach(() => {
+      next = 0;
+    });
+
+    it('should count whole UTC days, both ends included, and keep the current state out of the period', async () => {
+      // Active, declared long before the period.
+      await at('2026-01-05T10:00:00Z', { severity: 'SEV1' });
+      // Declared on the last instant before the period.
+      await at('2026-09-12T23:59:59.999Z', {
+        resolvedAt: '2026-09-13T00:00:00Z',
+      });
+      // Declared on the period's first and last instants; one still open.
+      await at('2026-09-13T00:00:00Z', { severity: 'SEV3' });
+      await at('2026-09-19T23:59:59.999Z', {
+        severity: 'SEV1',
+        resolvedAt: '2026-09-20T00:00:00Z',
+      });
+      // The first instant after the period.
+      await at('2026-09-20T00:00:00Z', { severity: 'SEV4' });
+
+      const body = await summary('2026-09-13', '2026-09-19');
+
+      expect(body.current).toMatchObject({
+        active: 3,
+        activeBySeverity: { SEV1: 1, SEV2: 0, SEV3: 1, SEV4: 1 },
+      });
+      expect(body.current.affectedServices).toEqual([
+        expect.objectContaining({
+          id: fx.apiA,
+          name: 'Payment API',
+          ownerTeam: { id: fx.paymentsA, name: 'Payments', slug: 'payments' },
+          activeIncidents: 3,
+          worstSeverity: 'SEV1',
+        }),
+      ]);
+      expect(body.period).toMatchObject({
+        from: '2026-09-13',
+        to: '2026-09-19',
+        declared: 2,
+        declaredBySeverity: { SEV1: 1, SEV2: 0, SEV3: 1, SEV4: 0 },
+        // Resolved at the period's first instant, though declared before it.
+        resolved: 1,
+        stillOpen: 1,
+      });
+      // Three things happened in the period: two declarations, and the
+      // resolution of an incident declared before it.
+      expect(body.period.history.total).toBe(3);
+      expect(history(body)).toEqual([
+        [4, true, false],
+        [3, true, false],
+        [2, false, true],
+      ]);
+    });
+
+    it('should order the history by what happened last, and count each incident once', async () => {
+      // 1: declared and resolved in the day — one entry, both flags.
+      await at('2026-09-19T09:15:00Z', { resolvedAt: '2026-09-19T23:59:00Z' });
+      // 2: declared in the day, still running.
+      await at('2026-09-19T09:45:00Z', { severity: 'SEV1' });
+      // 3: declared before the day, resolved in it.
+      await at('2026-09-01T12:00:00Z', { resolvedAt: '2026-09-19T09:30:00Z' });
+      // 4: declared before the day and resolved after it — no part of it.
+      await at('2026-09-01T12:00:00Z', { resolvedAt: '2026-09-20T09:30:00Z' });
+
+      const body = await summary('2026-09-19', '2026-09-19');
+
+      expect(body.period).toMatchObject({
+        declared: 2,
+        resolved: 2,
+        stillOpen: 1,
+      });
+      // Two declared plus two resolved, less the one that was both.
+      expect(body.period.history.total).toBe(3);
+      expect(history(body)).toEqual([
+        // Resolved at 23:59.
+        [1, true, true],
+        // Declared at 09:45, still running.
+        [2, true, false],
+        // Resolved at 09:30, declared on 1 September.
+        [3, false, true],
+      ]);
+    });
+
+    it('should count past a page, and preview only the ten most recent', async () => {
+      for (let index = 0; index < INCIDENT_PAGE_SIZE + 7; index += 1) {
+        await at('2026-09-15T08:00:00Z');
+      }
+      for (let hour = 1; hour <= 7; hour += 1) {
+        await at('2026-09-14T00:00:00Z', {
+          resolvedAt: `2026-09-16T${String(hour).padStart(2, '0')}:00:00Z`,
+        });
+      }
+
+      const body = await summary('2026-09-13', '2026-09-19');
+
+      expect(body.current.active).toBe(INCIDENT_PAGE_SIZE + 7);
+      expect(body.period.declared).toBe(INCIDENT_PAGE_SIZE + 14);
+      expect(body.period.resolved).toBe(7);
+      // Every incident here was declared in the period, so each counts once
+      // however many things happened to it.
+      expect(body.period.history.total).toBe(INCIDENT_PAGE_SIZE + 14);
+      expect(body.period.history.items).toHaveLength(HISTORY_PREVIEW_LIMIT);
+      // The seven resolutions on the 16th, then the newest declarations.
+      expect(history(body).slice(0, 8)).toEqual([
+        [64, true, true],
+        [63, true, true],
+        [62, true, true],
+        [61, true, true],
+        [60, true, true],
+        [59, true, true],
+        [58, true, true],
+        [57, true, false],
+      ]);
+    });
+
+    it('should keep each organization to itself', async () => {
+      await at('2026-09-15T08:00:00Z');
+      await at('2026-09-15T08:00:00Z', { organizationId: fx.orgB });
+      await at('2026-09-15T08:00:00Z', {
+        organizationId: fx.orgB,
+        resolvedAt: '2026-09-16T08:00:00Z',
+      });
+
+      const body = await summary('2026-09-13', '2026-09-19');
+
+      expect(body.current.active).toBe(1);
+      expect(
+        body.current.affectedServices.map((each: { id: string }) => each.id),
+      ).toEqual([fx.apiA]);
+      expect(body.period).toMatchObject({ declared: 1, resolved: 0 });
+      expect(body.period.history.total).toBe(1);
+      expect(history(body)).toEqual([[1, true, false]]);
+
+      const other = await summary('2026-09-13', '2026-09-19', fx.orgB);
+
+      expect(other.current.active).toBe(1);
+      expect(other.period).toMatchObject({ declared: 2, resolved: 1 });
+      expect(other.period.history.total).toBe(2);
+      expect(history(other)).toEqual([
+        [3, true, true],
+        [2, true, false],
+      ]);
     });
   });
 

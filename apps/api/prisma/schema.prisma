@@ -544,6 +544,10 @@ model Incident {
   @@index([createdById])
   /// Serves the Restrict check when a membership is deleted.
   @@index([organizationId, leadMembershipId])
+  /// Serves the overview's count of incidents declared in a period.
+  @@index([organizationId, createdAt])
+  /// Serves the overview's resolved-in-a-period count and its most recent.
+  @@index([organizationId, resolvedAt])
   @@map("incidents")
 }
 

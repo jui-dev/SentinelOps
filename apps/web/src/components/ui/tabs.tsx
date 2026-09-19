@@ -15,6 +15,7 @@ export function Tabs<T extends string>({
   tabs,
   value,
   onChange,
+  trailing,
   children,
 }: {
   /** Names the tab list for assistive technology. */
@@ -22,6 +23,11 @@ export function Tabs<T extends string>({
   tabs: ReadonlyArray<{ value: T; label: string }>;
   value: T;
   onChange: (value: T) => void;
+  /**
+   * Beside the tabs, on the right, above the shared rule: context for what
+   * the tabs select, such as the range they apply. Not part of the tab list.
+   */
+  trailing?: ReactNode;
   /** The selected tab's panel. */
   children: ReactNode;
 }) {
@@ -54,41 +60,45 @@ export function Tabs<T extends string>({
 
   return (
     <div className="flex flex-col gap-5">
-      <div
-        role="tablist"
-        aria-label={label}
-        onKeyDown={onKeyDown}
-        className="flex gap-4 border-b border-line-subtle"
-      >
-        {tabs.map((tab) => {
-          const selected = tab.value === value;
+      {/* One rule under the tabs and whatever sits beside them. */}
+      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-2 border-b border-line-subtle">
+        <div
+          role="tablist"
+          aria-label={label}
+          onKeyDown={onKeyDown}
+          className="flex gap-4"
+        >
+          {tabs.map((tab) => {
+            const selected = tab.value === value;
 
-          return (
-            <button
-              key={tab.value}
-              ref={(element) => {
-                if (element) refs.current.set(tab.value, element);
-                else refs.current.delete(tab.value);
-              }}
-              id={tabId(tab.value)}
-              type="button"
-              role="tab"
-              aria-selected={selected}
-              // Only the selected tab's panel exists.
-              aria-controls={selected ? panelId : undefined}
-              tabIndex={selected ? 0 : -1}
-              onClick={() => onChange(tab.value)}
-              className={cx(
-                "-mb-px border-b-2 pt-1 pb-2 text-sm transition-colors duration-(--duration-fast)",
-                selected
-                  ? "border-accent font-medium text-fg"
-                  : "border-transparent text-fg-muted hover:border-line-strong hover:text-fg",
-              )}
-            >
-              {tab.label}
-            </button>
-          );
-        })}
+            return (
+              <button
+                key={tab.value}
+                ref={(element) => {
+                  if (element) refs.current.set(tab.value, element);
+                  else refs.current.delete(tab.value);
+                }}
+                id={tabId(tab.value)}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                // Only the selected tab's panel exists.
+                aria-controls={selected ? panelId : undefined}
+                tabIndex={selected ? 0 : -1}
+                onClick={() => onChange(tab.value)}
+                className={cx(
+                  "-mb-px border-b-2 pt-1 pb-2 text-sm transition-colors duration-(--duration-fast)",
+                  selected
+                    ? "border-accent font-medium text-fg"
+                    : "border-transparent text-fg-muted hover:border-line-strong hover:text-fg",
+                )}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
+        {trailing && <div className="pb-2">{trailing}</div>}
       </div>
       <div role="tabpanel" id={panelId} aria-labelledby={tabId(value)}>
         {children}
