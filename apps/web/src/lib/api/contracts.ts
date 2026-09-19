@@ -393,6 +393,23 @@ export interface IncidentSummaryResponse {
   };
 }
 
+/**
+ * `GET /organizations/:organizationId/incidents/attention`: the active
+ * incidents waiting on the caller now. Current state, not a feed — nothing
+ * is read or unread. Each part is null without its permission:
+ * `readyToResolve` with `incidents:manage`; `needsYourTeam` (their teams'
+ * incidents nobody on the team has responded to) and `yourResponses` (their
+ * own still investigating) with `incidents:respond`. One incident can be in
+ * more than one list. Each list is most severe first, then longest-running.
+ */
+export interface IncidentAttentionResponse {
+  manage: { readyToResolve: IncidentDetailResponse[] } | null;
+  respond: {
+    needsYourTeam: IncidentDetailResponse[];
+    yourResponses: IncidentDetailResponse[];
+  } | null;
+}
+
 /** A period of whole UTC days, both included, as `YYYY-MM-DD`. */
 export interface IncidentPeriod {
   from: string;

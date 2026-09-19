@@ -12,8 +12,10 @@ import {
 } from '../services/services.errors.js';
 import { teamNotFound } from '../teams/teams.errors.js';
 import { organizationNotFound } from '../tenancy/tenancy.errors.js';
+import { classifyAttention } from './incidents.attention.js';
 import type {
   IncidentActivityResponse,
+  IncidentAttentionResponse,
   IncidentDetailResponse,
   IncidentPage,
   IncidentSeverity,
@@ -32,6 +34,7 @@ import {
 } from './incidents.errors.js';
 import {
   toIncidentActivityResponse,
+  toIncidentAttentionResponse,
   toIncidentDetailResponse,
   toIncidentResponse,
   toIncidentSummaryResponse,
@@ -408,6 +411,69 @@ export class IncidentsService {
         ),
       },
     });
+  }
+
+  /**
+   * The active incidents waiting on the caller now (see classifyAttention):
+   * resolvable ones for whoever holds `incidents:manage`; for whoever holds
+   * `incidents:respond`, those their teams have not picked up and their own
+   * responses still under way. Derived from the incidents as they stand —
+   * nothing is recorded or marked read.
+   *
+   * The caller's role is the admitted one, passed in explicitly and judged
+   * by the same role table the guards use, as postUpdate does. Their teams
+   * are found by their membership, and everyone on those teams with them,
+   * in one query scoped by organization. Both reads share one
+   * repeatable-read snapshot, so a response or a team change between them
+   * cannot put an incident in the wrong list. Unpaged: only active
+   * incidents are read.
+   */
+  async attention(
+    organizationId: string,
+    actor: { membershipId: string; role: Role },
+  ): Promise<IncidentAttentionResponse> {
+    const canManage = hasPermission(actor.role, Permission.INCIDENTS_MANAGE);
+    const canRespond = hasPermission(actor.role, Permission.INCIDENTS_RESPOND);
+
+    const [incidents, teamMembers] = await this.prisma.$transaction(
+      [
+        this.prisma.incident.findMany({
+          where: {
+            organizationId,
+            organization: { deletedAt: null },
+            status: { not: 'RESOLVED' },
+          },
+          // In no order: classifyAttention sorts each list.
+          select: incidentDetailSelection,
+        }),
+        // Everyone on each of the caller's teams, the caller included.
+        this.prisma.teamMembership.findMany({
+          where: {
+            organizationId,
+            team: {
+              memberships: { some: { membershipId: actor.membershipId } },
+            },
+          },
+          select: { teamId: true, membershipId: true },
+        }),
+      ],
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
+
+    const teams = new Map<string, Set<string>>();
+
+    for (const { teamId, membershipId } of teamMembers) {
+      teams.set(teamId, (teams.get(teamId) ?? new Set()).add(membershipId));
+    }
+
+    return toIncidentAttentionResponse(
+      classifyAttention(incidents, {
+        membershipId: actor.membershipId,
+        canManage,
+        canRespond,
+        teams,
+      }),
+    );
   }
 
   /** One incident, by its number within the organization, with its responders. */

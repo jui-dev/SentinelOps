@@ -15,6 +15,7 @@ import type {
   CreateIncidentRequest,
   CurrentUserResponse,
   IncidentActivityResponse,
+  IncidentAttentionResponse,
   IncidentDetailResponse,
   IncidentPeriod,
   IncidentResponse,
@@ -268,6 +269,12 @@ export const getIncidentSummary = (
 ) =>
   authenticatedRequest<IncidentSummaryResponse>(
     `${incidentsPath(organizationId)}/summary?${new URLSearchParams({ from, to })}`,
+  );
+
+/** The active incidents waiting on the caller now, by what they may do. */
+export const getIncidentAttention = (organizationId: string) =>
+  authenticatedRequest<IncidentAttentionResponse>(
+    `${incidentsPath(organizationId)}/attention`,
   );
 
 export const getIncident = (organizationId: string, number: number) =>

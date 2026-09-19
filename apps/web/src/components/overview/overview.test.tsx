@@ -1,13 +1,16 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { OrganizationOverview } from "@/components/organizations/organization-overview";
 import { OrganizationScope } from "@/components/organizations/organization-scope";
 import type {
+  IncidentAttentionResponse,
+  IncidentDetailResponse,
   IncidentResponse,
   IncidentSummaryResponse,
 } from "@/lib/api/contracts";
+import { queryKeys } from "@/lib/api/query-keys";
 import { clearAccessToken } from "@/lib/auth/token-store";
 import {
   apiError,
@@ -20,6 +23,7 @@ import {
   route,
 } from "@/test/api";
 import type { SentRequest } from "@/test/api";
+import { expectNoAxeViolations } from "@/test/axe";
 import { renderWithSession } from "@/test/render";
 
 vi.mock("next/navigation", () => ({
@@ -198,14 +202,21 @@ const summaries = (requests: SentRequest[]) =>
     .filter((request) => route(request).startsWith(`${SUMMARY}?`))
     .map(periodOf);
 
+/** What a caller with neither incidents:manage nor incidents:respond is told. */
+const NO_ATTENTION: IncidentAttentionResponse = { manage: null, respond: null };
+
 const api = (
   permissions: string[],
   {
     summary = busy,
     active = [incident()],
+    attention = NO_ATTENTION,
+    role = "ADMIN",
   }: {
     summary?: (from: string, to: string) => IncidentSummaryResponse;
     active?: IncidentResponse[];
+    attention?: IncidentAttentionResponse | (() => Response);
+    role?: string;
   } = {},
 ) =>
   mockApi((request) => {
@@ -221,7 +232,11 @@ const api = (
       case "GET /auth/me":
         return jsonResponse(200, currentUser);
       case `GET ${base}`:
-        return jsonResponse(200, organizationDetail(permissions));
+        return jsonResponse(200, organizationDetail(permissions, role));
+      case `GET ${base}/incidents/attention`:
+        return typeof attention === "function"
+          ? attention()
+          : jsonResponse(200, attention);
       case `GET ${base}/memberships`:
         return jsonResponse(200, []);
       case `GET ${base}/incidents?state=active`:
@@ -527,5 +542,298 @@ describe("the operations overview", () => {
       screen.queryByRole("region", { name: "Current operations" }),
     ).toBeNull();
     expect(summaries(requests)).toEqual([]);
+  });
+
+  describe("what needs you", () => {
+    const MANAGE = [...READ, "incidents:manage", "incidents:respond"];
+    const RESPOND = [...READ, "incidents:respond"];
+    /** The caller's own membership, as organizationDetail gives it. */
+    const ME = organizationDetail([]).membership.id;
+
+    const detail = (
+      overrides: Partial<IncidentDetailResponse> = {},
+    ): IncidentDetailResponse => ({
+      ...incident(),
+      responders: [],
+      ...overrides,
+    });
+
+    /** Response work complete: Priya finished last, three minutes ago. */
+    const complete = detail({
+      status: "INVESTIGATING",
+      responders: [
+        {
+          membershipId: "0199a1b2-c3d4-7000-8000-0000000000b1",
+          name: "Sam Okafor",
+          status: "COMPLETED",
+          startedAt: "2026-09-19T10:05:00.000Z",
+          completedAt: "2026-09-19T11:20:00.000Z",
+        },
+        {
+          membershipId: "0199a1b2-c3d4-7000-8000-0000000000b2",
+          name: "Priya Shah",
+          status: "COMPLETED",
+          startedAt: "2026-09-19T10:10:00.000Z",
+          completedAt: "2026-09-19T11:57:00.000Z",
+        },
+      ],
+    });
+
+    /** Declared two hours ago on Risk; nobody there has started. */
+    const unclaimed = detail({
+      id: "0199a1b2-c3d4-7000-8000-0000000000f2",
+      number: 43,
+      title: "Fraud scores missing",
+      severity: "SEV2",
+      team: {
+        id: "0199a1b2-c3d4-7000-8000-0000000000c2",
+        name: "Risk",
+        slug: "risk",
+      },
+    });
+
+    /** The caller has been investigating for forty minutes. */
+    const mine = detail({
+      id: "0199a1b2-c3d4-7000-8000-0000000000f3",
+      number: 44,
+      title: "Settlement files late",
+      severity: "SEV3",
+      status: "INVESTIGATING",
+      responders: [
+        {
+          membershipId: ME,
+          name: "Ada Lovelace",
+          status: "INVESTIGATING",
+          startedAt: "2026-09-19T11:20:00.000Z",
+          completedAt: null,
+        },
+      ],
+    });
+
+    it("shows the admin what is ready to resolve, and no empty work of their own", async () => {
+      api(MANAGE, {
+        attention: {
+          manage: { readyToResolve: [complete] },
+          respond: { needsYourTeam: [], yourResponses: [] },
+        },
+      });
+      const { container } = renderOverview();
+
+      const waiting = await screen.findByRole("region", {
+        name: "Waiting on you",
+      });
+      const ready = within(waiting).getByRole("list", {
+        name: "Ready to resolve",
+      });
+      const row = within(ready).getByRole("listitem");
+
+      expect(
+        within(row)
+          .getByRole("link", { name: "INC-42 Card payments failing" })
+          .getAttribute("href"),
+      ).toBe("/orgs/acme-ops/incidents/42");
+      expect(row.textContent).toMatch(/SEV1/);
+      expect(row.textContent).toMatch(
+        /Response work complete — ready to resolve/,
+      );
+      expect(row.textContent).toMatch(/Payments/);
+      expect(row.textContent).toMatch(
+        /2 responders finished, last Priya Shah 3m ago/,
+      );
+      // Nothing to act on here: the incident page resolves.
+      expect(within(waiting).queryByRole("button")).toBeNull();
+      // On no team, the admin is not shown two lists that never fill.
+      expect(screen.queryByRole("region", { name: "Your work" })).toBeNull();
+
+      await screen.findByRole("region", { name: "Current operations" });
+      await expectNoAxeViolations(container);
+    });
+
+    it("tells the admin plainly when nothing is waiting", async () => {
+      api(MANAGE, {
+        attention: {
+          manage: { readyToResolve: [] },
+          respond: { needsYourTeam: [], yourResponses: [] },
+        },
+      });
+      renderOverview();
+
+      const waiting = await screen.findByRole("region", {
+        name: "Waiting on you",
+      });
+
+      expect(
+        within(waiting).getByText("Nothing is waiting for your action."),
+      ).toBeDefined();
+      expect(within(waiting).queryByRole("list")).toBeNull();
+    });
+
+    it("shows a member what their team needs and what they are working on, apart", async () => {
+      api(RESPOND, {
+        role: "MEMBER",
+        attention: {
+          manage: null,
+          respond: { needsYourTeam: [unclaimed], yourResponses: [mine] },
+        },
+      });
+      const { container } = renderOverview();
+
+      const work = await screen.findByRole("region", { name: "Your work" });
+      const needs = within(work).getByRole("list", { name: "Needs your team" });
+      const yours = within(work).getByRole("list", {
+        name: "Your active responses",
+      });
+
+      expect(
+        within(needs).getByRole("link", { name: "INC-43 Fraud scores missing" }),
+      ).toBeDefined();
+      expect(needs.textContent).toMatch(/Risk needs a responder/);
+      expect(needs.textContent).toMatch(
+        /No one has started investigating this incident/,
+      );
+      expect(needs.textContent).toMatch(/Open 2h/);
+
+      expect(
+        within(yours).getByRole("link", {
+          name: "INC-44 Settlement files late",
+        }),
+      ).toBeDefined();
+      expect(yours.textContent).toMatch(/You are investigating/);
+      expect(yours.textContent).toMatch(/Started 40m ago/);
+
+      expect(within(work).queryByRole("button")).toBeNull();
+      expect(
+        screen.queryByRole("region", { name: "Waiting on you" }),
+      ).toBeNull();
+
+      await screen.findByRole("region", { name: "Current operations" });
+      await expectNoAxeViolations(container);
+    });
+
+    it("keeps a member's empty lists to a line each", async () => {
+      api(RESPOND, {
+        role: "MEMBER",
+        attention: {
+          manage: null,
+          respond: { needsYourTeam: [], yourResponses: [] },
+        },
+      });
+      const { container } = renderOverview();
+
+      const work = await screen.findByRole("region", { name: "Your work" });
+
+      expect(
+        within(work).getByText("No team incidents need picking up."),
+      ).toBeDefined();
+      expect(
+        within(work).getByText("You have no active responses."),
+      ).toBeDefined();
+      expect(within(work).queryByRole("list")).toBeNull();
+
+      await expectNoAxeViolations(container);
+    });
+
+    it("puts a list with work above an empty one, which is a line rather than a list", async () => {
+      api(RESPOND, {
+        role: "MEMBER",
+        attention: {
+          manage: null,
+          respond: { needsYourTeam: [], yourResponses: [mine] },
+        },
+      });
+      const { container } = renderOverview();
+
+      const work = await screen.findByRole("region", { name: "Your work" });
+
+      expect(
+        within(work)
+          .getAllByRole("heading", { level: 3 })
+          .map(({ textContent }) => textContent),
+      ).toEqual(["Your active responses", "Needs your team"]);
+      expect(within(work).getAllByRole("list")).toHaveLength(1);
+      expect(
+        within(work).getByText("No team incidents need picking up."),
+      ).toBeDefined();
+
+      await expectNoAxeViolations(container);
+    });
+
+    it("shows an admin on a team both what waits on them and their own work", async () => {
+      api(MANAGE, {
+        attention: {
+          manage: { readyToResolve: [] },
+          respond: { needsYourTeam: [unclaimed], yourResponses: [] },
+        },
+      });
+      renderOverview();
+
+      const work = await screen.findByRole("region", { name: "Your work" });
+
+      expect(
+        screen.getByRole("region", { name: "Waiting on you" }),
+      ).toBeDefined();
+      expect(
+        within(work).getByRole("list", { name: "Needs your team" }),
+      ).toBeDefined();
+      expect(
+        within(work).getByText("You have no active responses."),
+      ).toBeDefined();
+    });
+
+    it("reads attention from the shared cache without polling it itself", async () => {
+      const { requests } = api(RESPOND, {
+        role: "MEMBER",
+        attention: {
+          manage: null,
+          respond: { needsYourTeam: [], yourResponses: [] },
+        },
+      });
+      const { queryClient } = renderOverview();
+
+      const work = await screen.findByRole("region", { name: "Your work" });
+      const key = queryKeys.incidentAttention(organization.id);
+
+      // The rail polls; the Overview only reads. No interval of its own.
+      const observers = queryClient.getQueryCache().find({ queryKey: key })!
+        .observers;
+
+      expect(observers.length).toBeGreaterThan(0);
+      expect(
+        observers.map(({ options }) => options.refetchInterval ?? false),
+      ).toEqual(observers.map(() => false));
+      expect(
+        requests.filter(
+          (request) => route(request) === `GET ${base}/incidents/attention`,
+        ),
+      ).toHaveLength(1);
+
+      // What the rail's next poll puts in the cache, the Overview shows.
+      act(() =>
+        queryClient.setQueryData(key, {
+          manage: null,
+          respond: { needsYourTeam: [unclaimed], yourResponses: [] },
+        }),
+      );
+
+      expect(
+        await within(work).findByRole("list", { name: "Needs your team" }),
+      ).toBeDefined();
+    });
+
+    it("keeps the rest of the overview when attention cannot be read", async () => {
+      api(MANAGE, { attention: () => apiError(500) });
+      renderOverview();
+
+      // A 5xx is retried once, a second later, before it is shown.
+      expect(
+        await screen.findByRole("alert", {}, { timeout: 4000 }),
+      ).toBeDefined();
+      expect(
+        await screen.findByRole("region", { name: "Current operations" }),
+      ).toBeDefined();
+      expect(
+        screen.queryByRole("region", { name: "Waiting on you" }),
+      ).toBeNull();
+    });
   });
 });

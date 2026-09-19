@@ -30,6 +30,9 @@ import { resolveTestDatabaseUrl } from './test-database.js';
  * own responses; that nobody resolves while a responder is investigating;
  * that who may start follows a reassignment, which the timeline records,
  * while a response already started is finished;
+ * that each caller's attention follows the incidents as they stand — the
+ * admin's resolvable ones, a team's unclaimed ones, a member's own responses
+ * — through reassignments and team changes, within one organization;
  * that the responsible team is a snapshot of the service's owner; that
  * numbers are per organization and distinct under concurrency; that both
  * lists page completely; that foreign incidents, services, and teams are
@@ -1778,6 +1781,222 @@ describe('incidents (integration)', () => {
           })
         ).status,
       ).toBe(404);
+    });
+  });
+
+  describe('attention', () => {
+    type Listed = { number: number; id: string }[];
+
+    const attentionOf = async (organizationId: string, userId: string) => {
+      const response = await call(
+        'get',
+        `${organizationId}/incidents/attention`,
+        userId,
+      );
+
+      expect(response.status).toBe(200);
+
+      return response.body as {
+        manage: { readyToResolve: Listed } | null;
+        respond: { needsYourTeam: Listed; yourResponses: Listed } | null;
+      };
+    };
+
+    const numbers = (list: Listed | undefined) =>
+      list?.map(({ number }) => number);
+
+    /** Nothing waits on the caller in any list their permissions give them. */
+    const nothingFor = async (organizationId: string, userId: string) => {
+      const attention = await attentionOf(organizationId, userId);
+
+      expect(attention.manage?.readyToResolve ?? []).toEqual([]);
+      expect(attention.respond?.needsYourTeam).toEqual([]);
+      expect(attention.respond?.yourResponses).toEqual([]);
+    };
+
+    it('should follow an incident through each list as its response moves, and drop it once resolved', async () => {
+      const finn = await aMemberOn(fx.paymentsA, 'Finn');
+      await declare(fx.orgA, fx.alice, fx.apiA);
+
+      // Declared: Payments' work, and nothing for the admin to resolve.
+      for (const member of [fx.dave, finn]) {
+        expect(
+          numbers((await attentionOf(fx.orgA, member)).respond?.needsYourTeam),
+        ).toEqual([1]);
+      }
+      await nothingFor(fx.orgA, fx.erin);
+      expect(await attentionOf(fx.orgA, fx.alice)).toEqual({
+        manage: { readyToResolve: [] },
+        respond: { needsYourTeam: [], yourResponses: [] },
+      });
+
+      // Dave starts: his response, and no longer unclaimed for Finn.
+      await startAs(fx.orgA, fx.dave, 1);
+      const dave = await attentionOf(fx.orgA, fx.dave);
+
+      expect(dave.respond?.needsYourTeam).toEqual([]);
+      expect(numbers(dave.respond?.yourResponses)).toEqual([1]);
+      await nothingFor(fx.orgA, finn);
+      await nothingFor(fx.orgA, fx.alice);
+
+      // Dave completes: the admin's to resolve, and nobody else's.
+      await completeAs(fx.orgA, fx.dave, 1);
+      const alice = await attentionOf(fx.orgA, fx.alice);
+
+      expect(numbers(alice.manage?.readyToResolve)).toEqual([1]);
+      expect(alice.manage?.readyToResolve[0]).toMatchObject({
+        status: 'INVESTIGATING',
+        responders: [{ name: 'Dave Duarte', status: 'COMPLETED' }],
+      });
+      await nothingFor(fx.orgA, fx.dave);
+      await nothingFor(fx.orgA, finn);
+
+      expect(
+        (
+          await call('patch', `${fx.orgA}/incidents/1`, fx.alice, {
+            status: 'RESOLVED',
+          })
+        ).status,
+      ).toBe(200);
+
+      for (const user of [fx.alice, fx.dave, finn, fx.erin]) {
+        await nothingFor(fx.orgA, user);
+      }
+    });
+
+    it('should bring a reassigned incident to the new team, while it stays resolvable for the admin', async () => {
+      await declare(fx.orgA, fx.alice, fx.apiA);
+      await startAs(fx.orgA, fx.dave, 1);
+      await completeAs(fx.orgA, fx.dave, 1);
+      await call('patch', `${fx.orgA}/incidents/1`, fx.alice, {
+        teamId: fx.platformA,
+      });
+
+      // Two facts about one incident: resolvable, and not yet picked up by
+      // anyone on Platform.
+      expect(
+        numbers((await attentionOf(fx.orgA, fx.alice)).manage?.readyToResolve),
+      ).toEqual([1]);
+      expect(
+        numbers((await attentionOf(fx.orgA, fx.erin)).respond?.needsYourTeam),
+      ).toEqual([1]);
+      await nothingFor(fx.orgA, fx.dave);
+
+      // Erin starts: her response, and no longer resolvable.
+      await startAs(fx.orgA, fx.erin, 1);
+      const erin = await attentionOf(fx.orgA, fx.erin);
+
+      expect(erin.respond?.needsYourTeam).toEqual([]);
+      expect(numbers(erin.respond?.yourResponses)).toEqual([1]);
+      await nothingFor(fx.orgA, fx.alice);
+    });
+
+    it('should keep a response under way on the list of whoever started it, after a reassignment away', async () => {
+      await declare(fx.orgA, fx.alice, fx.apiA);
+      await startAs(fx.orgA, fx.dave, 1);
+      await call('patch', `${fx.orgA}/incidents/1`, fx.alice, {
+        teamId: fx.platformA,
+      });
+
+      const dave = await attentionOf(fx.orgA, fx.dave);
+
+      expect(dave.respond?.needsYourTeam).toEqual([]);
+      expect(numbers(dave.respond?.yourResponses)).toEqual([1]);
+      expect(
+        numbers((await attentionOf(fx.orgA, fx.erin)).respond?.needsYourTeam),
+      ).toEqual([1]);
+    });
+
+    it('should follow who is on the team now', async () => {
+      await declare(fx.orgA, fx.alice, fx.apiA);
+      await call(
+        'delete',
+        `${fx.orgA}/teams/${fx.paymentsA}/members/${fx.daveInA}`,
+        fx.alice,
+      );
+
+      await nothingFor(fx.orgA, fx.dave);
+
+      // Alice joins Payments: an admin on a team is told what it needs.
+      const aliceInA = await prisma.membership.findFirstOrThrow({
+        where: { organizationId: fx.orgA, userId: fx.alice },
+      });
+      await prisma.teamMembership.create({
+        data: {
+          organizationId: fx.orgA,
+          teamId: fx.paymentsA,
+          membershipId: aliceInA.id,
+        },
+      });
+
+      expect(await attentionOf(fx.orgA, fx.alice)).toMatchObject({
+        manage: { readyToResolve: [] },
+        respond: { needsYourTeam: [{ number: 1 }], yourResponses: [] },
+      });
+    });
+
+    it('should judge one token by the role and teams it holds in each organization, keeping each to itself', async () => {
+      await prisma.teamMembership.create({
+        data: {
+          organizationId: fx.orgB,
+          teamId: fx.paymentsB,
+          membershipId: fx.carolInB,
+        },
+      });
+      const inA = (await declare(fx.orgA, fx.alice, fx.apiA)).body.id;
+      const inB = (await declare(fx.orgB, fx.bob, fx.apiB)).body.id;
+
+      // Admin in A, on no team there: nothing of B's, and no team work.
+      const carolA = await attentionOf(fx.orgA, fx.carol);
+
+      expect(carolA.manage).toEqual({ readyToResolve: [] });
+      expect(carolA.respond?.needsYourTeam).toEqual([]);
+
+      // Member in B, on B's Payments: B's incident and no management.
+      const carolB = await attentionOf(fx.orgB, fx.carol);
+
+      expect(carolB.manage).toBeNull();
+      expect(carolB.respond?.needsYourTeam.map(({ id }) => id)).toEqual([inB]);
+
+      // Dave, on A's Payments, is shown A's incident and never B's.
+      expect(
+        (await attentionOf(fx.orgA, fx.dave)).respond?.needsYourTeam.map(
+          ({ id }) => id,
+        ),
+      ).toEqual([inA]);
+      expectCode(
+        await call('get', `${fx.orgB}/incidents/attention`, fx.dave),
+        404,
+        'ORGANIZATION_NOT_FOUND',
+      );
+    });
+
+    it('should isolate in the service itself: a membership of another organization is given nothing', async () => {
+      await declare(fx.orgA, fx.alice, fx.apiA);
+      await startAs(fx.orgA, fx.dave, 1);
+
+      // Carol's membership in B, asked about A: no team of A's is hers.
+      expect(
+        await app
+          .get(IncidentsService)
+          .attention(fx.orgA, { membershipId: fx.carolInB, role: 'MEMBER' }),
+      ).toEqual({
+        manage: null,
+        respond: { needsYourTeam: [], yourResponses: [] },
+      });
+    });
+
+    it("should make a soft-deleted organization's attention unreachable", async () => {
+      await prisma.organization.update({
+        where: { id: fx.orgA },
+        data: { deletedAt: new Date() },
+      });
+
+      expectCode(
+        await call('get', `${fx.orgA}/incidents/attention`, fx.alice),
+        404,
+        'ORGANIZATION_NOT_FOUND',
+      );
     });
   });
 

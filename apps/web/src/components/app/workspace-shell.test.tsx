@@ -1,7 +1,16 @@
+import { QueryClientProvider } from "@tanstack/react-query";
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { StrictMode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type {
+  IncidentAttentionResponse,
+  IncidentDetailResponse,
+} from "@/lib/api/contracts";
+import { ATTENTION_POLL_MS } from "@/components/incidents/incident-queries";
+import { queryKeys } from "@/lib/api/query-keys";
+import { SessionProvider } from "@/lib/auth/session-provider";
 import { clearAccessToken } from "@/lib/auth/token-store";
 import {
   apiError,
@@ -13,6 +22,7 @@ import {
   refreshed,
   route,
 } from "@/test/api";
+import { expectNoAxeViolations } from "@/test/axe";
 import { renderWithSession } from "@/test/render";
 
 import { WorkspaceShell } from "./workspace-shell";
@@ -315,5 +325,242 @@ describe("WorkspaceShell", () => {
     );
 
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  describe("the incidents attention count", () => {
+    const WITH_INCIDENTS = [...READ, "incidents:read", "incidents:respond"];
+
+    /** An attention entry: only the id matters to the count. */
+    const item = (id: string) =>
+      ({ id, number: 1 }) as unknown as IncidentDetailResponse;
+
+    const attentionOf = ({
+      ready,
+      needs = [],
+      yours = [],
+    }: {
+      ready?: string[];
+      needs?: string[];
+      yours?: string[];
+    }): IncidentAttentionResponse => ({
+      manage: ready ? { readyToResolve: ready.map(item) } : null,
+      respond: {
+        needsYourTeam: needs.map(item),
+        yourResponses: yours.map(item),
+      },
+    });
+
+    /**
+     * Two organizations, each with its own detail and attention. Anything
+     * else is 404.
+     */
+    const attentionApi = (
+      attention: Record<string, IncidentAttentionResponse | (() => Response)>,
+      permissions = WITH_INCIDENTS,
+    ) =>
+      mockApi((request) => {
+        const orgId = Object.keys(attention).find((id) =>
+          request.path.startsWith(`/organizations/${id}`),
+        );
+
+        switch (route(request)) {
+          case "POST /auth/refresh":
+            return refreshed("token");
+          case "GET /auth/me":
+            return jsonResponse(200, {
+              ...currentUser,
+              memberships: [
+                ...currentUser.memberships,
+                { id: "m-2", role: "MEMBER", organization: other },
+              ],
+            });
+          case `GET /organizations/${orgId}`:
+            return jsonResponse(200, {
+              ...organizationDetail(permissions),
+              ...(orgId === other.id ? other : organization),
+            });
+          case `GET /organizations/${orgId}/incidents/attention`: {
+            const answer = attention[orgId!];
+
+            return typeof answer === "function"
+              ? answer()
+              : jsonResponse(200, answer);
+          }
+          default:
+            return apiError(404);
+        }
+      });
+
+    const incidentsLink = (name: string | RegExp) =>
+      within(primaryNav()).findByRole("link", { name });
+
+    it("counts what is ready to resolve beside Incidents", async () => {
+      at("/orgs/acme-ops/members", "acme-ops");
+      attentionApi({
+        [organization.id]: attentionOf({ ready: ["a", "b"] }),
+      });
+
+      const { container } = renderShell();
+
+      const link = await incidentsLink("Incidents, 2 need your attention");
+
+      expect(link.textContent).toBe("Incidents2, 2 need your attention");
+      await expectNoAxeViolations(container);
+    });
+
+    it("is what polls attention, every 30 seconds", async () => {
+      at("/orgs/acme-ops", "acme-ops");
+      attentionApi({ [organization.id]: attentionOf({ needs: ["a"] }) });
+
+      const { queryClient } = renderShell();
+
+      await incidentsLink("Incidents, 1 needs your attention");
+
+      const observers = queryClient
+        .getQueryCache()
+        .find({ queryKey: queryKeys.incidentAttention(organization.id) })!
+        .observers;
+
+      expect(observers.length).toBeGreaterThan(0);
+      expect(
+        observers.every(
+          ({ options }) => options.refetchInterval === ATTENTION_POLL_MS,
+        ),
+      ).toBe(true);
+      expect(ATTENTION_POLL_MS).toBe(30_000);
+    });
+
+    it("counts a team's incident needing a responder", async () => {
+      at("/orgs/acme-ops", "acme-ops");
+      attentionApi({ [organization.id]: attentionOf({ needs: ["a"] }) });
+
+      renderShell();
+
+      expect(
+        await incidentsLink("Incidents, 1 needs your attention"),
+      ).toBeDefined();
+    });
+
+    it("counts the caller's own response under way", async () => {
+      at("/orgs/acme-ops", "acme-ops");
+      attentionApi({ [organization.id]: attentionOf({ yours: ["a"] }) });
+
+      renderShell();
+
+      expect(
+        await incidentsLink("Incidents, 1 needs your attention"),
+      ).toBeDefined();
+    });
+
+    it("counts every list once per incident", async () => {
+      at("/orgs/acme-ops", "acme-ops");
+      attentionApi({
+        // "a" is resolvable and reassigned to the caller's team: one incident.
+        [organization.id]: attentionOf({
+          ready: ["a"],
+          needs: ["a", "b"],
+          yours: ["c"],
+        }),
+      });
+
+      renderShell();
+
+      expect(
+        await incidentsLink("Incidents, 3 need your attention"),
+      ).toBeDefined();
+    });
+
+    it("shows nothing when nothing is waiting", async () => {
+      at("/orgs/acme-ops", "acme-ops");
+      const { requests } = attentionApi({
+        [organization.id]: attentionOf({ ready: [] }),
+      });
+
+      renderShell();
+
+      await vi.waitFor(() =>
+        expect(
+          requests.some((r) => r.path.endsWith("/incidents/attention")),
+        ).toBe(true),
+      );
+
+      const link = await incidentsLink("Incidents");
+
+      expect(link.textContent).toBe("Incidents");
+    });
+
+    it("asks nothing without incidents:read", async () => {
+      at("/orgs/acme-ops", "acme-ops");
+      const { requests } = attentionApi(
+        { [organization.id]: attentionOf({ ready: ["a"] }) },
+        READ,
+      );
+
+      renderShell();
+
+      await within(primaryNav()).findByRole("link", { name: "Members" });
+
+      expect(
+        requests.filter((r) => r.path.endsWith("/incidents/attention")),
+      ).toEqual([]);
+    });
+
+    it("keeps the navigation, with no count, when attention cannot be read", async () => {
+      at("/orgs/acme-ops", "acme-ops");
+      const { requests } = attentionApi({
+        [organization.id]: () => apiError(500),
+      });
+
+      renderShell();
+
+      // Refused twice: the first answer and its one retry.
+      await vi.waitFor(
+        () =>
+          expect(
+            requests.filter((r) => r.path.endsWith("/incidents/attention")),
+          ).toHaveLength(2),
+        { timeout: 4000 },
+      );
+
+      expect((await incidentsLink("Incidents")).textContent).toBe("Incidents");
+      expect(within(primaryNav()).queryByRole("alert")).toBeNull();
+      expect(
+        within(primaryNav()).getByRole("link", { name: "Members" }),
+      ).toBeDefined();
+    });
+
+    it("follows the organization, never showing one's count in another", async () => {
+      at("/orgs/acme-ops", "acme-ops");
+      const { requests } = attentionApi({
+        [organization.id]: attentionOf({ ready: ["a", "b"] }),
+        [other.id]: attentionOf({ needs: ["c"] }),
+      });
+
+      const { rerender, queryClient } = renderShell();
+
+      await incidentsLink("Incidents, 2 need your attention");
+
+      at("/orgs/borealis", "borealis");
+      rerender(
+        <StrictMode>
+          <QueryClientProvider client={queryClient}>
+            <SessionProvider>
+              <WorkspaceShell>
+                <p>Page content</p>
+              </WorkspaceShell>
+            </SessionProvider>
+          </QueryClientProvider>
+        </StrictMode>,
+      );
+
+      expect(
+        await incidentsLink("Incidents, 1 needs your attention"),
+      ).toBeDefined();
+      expect(
+        requests.some(
+          (r) => r.path === `/organizations/${other.id}/incidents/attention`,
+        ),
+      ).toBe(true);
+    });
   });
 });

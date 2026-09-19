@@ -18,6 +18,8 @@ import type { Role } from './../src/generated/prisma/enums.js';
  * reassign, or resolve an incident, never while a responder is still
  * investigating, and a MEMBER is refused each of those with 403 before
  * anything is written;
+ * every role may read its own attention, whose parts follow its permissions
+ * and whose teams come from its admitted membership;
  * bodies are validated strictly, there is no delete route and no lead or
  * responder route, and a non-member
  * receives admission's 404. Behaviour against real rows, tenant isolation, concurrency, and the
@@ -84,6 +86,7 @@ describe('Incidents (e2e)', () => {
     membership: { findFirst: vi.fn() },
     organization: { findFirst: vi.fn(), update: vi.fn() },
     team: { findFirst: vi.fn() },
+    teamMembership: { findMany: vi.fn() },
     service: { findMany: vi.fn() },
     incident: {
       findMany: vi.fn(),
@@ -165,6 +168,7 @@ describe('Incidents (e2e)', () => {
     prisma.incident.groupBy.mockResolvedValue([]);
     prisma.incident.count.mockResolvedValue(0);
     prisma.service.findMany.mockResolvedValue([]);
+    prisma.teamMembership.findMany.mockResolvedValue([]);
     prisma.incident.findFirst.mockResolvedValue(incidentRow);
     prisma.incident.create.mockResolvedValue(incidentRow);
     prisma.incident.update.mockResolvedValue(incidentRow);
@@ -219,6 +223,37 @@ describe('Incidents (e2e)', () => {
       expect(prisma.incident.findFirst).not.toHaveBeenCalled();
     });
 
+    it("should read the caller's attention, not mistaking the path for a number", async () => {
+      const response = await send('get', `${base}/attention`);
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        manage: role === 'ADMIN' ? { readyToResolve: [] } : null,
+        respond: { needsYourTeam: [], yourResponses: [] },
+      });
+      expect(prisma.incident.findFirst).not.toHaveBeenCalled();
+      // The caller's teams are found by their admitted membership, within
+      // the organization — never by anything the request names.
+      expect(prisma.teamMembership.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            organizationId: ORG_ID,
+            team: {
+              memberships: { some: { membershipId: MEMBERSHIP_ID } },
+            },
+          },
+        }),
+      );
+      expect(prisma.incident.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            organizationId: ORG_ID,
+            status: { not: 'RESOLVED' },
+          }),
+        }),
+      );
+    });
+
     it('should read an incident by its number', async () => {
       const response = await send('get', `${base}/1`);
 
@@ -256,6 +291,45 @@ describe('Incidents (e2e)', () => {
 
   describe('as ADMIN', () => {
     beforeEach(() => admitAs('ADMIN'));
+
+    it('should list an incident whose responders have all completed as ready to resolve', async () => {
+      prisma.incident.findMany.mockResolvedValue([
+        {
+          ...incidentRow,
+          status: 'INVESTIGATING',
+          responders: [
+            {
+              status: 'COMPLETED',
+              startedAt: CREATED,
+              completedAt: CREATED,
+              membership: {
+                id: '0199a1b2-c3d4-7000-8000-0000000000bb',
+                user: { name: 'Priya Shah' },
+              },
+            },
+          ],
+        },
+      ]);
+
+      const response = await send('get', `${base}/attention`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.manage.readyToResolve).toEqual([
+        expect.objectContaining({
+          number: 1,
+          status: 'INVESTIGATING',
+          responders: [
+            {
+              membershipId: '0199a1b2-c3d4-7000-8000-0000000000bb',
+              name: 'Priya Shah',
+              status: 'COMPLETED',
+              startedAt: '2026-09-18T12:00:00.000Z',
+              completedAt: '2026-09-18T12:00:00.000Z',
+            },
+          ],
+        }),
+      ]);
+    });
 
     it('should declare an incident and answer with the declared shape', async () => {
       const response = await send('post', base, declaration);
@@ -407,6 +481,23 @@ describe('Incidents (e2e)', () => {
         expect(prisma.incident.update).not.toHaveBeenCalled();
       },
     );
+
+    it("should list a declared incident on the caller's team as needing it, and nothing to resolve", async () => {
+      prisma.teamMembership.findMany.mockResolvedValue([
+        { teamId: TEAM_ID, membershipId: MEMBERSHIP_ID },
+      ]);
+
+      const response = await send('get', `${base}/attention`);
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        manage: null,
+        respond: {
+          needsYourTeam: [expect.objectContaining({ number: 1 })],
+          yourResponses: [],
+        },
+      });
+    });
 
     it('should refuse an update before starting to investigate with 403 START_INVESTIGATING_FIRST, writing nothing', async () => {
       prisma.incidentResponder.findFirst.mockResolvedValue(null);
@@ -629,6 +720,7 @@ describe('Incidents (e2e)', () => {
         method: 'get' as const,
         path: `${base}/summary?from=2026-09-13&to=2026-09-19`,
       },
+      { method: 'get' as const, path: `${base}/attention` },
       { method: 'post' as const, path: base },
       { method: 'patch' as const, path: `${base}/1` },
       { method: 'get' as const, path: `${base}/1/timeline` },

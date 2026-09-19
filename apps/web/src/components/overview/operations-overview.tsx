@@ -55,6 +55,7 @@ import { queryKeys } from "@/lib/api/query-keys";
 import { periodDays, utcDay } from "@/lib/period/period";
 
 import { CustomRangeDialog } from "./custom-range";
+import { OperationalAttention } from "./operational-attention";
 import { PeriodHistory } from "./period-history";
 import { formatDays, PERIOD_CHOICES, presetPeriod } from "./period";
 import type { PeriodChoice, PeriodPreset } from "./period";
@@ -737,9 +738,10 @@ const useSummary = (organizationId: string, period: IncidentPeriod) =>
   });
 
 /**
- * The operational overview: the current state of incident response, then
- * incidents in a period of the viewer's choosing. One summary request serves
- * both; the current half does not depend on the period.
+ * The operational overview: what needs the viewer, then the current state of
+ * incident response, then incidents in a period of the viewer's choosing.
+ * One summary request serves the last two; the current half does not depend
+ * on the period.
  */
 export function OperationsOverview() {
   const organization = useOrganization();
@@ -749,6 +751,7 @@ export function OperationsOverview() {
   // Now, then history: two panels framed alike, told apart by their labels.
   return (
     <>
+      <OperationalAttention />
       <CurrentOperations summary={summary} />
       <SelectedPeriod selection={selection} summary={summary} />
     </>

@@ -16,6 +16,7 @@ import { CurrentMembership } from '../tenancy/current-membership.decorator.js';
 import { OrganizationController } from '../tenancy/organization-controller.decorator.js';
 import type {
   IncidentActivityResponse,
+  IncidentAttentionResponse,
   IncidentDetailResponse,
   IncidentPage,
   IncidentSummaryResponse,
@@ -78,6 +79,24 @@ export class IncidentsController {
     @Query({ schema: incidentSummaryQuerySchema }) query: IncidentSummaryQuery,
   ): Promise<IncidentSummaryResponse> {
     return this.incidents.summary(membership.organizationId, query);
+  }
+
+  /**
+   * The active incidents waiting on the caller now: resolvable ones with
+   * `incidents:manage`; with `incidents:respond`, their teams' unclaimed
+   * ones and their own responses under way. Every role may ask; what comes
+   * back follows the caller's permissions. Declared before
+   * `:incidentNumber`, which would otherwise claim the path.
+   */
+  @Get('attention')
+  @RequirePermission(Permission.INCIDENTS_READ)
+  attention(
+    @CurrentMembership() membership: OrganizationContext,
+  ): Promise<IncidentAttentionResponse> {
+    return this.incidents.attention(membership.organizationId, {
+      membershipId: membership.membershipId,
+      role: membership.role,
+    });
   }
 
   /**

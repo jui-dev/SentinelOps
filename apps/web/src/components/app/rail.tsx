@@ -7,6 +7,10 @@ import Link from "next/link";
 import { useParams, usePathname, useRouter } from "next/navigation";
 import { useId, useState } from "react";
 
+import {
+  attentionCount,
+  useIncidentAttention,
+} from "@/components/incidents/incident-queries";
 import { cx } from "@/components/ui/cx";
 import { SelectControl } from "@/components/ui/select";
 import {
@@ -14,6 +18,7 @@ import {
   useRouteMembership,
 } from "@/components/organizations/organization-scope";
 import { formatRole } from "@/components/organizations/format";
+import { Permission } from "@/lib/api/contracts";
 import type { MembershipResponse } from "@/lib/api/contracts";
 import { useCurrentUser, useSession } from "@/lib/auth/session-provider";
 
@@ -29,11 +34,14 @@ function RailLink({
   label,
   icon: Icon,
   current,
+  count = 0,
 }: {
   href: string;
   label: string;
   icon: LucideIcon;
   current: boolean;
+  /** How many things behind the item wait on the caller; none shows nothing. */
+  count?: number;
 }) {
   return (
     <Link
@@ -67,6 +75,20 @@ function RailLink({
         )}
       />
       <span className="truncate">{label}</span>
+      {count > 0 && (
+        <>
+          {/* A count, not an alert: the accent's quiet fill, no motion. */}
+          <span
+            aria-hidden="true"
+            className="numeric ml-auto min-w-5 shrink-0 rounded-full bg-accent-subtle px-1.5 text-center text-xs leading-5 font-semibold text-accent-text"
+          >
+            {count}
+          </span>
+          <span className="sr-only">
+            , {count} {count === 1 ? "needs" : "need"} your attention
+          </span>
+        </>
+      )}
     </Link>
   );
 }
@@ -76,11 +98,14 @@ function SectionLinks({
   slug,
   permissions,
   pathname,
+  counts,
 }: {
   section: NavSection;
   slug: string;
   permissions: string[];
   pathname: string;
+  /** A count to show beside an item, by the item's id. */
+  counts: Partial<Record<string, number>>;
 }) {
   // Unique per instance: the drawer renders a second rail while open.
   const headingId = useId();
@@ -111,6 +136,7 @@ function SectionLinks({
                 label={item.label}
                 icon={item.icon}
                 current={isCurrentPath(href, item.match, pathname)}
+                count={counts[item.id]}
               />
             </li>
           );
@@ -237,6 +263,19 @@ export function Rail() {
   });
   const permissions = detail.data?.membership.permissions ?? [];
   const slug = membership?.organization.slug;
+  // The Overview's own attention query, by key: one cache, and a count
+  // beside Incidents from anywhere in the organization. Asked only once the
+  // API says the caller reads incidents; loading or failing, it shows none.
+  // The rail is mounted throughout the workspace, so it alone polls.
+  const attention = useIncidentAttention(membership?.organization.id ?? "", {
+    enabled:
+      membership !== undefined &&
+      permissions.includes(Permission.INCIDENTS_READ),
+    poll: true,
+  });
+  const counts = {
+    incidents: attention.data ? attentionCount(attention.data) : 0,
+  };
 
   const sections = (placement: NavSection["placement"]) =>
     slug
@@ -249,6 +288,7 @@ export function Rail() {
             slug={slug}
             permissions={permissions}
             pathname={pathname}
+            counts={counts}
           />
         ))
       : null;

@@ -1918,6 +1918,49 @@ any team. Neither granted anything and neither was on the timeline, so migration
 `20260921120000_team_based_incident_response` removed the lead and turned responders into
 members' own responses.
 
+### Attention
+
+`GET /incidents/attention` answers one question for the caller: **which active incidents
+are waiting on me right now?** It is current state, not a notification feed. Nothing is
+stored, sent, or marked read: each list is asked of the incidents as they stand, so an
+incident appears while the work exists and is gone once it is resolved, reassigned, or
+picked up. What happened, and when, is the [timeline](#incidents)'s job.
+
+| List | Who gets it | An active incident is on it when |
+| --- | --- | --- |
+| `manage.readyToResolve` | `incidents:manage` | It is `INVESTIGATING` and no responder is still investigating — exactly what resolving requires |
+| `respond.needsYourTeam` | `incidents:respond` | Its responsible team is one of the caller's, and nobody now on that team has responded |
+| `respond.yourResponses` | `incidents:respond` | The caller's own response is still `INVESTIGATING`, whatever team the incident has now |
+
+```jsonc
+{
+  "manage": { "readyToResolve": [ /* incidents, with responders */ ] },  // null without incidents:manage
+  "respond": { "needsYourTeam": [ /* … */ ], "yourResponses": [ /* … */ ] }  // null without incidents:respond
+}
+```
+
+- **Permissions, not roles.** The `ADMIN` gets `manage`, and `respond` too — which is
+  empty unless they are on a team. A `MEMBER` gets `manage: null`. One token is judged by
+  the role it holds in the organization asked about.
+- **"Nobody now on that team has responded"** means once any current member of the
+  responsible team starts, the incident leaves the other members' lists. It is not a
+  staffing rule. A reassignment brings the incident to the new team even though the old
+  team's responders are still listed on it.
+- **Two facts, two lists.** An incident whose responders have all completed and which
+  was then reassigned is both resolvable (`readyToResolve`, as the API allows) and not
+  yet picked up by the new team (`needsYourTeam` for its members). Neither changes the
+  other: attention reads the lifecycle, it does not add rules to it.
+- **Each list is in the active list's order** — most severe, then longest-running —
+  and unpaged, because only active incidents are read. Every item is shaped like the
+  single-incident routes' answer, responders included.
+- **Isolation as everywhere else.** The incidents, the caller's teams, and their
+  members are read scoped by the admitted organization, in one repeatable-read
+  snapshot. The caller's membership comes from admission, never from the request.
+  Everything returned is something the caller could already read.
+
+Not yet: unread or "new since you last looked", anything delivered outside the app, and
+live push — a client polls.
+
 ### Numbers
 
 `INC-n` numbers are **per organization**, **unique**, **never changed or reused**, and
@@ -1945,6 +1988,7 @@ needs it. Responding is narrowed further by the incident — see
 | `GET /incidents?state=active` | `incidents:read` | Active incidents, most severe first, then longest-running |
 | `GET /incidents?state=resolved` | `incidents:read` | Resolved incidents, most recently declared first |
 | `POST /incidents` | `incidents:manage` | Declare `{ "title", "serviceId", "severity", "summary"? }`. `201` |
+| `GET /incidents/attention` | `incidents:read` | The active incidents waiting on the caller now — see [Attention](#attention) |
 | `GET /incidents/:number` | `incidents:read` | One incident |
 | `PATCH /incidents/:number` | `incidents:manage` | Change `{ "title"?, "summary"?, "severity"?, "status"?, "teamId"? }` of an active incident (at least one). `"status": "RESOLVED"` resolves one under investigation that nobody is still investigating |
 | `GET /incidents/:number/timeline` | `incidents:read` | The incident's timeline, oldest first |
@@ -2048,14 +2092,16 @@ incident, changing its service, and optimistic concurrency on edits.
 route is admitted and authorized, every role may read and post updates — a `MEMBER`
 only on the responsible team — a `MEMBER` is refused every lifecycle route with `403`
 before anything is written, bodies are strict, and there is no delete, lead, or
-responder route.
+responder route. Every role reads its own attention, its parts following its permissions.
 [`incidents.integration-spec.ts`](apps/api/test/incidents.integration-spec.ts) runs two
 tenants against a real database: an admin declaring, moving, and resolving; a member
 reading and posting an update while every lifecycle change they try is refused; only the
 responsible team's members and the admin posting, a member of another team refused and
 still able to read, and who may post moving with a reassignment that the timeline
 records — including a post waiting on an in-flight reassignment being judged against the
-new team; the responsible team surviving a service reassignment; per-organization numbering under ten
+new team; each caller's attention following an incident through its response, a
+reassignment, and team changes, one organization at a time; the responsible team
+surviving a service reassignment; per-organization numbering under ten
 concurrent declarations; both lists paged completely and in order; foreign incidents,
 services, and teams answered exactly as missing ones; the service isolating with no
 guard; archival refusing declarations; the delete refusals recognised through the real

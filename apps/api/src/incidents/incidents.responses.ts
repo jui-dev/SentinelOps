@@ -1,8 +1,10 @@
 import type { ServiceCriticality } from '../services/services.contract.js';
+import type { Attention } from './incidents.attention.js';
 import type {
   AffectedServiceResponse,
   IncidentActivityResponse,
   IncidentActivityType,
+  IncidentAttentionResponse,
   IncidentDetailResponse,
   IncidentResponderStatus,
   IncidentResponse,
@@ -93,6 +95,25 @@ export const toIncidentDetailResponse = (
     startedAt: responder.startedAt.toISOString(),
     completedAt: responder.completedAt?.toISOString() ?? null,
   })),
+});
+
+/** The caller's attention, each incident as the single-incident routes return it. */
+export const toIncidentAttentionResponse = (
+  attention: Attention<IncidentDetailRow>,
+): IncidentAttentionResponse => ({
+  manage: attention.manage && {
+    readyToResolve: attention.manage.readyToResolve.map(
+      toIncidentDetailResponse,
+    ),
+  },
+  respond: attention.respond && {
+    needsYourTeam: attention.respond.needsYourTeam.map(
+      toIncidentDetailResponse,
+    ),
+    yourResponses: attention.respond.yourResponses.map(
+      toIncidentDetailResponse,
+    ),
+  },
 });
 
 interface IncidentActivityRow {

@@ -12,6 +12,7 @@ import { organizationPath } from "@/components/app/navigation";
 import { useOrganization } from "@/components/organizations/organization-scope";
 import { ApiErrorCode } from "@/lib/api/contracts";
 import type {
+  IncidentAttentionResponse,
   IncidentDetailResponse,
   IncidentPeriod,
   IncidentResponse,
@@ -20,6 +21,7 @@ import type {
 } from "@/lib/api/contracts";
 import {
   getIncident,
+  getIncidentAttention,
   getIncidentTimeline,
   listIncidents,
   updateIncident,
@@ -61,11 +63,61 @@ export const useIncident = (organizationId: string, number: number) =>
     queryFn: () => getIncident(organizationId, number),
   });
 
+/** How often attention is asked again while something shows it. */
+export const ATTENTION_POLL_MS = 30_000;
+
+/**
+ * The active incidents waiting on the caller now. Others' work — a
+ * declaration, a teammate starting, the last response completing — changes
+ * it without anything happening in this tab, so it is asked again every
+ * `ATTENTION_POLL_MS`, and not while the tab is hidden (TanStack's default);
+ * returning to the tab refetches it once it is stale. The caller's own
+ * actions refetch it at once (see storeIncident).
+ *
+ * One component polls: the navigation rail, with `poll: true`, which is
+ * mounted throughout the organization's workspace. TanStack runs an
+ * interval per polling component, so any other reader — the Overview —
+ * leaves `poll` off and takes each answer from the shared cache.
+ *
+ * `enabled: false` asks nothing: for chrome outside the organization scope,
+ * until it knows the organization and that the caller reads incidents.
+ */
+export const useIncidentAttention = (
+  organizationId: string,
+  { enabled = true, poll = false }: { enabled?: boolean; poll?: boolean } = {},
+) =>
+  useQuery({
+    queryKey: queryKeys.incidentAttention(organizationId),
+    queryFn: () => getIncidentAttention(organizationId),
+    refetchInterval: poll ? ATTENTION_POLL_MS : false,
+    enabled,
+  });
+
+/**
+ * How many incidents are waiting on the caller: every list their
+ * permissions give them — ready to resolve, their teams' unclaimed ones,
+ * their own responses under way — each incident once, however many lists
+ * hold it (resolvable and reassigned to their team is one incident).
+ */
+export const attentionCount = ({
+  manage,
+  respond,
+}: IncidentAttentionResponse): number =>
+  new Set(
+    [
+      ...(manage?.readyToResolve ?? []),
+      ...(respond?.needsYourTeam ?? []),
+      ...(respond?.yourResponses ?? []),
+    ].map(({ id }) => id),
+  ).size;
+
 /**
  * After an incident is declared or changed: its own entry holds the API's
  * answer, and both lists refetch — its status, severity, or team may have
  * moved it between them or within one — as do the overview's counts. Its
- * timeline refetches too: the change may have been recorded there.
+ * timeline refetches too: the change may have been recorded there. So does
+ * the caller's attention: declaring, reassigning, resolving, starting, or
+ * completing each moves an incident into or out of someone's lists.
  */
 export const storeIncident = (
   queryClient: QueryClient,
@@ -84,6 +136,9 @@ export const storeIncident = (
   });
   void queryClient.invalidateQueries({
     queryKey: queryKeys.incidentTimeline(organizationId, incident.number),
+  });
+  void queryClient.invalidateQueries({
+    queryKey: queryKeys.incidentAttention(organizationId),
   });
 };
 

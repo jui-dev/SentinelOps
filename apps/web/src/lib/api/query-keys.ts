@@ -32,6 +32,9 @@
  * - `incidentSummary`: the overview's counts and history for one period,
  *   beneath the prefix — so whatever stales every incident stales them too.
  *   Declaring or changing an incident stales every period's.
+ * - `incidentAttention`: the active incidents waiting on the caller, beneath
+ *   the prefix. Declaring, changing, or responding to an incident stales it;
+ *   what others do reaches it by polling.
  *
  * The invitation an `/invite` page shows is deliberately not cached here: it
  * is fetched with a token, and lives in that page's own state.
@@ -69,6 +72,8 @@ export const queryKeys = {
     ] as const,
   incidentSummary: (organizationId: string, from: string, to: string) =>
     ["organization", organizationId, "incidents", "summary", from, to] as const,
+  incidentAttention: (organizationId: string) =>
+    ["organization", organizationId, "incidents", "attention"] as const,
   incident: (organizationId: string, number: number) =>
     ["organization", organizationId, "incidents", "detail", number] as const,
   incidentTimeline: (organizationId: string, number: number) =>

@@ -211,6 +211,33 @@ export interface IncidentSummaryResponse {
 }
 
 /**
+ * `GET .../incidents/attention`: the active incidents waiting on the caller
+ * now. Current state, not events — an incident appears while the work
+ * exists and is gone once it does not. The timeline is the history.
+ *
+ * Each part is present only with its permission, and null otherwise:
+ *
+ *   manage.readyToResolve  `incidents:manage`. INVESTIGATING, and no
+ *                          responder is still investigating — resolvable.
+ *   respond.needsYourTeam  `incidents:respond`. On one of the caller's
+ *                          teams, and nobody now on that team has responded.
+ *   respond.yourResponses  `incidents:respond`. The caller's own response is
+ *                          still investigating, whatever team it has now.
+ *
+ * An incident can be in more than one list: resolvable, and reassigned to
+ * a team none of whose members has responded, are two facts about it. Each
+ * list is in the active list's order — most severe, then longest-running,
+ * first — and unpaged: it holds active incidents only.
+ */
+export interface IncidentAttentionResponse {
+  manage: { readyToResolve: IncidentDetailResponse[] } | null;
+  respond: {
+    needsYourTeam: IncidentDetailResponse[];
+    yourResponses: IncidentDetailResponse[];
+  } | null;
+}
+
+/**
  * One page of a collection. `cursor` is opaque and asks for the page after
  * this one; it is null exactly when `hasMore` is false.
  */
