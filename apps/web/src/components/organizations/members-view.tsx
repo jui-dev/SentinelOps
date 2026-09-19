@@ -1,25 +1,32 @@
 "use client";
 
-import { PageBody, PageHeader, Section } from "@/components/ui/page";
-import { Permission } from "@/lib/api/contracts";
-import { env } from "@/lib/config/env";
+import Link from "next/link";
 
-import { AddMemberForm } from "./add-member-form";
-import { InviteMemberForm } from "./invite-member-form";
+import { organizationPath } from "@/components/app/navigation";
+import { buttonClasses } from "@/components/ui/button";
+import { PageBody, PageHeader } from "@/components/ui/page";
+import { Permission } from "@/lib/api/contracts";
+
 import { MembershipList, useMemberships } from "./membership-list";
-import { OpenInvitationList } from "./open-invitation-list";
 import { useCan, useOrganization } from "./organization-scope";
 
+export const membersHref = (orgSlug: string) =>
+  `${organizationPath(orgSlug)}/members`;
+
+export const addMemberHref = (orgSlug: string) =>
+  `${membersHref(orgSlug)}/new`;
+
+/**
+ * The organization's people, at a glance: who they are, their role, the
+ * teams they are on, and who has yet to sign in for the first time. Adding
+ * someone is its own page, reached from the header; invitations are not
+ * offered while they are switched off.
+ */
 export function MembersView() {
   const organization = useOrganization();
   const memberships = useMemberships(organization.id);
-  // The invitation parts render only when invitations are switched on and the
-  // API reports the caller may use them — as advice; the API authorizes both
-  // regardless.
-  const canInvite = useCan(Permission.INVITATIONS_MANAGE);
-  const canSeeInvitations = useCan(Permission.INVITATIONS_READ);
-  const showInvitations =
-    env.invitationsEnabled && (canInvite || canSeeInvitations);
+  // Advice only, like every useCan: the API authorizes adding regardless.
+  const canAddMembers = useCan(Permission.MEMBERS_MANAGE);
 
   return (
     <>
@@ -28,23 +35,19 @@ export function MembersView() {
         title="Members"
         meta={memberships.data?.length}
         description="Everyone with access to this organization. The Admin sets it up — its members, teams, and services; Members do the operational work."
+        actions={
+          canAddMembers && (
+            <Link
+              href={addMemberHref(organization.slug)}
+              className={buttonClasses()}
+            >
+              Add member
+            </Link>
+          )
+        }
       />
       <PageBody width="list">
         <MembershipList />
-        <AddMemberForm />
-        {showInvitations && (
-          <Section
-            id="invitations"
-            title="Invitations"
-            description="Each invitation link works once and expires 7 days after it is created."
-            spacing="loose"
-            // A wider gap than between sections: a separate part of the page.
-            className="mt-4"
-          >
-            <InviteMemberForm />
-            <OpenInvitationList />
-          </Section>
-        )}
       </PageBody>
     </>
   );

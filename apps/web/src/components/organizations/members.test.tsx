@@ -17,6 +17,7 @@ import type { SentRequest } from "@/test/api";
 import { renderWithSession } from "@/test/render";
 
 import { generateOneTimePassword } from "./add-member-form";
+import { AddMemberView } from "./add-member-view";
 import { MembersView } from "./members-view";
 import { OrganizationScope } from "./organization-scope";
 
@@ -108,33 +109,130 @@ const renderMembers = () =>
     </OrganizationScope>,
   );
 
-describe("adding a member", () => {
+const renderAddMember = () =>
+  renderWithSession(
+    <OrganizationScope>
+      <AddMemberView />
+    </OrganizationScope>,
+  );
+
+describe("the members overview", () => {
   beforeEach(() => {
     clearAccessToken();
   });
 
-  it("offers the form only when the API reports members:manage", async () => {
+  const onTeams = (...names: string[]) =>
+    names.map((name, index) => ({
+      id: `0199a1b2-c3d4-7000-8000-0000000000e${index}`,
+      name,
+      slug: name.toLowerCase(),
+    }));
+
+  it("offers the Admin an Add member action that leads to its own page, and no form here", async () => {
+    api(MANAGE);
+
+    renderMembers();
+
+    const add = await screen.findByRole("link", { name: "Add member" });
+
+    expect(add.getAttribute("href")).toBe("/orgs/acme-ops/members/new");
+    expect(screen.queryByLabelText("One-time password")).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Invitations" })).toBeNull();
+  });
+
+  it("offers a Member no way to add anyone", async () => {
     api(READ_ONLY);
 
     renderMembers();
 
     expect(await screen.findByText("Ada Lovelace")).toBeDefined();
-    expect(screen.queryByRole("heading", { name: "Add a member" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Add member" })).toBeNull();
   });
 
-  it("asks for no role: everyone the Admin adds is a Member", async () => {
-    api(MANAGE);
+  it("shows each person's role, teams, and whether they have signed in yet", async () => {
+    api(READ_ONLY, [
+      ada,
+      { ...grace, teams: onTeams("Payments", "Platform") },
+      {
+        ...grace,
+        id: "0199a1b2-c3d4-7000-8000-0000000000cc",
+        user: {
+          ...grace.user,
+          id: "0199a1b2-c3d4-7000-8000-000000000003",
+          name: "Linus Torvalds",
+          email: "linus@example.com",
+          passwordChangeRequired: false,
+        },
+        teams: onTeams("Infrastructure", "Payments", "Platform"),
+      },
+    ]);
 
     renderMembers();
 
-    await screen.findByRole("heading", { name: "Add a member" });
+    const table = await screen.findByRole("table", { name: "Members" });
+    const rows = within(table).getAllByRole("row").slice(1);
+    const [adaRow, graceRow, linusRow] = rows;
+
+    expect(within(adaRow).getByText("Admin")).toBeDefined();
+    expect(within(adaRow).getAllByText("No team").length).toBeGreaterThan(0);
+
+    expect(within(graceRow).getByText("Member")).toBeDefined();
+    expect(
+      within(graceRow).getAllByText("Payments, Platform").length,
+    ).toBeGreaterThan(0);
+    expect(within(graceRow).getByText("Awaiting first sign-in")).toBeDefined();
+
+    // Three teams: two shown, the rest summarised, the full list still there
+    // for a screen reader and the tooltip.
+    expect(within(linusRow).getAllByText("+1 more").length).toBeGreaterThan(0);
+    expect(
+      within(linusRow).getAllByText("Infrastructure, Payments, Platform")
+        .length,
+    ).toBeGreaterThan(0);
+    expect(within(linusRow).queryByText("Awaiting first sign-in")).toBeNull();
+  });
+});
+
+describe("adding a member", () => {
+  beforeEach(() => {
+    clearAccessToken();
+  });
+
+  it("tells a Member only the Admin adds people, and offers no form", async () => {
+    api(READ_ONLY);
+
+    renderAddMember();
+
+    expect(
+      await screen.findByText(
+        "Only the Admin can add members to this organization.",
+      ),
+    ).toBeDefined();
+    expect(screen.queryByLabelText("One-time password")).toBeNull();
+  });
+
+  it("is a page of its own, with a way back to Members and no role to choose", async () => {
+    api(MANAGE);
+
+    renderAddMember();
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Add member" }),
+    ).toBeDefined();
+    await screen.findByLabelText("Name");
     expect(screen.queryByLabelText("Role")).toBeNull();
+    expect(
+      screen.getByRole("link", { name: "← Members" }).getAttribute("href"),
+    ).toBe("/orgs/acme-ops/members");
+    expect(
+      screen.getByRole("link", { name: "Cancel" }).getAttribute("href"),
+    ).toBe("/orgs/acme-ops/members");
   });
 
   it("fills in a generated one-time password", async () => {
     api(MANAGE);
 
-    renderMembers();
+    renderAddMember();
 
     const field = await screen.findByLabelText("One-time password");
     await userEvent.setup().click(screen.getByRole("button", { name: "Generate" }));
@@ -144,7 +242,7 @@ describe("adding a member", () => {
     );
   });
 
-  it("sends the person, shows their sign-in details once, and refreshes the list", async () => {
+  it("sends the person, and shows their sign-in details once", async () => {
     let added = false;
     const { requests } = api(MANAGE, [ada], (request) => {
       if (route(request) === `POST ${base}/memberships`) {
@@ -158,7 +256,7 @@ describe("adding a member", () => {
     });
     const user = userEvent.setup();
 
-    renderMembers();
+    renderAddMember();
 
     await user.type(await screen.findByLabelText("Name"), "Grace Hopper");
     await user.type(screen.getByLabelText("Email"), "grace@example.com");
@@ -187,12 +285,14 @@ describe("adding a member", () => {
       teamIds: [],
     });
     expect(panel.textContent).toContain("Not on any team yet.");
+    expect(
+      within(panel)
+        .getByRole("link", { name: "Back to members" })
+        .getAttribute("href"),
+    ).toBe("/orgs/acme-ops/members");
 
-    // The list shows the new person, still to sign in for the first time.
-    expect(await screen.findByText("Awaiting first sign-in")).toBeDefined();
-
-    // Done forgets the password.
-    await user.click(within(panel).getByRole("button", { name: "Done" }));
+    // Add another forgets the password.
+    await user.click(within(panel).getByRole("button", { name: "Add another" }));
     await waitFor(() =>
       expect(screen.queryByLabelText("Sign-in password")).toBeNull(),
     );
@@ -209,7 +309,7 @@ describe("adding a member", () => {
     );
     const user = userEvent.setup();
 
-    renderMembers();
+    renderAddMember();
 
     await user.type(await screen.findByLabelText("Name"), "Ada");
     await user.type(screen.getByLabelText("Email"), "ada@example.com");
@@ -242,7 +342,7 @@ describe("choosing teams when adding a member", () => {
   it("offers every team as an optional choice, none chosen", async () => {
     api(MANAGE);
 
-    renderMembers();
+    renderAddMember();
 
     const teams = await screen.findByRole("group", { name: /Teams/ });
     const boxes = await within(teams).findAllByRole("checkbox");
@@ -269,7 +369,7 @@ describe("choosing teams when adding a member", () => {
     );
     const user = userEvent.setup();
 
-    renderMembers();
+    renderAddMember();
     await fillIn(user);
     await user.click(await screen.findByRole("checkbox", { name: "Platform" }));
     await user.click(screen.getByRole("checkbox", { name: "Payments" }));
@@ -296,7 +396,7 @@ describe("choosing teams when adding a member", () => {
     );
     const user = userEvent.setup();
 
-    renderMembers();
+    renderAddMember();
     await fillIn(user);
     await user.click(await screen.findByRole("checkbox", { name: "Payments" }));
     await user.click(screen.getByRole("button", { name: "Add member" }));
@@ -325,7 +425,7 @@ describe("choosing teams when adding a member", () => {
       }
     });
 
-    renderMembers();
+    renderAddMember();
 
     expect(await screen.findByText(/There are no teams yet/)).toBeDefined();
     expect(screen.getByRole("link", { name: "Create one" })).toBeDefined();

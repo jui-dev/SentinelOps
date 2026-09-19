@@ -16,7 +16,8 @@ import {
 import type { SentRequest } from "@/test/api";
 import { renderWithSession } from "@/test/render";
 
-import { MembersView } from "./members-view";
+import { InviteMemberForm } from "./invite-member-form";
+import { OpenInvitationList } from "./open-invitation-list";
 import { OrganizationScope } from "./organization-scope";
 
 vi.mock("next/navigation", () => ({
@@ -79,11 +80,15 @@ const api = (permissions: string[], handler: Handler = () => undefined) =>
     }
   });
 
-// The Members page as it ships: the member list, then the invitation parts.
+// The invitation parts, as they would be mounted when invitations return.
+// While INVITATIONS_ENABLED is off no page mounts them, so they are rendered
+// here directly, inside the organization as any page would be.
 const renderMembers = () =>
   renderWithSession(
     <OrganizationScope>
-      <MembersView />
+      <p>Organization loaded</p>
+      <InviteMemberForm />
+      <OpenInvitationList />
     </OrganizationScope>,
   );
 
@@ -118,10 +123,7 @@ describe("invitation management", () => {
 
       renderMembers();
 
-      expect(
-        await screen.findByRole("heading", { level: 1, name: "Members" }),
-      ).toBeDefined();
-      expect(screen.queryByRole("heading", { name: "Invitations" })).toBeNull();
+      expect(await screen.findByText("Organization loaded")).toBeDefined();
       expect(screen.queryByRole("heading", { name: "Invite a member" })).toBeNull();
       expect(screen.queryByRole("heading", { name: "Open invitations" })).toBeNull();
       expect(listRequests(requests)).toEqual([]);

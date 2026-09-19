@@ -7,11 +7,10 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 
 import { Alert, ErrorAlert } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
+import { Button, buttonClasses } from "@/components/ui/button";
 import { CopyField } from "@/components/ui/copy-field";
 import { Field } from "@/components/ui/field";
 import { linkClasses } from "@/components/ui/link";
-import { Section } from "@/components/ui/page";
 import { Spinner } from "@/components/ui/spinner";
 import { teamsHref, useTeams } from "@/components/teams/team-scope";
 import { ApiErrorCode, Permission } from "@/lib/api/contracts";
@@ -21,6 +20,7 @@ import { fieldErrorsOf, isApiError } from "@/lib/api/errors";
 import { queryKeys } from "@/lib/api/query-keys";
 
 import { formatRole } from "./format";
+import { membersHref } from "./members-view";
 import { useCan, useOrganization } from "./organization-scope";
 
 /**
@@ -119,7 +119,7 @@ function TeamChoices({ disabled }: { disabled: boolean }) {
 
   return (
     <fieldset className="flex flex-col gap-2" disabled={disabled}>
-      <legend className="flex items-baseline gap-2 text-sm font-medium text-fg">
+      <legend className="mb-1 flex items-baseline gap-2 text-sm font-medium text-fg">
         Teams
         <span className="text-xs font-normal text-fg-subtle">Optional</span>
       </legend>
@@ -164,9 +164,18 @@ function TeamChoices({ disabled }: { disabled: boolean }) {
 
 /**
  * The sign-in details to hand over, shown once. The password lives in this
- * component's state and nowhere else, and is gone on Done.
+ * component's state and nowhere else, and is gone on "Add another" or on
+ * leaving the page.
  */
-function AddedMember({ added, onDone }: { added: Added; onDone: () => void }) {
+function AddedMember({
+  added,
+  onDone,
+  backHref,
+}: {
+  added: Added;
+  onDone: () => void;
+  backHref: string;
+}) {
   return (
     <Alert
       tone="success"
@@ -199,10 +208,16 @@ function AddedMember({ added, onDone }: { added: Added; onDone: () => void }) {
           can&apos;t do anything else until they have. This is the only time
           this password is shown.
         </p>
-        <div>
+        <div className="flex flex-wrap gap-2">
           <Button variant="secondary" size="sm" onClick={onDone}>
-            Done
+            Add another
           </Button>
+          <Link
+            href={backHref}
+            className={buttonClasses({ variant: "quiet", size: "sm" })}
+          >
+            Back to members
+          </Link>
         </div>
       </div>
     </Alert>
@@ -248,72 +263,80 @@ export function AddMemberForm() {
   };
 
   const fields = fieldErrorsOf(create.error);
+  const backHref = membersHref(organization.slug);
 
   return (
-    <Section
-      title="Add a member"
-      description="Create their account as a Member, with a one-time password to hand them. They choose their own when they first sign in."
+    <form
+      onSubmit={onSubmit}
+      noValidate
+      className="flex max-w-2xl flex-col gap-4"
     >
-      <form
-        onSubmit={onSubmit}
-        noValidate
-        className="flex max-w-2xl flex-col gap-4"
-      >
-        {create.isError && (
-          <ErrorAlert error={create.error} message={messageFor(create.error)} />
-        )}
-        {added && <AddedMember added={added} onDone={() => setAdded(null)} />}
-        <div className="grid gap-3 sm:grid-cols-2">
+      {create.isError && (
+        <ErrorAlert error={create.error} message={messageFor(create.error)} />
+      )}
+      {added && (
+        <AddedMember
+          added={added}
+          onDone={() => setAdded(null)}
+          backHref={backHref}
+        />
+      )}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field
+          label="Name"
+          name="name"
+          autoComplete="off"
+          required
+          error={fields.name}
+        />
+        <Field
+          label="Email"
+          name="email"
+          type="email"
+          autoComplete="off"
+          placeholder="name@company.com"
+          required
+          error={fields.email}
+        />
+      </div>
+      <div className="flex flex-wrap items-start gap-3">
+        <div className="min-w-56 flex-1">
           <Field
-            label="Name"
-            name="name"
+            label="One-time password"
+            name="temporaryPassword"
             autoComplete="off"
+            spellCheck={false}
+            className="data"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            hint="At least 12 characters."
             required
-            error={fields.name}
-          />
-          <Field
-            label="Email"
-            name="email"
-            type="email"
-            autoComplete="off"
-            placeholder="name@company.com"
-            required
-            error={fields.email}
+            error={fields.temporaryPassword}
           />
         </div>
-        <div className="flex flex-wrap items-start gap-3">
-          <div className="min-w-56 flex-1">
-            <Field
-              label="One-time password"
-              name="temporaryPassword"
-              autoComplete="off"
-              spellCheck={false}
-              className="data"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              hint="At least 12 characters."
-              required
-              error={fields.temporaryPassword}
-            />
-          </div>
-          {/* Aligned with the controls, below their labels. */}
-          <Button
-            type="button"
-            variant="secondary"
-            icon={KeyRound}
-            className="mt-6.5"
-            onClick={() => setPassword(generateOneTimePassword())}
-          >
-            Generate
-          </Button>
-        </div>
-        <TeamChoices disabled={create.isPending} />
-        <div>
-          <Button type="submit" disabled={create.isPending}>
-            {create.isPending ? "Adding…" : "Add member"}
-          </Button>
-        </div>
-      </form>
-    </Section>
+        {/* Aligned with the controls, below their labels. */}
+        <Button
+          type="button"
+          variant="secondary"
+          icon={KeyRound}
+          className="mt-6.5"
+          onClick={() => setPassword(generateOneTimePassword())}
+        >
+          Generate
+        </Button>
+      </div>
+      <TeamChoices disabled={create.isPending} />
+      <div className="flex flex-wrap items-center gap-2">
+        <Button type="submit" disabled={create.isPending}>
+          {create.isPending ? "Adding…" : "Add member"}
+        </Button>
+        <Link
+          href={backHref}
+          className={buttonClasses({ variant: "quiet" })}
+        >
+          Cancel
+        </Link>
+      </div>
+    </form>
   );
 }

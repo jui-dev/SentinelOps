@@ -10,6 +10,7 @@ import { RegisterForm } from "@/components/auth/register-form";
 import { IncidentDetail } from "@/components/incidents/incident-detail";
 import { IncidentsView } from "@/components/incidents/incidents-view";
 import { InvitationAcceptance } from "@/components/invitations/invitation-acceptance";
+import { AddMemberView } from "@/components/organizations/add-member-view";
 import { MembersView } from "@/components/organizations/members-view";
 import { OrganizationOverview } from "@/components/organizations/organization-overview";
 import { OrganizationPicker } from "@/components/organizations/organization-picker";
@@ -214,7 +215,9 @@ const signedIn = (permissions: string[]) =>
               id: currentUser.id,
               name: currentUser.name,
               email: currentUser.email,
+              passwordChangeRequired: false,
             },
+            teams: [{ id: team.id, name: team.name, slug: team.slug }],
           },
         ]);
       case `GET ${base}/teams`:
@@ -340,12 +343,32 @@ describe("accessibility", () => {
       await expectNoAxeViolations(container);
     });
 
-    it("Members, as an admin who adds members and manages invitations", async () => {
+    it("Members, as the admin", async () => {
       signedIn(ADMIN);
       const { container } = inWorkspace(<MembersView />);
 
-      await screen.findByText("linus@example.com");
-      await screen.findByRole("heading", { name: "Add a member" });
+      await screen.findByRole("table", { name: "Members" });
+      await screen.findByRole("link", { name: "Add member" });
+      await expectNoAxeViolations(container);
+    });
+
+    it("Add member, choosing teams", async () => {
+      signedIn(ADMIN);
+      navigation.pathname = `/orgs/${organization.slug}/members/new`;
+      const { container } = inWorkspace(<AddMemberView />);
+
+      await screen.findByRole("heading", { level: 1, name: "Add member" });
+      await screen.findByRole("checkbox", { name: team.name });
+      await expectNoAxeViolations(container);
+    });
+
+    it("Add member, as a member", async () => {
+      signedIn(MEMBER);
+      const { container } = inWorkspace(<AddMemberView />);
+
+      await screen.findByText(
+        "Only the Admin can add members to this organization.",
+      );
       await expectNoAxeViolations(container);
     });
 
