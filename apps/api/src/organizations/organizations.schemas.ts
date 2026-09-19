@@ -6,7 +6,6 @@ import {
   passwordSchema,
   personNameSchema,
 } from '../auth/auth.schemas.js';
-import { Role } from '../generated/prisma/enums.js';
 
 /**
  * Request schemas for organization-scoped writes.
@@ -27,15 +26,18 @@ export type UpdateOrganizationRequest = z.infer<
 >;
 
 /**
- * Adding a person to the organization: who they are, the role they hold, and
- * a one-time password the admin hands them. The same rules as registration's
- * — a normalised email, a person's name, a password of at least 12 characters
- * — because this creates an account just as registration does.
+ * Adding a person to the organization: who they are, and a one-time password
+ * the Admin hands them. The same rules as registration's — a normalised
+ * email, a person's name, a password of at least 12 characters — because this
+ * creates an account just as registration does.
+ *
+ * No role. Everyone the Admin adds is a MEMBER; the organization's one Admin
+ * is whoever created it. Strict, so a body that tries to name a role is
+ * refused rather than silently ignored.
  */
 export const createMemberSchema = z.strictObject({
   name: personNameSchema,
   email: emailSchema,
-  role: z.enum([Role.ADMIN, Role.MEMBER]),
   temporaryPassword: passwordSchema,
 });
 

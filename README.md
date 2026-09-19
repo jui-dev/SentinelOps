@@ -28,7 +28,7 @@ deliberately, and this README is updated as capabilities actually land.
   that enforce tenant isolation
 - Authorization: per-route permissions within an organization, mapped from the member's
   role, proven by a rename route that members may not use
-- Members: an `ADMIN` adds a person with a one-time password, which they must replace
+- Members: the `ADMIN` adds a person as a `MEMBER` with a one-time password, which they must replace
   at first sign-in. See [Adding a member](#adding-a-member)
 - Invitations — **switched off by default**: an `ADMIN` invites an email address as
   `ADMIN` or `MEMBER` and shares a single-use link; the invitee creates an account or
@@ -1044,7 +1044,7 @@ put slugs in its own URLs.
 | `PATCH /api/v1/organizations/:organizationId` | Rename the organization: `{ "name": "…" }`, nothing else | `organization:update` |
 | `GET /api/v1/organizations/:organizationId/memberships` | Every membership record, oldest first | `memberships:read` |
 | `GET /api/v1/organizations/:organizationId/memberships/:membershipId` | One membership record | `memberships:read` |
-| `POST /api/v1/organizations/:organizationId/memberships` | Add a person with a one-time password: `{ "name", "email", "role", "temporaryPassword" }` — see [Adding a member](#adding-a-member) | `members:manage` |
+| `POST /api/v1/organizations/:organizationId/memberships` | Add a `MEMBER` with a one-time password: `{ "name", "email", "temporaryPassword" }` — see [Adding a member](#adding-a-member) | `members:manage` |
 | `POST /api/v1/organizations/:organizationId/invitations` | Invite an email address: `{ "email", "role" }` | `invitations:manage` |
 | `GET /api/v1/organizations/:organizationId/invitations` | Every open invitation, newest first | `invitations:read` |
 | `DELETE /api/v1/organizations/:organizationId/invitations/:invitationId` | Revoke an open invitation | `invitations:manage` |
@@ -1068,7 +1068,7 @@ included.
 
 ### Adding a member
 
-An `ADMIN` adds a person directly: their name, email, role, and a one-time password the
+An `ADMIN` adds a person directly: their name, email, and a one-time password the
 admin chooses and hands over however they like. There is no email delivery, and none is
 needed.
 
@@ -1077,10 +1077,15 @@ POST /api/v1/organizations/:organizationId/memberships
 {
   "name": "Grace Hopper",
   "email": "grace@example.com",
-  "role": "MEMBER",                       // or "ADMIN"
   "temporaryPassword": "at least 12 characters"
 }
 ```
+
+Everyone added this way is a `MEMBER`. The body carries no role, and one that names a role
+is refused with `400`: the organization's single `ADMIN` is whoever created it. That is an
+application rule, not a database constraint — every flow that writes a membership role
+(registration, adding a member, the dev seeder) keeps to it, and there is no endpoint that
+changes a role, so a later version that wants several admins needs no migration to undo.
 
 One transaction creates the `User` and the `Membership`, so neither exists without the
 other. The password is hashed with Argon2id exactly as registration hashes one, and is

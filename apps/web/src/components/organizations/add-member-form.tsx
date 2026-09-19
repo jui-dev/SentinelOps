@@ -10,7 +10,6 @@ import { Button } from "@/components/ui/button";
 import { CopyField } from "@/components/ui/copy-field";
 import { Field } from "@/components/ui/field";
 import { Section } from "@/components/ui/page";
-import { Select } from "@/components/ui/select";
 import { ApiErrorCode, Permission } from "@/lib/api/contracts";
 import type { CreateMemberRequest } from "@/lib/api/contracts";
 import { createMember } from "@/lib/api/endpoints";
@@ -19,13 +18,6 @@ import { queryKeys } from "@/lib/api/query-keys";
 
 import { formatRole } from "./format";
 import { useCan, useOrganizationId } from "./organization-scope";
-
-type MemberRole = CreateMemberRequest["role"];
-
-const ROLES: { value: MemberRole; label: string }[] = [
-  { value: "MEMBER", label: "Member" },
-  { value: "ADMIN", label: "Admin" },
-];
 
 /**
  * 32 characters, so a random byte masked to five bits picks one without bias.
@@ -102,7 +94,7 @@ function AddedMember({ added, onDone }: { added: Added; onDone: () => void }) {
       tone="success"
       title={
         <>
-          <span className="font-semibold">{added.name}</span> was added as{" "}
+          <span className="font-semibold">{added.name}</span> was added as a{" "}
           {formatRole(added.role)}.
         </>
       }
@@ -150,7 +142,6 @@ export function AddMemberForm() {
     const body: CreateMemberRequest = {
       name: String(data.get("name") ?? ""),
       email: String(data.get("email") ?? ""),
-      role: String(data.get("role") ?? "MEMBER") as MemberRole,
       temporaryPassword: password,
     };
 
@@ -175,7 +166,7 @@ export function AddMemberForm() {
   return (
     <Section
       title="Add a member"
-      description="Create their account with a one-time password and hand it to them. They choose their own when they first sign in."
+      description="Create their account as a Member, with a one-time password to hand them. They choose their own when they first sign in."
     >
       <form
         onSubmit={onSubmit}
@@ -205,15 +196,6 @@ export function AddMemberForm() {
           />
         </div>
         <div className="flex flex-wrap items-start gap-3">
-          <div className="w-36">
-            <Select label="Role" name="role" defaultValue="MEMBER">
-              {ROLES.map(({ value, label }) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </Select>
-          </div>
           <div className="min-w-56 flex-1">
             <Field
               label="One-time password"

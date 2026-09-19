@@ -82,7 +82,6 @@ export interface OrganizationMembershipResponse {
 export interface CreateMemberRequest {
   name: string;
   email: string;
-  role: "ADMIN" | "MEMBER";
   temporaryPassword: string;
 }
 

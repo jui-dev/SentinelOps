@@ -27,7 +27,7 @@ export function MembersView() {
         width="list"
         title="Members"
         meta={memberships.data?.length}
-        description="Everyone with access to this organization. Admins set it up — its members, teams, and services; members do the operational work."
+        description="Everyone with access to this organization. The Admin sets it up — its members, teams, and services; Members do the operational work."
       />
       <PageBody width="list">
         <MembershipList />

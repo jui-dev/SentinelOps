@@ -191,9 +191,9 @@ export class OrganizationsService {
   }
 
   /**
-   * Adds a person to the organization: creates their account with the
-   * one-time password an admin chose, and the membership that places them
-   * here, in one transaction — an account with no membership could do
+   * Adds a person to the organization as a MEMBER: creates their account with
+   * the one-time password the Admin chose, and the membership that places
+   * them here, in one transaction — an account with no membership could do
    * nothing, so either both exist or neither does.
    *
    * The account is marked `passwordChangeRequired`: it can sign in, but
@@ -205,6 +205,9 @@ export class OrganizationsService {
    * account would let one tenant pull someone in without their consent, and
    * nothing that exists in this product needs it. The unique index decides,
    * not a check made first, so two admins adding one address cannot both win.
+   *
+   * Always MEMBER, never taken from the request: the organization has one
+   * Admin — whoever created it — and adding people does not make another.
    *
    * The password is hashed before the transaction opens, as registration
    * does, so a connection is not held across the slow part.
@@ -241,7 +244,7 @@ export class OrganizationsService {
         });
 
         return tx.membership.create({
-          data: { organizationId, userId: user.id, role: input.role },
+          data: { organizationId, userId: user.id, role: 'MEMBER' },
           select: membershipSelection,
         });
       });

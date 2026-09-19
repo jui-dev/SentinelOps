@@ -76,8 +76,8 @@ export class OrganizationsController {
   }
 
   /**
-   * Adds a person: creates their account with a one-time password, and their
-   * membership here. They must choose their own password before they can do
+   * Adds a person as a Member: creates their account with a one-time
+   * password, and their membership here. They must choose their own password before they can do
    * anything else. 201, with the new membership as the list shows one; the
    * password is never echoed.
    */

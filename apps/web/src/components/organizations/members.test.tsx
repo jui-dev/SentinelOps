@@ -102,6 +102,15 @@ describe("adding a member", () => {
     expect(screen.queryByRole("heading", { name: "Add a member" })).toBeNull();
   });
 
+  it("asks for no role: everyone the Admin adds is a Member", async () => {
+    api(MANAGE);
+
+    renderMembers();
+
+    await screen.findByRole("heading", { name: "Add a member" });
+    expect(screen.queryByLabelText("Role")).toBeNull();
+  });
+
   it("fills in a generated one-time password", async () => {
     api(MANAGE);
 
@@ -140,7 +149,7 @@ describe("adding a member", () => {
     await user.click(screen.getByRole("button", { name: "Add member" }));
 
     const panel = await screen.findByRole("status");
-    expect(within(panel).getByText(/was added as/)).toBeDefined();
+    expect(panel.textContent).toContain("Grace Hopper was added as a Member.");
     expect(
       (within(panel).getByLabelText("Sign-in email") as HTMLInputElement).value,
     ).toBe("grace@example.com");
@@ -154,7 +163,6 @@ describe("adding a member", () => {
     ).toEqual({
       name: "Grace Hopper",
       email: "grace@example.com",
-      role: "MEMBER",
       temporaryPassword: "one-time-password-123",
     });
 

@@ -326,7 +326,6 @@ describe('OrganizationsService', () => {
     const input = {
       name: 'Grace Hopper',
       email: 'grace@example.com',
-      role: 'MEMBER' as const,
       temporaryPassword: 'one-time-password-123',
     };
 
@@ -385,16 +384,16 @@ describe('OrganizationsService', () => {
       );
     });
 
-    it('should place the account in the admitted organization with the requested role', async () => {
+    it('should place the account in the admitted organization, always as a MEMBER', async () => {
       const { service, prisma } = ready();
 
-      await service.createMember(ORG_A, { ...input, role: 'ADMIN' });
+      await service.createMember(ORG_A, input);
 
       expect(prisma.membership.create).toHaveBeenCalledExactlyOnceWith({
         data: {
           organizationId: ORG_A,
           userId: newMembershipRow.user.id,
-          role: 'ADMIN',
+          role: 'MEMBER',
         },
         select: expect.any(Object),
       });

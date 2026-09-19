@@ -54,7 +54,6 @@ describe('members (integration)', () => {
   const grace = {
     name: 'Grace Hopper',
     email: 'Grace@Acme.Example ',
-    role: 'MEMBER',
     temporaryPassword: ONE_TIME_PASSWORD,
   };
 
@@ -151,15 +150,20 @@ describe('members (integration)', () => {
     ).toBe(true);
   });
 
-  it('should let an admin add another admin', async () => {
-    const response = await addMember(fx.orgA, fx.alice, {
-      ...grace,
-      role: 'ADMIN',
-    });
+  it.each(['ADMIN', 'MEMBER', 'OWNER'])(
+    'should refuse a body naming a role (%s) with 400: everyone added is a MEMBER',
+    async (role) => {
+      const response = await addMember(fx.orgA, fx.alice, { ...grace, role });
 
-    expect(response.status).toBe(201);
-    expect(response.body.role).toBe('ADMIN');
-  });
+      expect(response.status).toBe(400);
+      expect(await prisma.user.count()).toBe(3);
+      expect(
+        await prisma.membership.count({
+          where: { organizationId: fx.orgA, role: 'ADMIN' },
+        }),
+      ).toBe(1);
+    },
+  );
 
   it('should list the new member, still awaiting their first sign-in', async () => {
     await addMember(fx.orgA, fx.alice, grace);
@@ -230,8 +234,6 @@ describe('members (integration)', () => {
     { temporaryPassword: 'too-short' },
     { email: 'not-an-email' },
     { name: '   ' },
-    { role: 'OWNER' },
-    { role: 'SUPERADMIN' },
   ])('should refuse the invalid field in %o with 400', async (override) => {
     const response = await addMember(fx.orgA, fx.alice, {
       ...grace,
