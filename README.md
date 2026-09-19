@@ -45,8 +45,10 @@ deliberately, and this README is updated as capabilities actually land.
   team becomes responsible. That team's members start investigating — the first start
   moves it to `INVESTIGATING` — post operational updates, and mark their own responses
   complete, while every other member can follow it. The `ADMIN` resolves it once no
-  responder is still investigating, and can reassign the responsible team, which the
-  timeline records. The database itself keeps
+  responder is still investigating, saying how it ended, and can reassign the
+  responsible team, which the timeline records. Incidents are found by severity,
+  service, team, title, or number, and each service, team, and member shows its own.
+  The database itself keeps
   every incident's service and team in its own organization and refuses deleting a
   service or team while an incident names it. See [Incidents](#incidents)
 - A Next.js web app: registration, login, session restore across reloads and tabs,
@@ -62,7 +64,7 @@ deliberately, and this README is updated as capabilities actually land.
 
 **What does not exist yet**
 
-- What builds on incidents: reopening, per-team incident views, and service health.
+- What builds on incidents: reopening, and service health.
   Detection — monitoring, alerts, paging — and notifications. And no way to remove or
   re-role a member
 - Email delivery: invitation links are shared by hand, and addresses are not verified
@@ -1796,6 +1798,7 @@ way; what differs is only the teams and services they have.
 | declared by | The member who declared it, by name. |
 | `createdAt` | When it was declared. |
 | `resolvedAt` | When it was resolved; set by the server, never by a client. |
+| `resolution` | How it ended, in the Admin's words. Required to resolve; single-incident routes only. |
 
 An incident is returned as `{ id, number, title, summary, severity, status, service: {
 id, name, slug, criticality, archivedAt }, team: { id, name, slug }, createdBy: { id,
@@ -1847,6 +1850,15 @@ DECLARED ──▶ INVESTIGATING ──▶ RESOLVED
   `409 INVALID_STATUS_TRANSITION`. Resolving while any responder is still investigating
   is `409 RESPONDERS_STILL_INVESTIGATING`. Either way nothing else in that request is
   applied.
+- **Resolving says how it ended.** `PATCH { "status": "RESOLVED", "resolution": "…" }`
+  — the note is required (`400` naming `resolution` without it, or blank), and a
+  `resolution` on any other change is a `400` too. It is written in the resolving
+  transaction twice: on the incident, as its state, and as the `message` of the
+  resolution's `STATUS_CHANGED` timeline entry, as its history — the way a severity is
+  both. Resolved is final, so the two never diverge. A database `CHECK` refuses a
+  resolution on an unresolved incident. Incidents resolved before notes were required
+  (migration `20260922120000_add_incident_resolution`) keep a null one: none is
+  invented for them.
 - Every move is judged against the status and responders read under the incident's row
   lock, so none can race another: of two members starting at once, the second finds the
   incident already `INVESTIGATING` and only adds their response.
@@ -1985,16 +1997,17 @@ needs it. Responding is narrowed further by the incident — see
 
 | Route | Permission | Purpose |
 | --- | --- | --- |
-| `GET /incidents?state=active` | `incidents:read` | Active incidents, most severe first, then longest-running |
+| `GET /incidents?state=active` | `incidents:read` | Active incidents, most severe first, then longest-running — see [Finding incidents](#finding-incidents) |
 | `GET /incidents?state=resolved` | `incidents:read` | Resolved incidents, most recently declared first |
 | `POST /incidents` | `incidents:manage` | Declare `{ "title", "serviceId", "severity", "summary"? }`. `201` |
 | `GET /incidents/attention` | `incidents:read` | The active incidents waiting on the caller now — see [Attention](#attention) |
 | `GET /incidents/:number` | `incidents:read` | One incident |
-| `PATCH /incidents/:number` | `incidents:manage` | Change `{ "title"?, "summary"?, "severity"?, "status"?, "teamId"? }` of an active incident (at least one). `"status": "RESOLVED"` resolves one under investigation that nobody is still investigating |
+| `PATCH /incidents/:number` | `incidents:manage` | Change `{ "title"?, "summary"?, "severity"?, "status"?, "teamId"? }` of an active incident (at least one). `"status": "RESOLVED"`, with a `"resolution"` note, resolves one under investigation that nobody is still investigating |
 | `GET /incidents/:number/timeline` | `incidents:read` | The incident's timeline, oldest first |
 | `POST /incidents/:number/updates` | `incidents:respond`, and investigating unless `ADMIN` | Post `{ "message" }` to an active incident's timeline. `201`, with the entry |
 | `POST /incidents/:number/responders/me` | `incidents:respond`, and on the responsible team | Start investigating. No body. `200`, with the incident |
 | `POST /incidents/:number/responders/me/complete` | `incidents:respond` | Mark your own response complete. No body. `200`, with the incident |
+| `GET /memberships/:membershipId/responses` | `incidents:read` | One member's responses, most recently started first — see [A member's responses](#a-members-responses) |
 
 There is **no delete**. Incidents are history; a mistaken declaration is resolved.
 
@@ -2016,6 +2029,51 @@ Declaring takes no `status` (every incident starts `DECLARED`), no team (the
 service's owner is responsible), and no number, declarer, or `resolvedAt`: bodies are
 strict, and any of those is a `400`.
 
+### Finding incidents
+
+Either list takes the same filters, and they combine with each other and with a period
+(`from`/`to`):
+
+| Parameter | Narrows the list to |
+| --- | --- |
+| `severity` | One severity, `SEV1`–`SEV4` |
+| `serviceId` | Incidents declared against one service |
+| `teamId` | Incidents one team is responsible for — not those of the services it owns |
+| `q` | Titles containing the words, case-insensitively — or, when it is a number (`42`, `INC-42`), that incident as well |
+
+- **One value each.** Severity is a single level, not a set; multi-select, saved
+  views, and full-text search are not part of this.
+- **A search is text, not a pattern.** Prisma's `contains` puts its value into an
+  `ILIKE` pattern as it is, so the service escapes `%`, `_`, and `\` first: searching
+  `100%` finds those four characters. A blank `q` is no search. There is no trigram
+  index: at an organization's scale a title scan is cheap, and `pg_trgm` is the next
+  step if it is not.
+- **A service or team this organization lacks matches nothing.** It is a `200` with
+  an empty page, not a `404`: the filter is a predicate, every query is already scoped
+  by the organization, and so nothing about another organization can show. A malformed
+  id, an unknown severity, or a `q` over 200 characters is a `400`.
+- **Cursors are unchanged.** A cursor belongs to the filters it was issued under; the
+  client sends the same ones with it. The service and team keys are served by the
+  indexes their `Restrict` checks already needed.
+
+### A member's responses
+
+`GET /memberships/:membershipId/responses` lists the incidents one member started
+investigating, the most recently started first, each as `{ incident, status, startedAt,
+completedAt }` — the incident as the lists give it, and where the member's own part
+stands. It answers **who worked what**, from real participation only: being on an
+incident's team is not a response, so a member who never started has none. There are
+no counts or totals; it is history, not a measure.
+
+- `incidents:read`, which every role holds — the same data every incident's responders
+  already show. It lives in the incidents module, under the membership it describes.
+- The membership is resolved within the admitted organization first: malformed, missing,
+  and another organization's are the same `404 MEMBERSHIP_NOT_FOUND`.
+- Pages of 20, keyset over `(startedAt, id)` — the responder id, a UUIDv7, breaking a
+  tie — served by the `(membership_id, started_at)` index, which replaced the plain
+  membership index in migration `20260923120000_member_responses_index` and still serves
+  its `Restrict` check. A malformed cursor is `400 INVALID_CURSOR`.
+
 ### Errors
 
 | Case | Answer |
@@ -2033,6 +2091,7 @@ strict, and any of those is a `400`.
 | Resolving an incident that is still `DECLARED` | `409 INVALID_STATUS_TRANSITION` |
 | `state` missing or unknown; a malformed cursor | `400`; `400 INVALID_CURSOR` |
 | `serviceId` or `teamId` not a uuid; a severity or status outside the enums | `400`, naming the field |
+| Resolving without a `resolution`, or a blank one; a `resolution` without resolving | `400`, naming `resolution` |
 
 On a change, the incident is judged first (`404`, then `409`) and only then the team the
 body names, so a foreign incident reveals nothing about the body.
@@ -2075,15 +2134,15 @@ changes are last-write-wins per field: a change sends only the fields it changes
 
 `Incident declared`, `Incident updated`, and `Incident resolved`, each with the incident's
 id and number and the service, team, severity, or status involved; an update names the
-fields it changed. **Never the title or summary**: free text can hold customer names or
+fields it changed. **Never the title, summary, or resolution**: free text can hold customer names or
 system details. See [Sensitive data](#sensitive-data).
 
 ### Not yet
 
-Reopening. Editing or deleting an update. Incidents with more than one responsible
-team, an incident commander or lead, acknowledgement, and when impact began. A
-per-service or per-team incident list, and live updates — a page shows others' updates
-when it refetches. Detection, alerts, paging, and notifications. Deleting or voiding an
+Reopening. Editing or deleting an update, or a resolution. Incidents with more than one
+responsible team, an incident commander or lead, acknowledgement, and when impact began.
+Multi-value filters, saved views, and full-text search. Live updates — a page shows
+others' updates when it refetches. Detection, alerts, paging, and notifications. Deleting or voiding an
 incident, changing its service, and optimistic concurrency on edits.
 
 ### Tests
@@ -2102,13 +2161,17 @@ records — including a post waiting on an in-flight reassignment being judged a
 new team; each caller's attention following an incident through its response, a
 reassignment, and team changes, one organization at a time; the responsible team
 surviving a service reassignment; per-organization numbering under ten
-concurrent declarations; both lists paged completely and in order; foreign incidents,
-services, and teams answered exactly as missing ones; the service isolating with no
+concurrent declarations; both lists paged completely and in order, alone and under
+every filter, each filter matching exactly what it names; a search taking `%`, `_`, and
+`\` literally and finding an incident by its number; another organization's service or
+team filtering to nothing; a resolution recorded on the incident and its timeline; a
+member's responses listing only what they started, paged completely, and isolated;
+foreign incidents, services, and teams answered exactly as missing ones; the service isolating with no
 guard; archival refusing declarations; the delete refusals recognised through the real
 driver adapter; and every race in the table above, forced deterministically by holding a
 transaction open until the declaration is seen waiting on its lock.
 [`incidents-logging.integration-spec.ts`](apps/api/test/incidents-logging.integration-spec.ts)
-asserts no title or summary is logged, and
+asserts no title, summary, or resolution is logged, and
 [`schema.integration-spec.ts`](apps/api/test/schema.integration-spec.ts) proves the
 constraints themselves — including a physical organization deletion completing through
 the `Restrict` keys.

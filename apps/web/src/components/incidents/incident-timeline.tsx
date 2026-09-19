@@ -201,6 +201,12 @@ function TimelineEntry({ entry }: { entry: IncidentActivityResponse }) {
   }
 
   const { Icon, colour } = eventMarker(entry);
+  // The resolution's note: kept with its entry, in the success rule that
+  // completion and resolution share.
+  const note =
+    entry.type === "STATUS_CHANGED" && entry.toValue === "RESOLVED"
+      ? entry.message
+      : null;
 
   return (
     <li className="relative pb-4 pl-8 last:pb-0">
@@ -218,6 +224,11 @@ function TimelineEntry({ entry }: { entry: IncidentActivityResponse }) {
       {!action && (
         <p className="mt-0.5 flex flex-wrap items-center gap-x-1 text-sm text-fg-muted">
           {describe(entry)}
+        </p>
+      )}
+      {note && (
+        <p className="mt-1.5 max-w-2xl rounded-r-md border-l-2 border-success-line bg-surface px-3.5 py-2.5 text-sm leading-6 whitespace-pre-line text-fg">
+          {note}
         </p>
       )}
     </li>

@@ -14,6 +14,7 @@ import { ApiErrorCode } from "@/lib/api/contracts";
 import type {
   IncidentAttentionResponse,
   IncidentDetailResponse,
+  IncidentFilters,
   IncidentPeriod,
   IncidentResponse,
   IncidentState,
@@ -24,6 +25,7 @@ import {
   getIncidentAttention,
   getIncidentTimeline,
   listIncidents,
+  listMemberResponses,
   updateIncident,
 } from "@/lib/api/endpoints";
 import { isApiError } from "@/lib/api/errors";
@@ -44,11 +46,38 @@ export const useIncidentList = (
   state: IncidentState,
   /** Narrows the list to one period of whole UTC days. */
   period?: IncidentPeriod,
+  /** Narrows it further: severity, service, team, and search. */
+  filters: IncidentFilters = {},
+  /** False asks nothing yet — while the filters are still being worked out. */
+  enabled = true,
 ) =>
   useInfiniteQuery({
-    queryKey: queryKeys.incidentList(organizationId, state, period),
+    queryKey: queryKeys.incidentList(organizationId, state, period, filters),
     queryFn: ({ pageParam }) =>
-      listIncidents(organizationId, state, pageParam ?? undefined, period),
+      listIncidents(
+        organizationId,
+        state,
+        pageParam ?? undefined,
+        period,
+        filters,
+      ),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => last.page.cursor,
+    enabled,
+  });
+
+/**
+ * One member's responses, a page at a time, the most recently started
+ * first. `fetchNextPage` follows the API's cursor.
+ */
+export const useMemberResponses = (
+  organizationId: string,
+  membershipId: string,
+) =>
+  useInfiniteQuery({
+    queryKey: queryKeys.memberResponses(organizationId, membershipId),
+    queryFn: ({ pageParam }) =>
+      listMemberResponses(organizationId, membershipId, pageParam ?? undefined),
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.page.cursor,
   });
@@ -117,7 +146,9 @@ export const attentionCount = ({
  * moved it between them or within one — as do the overview's counts. Its
  * timeline refetches too: the change may have been recorded there. So does
  * the caller's attention: declaring, reassigning, resolving, starting, or
- * completing each moves an incident into or out of someone's lists.
+ * completing each moves an incident into or out of someone's lists. And
+ * members' responses: a start or a completion is one, and every response
+ * embeds its incident.
  */
 export const storeIncident = (
   queryClient: QueryClient,
@@ -139,6 +170,9 @@ export const storeIncident = (
   });
   void queryClient.invalidateQueries({
     queryKey: queryKeys.incidentAttention(organizationId),
+  });
+  void queryClient.invalidateQueries({
+    queryKey: [...queryKeys.incidents(organizationId), "member-responses"],
   });
 };
 

@@ -4,6 +4,7 @@ import {
   listIncidentsQuerySchema,
   parseIncidentNumber,
   postIncidentUpdateSchema,
+  searchedIncidentNumber,
   summaryBounds,
   updateIncidentSchema,
 } from './incidents.schemas.js';
@@ -81,10 +82,50 @@ describe('incident schemas', () => {
       { title: 'Card payments degraded' },
       { summary: null },
       { severity: 'SEV2' },
-      { status: 'RESOLVED' },
       { teamId: TEAM },
     ])('should accept %o alone', (body) => {
       expect(updateIncidentSchema.safeParse(body).success).toBe(true);
+    });
+
+    it('should accept a resolution with its note, trimmed', () => {
+      expect(
+        updateIncidentSchema.parse({
+          status: 'RESOLVED',
+          resolution: '  Rolled back the 14:00 deploy.  ',
+        }),
+      ).toEqual({
+        status: 'RESOLVED',
+        resolution: 'Rolled back the 14:00 deploy.',
+      });
+    });
+
+    it.each([
+      ['no note', {}],
+      ['a blank note', { resolution: '   ' }],
+      ['a note over 2000 characters', { resolution: 'x'.repeat(2001) }],
+      ['a null note', { resolution: null }],
+    ])('should refuse resolving with %s', (_case, note) => {
+      const result = updateIncidentSchema.safeParse({
+        status: 'RESOLVED',
+        ...note,
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error?.issues.map((issue) => issue.path)).toContainEqual([
+        'resolution',
+      ]);
+    });
+
+    it.each([
+      { resolution: 'Rolled back.' },
+      { title: 'Card payments degraded', resolution: 'Rolled back.' },
+    ])('should refuse a note without resolving: %o', (body) => {
+      const result = updateIncidentSchema.safeParse(body);
+
+      expect(result.success).toBe(false);
+      expect(result.error?.issues.map((issue) => issue.path)).toContainEqual([
+        'resolution',
+      ]);
     });
 
     it('should refuse an empty change', () => {
@@ -162,6 +203,59 @@ describe('incident schemas', () => {
           .success,
       ).toBe(false);
     });
+
+    it('should accept every filter together, trimming the search', () => {
+      expect(
+        listIncidentsQuerySchema.parse({
+          state: 'resolved',
+          severity: 'SEV2',
+          serviceId: SERVICE,
+          teamId: TEAM,
+          q: '  checkout  ',
+        }),
+      ).toEqual({
+        state: 'resolved',
+        severity: 'SEV2',
+        serviceId: SERVICE,
+        teamId: TEAM,
+        q: 'checkout',
+      });
+    });
+
+    it.each(['', '   '])('should take the blank search %j as none', (q) => {
+      expect(
+        listIncidentsQuerySchema.parse({ state: 'active', q }).q,
+      ).toBeUndefined();
+    });
+
+    it.each([
+      ['a severity outside the four levels', { severity: 'SEV0' }],
+      ['a malformed service id', { serviceId: 'payment-api' }],
+      ['a malformed team id', { teamId: 'payments' }],
+      ['a search over 200 characters', { q: 'x'.repeat(201) }],
+    ])('should refuse %s', (_, filter) => {
+      expect(
+        listIncidentsQuerySchema.safeParse({ state: 'active', ...filter })
+          .success,
+      ).toBe(false);
+    });
+  });
+
+  describe('searchedIncidentNumber', () => {
+    it.each([
+      ['42', 42],
+      ['INC-42', 42],
+      ['inc-7', 7],
+    ])('should read %j as incident %i', (q, number) => {
+      expect(searchedIncidentNumber(q)).toBe(number);
+    });
+
+    it.each(['checkout', 'INC-', 'INC 42', 'INC-042', '42 errors', '99999999999'])(
+      'should read %j as words, not a number',
+      (q) => {
+        expect(searchedIncidentNumber(q)).toBeUndefined();
+      },
+    );
   });
 
   describe('postIncidentUpdateSchema', () => {

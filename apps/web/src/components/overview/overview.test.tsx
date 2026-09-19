@@ -554,6 +554,7 @@ describe("the operations overview", () => {
       overrides: Partial<IncidentDetailResponse> = {},
     ): IncidentDetailResponse => ({
       ...incident(),
+      resolution: null,
       responders: [],
       ...overrides,
     });

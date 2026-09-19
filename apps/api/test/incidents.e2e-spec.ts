@@ -70,6 +70,9 @@ const activityRow = {
 
 const base = `/api/v1/organizations/${ORG_ID}/incidents`;
 
+/** A resolution, with the note every one requires. */
+const RESOLVE = { status: 'RESOLVED', resolution: 'Rolled back.' };
+
 const declaration = {
   title: 'Card payments failing',
   serviceId: SERVICE_ID,
@@ -102,6 +105,7 @@ describe('Incidents (e2e)', () => {
     incidentResponder: {
       count: vi.fn(),
       findFirst: vi.fn(),
+      findMany: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
     },
@@ -390,8 +394,19 @@ describe('Incidents (e2e)', () => {
       });
 
       expect(
-        (await send('patch', `${base}/1`, { status: 'RESOLVED' })).status,
+        (await send('patch', `${base}/1`, RESOLVE)).status,
       ).toBe(200);
+    });
+
+    it('should refuse resolving without a note with 400 naming it, before reading anything', async () => {
+      const response = await send('patch', `${base}/1`, { status: 'RESOLVED' });
+
+      expect(response.status).toBe(400);
+      expect(
+        response.body.details.map((d: { field: string }) => d.field),
+      ).toEqual(['resolution']);
+      expect(prisma.incident.findFirstOrThrow).not.toHaveBeenCalled();
+      expect(prisma.incident.update).not.toHaveBeenCalled();
     });
 
     it('should refuse resolving while a responder is investigating with 409, writing nothing', async () => {
@@ -401,7 +416,7 @@ describe('Incidents (e2e)', () => {
       });
       prisma.incidentResponder.count.mockResolvedValue(1);
 
-      const response = await send('patch', `${base}/1`, { status: 'RESOLVED' });
+      const response = await send('patch', `${base}/1`, RESOLVE);
 
       expect(response.status).toBe(409);
       expect(response.body.code).toBe('RESPONDERS_STILL_INVESTIGATING');
@@ -410,7 +425,7 @@ describe('Incidents (e2e)', () => {
     });
 
     it('should refuse resolving a declared incident with 409, writing nothing', async () => {
-      const response = await send('patch', `${base}/1`, { status: 'RESOLVED' });
+      const response = await send('patch', `${base}/1`, RESOLVE);
 
       expect(response.status).toBe(409);
       expect(response.body.code).toBe('INVALID_STATUS_TRANSITION');
@@ -457,7 +472,7 @@ describe('Incidents (e2e)', () => {
         name: 'resolving',
         method: 'patch' as const,
         path: `${base}/1`,
-        body: { status: 'RESOLVED' },
+        body: RESOLVE,
       },
       {
         name: 'reassigning the team',
@@ -743,6 +758,49 @@ describe('Incidents (e2e)', () => {
       expect(prisma.incidentActivity.create).not.toHaveBeenCalled();
       expect(prisma.incidentResponder.create).not.toHaveBeenCalled();
       expect(prisma.incidentResponder.update).not.toHaveBeenCalled();
+    });
+  });
+  describe("a member's responses", () => {
+    const responses = (membershipId: string) =>
+      `/api/v1/organizations/${ORG_ID}/memberships/${membershipId}/responses`;
+
+    it.each(['ADMIN', 'MEMBER'] as const)(
+      'should let a %s read them, as a page',
+      async (role) => {
+        admitAs(role);
+        prisma.incidentResponder.findMany.mockResolvedValue([]);
+
+        const response = await send('get', responses(MEMBERSHIP_ID));
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual({
+          items: [],
+          page: { cursor: null, hasMore: false },
+        });
+      },
+    );
+
+    it('should answer a malformed membership id with 404, reading no responses', async () => {
+      admitAs('MEMBER');
+
+      const response = await send('get', responses('not-a-membership'));
+
+      expect(response.status).toBe(404);
+      expect(response.body.code).toBe('MEMBERSHIP_NOT_FOUND');
+      expect(prisma.incidentResponder.findMany).not.toHaveBeenCalled();
+    });
+
+    it('should refuse a malformed cursor with 400', async () => {
+      admitAs('MEMBER');
+
+      const response = await send(
+        'get',
+        `${responses(MEMBERSHIP_ID)}?cursor=yesterday`,
+      );
+
+      expect(response.status).toBe(400);
+      expect(response.body.code).toBe('INVALID_CURSOR');
+      expect(prisma.incidentResponder.findMany).not.toHaveBeenCalled();
     });
   });
 });

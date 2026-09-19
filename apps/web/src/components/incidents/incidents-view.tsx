@@ -17,28 +17,16 @@ import {
 } from "@/components/services/service-scope";
 import { ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { cx } from "@/components/ui/cx";
 import { EmptyNote, EmptyState } from "@/components/ui/empty-state";
 import { Field, TextArea } from "@/components/ui/field";
 import { PageBody, PageHeader, Section } from "@/components/ui/page";
 import { Select } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
-import {
-  stretchedLinkClasses,
-  Table,
-  TBody,
-  TD,
-  TH,
-  THead,
-  TR,
-} from "@/components/ui/table";
-import { Duration, IsoDate } from "@/components/ui/timestamp";
 import { linkClasses } from "@/components/ui/link";
 import { ApiErrorCode, Permission } from "@/lib/api/contracts";
 import type {
   CreateIncidentRequest,
   IncidentPeriod,
-  IncidentResponse,
   IncidentSeverity,
   IncidentState,
 } from "@/lib/api/contracts";
@@ -48,18 +36,17 @@ import { queryKeys } from "@/lib/api/query-keys";
 import { formatPeriodRange, readPeriodParams } from "@/lib/period/period";
 
 import {
+  IncidentFilterBar,
+  useIncidentFilters,
+  useReplaceParams,
+} from "./incident-filters";
+import {
   incidentHref,
   storeIncident,
   useIncidentList,
 } from "./incident-queries";
-import {
-  incidentKey,
-  SEVERITY_LEVELS,
-  SeverityMark,
-  severityOf,
-  StatusMark,
-  statusOf,
-} from "./severity";
+import { IncidentTable } from "./incident-table";
+import { SEVERITY_LEVELS, severityOf } from "./severity";
 
 export const SERVICE_UNAVAILABLE_MESSAGE =
   "That service is no longer available for new incidents. The list of services has been refreshed.";
@@ -288,112 +275,26 @@ function DeclareIncidentForm({ onCancel }: { onCancel: () => void }) {
 }
 
 /**
- * One row: what, where, who, and how it stands — in that order of weight.
- * The whole row opens the incident, through its one link. A SEV1 row also
- * carries a bar at its leading edge; the mark and the words still say it.
- */
-function IncidentRow({
-  incident,
-  state,
-}: {
-  incident: IncidentResponse;
-  state: IncidentState;
-}) {
-  const organization = useOrganization();
-  const active = state === "active";
-  const critical = incident.severity === "SEV1";
-
-  return (
-    <TR interactive>
-      <TD
-        className={cx(
-          "relative",
-          critical &&
-            "before:absolute before:inset-y-1 before:left-0 before:w-[3px] before:rounded-full before:bg-signal-critical",
-        )}
-      >
-        <SeverityMark severity={incident.severity} emphasis />
-      </TD>
-      <TD>
-        <Link
-          href={incidentHref(organization.slug, incident.number)}
-          className={cx(
-            // On a phone the key sits above the title, which may wrap.
-            "group flex min-w-0 flex-col underline-offset-2 sm:flex-row sm:items-baseline sm:gap-2",
-            stretchedLinkClasses,
-          )}
-        >
-          <span className="data shrink-0 text-fg-subtle sm:min-w-[4.25rem]">
-            {incidentKey(incident.number)}
-          </span>{" "}
-          <span
-            title={incident.title}
-            className="line-clamp-2 font-medium text-fg group-hover:text-accent-text group-hover:underline sm:line-clamp-none sm:truncate"
-          >
-            {incident.title}
-          </span>
-        </Link>
-        {/*
-         * Until the workspace is wide enough for their columns (xl), the
-         * service and team fold under the title — and on a phone the status
-         * too — so the title always keeps its room.
-         */}
-        <span className="block truncate text-xs text-fg-muted sm:pl-[calc(4.25rem+0.5rem)] xl:hidden">
-          {active && (
-            <span className="sm:hidden">
-              {statusOf(incident.status).label} ·{" "}
-            </span>
-          )}
-          {incident.service.name} · {incident.team.name}
-        </span>
-      </TD>
-      <TD className="hidden truncate xl:table-cell">{incident.service.name}</TD>
-      <TD kind="muted" className="hidden truncate xl:table-cell">
-        {incident.team.name}
-      </TD>
-      {active ? (
-        <>
-          {/* In body text, not muted: status is read down the column. */}
-          <TD className="hidden sm:table-cell">
-            <StatusMark status={incident.status} />
-          </TD>
-          <TD
-            align="end"
-            className={cx(
-              "data whitespace-nowrap",
-              critical ? "text-fg" : "text-fg-muted",
-            )}
-          >
-            <Duration from={incident.createdAt} />
-          </TD>
-        </>
-      ) : (
-        <>
-          <TD kind="data" className="hidden sm:table-cell">
-            {incident.resolvedAt && <IsoDate value={incident.resolvedAt} />}
-          </TD>
-          <TD kind="data" align="end">
-            <Duration from={incident.createdAt} to={incident.resolvedAt} />
-          </TD>
-        </>
-      )}
-    </TR>
-  );
-}
-
-/**
  * One state's incidents: active ones most severe first, then longest
  * running; resolved ones most recent first. Pages load on request.
  */
 function IncidentList({
   state,
   period,
+  filters,
 }: {
   state: IncidentState;
   period?: IncidentPeriod;
+  filters: ReturnType<typeof useIncidentFilters>;
 }) {
   const organization = useOrganization();
-  const list = useIncidentList(organization.id, state, period);
+  const list = useIncidentList(
+    organization.id,
+    state,
+    period,
+    filters.filters,
+    !filters.pending,
+  );
   const active = state === "active";
 
   let content;
@@ -414,7 +315,15 @@ function IncidentList({
     if (active && !list.hasNextPage) count = incidents.length;
 
     content =
-      incidents.length === 0 ? (
+      incidents.length === 0 && filters.active ? (
+        <EmptyNote
+          title={active ? "No active incidents match" : "No resolved incidents match"}
+        >
+          {period
+            ? "Nothing in this range matches the filters."
+            : "Nothing matches the filters. Clear them to see every incident."}
+        </EmptyNote>
+      ) : incidents.length === 0 ? (
         active ? (
           <EmptyNote
             title={
@@ -444,50 +353,12 @@ function IncidentList({
         )
       ) : (
         <>
-          <Table
+          <IncidentTable
+            incidents={incidents}
+            state={state}
             label={active ? "Active incidents" : "Resolved incidents"}
-            variant="operational"
             stickyHeader
-            fixed
-          >
-            {/* Fixed widths: titles truncate exactly, columns never jump. */}
-            <colgroup>
-              <col className="w-21 sm:w-24" />
-              <col />
-              <col className="hidden w-[16%] xl:table-column" />
-              <col className="hidden w-[14%] xl:table-column" />
-              <col className="hidden w-30 sm:table-column" />
-              <col className="w-19 sm:w-22" />
-            </colgroup>
-            <THead>
-              <TR>
-                <TH>Severity</TH>
-                <TH>Incident</TH>
-                <TH className="hidden xl:table-cell">Service</TH>
-                <TH className="hidden xl:table-cell">Responsible team</TH>
-                {active ? (
-                  <>
-                    <TH className="hidden sm:table-cell">Status</TH>
-                    <TH align="end">Duration</TH>
-                  </>
-                ) : (
-                  <>
-                    <TH className="hidden sm:table-cell">Resolved</TH>
-                    <TH align="end">Lasted</TH>
-                  </>
-                )}
-              </TR>
-            </THead>
-            <TBody>
-              {incidents.map((incident) => (
-                <IncidentRow
-                  key={incident.id}
-                  incident={incident}
-                  state={state}
-                />
-              ))}
-            </TBody>
-          </Table>
+          />
           {list.hasNextPage && (
             <div>
               <Button
@@ -528,18 +399,31 @@ export function IncidentsView() {
   const canManage = useCan(Permission.INCIDENTS_MANAGE);
   const [declaring, setDeclaring] = useState(false);
   const searchParams = useSearchParams();
+  const replace = useReplaceParams();
   const pathname = usePathname();
-  const router = useRouter();
   const { period, invalid } = readPeriodParams(
     searchParams.get("from"),
     searchParams.get("to"),
   );
+  const filters = useIncidentFilters();
 
-  // A range the API would refuse is taken out of the URL rather than
-  // quietly ignored, so the address and the incidents shown always agree.
+  // A range the API would refuse, or a filter that can never apply, is
+  // taken out of the URL rather than quietly ignored, so the address and
+  // the incidents shown always agree. Everything else in it is kept.
+  const drop = [...(invalid ? ["from", "to"] : []), ...filters.invalid].join(",");
+
   useEffect(() => {
-    if (invalid) router.replace(pathname);
-  }, [invalid, pathname, router]);
+    if (drop) replace((params) => drop.split(",").forEach((name) => params.delete(name)));
+    // `replace` is rebuilt every render; which parameters to drop is what
+    // decides whether anything happens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drop]);
+
+  // The period's Clear keeps the filters, as their Clear keeps the period.
+  const withoutPeriod = new URLSearchParams(searchParams);
+
+  withoutPeriod.delete("from");
+  withoutPeriod.delete("to");
 
   return (
     <>
@@ -564,13 +448,19 @@ export function IncidentsView() {
             <span aria-hidden="true" className="text-fg-subtle">
               ·
             </span>
-            <Link href={pathname} className={linkClasses}>
+            <Link
+              href={
+                withoutPeriod.size > 0 ? `${pathname}?${withoutPeriod}` : pathname
+              }
+              className={linkClasses}
+            >
               Clear
             </Link>
           </p>
         )}
-        <IncidentList state="active" period={period} />
-        <IncidentList state="resolved" period={period} />
+        <IncidentFilterBar active={filters.active} error={filters.error} />
+        <IncidentList state="active" period={period} filters={filters} />
+        <IncidentList state="resolved" period={period} filters={filters} />
       </PageBody>
     </>
   );

@@ -1160,6 +1160,41 @@ describe('core domain schema (integration)', () => {
       ).toBe('RESOLVED');
     });
 
+    it('should refuse a resolution note on an active incident, and keep a resolved one without a note', async () => {
+      const { acme, user, acmePayments, acmeService } = await twoTenants();
+      const incident = await anIncident({
+        organizationId: acme.id,
+        serviceId: acmeService.id,
+        teamId: acmePayments.id,
+        createdById: user.id,
+      });
+
+      await expect(
+        prisma.$executeRawUnsafe(
+          `UPDATE incidents SET resolution = 'Rolled back.' WHERE id = $1::uuid`,
+          incident.id,
+        ),
+      ).rejects.toSatisfy(isRefusedBy('23514'));
+
+      // Resolved without a note: what an incident resolved before notes were
+      // required looks like, and the check permits it.
+      await prisma.$executeRawUnsafe(
+        `UPDATE incidents SET status = 'RESOLVED', resolved_at = now() WHERE id = $1::uuid`,
+        incident.id,
+      );
+      await prisma.$executeRawUnsafe(
+        `UPDATE incidents SET resolution = 'Rolled back.' WHERE id = $1::uuid`,
+        incident.id,
+      );
+      expect(
+        (
+          await prisma.incident.findUniqueOrThrow({
+            where: { id: incident.id },
+          })
+        ).resolution,
+      ).toBe('Rolled back.');
+    });
+
     it('should refuse a severity or status outside the enums at the database level', async () => {
       const { acme, user, acmePayments, acmeService } = await twoTenants();
 

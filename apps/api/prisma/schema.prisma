@@ -493,9 +493,10 @@ enum IncidentStatus {
 /// organization still removes everything: schema.integration-spec.ts proves
 /// the cascade completes.
 ///
-/// Two invariants live as CHECK constraints in the migration, because Prisma
-/// cannot declare them (and does not treat them as drift): status is RESOLVED
-/// exactly when resolved_at is set, and number is positive.
+/// Three invariants live as CHECK constraints in the migrations, because
+/// Prisma cannot declare them (and does not treat them as drift): status is
+/// RESOLVED exactly when resolved_at is set, number is positive, and only a
+/// resolved incident carries a resolution.
 model Incident {
   id             String           @id @default(uuid(7)) @db.Uuid
   organizationId String           @map("organization_id") @db.Uuid
@@ -526,6 +527,13 @@ model Incident {
   /// Set by the server in the same write that sets RESOLVED; never supplied
   /// by a client.
   resolvedAt DateTime? @map("resolved_at") @db.Timestamptz(3)
+  /// How the incident ended, in the Admin's words: required by every
+  /// resolution, written in the same write as RESOLVED and again as the
+  /// message of the resolution's timeline entry — state here, history there,
+  /// as severity is. Resolved is final, so the two never diverge. Null on
+  /// active incidents, and on incidents resolved before notes were required:
+  /// those are not given one after the fact.
+  resolution String?
 
   organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   service      Service             @relation(fields: [organizationId, serviceId], references: [organizationId, id], onDelete: Restrict, onUpdate: Restrict)
@@ -615,8 +623,10 @@ model IncidentResponder {
   /// the cascade from incidents, listing an incident's responders, and
   /// counting those still investigating before a resolution.
   @@unique([incidentId, membershipId])
-  /// Serves the Restrict check when a membership is deleted.
-  @@index([membershipId])
+  /// Serves a member's responses, most recently started first — keyset
+  /// pages over (started_at, id) — and, by its leading column, the Restrict
+  /// check when a membership is deleted.
+  @@index([membershipId, startedAt])
   /// Serves the cascade from organizations.
   @@index([organizationId])
   @@map("incident_responders")
@@ -657,7 +667,8 @@ enum IncidentActivityType {
 /// lock, not left to the column default (the transaction's start), so entries
 /// sort in the order their changes applied.
 ///
-/// message is set for UPDATE only. fromValue and toValue carry values as
+/// message is set for UPDATE, and for the resolution — STATUS_CHANGED to
+/// RESOLVED — where it is the resolution note. fromValue and toValue carry values as
 /// text: DECLARED sets toValue to the declared severity; SEVERITY_CHANGED and
 /// STATUS_CHANGED set both to enum values. TEAM_CHANGED sets both to team
 /// names as they were at the time — a snapshot, like a severity, because the

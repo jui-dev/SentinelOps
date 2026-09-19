@@ -27,6 +27,7 @@ const incident = (number: number): IncidentDetailResponse => ({
   number,
   title: "Card payments failing",
   summary: null,
+  resolution: null,
   severity: "SEV1",
   status: "INVESTIGATING",
   service: {

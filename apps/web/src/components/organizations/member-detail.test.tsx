@@ -300,4 +300,112 @@ describe("a member's page", () => {
       screen.getByRole("link", { name: "All members" }).getAttribute("href"),
     ).toBe("/orgs/acme-ops/members");
   });
+  describe("their recent responses", () => {
+    const WITH_INCIDENTS = [...MEMBER, "incidents:read"];
+    const responses = `GET ${base}/memberships/${GRACE}/responses`;
+
+    const response = (
+      number: number,
+      status: "INVESTIGATING" | "COMPLETED",
+      incidentStatus = "INVESTIGATING",
+    ) => ({
+      incident: {
+        id: `0199a1b2-c3d4-7000-8000-0000000001${number}0`,
+        number,
+        title: `Card declines ${number}`,
+        summary: null,
+        severity: "SEV2",
+        status: incidentStatus,
+        service: {
+          id: "0199a1b2-c3d4-7000-8000-0000000000e1",
+          name: "Payment API",
+          slug: "payment-api",
+          criticality: "CRITICAL",
+          archivedAt: null,
+        },
+        team: { id: PAYMENTS.id, name: "Payments", slug: "payments" },
+        createdBy: { id: currentUser.id, name: "Ada Lovelace" },
+        createdAt: "2026-09-18T12:00:00.000Z",
+        updatedAt: "2026-09-18T12:00:00.000Z",
+        resolvedAt: incidentStatus === "RESOLVED" ? "2026-09-18T14:00:00.000Z" : null,
+      },
+      status,
+      startedAt: "2026-09-18T12:05:00.000Z",
+      completedAt: status === "COMPLETED" ? "2026-09-18T13:15:00.000Z" : null,
+    });
+
+    it("lists the incidents they started, their own part in each, and links to them — with no count", async () => {
+      api(WITH_INCIDENTS, [PAYMENTS], (request) =>
+        route(request) === responses
+          ? jsonResponse(200, {
+              items: [response(7, "INVESTIGATING"), response(5, "COMPLETED", "RESOLVED")],
+              page: { cursor: null, hasMore: false },
+            })
+          : undefined,
+      );
+
+      renderMember();
+
+      const list = await screen.findByRole("list", { name: "Recent responses" });
+      const rows = within(list).getAllByRole("listitem");
+
+      expect(rows).toHaveLength(2);
+      expect(rows[0].textContent).toMatch(/INC-7.*Card declines 7.*Investigating for/);
+      expect(rows[1].textContent).toMatch(/INC-5.*Card declines 5.*Completed after .*Resolved/);
+      expect(
+        within(rows[0]).getByRole("link").getAttribute("href"),
+      ).toBe("/orgs/acme-ops/incidents/7");
+      // Descriptive history, not a measure.
+      const heading = screen.getByRole("heading", { name: "Recent responses" });
+
+      expect(heading.parentElement?.textContent).toBe("Recent responses");
+    });
+
+    it("loads more on request, by the API's cursor", async () => {
+      const user = userEvent.setup();
+      const { requests } = api(WITH_INCIDENTS, [PAYMENTS], (request) =>
+        route(request) === responses
+          ? jsonResponse(200, {
+              items: [response(7, "INVESTIGATING")],
+              page: { cursor: "c1", hasMore: true },
+            })
+          : route(request) === `${responses}?cursor=c1`
+            ? jsonResponse(200, {
+                items: [response(3, "COMPLETED")],
+                page: { cursor: null, hasMore: false },
+              })
+            : undefined,
+      );
+
+      renderMember();
+
+      await user.click(await screen.findByRole("button", { name: "Show more" }));
+
+      expect(await screen.findByText("Card declines 3")).toBeDefined();
+      expect(requests.filter((r) => route(r) === `${responses}?cursor=c1`)).toHaveLength(1);
+      expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
+    });
+
+    it("says plainly when they have not responded to anything", async () => {
+      api(WITH_INCIDENTS, [PAYMENTS], (request) =>
+        route(request) === responses
+          ? jsonResponse(200, { items: [], page: { cursor: null, hasMore: false } })
+          : undefined,
+      );
+
+      renderMember();
+
+      expect(await screen.findByText("No incident responses yet")).toBeDefined();
+    });
+
+    it("is not asked for without incidents:read", async () => {
+      const { requests } = api(MEMBER, [PAYMENTS]);
+
+      renderMember();
+
+      expect(await screen.findByRole("heading", { name: "Teams" })).toBeDefined();
+      expect(screen.queryByRole("heading", { name: "Recent responses" })).toBeNull();
+      expect(requests.some((r) => route(r).startsWith(responses))).toBe(false);
+    });
+  });
 });

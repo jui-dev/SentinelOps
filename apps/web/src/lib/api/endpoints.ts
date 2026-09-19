@@ -17,9 +17,11 @@ import type {
   IncidentActivityResponse,
   IncidentAttentionResponse,
   IncidentDetailResponse,
+  IncidentFilters,
   IncidentPeriod,
   IncidentResponse,
   IncidentState,
+  MemberResponseResponse,
   IncidentSummaryResponse,
   InvitationLookupResponse,
   InvitationResponse,
@@ -248,14 +250,20 @@ export const listIncidents = (
   state: IncidentState,
   cursor?: string,
   period?: IncidentPeriod,
+  filters: IncidentFilters = {},
 ) => {
   const query = new URLSearchParams({ state });
 
-  if (cursor) query.set("cursor", cursor);
   if (period) {
     query.set("from", period.from);
     query.set("to", period.to);
   }
+  if (filters.severity) query.set("severity", filters.severity);
+  if (filters.serviceId) query.set("serviceId", filters.serviceId);
+  if (filters.teamId) query.set("teamId", filters.teamId);
+  if (filters.q) query.set("q", filters.q);
+  // Last, so a page request reads as the list's own query plus where it starts.
+  if (cursor) query.set("cursor", cursor);
 
   return authenticatedRequest<Page<IncidentResponse>>(
     `${incidentsPath(organizationId)}?${query}`,
@@ -319,6 +327,21 @@ export const completeIncidentResponse = (
   authenticatedRequest<IncidentDetailResponse>(
     `${incidentPath(organizationId, number)}/responders/me/complete`,
     { method: "POST" },
+  );
+
+/**
+ * One page of a member's responses, the most recently started first. The
+ * cursor is the API's, from the page before.
+ */
+export const listMemberResponses = (
+  organizationId: string,
+  membershipId: string,
+  cursor?: string,
+) =>
+  authenticatedRequest<Page<MemberResponseResponse>>(
+    `${organizationPath(organizationId)}/memberships/${encodeURIComponent(membershipId)}/responses${
+      cursor ? `?${new URLSearchParams({ cursor })}` : ""
+    }`,
   );
 
 /** The incident's timeline, oldest first. Unpaged. */

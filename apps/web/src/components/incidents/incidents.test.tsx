@@ -153,6 +153,7 @@ const incident = (
   number: 42,
   title: "Card payments failing",
   summary: "Card declines since 14:02.",
+  resolution: null,
   severity: "SEV1",
   status: "INVESTIGATING",
   service: {
@@ -408,10 +409,114 @@ describe("incidents", () => {
 
       await screen.findByRole("table", { name: "Active incidents" });
 
-      expect(navigation.replace).toHaveBeenCalledWith("/orgs/acme-ops/incidents");
+      expect(navigation.replace).toHaveBeenCalledWith("/orgs/acme-ops/incidents", {
+        scroll: false,
+      });
       // What was shown meanwhile is the unfiltered page, never a guess.
       expect(count(requests, `GET ${base}/incidents?state=active`)).toBe(1);
       expect(screen.queryByRole("link", { name: "Clear" })).toBeNull();
+    });
+
+    describe("filters", () => {
+      const filtered = (state: string) =>
+        `GET ${base}/incidents?state=${state}&severity=SEV2&serviceId=${paymentApi.id}&teamId=${payments.id}&q=checkout`;
+
+      it("sends the URL's filters to both lists, the service and team by id, and nothing unfiltered first", async () => {
+        navigation.search = "q=checkout&severity=SEV2&service=payment-api&team=payments";
+        const { requests } = api(READ_ONLY, {
+          handler: (request) =>
+            route(request) === filtered("active")
+              ? jsonResponse(200, page([incident({ severity: "SEV2", title: "Checkout failing" })]))
+              : route(request) === filtered("resolved")
+                ? jsonResponse(200, page([]))
+                : undefined,
+        });
+
+        inOrganization(<IncidentsView />);
+
+        expect(await screen.findByText("Checkout failing")).toBeDefined();
+        expect(await screen.findByText("No resolved incidents match")).toBeDefined();
+        expect(count(requests, filtered("active"))).toBe(1);
+        expect(count(requests, filtered("resolved"))).toBe(1);
+        // Waited for the slugs, rather than showing everything for a moment.
+        expect(count(requests, `GET ${base}/incidents?state=active`)).toBe(0);
+
+        const search = screen.getByRole("search", { name: "Filter incidents" });
+
+        expect((within(search).getByLabelText("Search") as HTMLInputElement).value).toBe("checkout");
+        expect((within(search).getByLabelText("Severity") as HTMLSelectElement).value).toBe("SEV2");
+        expect((within(search).getByLabelText("Service") as HTMLSelectElement).value).toBe("payment-api");
+        expect((within(search).getByLabelText("Responsible team") as HTMLSelectElement).value).toBe(
+          "payments",
+        );
+      });
+
+      it("applies a choice at once, keeping the period and the other filters", async () => {
+        const user = userEvent.setup();
+        navigation.search = "from=2026-09-12&to=2026-09-18&q=checkout";
+        api(READ_ONLY, {
+          handler: (request) =>
+            route(request).startsWith(`GET ${base}/incidents?state=`)
+              ? jsonResponse(200, page([]))
+              : undefined,
+        });
+
+        inOrganization(<IncidentsView />);
+
+        await user.selectOptions(await screen.findByLabelText("Severity"), "SEV1");
+
+        expect(navigation.replace).toHaveBeenLastCalledWith(
+          "/orgs/acme-ops/incidents?from=2026-09-12&to=2026-09-18&q=checkout&severity=SEV1",
+          { scroll: false },
+        );
+
+        await user.click(screen.getByRole("button", { name: "Clear filters" }));
+
+        expect(navigation.replace).toHaveBeenLastCalledWith(
+          "/orgs/acme-ops/incidents?from=2026-09-12&to=2026-09-18",
+          { scroll: false },
+        );
+        // The period's own Clear keeps the filters.
+        expect(screen.getByRole("link", { name: "Clear" }).getAttribute("href")).toBe(
+          "/orgs/acme-ops/incidents?q=checkout",
+        );
+      });
+
+      it("searches when the search is submitted, not at every keystroke", async () => {
+        const user = userEvent.setup();
+        api(READ_ONLY);
+
+        inOrganization(<IncidentsView />);
+
+        await user.type(await screen.findByLabelText("Search"), "  INC-42 ");
+        expect(navigation.replace).not.toHaveBeenCalled();
+
+        await user.keyboard("{Enter}");
+
+        expect(navigation.replace).toHaveBeenLastCalledWith("/orgs/acme-ops/incidents?q=INC-42", {
+          scroll: false,
+        });
+        expect(screen.queryByRole("button", { name: "Clear filters" })).toBeNull();
+      });
+
+      it("takes a filter that can never apply out of the URL, keeping the rest", async () => {
+        navigation.search = "q=checkout&severity=SEV9&service=no-such-service&team=platform";
+        api(READ_ONLY, {
+          handler: (request) =>
+            route(request).startsWith(`GET ${base}/incidents?state=`)
+              ? jsonResponse(200, page([]))
+              : undefined,
+        });
+
+        inOrganization(<IncidentsView />);
+
+        await waitFor(() =>
+          expect(navigation.replace).toHaveBeenCalledWith(
+            "/orgs/acme-ops/incidents?q=checkout&team=platform",
+            { scroll: false },
+          ),
+        );
+      });
     });
 
     it("loads the next page of resolved incidents on request, by the API's cursor", async () => {
@@ -669,6 +774,10 @@ describe("incidents", () => {
 
         await user.click(within(response).getByRole("button", { name: "Resolve incident" }));
         expect(requests.some((r) => r.method === "PATCH")).toBe(false);
+        await user.type(
+          within(response).getByLabelText("How was it resolved?"),
+          "  Rolled back the 12:00 deploy.  ",
+        );
         await user.click(within(response).getByRole("button", { name: "Resolve incident" }));
 
         expect(
@@ -676,7 +785,27 @@ describe("incidents", () => {
         ).toBeDefined();
         expect(requests.find((r) => route(r) === `PATCH ${base}/incidents/42`)?.body).toEqual({
           status: "RESOLVED",
+          resolution: "Rolled back the 12:00 deploy.",
         });
+      });
+
+      it("asks how it was resolved before sending anything", async () => {
+        const user = userEvent.setup();
+        const { requests } = api(ADMIN, {
+          detail: incident({ responders: [responder(daniel, "COMPLETED")] }),
+        });
+
+        inOrganization(<IncidentDetail />);
+
+        await user.click(await screen.findByRole("button", { name: "Resolve incident" }));
+        await user.type(screen.getByLabelText("How was it resolved?"), "   ");
+        await user.click(screen.getByRole("button", { name: "Resolve incident" }));
+
+        expect(await screen.findByText("Say how the incident was resolved.")).toBeDefined();
+        expect(
+          screen.getByLabelText("How was it resolved?").getAttribute("aria-invalid"),
+        ).toBe("true");
+        expect(requests.some((r) => r.method === "PATCH")).toBe(false);
       });
 
       it("explains a resolution refused because someone started investigating meanwhile, and refetches", async () => {
@@ -692,6 +821,7 @@ describe("incidents", () => {
         inOrganization(<IncidentDetail />);
 
         await user.click(await screen.findByRole("button", { name: "Resolve incident" }));
+        await user.type(screen.getByLabelText("How was it resolved?"), "Rolled back.");
         await user.click(screen.getByRole("button", { name: "Resolve incident" }));
 
         expect(await screen.findByText(/Someone started investigating meanwhile/)).toBeDefined();
@@ -1054,6 +1184,12 @@ describe("incidents", () => {
       const entries = await within(timeline).findAllByRole("listitem");
 
       expect(entries.at(-1)?.textContent).toMatch(/Resolved the incident$/);
+      // Resolved before notes were required: said, not left as a gap.
+      expect(
+        within(await sectionOf("Resolution")).getByText(
+          "Resolved before resolution notes were recorded.",
+        ),
+      ).toBeDefined();
       for (const name of [
         "Start investigating",
         "Mark my response complete",
@@ -1063,6 +1199,40 @@ describe("incidents", () => {
       }
       expect(screen.queryByLabelText("Post an update")).toBeNull();
       expect(screen.queryByRole("button", { name: "Manage incident" })).toBeNull();
+    });
+
+    it("shows how a resolved incident ended, on the incident and on its timeline", async () => {
+      const note = "Rolled back the 12:00 deploy; error rates back to baseline.";
+
+      api(READ_ONLY, {
+        detail: incident({
+          status: "RESOLVED",
+          resolvedAt: "2026-09-18T13:00:00.000Z",
+          resolution: note,
+          responders: [responder(daniel, "COMPLETED")],
+        }),
+        timeline: [
+          activity({
+            id: "0199a1b2-c3d4-7000-8000-000000000104",
+            type: "STATUS_CHANGED",
+            message: note,
+            fromValue: "INVESTIGATING",
+            toValue: "RESOLVED",
+            actor: { id: currentUser.id, name: "Ada Lovelace" },
+          }),
+        ],
+      });
+
+      inOrganization(<IncidentDetail />);
+
+      expect(within(await sectionOf("Resolution")).getByText(note)).toBeDefined();
+
+      const timeline = await sectionOf(/Timeline/);
+      const [entry] = await within(timeline).findAllByRole("listitem");
+
+      expect(entry.textContent).toMatch(
+        /^Ada Lovelace · .*Resolved the incident.*Rolled back the 12:00 deploy/,
+      );
     });
 
     it("tells the story on the timeline, oldest first, with nothing to post for a reader", async () => {

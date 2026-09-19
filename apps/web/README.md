@@ -192,6 +192,13 @@ What to offer is decided from `membership.permissions` on `GET /organizations/:i
 through `useCan(permission)`. The app knows permission **names** only; it never maps roles
 to permissions. Hiding a control is a convenience — the API authorizes every request.
 
+A member's page, `/members/[membershipId]`, ends — with `incidents:read` — with their
+**Recent responses**: the incidents they started investigating, most recent first, each
+with its severity, `INC-n` and title (a link), their own part — "Investigating for 2h", or
+"Completed after 3h 10m" in the responder rows' accent and success marks — the service
+and team, and the incident's status. **Show more** follows the API's cursor. There is
+no count: it is descriptive history of a person's participation, not a measure of it.
+
 ## Invitations
 
 The Members page offers an invite form (`invitations:manage`) and the open-invitation list
@@ -228,6 +235,9 @@ The list shows each team's member and service counts.
 `/teams/[teamSlug]` is the team: its name, description, and members, with an add form
 (organization members not already on it) and Remove for `teams:manage`, and — for
 `services:read` — the services it owns, filtered from the organization's service list.
+With `incidents:read` it ends with the incidents the team is **responsible for** —
+whichever service they affect — as the service page shows them (below), linking to
+`/incidents?team=<slug>`.
 `/teams/[teamSlug]/settings` edits the name and description and deletes the team after an
 inline confirmation. While the team owns services, deletion is not offered: the section
 says how many and links to them, because they must be moved first. A delete that races a
@@ -249,8 +259,13 @@ needs an owning team and points to Teams instead.
 
 `/services/[serviceSlug]` is the service: its name and description, its owner team (a
 link), and its criticality with that level's definition, then created and updated dates,
-and — when archived — when it was retired. Nothing else: no health, metrics, or
-per-service incident history.
+and — when archived — when it was retired. With `incidents:read`, an **Active
+incidents** row says the most severe active incident's severity and how many there are,
+or none — derived from the incidents, not a health check — and an **Incidents** section
+lists every active one and the five most recently resolved, in the Incidents page's
+table, with **View all in Incidents** opening `/incidents?service=<slug>`. Both read the
+Incidents page's own filtered lists, so the row and the section are one request, and
+nothing new is cached. No health or metrics.
 `/services/[serviceSlug]/settings` edits the details and criticality, moves the service to
 another team, archives or unarchives it, and deletes it after an inline confirmation. A
 delete refused with `409 SERVICE_HAS_INCIDENTS` is explained in place, pointing to
@@ -271,7 +286,20 @@ table — most severe first, then longest-running — and a **Resolved** table, 
 first. Each row is the severity mark, `INC-n` and the title (a link), the service, the
 responsible team, and the status and how long it has run (or when it was resolved and how
 long it lasted). Both lists are the API's cursor pages, loaded with **Show more**; the page
-shows no counts, which would be wrong past the first page.
+shows no counts, which would be wrong past the first page. The table is `IncidentTable`,
+shared with the service and team pages.
+
+Above the lists, a **filter bar** — a search landmark — narrows both: **Search** (title
+words, or a number such as `INC-42`, applied when submitted rather than at every
+keystroke), **Severity**, **Service** (archived ones included, marked), and **Responsible
+team**, with **Clear filters** while any applies. The filters live in the URL —
+`?q=&severity=&service=<slug>&team=<slug>` — so a filtered list can be linked to; the
+service and team are named by slug, as a reader sees them, and turned into the ids the API
+takes from the cached service and team lists. The lists wait for that lookup rather than
+show everything for a moment. A filter that can never apply — an unknown severity or
+slug — is taken out of the URL, as an impossible period is, and everything else in the
+URL is kept: clearing the filters keeps the period, and the period's **Clear** keeps the
+filters. When nothing matches, each list says so and points to clearing them.
 
 **Declare incident** opens a form in place (`incidents:manage`, which only the Admin holds):
 a title, the affected service — services in use only — a severity with **nothing
@@ -298,7 +326,8 @@ from it. What the page offers follows the caller's part:
   responders, investigating, complete — and each responder is a ruled row with their
   own state and how long they have been at it. While anyone is investigating, the panel
   names who resolution is waiting for; once everyone has completed, **Resolve incident**
-  sits in the panel's header, behind an inline confirmation. The Admin posts updates from
+  sits in the panel's header, behind an inline confirmation that asks **How was it
+  resolved?** — a required note, checked before anything is sent. The Admin posts updates from
   beneath the timeline without responding. **Manage incident**, in the header, opens a
   drawer from the right edge — a native `<dialog>`, like the navigation drawer — with
   severity and responsible team, where only what changed is sent, and the title and
@@ -330,7 +359,10 @@ and an older entry naming a retired status (`IDENTIFIED`, `MONITORING`) is shown
 word.
 
 Once resolved, nothing is offered to anyone: the responders' final states and the
-timeline stay readable. A number that cannot be one (`/incidents/INC-42`) is not-found
+timeline stay readable. A **Resolution** block, with the success edge that completed
+response work has, leads the page with the Admin's note — or says the incident was
+resolved before notes were recorded — and the timeline's resolution entry carries the
+same note beneath it. A number that cannot be one (`/incidents/INC-42`) is not-found
 without a request.
 
 Freshness is the query defaults — 30 seconds stale, refetch on focus. Nothing is pushed
@@ -350,7 +382,10 @@ Service pages read the service from `['organization', id, 'services']`. Creating
 changing, or deleting a service refreshes it and the team list (each team's service
 count); renaming a team refreshes it too, because every service embeds its owner's name.
 Incidents live under `['organization', id, 'incidents']`: the two paged lists at
-`[…, 'list', 'active' | 'resolved']` and each incident at `[…, 'detail', number]`.
+`[…, 'list', 'active' | 'resolved', range, filters]` — each range and set of filters its
+own query, the filters only those in use — each incident at `[…, 'detail', number]`, and
+each member's responses at `[…, 'member-responses', membershipId]`, which a start or a
+completion stales.
 Declaring or changing an incident writes the API's answer into its detail entry and
 refreshes both lists — a status, severity, or team change can move it between or within
 them. Changing a service (its name, criticality, or archival) or renaming a team

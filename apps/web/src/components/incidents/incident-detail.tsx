@@ -1,7 +1,9 @@
 "use client";
 
+import { CircleCheck } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { useId } from "react";
 import type { ReactNode } from "react";
 
 import {
@@ -11,7 +13,7 @@ import {
 import { CriticalityMark } from "@/components/services/criticality-mark";
 import { serviceHref } from "@/components/services/service-scope";
 import { teamHref, useTeamMembers } from "@/components/teams/team-scope";
-import { Alert, ErrorAlert } from "@/components/ui/alert";
+import { ErrorAlert } from "@/components/ui/alert";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageBody, PageHeader } from "@/components/ui/page";
 import { RecordList, RecordRow } from "@/components/ui/record";
@@ -206,6 +208,53 @@ function IncidentHeader({
   );
 }
 
+/**
+ * How a resolved incident ended: the Admin's note, framed with the success
+ * edge the response panel gives completed work — resolution is the same
+ * milestone, reached. An incident resolved before notes were required says
+ * so, rather than leaving a gap.
+ */
+function Resolution({
+  resolution,
+  resolvedAt,
+}: {
+  resolution: string | null;
+  resolvedAt: string;
+}) {
+  const headingId = useId();
+
+  return (
+    <section
+      aria-labelledby={headingId}
+      className="flex gap-3 rounded-md border border-success-line border-l-[3px] border-l-success-solid bg-success-subtle px-4 py-4 sm:px-5"
+    >
+      <CircleCheck
+        aria-hidden="true"
+        strokeWidth={2}
+        className="mt-1 size-4 shrink-0 text-success-text"
+      />
+      <div className="flex min-w-0 flex-col gap-1.5">
+        <h2 id={headingId} className="text-base font-semibold text-fg">
+          Resolution
+        </h2>
+        {resolution ? (
+          <p className="max-w-3xl text-sm leading-6 whitespace-pre-line text-fg">
+            {resolution}
+          </p>
+        ) : (
+          <p className="text-sm text-fg-muted">
+            Resolved before resolution notes were recorded.
+          </p>
+        )}
+        <p className="text-xs text-fg-muted">
+          Resolved <LocalDateTime value={resolvedAt} />. A resolved incident is
+          kept as it is; if the problem returns, declare a new incident.
+        </p>
+      </div>
+    </section>
+  );
+}
+
 function IncidentPage({ incident }: { incident: IncidentDetailResponse }) {
   const { perspective, own } = usePerspective(incident);
   const actions = useOwnResponse(incident);
@@ -220,13 +269,10 @@ function IncidentPage({ incident }: { incident: IncidentDetailResponse }) {
       <IncidentHeader incident={incident} canManage={canManage} />
       <PageBody>
         {resolved && incident.resolvedAt && (
-          <Alert tone="info" title="Resolved">
-            <p>
-              Resolved <LocalDateTime value={incident.resolvedAt} />. A
-              resolved incident is kept as it is; if the problem returns,
-              declare a new incident.
-            </p>
-          </Alert>
+          <Resolution
+            resolution={incident.resolution}
+            resolvedAt={incident.resolvedAt}
+          />
         )}
         <div className="grid items-start gap-x-10 gap-y-10 lg:grid-cols-[minmax(0,1fr)_16rem]">
           <div className="flex min-w-0 flex-col gap-8">

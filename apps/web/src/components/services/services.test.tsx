@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { OrganizationScope } from "@/components/organizations/organization-scope";
-import type { ServiceResponse } from "@/lib/api/contracts";
+import type { IncidentResponse, ServiceResponse } from "@/lib/api/contracts";
 import { clearAccessToken } from "@/lib/auth/token-store";
 import {
   apiError,
@@ -91,6 +91,47 @@ const legacyPortal: ServiceResponse = {
   criticality: "LOW",
   archivedAt: "2026-09-18T14:00:00.000Z",
 };
+
+/** An incident on the Payment API; by default active. */
+const anIncident = (
+  number: number,
+  overrides: Partial<IncidentResponse> = {},
+): IncidentResponse => ({
+  id: `0199a1b2-c3d4-7000-8000-0000000001${String(number).padStart(2, "0")}`,
+  number,
+  title: `Incident ${number}`,
+  summary: null,
+  severity: "SEV3",
+  status: "INVESTIGATING",
+  service: {
+    id: "0199a1b2-c3d4-7000-8000-0000000000e1",
+    name: "Payment API",
+    slug: "payment-api",
+    criticality: "CRITICAL",
+    archivedAt: null,
+  },
+  team: {
+    id: "0199a1b2-c3d4-7000-8000-0000000000c1",
+    name: "Payments",
+    slug: "payments",
+  },
+  createdBy: { id: "0199a1b2-c3d4-7000-8000-000000000001", name: "Ada" },
+  createdAt: "2026-09-18T12:00:00.000Z",
+  updatedAt: "2026-09-18T12:00:00.000Z",
+  resolvedAt: null,
+  ...overrides,
+});
+
+const resolvedIncident = (number: number) =>
+  anIncident(number, {
+    status: "RESOLVED",
+    resolvedAt: "2026-09-18T13:00:00.000Z",
+  });
+
+const incidentPage = (items: IncidentResponse[]) => ({
+  items,
+  page: { cursor: null, hasMore: false },
+});
 
 type Handler = (request: SentRequest) => Response | undefined;
 
@@ -354,6 +395,67 @@ describe("services", () => {
       expect(screen.queryByText(/incident/i)).toBeNull();
       expect(screen.queryByText("Archived")).toBeNull();
       expect(screen.queryByRole("link", { name: "Settings" })).toBeNull();
+    });
+
+    describe("its incidents", () => {
+      const WITH_INCIDENTS = [...READ, "incidents:read"];
+      const listed = (state: string) =>
+        `GET ${base}/incidents?state=${state}&serviceId=${paymentApi.id}`;
+
+      it("lists what is active, the worst of it, and the most recent resolved, linking to Incidents filtered by it", async () => {
+        const { requests } = api(WITH_INCIDENTS, {
+          handler: (request) =>
+            route(request) === listed("active")
+              ? jsonResponse(
+                  200,
+                  incidentPage([
+                    anIncident(8, { severity: "SEV2", title: "Card declines" }),
+                    anIncident(9, { title: "Slow refunds" }),
+                  ]),
+                )
+              : route(request) === listed("resolved")
+                ? jsonResponse(
+                    200,
+                    incidentPage([7, 6, 5, 4, 3, 2, 1].map(resolvedIncident)),
+                  )
+                : undefined,
+        });
+
+        inService(<ServiceDetail />);
+
+        const active = await screen.findByRole("table", { name: "Active incidents" });
+        const resolved = await screen.findByRole("table", {
+          name: "Recently resolved incidents",
+        });
+
+        expect(within(active).getByText("Card declines")).toBeDefined();
+        expect(within(active).getByText("Slow refunds")).toBeDefined();
+        // Only the five most recent resolved.
+        expect(within(resolved).getAllByRole("row")).toHaveLength(1 + 5);
+        expect(within(resolved).queryByText("Incident 2")).toBeNull();
+        // The worst active severity, and how many, beside the record.
+        expect(screen.getByText("2 active incidents")).toBeDefined();
+        expect(
+          screen.getByRole("link", { name: "View all in Incidents" }).getAttribute("href"),
+        ).toBe("/orgs/acme-ops/incidents?service=payment-api");
+        // One request per list, shared by the record and the section.
+        expect(requests.filter((r) => route(r) === listed("active"))).toHaveLength(1);
+      });
+
+      it("says when nothing is active or resolved", async () => {
+        api(WITH_INCIDENTS, {
+          handler: (request) =>
+            route(request).startsWith(`GET ${base}/incidents?state=`)
+              ? jsonResponse(200, incidentPage([]))
+              : undefined,
+        });
+
+        inService(<ServiceDetail />);
+
+        expect(await screen.findByText("No active incidents")).toBeDefined();
+        expect(await screen.findByText("None resolved yet")).toBeDefined();
+        expect(screen.getByText("None")).toBeDefined();
+      });
     });
 
     it("says when it is archived", async () => {

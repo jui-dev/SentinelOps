@@ -49,9 +49,17 @@ export const createIncidentSchema = z.strictObject({
 });
 
 /**
+ * How an incident ended, in a few sentences: what fixed it, or why it no
+ * longer needs a response. Required by every resolution, and never blank.
+ */
+export const incidentResolutionSchema = z.string().trim().min(1).max(2000);
+
+/**
  * Changing an active incident. `status: 'RESOLVED'` resolves an
- * INVESTIGATING one. The service cannot be changed; the responsible team can
- * be reassigned, never cleared.
+ * INVESTIGATING one, and must say how it ended in `resolution` — which is
+ * refused on any other change, since only a resolution records one. The
+ * service cannot be changed; the responsible team can be reassigned, never
+ * cleared.
  */
 export const updateIncidentSchema = z
   .strictObject({
@@ -59,6 +67,7 @@ export const updateIncidentSchema = z
     summary: incidentSummarySchema.optional(),
     severity: incidentSeveritySchema.optional(),
     status: incidentStatusTargetSchema.optional(),
+    resolution: incidentResolutionSchema.optional(),
     teamId: resourceIdSchema.optional(),
   })
   .refine(
@@ -69,6 +78,17 @@ export const updateIncidentSchema = z
       body.status !== undefined ||
       body.teamId !== undefined,
     'Provide a title, summary, severity, status, or team to change',
+  )
+  .refine(
+    (body) => body.status !== 'RESOLVED' || body.resolution !== undefined,
+    { message: 'Say how the incident was resolved', path: ['resolution'] },
+  )
+  .refine(
+    (body) => body.resolution === undefined || body.status === 'RESOLVED',
+    {
+      message: 'A resolution is recorded only when resolving',
+      path: ['resolution'],
+    },
   );
 
 /**
@@ -101,6 +121,13 @@ const periodDays = ({ from, to }: { from: string; to: string }): number =>
  * moment that defines each state: when an active incident was declared, and
  * when a resolved one was resolved. Both ends or neither, and the same
  * limits a summary's period has.
+ *
+ * The filters narrow either list further, and combine: one severity, one
+ * affected service, one responsible team, and `q` — words from the title, or
+ * an incident's number, as `42` or `INC-42`. A blank `q` is no search. A
+ * service or team this organization lacks is a filter nothing matches, not
+ * an error. A cursor belongs to the filters it was issued under; the client
+ * sends the same ones with it.
  */
 export const listIncidentsQuerySchema = z
   .object({
@@ -108,6 +135,15 @@ export const listIncidentsQuerySchema = z
     cursor: z.string().min(1).max(64).optional(),
     from: z.iso.date().optional(),
     to: z.iso.date().optional(),
+    severity: incidentSeveritySchema.optional(),
+    serviceId: resourceIdSchema.optional(),
+    teamId: resourceIdSchema.optional(),
+    q: z
+      .string()
+      .trim()
+      .max(200)
+      .transform((value) => (value === '' ? undefined : value))
+      .optional(),
   })
   .refine(({ from, to }) => (from === undefined) === (to === undefined), {
     message: 'Give both ends of a period, or neither',
@@ -159,6 +195,14 @@ export const summaryBounds = ({
   lt: new Date(startOfUtcDay(to).getTime() + DAY_MS),
 });
 
+/**
+ * A page of a member's responses: only the cursor, which is opaque here and
+ * decoded by the service.
+ */
+export const memberResponsesQuerySchema = z.object({
+  cursor: z.string().min(1).max(100).optional(),
+});
+
 export type CreateIncidentRequest = z.infer<typeof createIncidentSchema>;
 export type UpdateIncidentRequest = z.infer<typeof updateIncidentSchema>;
 export type PostIncidentUpdateRequest = z.infer<
@@ -166,6 +210,7 @@ export type PostIncidentUpdateRequest = z.infer<
 >;
 export type ListIncidentsQuery = z.infer<typeof listIncidentsQuerySchema>;
 export type IncidentSummaryQuery = z.infer<typeof incidentSummaryQuerySchema>;
+export type MemberResponsesQuery = z.infer<typeof memberResponsesQuerySchema>;
 
 /** The largest value a Postgres `integer` column holds. */
 const MAX_INCIDENT_NUMBER = 2_147_483_647;
@@ -184,4 +229,15 @@ export const parseIncidentNumber = (value: string): number | undefined => {
   const number = Number(value);
 
   return number <= MAX_INCIDENT_NUMBER ? number : undefined;
+};
+
+/**
+ * The incident number a search names, if it names one: `42`, or its key,
+ * `INC-42` in any case. Anything else — words, a number out of range — is
+ * undefined, and searched as title text only.
+ */
+export const searchedIncidentNumber = (q: string): number | undefined => {
+  const match = /^(?:inc-)?([0-9]+)$/i.exec(q);
+
+  return match?.[1] === undefined ? undefined : parseIncidentNumber(match[1]);
 };

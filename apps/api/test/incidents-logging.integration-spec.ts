@@ -27,6 +27,7 @@ describe('incident logging (integration)', () => {
   const SUMMARY = 'Sentinel-summary-7c2e: host db-payments-02 unreachable';
   const NEW_TITLE = 'Sentinel-retitle-51bd';
   const MESSAGE = 'Sentinel-update-9d41: pool on db-payments-02 exhausted';
+  const RESOLUTION = 'Sentinel-resolution-e6a0: failed over db-payments-02';
 
   beforeAll(async () => {
     vi.stubEnv('LOG_FORMAT', 'json');
@@ -135,7 +136,7 @@ describe('incident logging (integration)', () => {
     await server()
       .patch(`${base}/1`)
       .set('Authorization', auth)
-      .send({ status: 'RESOLVED' });
+      .send({ status: 'RESOLVED', resolution: RESOLUTION });
     await server()
       .patch(`${base}/1`)
       .set('Authorization', auth)
@@ -184,7 +185,14 @@ describe('incident logging (integration)', () => {
       entries.find((entry) => entry.message === 'Incident updated'),
     ).toEqual(expect.objectContaining({ changed: ['title', 'severity'] }));
 
-    for (const secret of [TITLE, SUMMARY, NEW_TITLE, MESSAGE, 'Sentinel-']) {
+    for (const secret of [
+      TITLE,
+      SUMMARY,
+      NEW_TITLE,
+      MESSAGE,
+      RESOLUTION,
+      'Sentinel-',
+    ]) {
       expect(lines.filter((line) => line.includes(secret))).toEqual([]);
     }
   });

@@ -293,8 +293,12 @@ export interface IncidentResponderResponse {
  * returns; list items carry no responders. The responders are the current
  * state of the response, in the order they started; the timeline is its
  * history.
+ *
+ * `resolution` is how a resolved incident ended, in the Admin's words: null
+ * while it is active, and on incidents resolved before a note was required.
  */
 export interface IncidentDetailResponse extends IncidentResponse {
+  resolution: string | null;
   responders: IncidentResponderResponse[];
 }
 
@@ -319,7 +323,9 @@ export type IncidentActivityType =
   | "RESPONSE_COMPLETED";
 
 /**
- * One entry on an incident's timeline. `message` is set for UPDATE only;
+ * One entry on an incident's timeline. `message` is set for UPDATE, and on
+ * the resolution (STATUS_CHANGED to RESOLVED) as its note — null on
+ * resolutions recorded before notes were required;
  * `fromValue`/`toValue` are severities or statuses (DECLARED carries only the
  * declared severity in `toValue`), or for TEAM_CHANGED the two teams' names
  * as they were then. The actor is identity only.
@@ -425,6 +431,31 @@ export interface Page<T> {
 export type IncidentState = "active" | "resolved";
 
 /**
+ * One of a member's responses: an incident they started investigating, as
+ * the lists give it, and where their own part of it stands. Only actual
+ * participation — being on the incident's team is not a response.
+ */
+export interface MemberResponseResponse {
+  incident: IncidentResponse;
+  status: IncidentResponderStatus;
+  startedAt: string;
+  completedAt: string | null;
+}
+
+/**
+ * What narrows either incident list, combined: one severity, one affected
+ * service, one responsible team, and `q` — words from the title, or an
+ * incident's number (`42`, `INC-42`). A service or team the organization
+ * lacks matches nothing; it is not an error.
+ */
+export interface IncidentFilters {
+  severity?: IncidentSeverity;
+  serviceId?: string;
+  teamId?: string;
+  q?: string;
+}
+
+/**
  * No status (every incident starts DECLARED) and no team (the service's
  * owner is responsible). Severity is required.
  */
@@ -437,7 +468,8 @@ export interface CreateIncidentRequest {
 
 /**
  * `status: "RESOLVED"` resolves an INVESTIGATING incident once no responder
- * is still investigating (409 RESPONDERS_STILL_INVESTIGATING otherwise). An
+ * is still investigating (409 RESPONDERS_STILL_INVESTIGATING otherwise), and
+ * must carry a `resolution` note — which is refused on any other change. An
  * incident becomes INVESTIGATING only when a responder starts investigating.
  * The service never changes; the responsible team is reassigned, never
  * cleared.
@@ -447,6 +479,7 @@ export interface UpdateIncidentRequest {
   summary?: string | null;
   severity?: IncidentSeverity;
   status?: "RESOLVED";
+  resolution?: string;
   teamId?: string;
 }
 

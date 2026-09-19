@@ -6,12 +6,14 @@ import { PrismaService } from '../database/prisma.service.js';
 import { foreignKeyViolationHint } from '../database/foreign-key-violation.js';
 import { Prisma } from '../generated/prisma/client.js';
 import type { Role } from '../generated/prisma/enums.js';
+import { membershipNotFound } from '../organizations/organizations.errors.js';
 import {
   serviceArchived,
   serviceNotFound,
 } from '../services/services.errors.js';
 import { teamNotFound } from '../teams/teams.errors.js';
 import { organizationNotFound } from '../tenancy/tenancy.errors.js';
+import { isResourceId } from '../tenancy/tenancy.schemas.js';
 import { classifyAttention } from './incidents.attention.js';
 import type {
   IncidentActivityResponse,
@@ -20,6 +22,7 @@ import type {
   IncidentPage,
   IncidentSeverity,
   IncidentSummaryResponse,
+  MemberResponsePage,
 } from './incidents.contract.js';
 import {
   incidentNotFound,
@@ -38,13 +41,19 @@ import {
   toIncidentDetailResponse,
   toIncidentResponse,
   toIncidentSummaryResponse,
+  toMemberResponseResponse,
 } from './incidents.responses.js';
 import { mergeHistory } from './incidents.history.js';
-import { parseIncidentNumber, summaryBounds } from './incidents.schemas.js';
+import {
+  parseIncidentNumber,
+  searchedIncidentNumber,
+  summaryBounds,
+} from './incidents.schemas.js';
 import type {
   CreateIncidentRequest,
   IncidentSummaryQuery,
   ListIncidentsQuery,
+  MemberResponsesQuery,
   PostIncidentUpdateRequest,
   UpdateIncidentRequest,
 } from './incidents.schemas.js';
@@ -59,8 +68,49 @@ const RECORD_NOT_FOUND = 'P2025';
 /** Incidents per page, for both lists. Not a client parameter. */
 export const INCIDENT_PAGE_SIZE = 50;
 
+/** A member's responses per page. Not a client parameter. */
+export const RESPONSE_PAGE_SIZE = 20;
+
 /** How many of a period's incidents a summary previews. */
 export const HISTORY_PREVIEW_LIMIT = 10;
+
+/** A LIKE pattern matching `text` literally: Postgres escapes with `\`. */
+const escapeLike = (text: string): string =>
+  text.replace(/[\\%_]/g, '\\$&');
+
+/**
+ * The list filters, as conditions on an incident. Each is an equality on a
+ * column the organization already scopes, so a service or team from another
+ * organization matches nothing rather than leaking anything.
+ *
+ * A search matches the title case-insensitively, anywhere in it — a plain
+ * substring — or, when it names an incident number, that incident. Prisma's
+ * `contains` puts the value inside an ILIKE pattern as it is, so `%`, `_`,
+ * and the escape character itself are escaped first: a search for "100%"
+ * means those four characters. It sits under AND, so it never meets the
+ * active list's cursor OR.
+ */
+const listFilters = (
+  query: ListIncidentsQuery,
+): Prisma.IncidentWhereInput => {
+  const number = query.q ? searchedIncidentNumber(query.q) : undefined;
+
+  return {
+    ...(query.severity && { severity: query.severity }),
+    ...(query.serviceId && { serviceId: query.serviceId }),
+    ...(query.teamId && { teamId: query.teamId }),
+    ...(query.q && {
+      AND: [
+        {
+          OR: [
+            { title: { contains: escapeLike(query.q), mode: 'insensitive' } },
+            ...(number !== undefined ? [{ number }] : []),
+          ],
+        },
+      ],
+    }),
+  };
+};
 
 /** Most severe first — the order the database enum declares them in. */
 const SEVERITIES: readonly IncidentSeverity[] = [
@@ -111,6 +161,7 @@ const responderOrder: Prisma.IncidentResponderOrderByWithRelationInput[] = [
  */
 const incidentDetailSelection = {
   ...incidentSelection,
+  resolution: true,
   responders: {
     select: {
       status: true,
@@ -186,6 +237,33 @@ export const decodeResolvedCursor = (cursor: string): number => {
 };
 
 /**
+ * Where the next page of a member's responses starts: the last response's
+ * start, and its id to break a tie. `2026-09-18T12:05:00.000Z~<uuid>`.
+ */
+type ResponseCursor = { startedAt: Date; id: string };
+
+export const encodeResponseCursor = ({ startedAt, id }: ResponseCursor) =>
+  `${startedAt.toISOString()}~${id}`;
+
+export const decodeResponseCursor = (cursor: string): ResponseCursor => {
+  const [at, id, ...rest] = cursor.split('~');
+  const startedAt = at === undefined ? undefined : new Date(at);
+
+  if (
+    rest.length > 0 ||
+    id === undefined ||
+    !isResourceId(id) ||
+    startedAt === undefined ||
+    Number.isNaN(startedAt.getTime()) ||
+    startedAt.toISOString() !== at
+  ) {
+    throw invalidCursor();
+  }
+
+  return { startedAt, id };
+};
+
+/**
  * An organization's incidents: declaring them, reading them, and moving them
  * to resolution.
  *
@@ -242,6 +320,7 @@ export class IncidentsService {
       query.from && query.to
         ? summaryBounds({ from: query.from, to: query.to })
         : undefined;
+    const filters = listFilters(query);
     let rows;
 
     if (query.state === 'active') {
@@ -252,6 +331,7 @@ export class IncidentsService {
           ...scope,
           status: { not: 'RESOLVED' },
           ...(period && { createdAt: period }),
+          ...filters,
           // Prisma compares enums by equality and membership only, so "after
           // this severity" is the explicit list of the less severe ones.
           ...(after && {
@@ -279,6 +359,7 @@ export class IncidentsService {
           ...scope,
           status: 'RESOLVED',
           ...(period && { resolvedAt: period }),
+          ...filters,
           ...(before !== undefined && { number: { lt: before } }),
         },
         select: incidentSelection,
@@ -300,6 +381,79 @@ export class IncidentsService {
               ? encodeActiveCursor(last)
               : encodeResolvedCursor(last.number)
             : null,
+        hasMore,
+      },
+    };
+  }
+
+  /**
+   * One member's responses: the incidents they started investigating, the
+   * most recently started first, each with where their own part stands.
+   * Only actual participation — being on the incident's team is not a
+   * response — so a member who never started has none.
+   *
+   * The membership is resolved within the organization first: a malformed,
+   * missing, or foreign one is 404 MEMBERSHIP_NOT_FOUND, identically. Keyset
+   * pages over (startedAt, id) — the id a UUIDv7, breaking a tie — served by
+   * the (membership_id, started_at) index. The incidents are the lists'
+   * shape, with no responders or resolution.
+   */
+  async memberResponses(
+    organizationId: string,
+    membershipId: string,
+    query: MemberResponsesQuery,
+  ): Promise<MemberResponsePage> {
+    if (!isResourceId(membershipId)) {
+      throw membershipNotFound();
+    }
+
+    const membership = await this.prisma.membership.findFirst({
+      where: {
+        id: membershipId,
+        organizationId,
+        organization: { deletedAt: null },
+      },
+      select: { id: true },
+    });
+
+    if (!membership) {
+      throw membershipNotFound();
+    }
+
+    const after = query.cursor
+      ? decodeResponseCursor(query.cursor)
+      : undefined;
+
+    const rows = await this.prisma.incidentResponder.findMany({
+      where: {
+        organizationId,
+        membershipId,
+        ...(after && {
+          OR: [
+            { startedAt: { lt: after.startedAt } },
+            { startedAt: after.startedAt, id: { lt: after.id } },
+          ],
+        }),
+      },
+      select: {
+        id: true,
+        status: true,
+        startedAt: true,
+        completedAt: true,
+        incident: { select: incidentSelection },
+      },
+      orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
+      take: RESPONSE_PAGE_SIZE + 1,
+    });
+
+    const hasMore = rows.length > RESPONSE_PAGE_SIZE;
+    const items = rows.slice(0, RESPONSE_PAGE_SIZE);
+    const last = items.at(-1);
+
+    return {
+      items: items.map(toMemberResponseResponse),
+      page: {
+        cursor: hasMore && last ? encodeResponseCursor(last) : null,
         hasMore,
       },
     };
@@ -620,7 +774,9 @@ export class IncidentsService {
    * change to one is a 409, whatever it names.
    *
    * The one status a change can name is `RESOLVED`: an INVESTIGATING incident
-   * is resolved, setting resolvedAt in the same write. A DECLARED incident
+   * is resolved, setting resolvedAt and the resolution note (which the
+   * request schema requires) in the same write, and the note is the message
+   * of the resolution's timeline entry. A DECLARED incident
    * is not — nobody has investigated it — and is 409
    * INVALID_STATUS_TRANSITION. Nor is one that any responder is still
    * investigating: 409 RESPONDERS_STILL_INVESTIGATING. Either way nothing in
@@ -707,12 +863,15 @@ export class IncidentsService {
                 },
               ]
             : []),
+          // The only status a change can name is RESOLVED, so this is the
+          // resolution, and its entry carries the note.
           ...(input.status !== undefined && input.status !== before.status
             ? [
                 {
                   type: 'STATUS_CHANGED' as const,
                   fromValue: before.status,
                   toValue: input.status,
+                  message: input.resolution ?? null,
                 },
               ]
             : []),
@@ -746,6 +905,7 @@ export class IncidentsService {
             status: input.status,
             teamId: input.teamId,
             resolvedAt: resolving ? now : undefined,
+            resolution: resolving ? input.resolution : undefined,
           },
           select: incidentDetailSelection,
         });

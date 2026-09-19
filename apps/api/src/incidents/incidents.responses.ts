@@ -11,6 +11,7 @@ import type {
   IncidentSeverity,
   IncidentStatus,
   IncidentSummaryResponse,
+  MemberResponseResponse,
   SeverityCounts,
 } from './incidents.contract.js';
 
@@ -72,6 +73,19 @@ export const toIncidentResponse = (
   resolvedAt: incident.resolvedAt?.toISOString() ?? null,
 });
 
+/** One of a member's responses, with its incident as the lists give it. */
+export const toMemberResponseResponse = (response: {
+  status: IncidentResponderStatus;
+  startedAt: Date;
+  completedAt: Date | null;
+  incident: IncidentRow;
+}): MemberResponseResponse => ({
+  incident: toIncidentResponse(response.incident),
+  status: response.status,
+  startedAt: response.startedAt.toISOString(),
+  completedAt: response.completedAt?.toISOString() ?? null,
+});
+
 interface IncidentResponderRow {
   status: IncidentResponderStatus;
   startedAt: Date;
@@ -80,6 +94,7 @@ interface IncidentResponderRow {
 }
 
 interface IncidentDetailRow extends IncidentRow {
+  resolution: string | null;
   responders: IncidentResponderRow[];
 }
 
@@ -88,6 +103,7 @@ export const toIncidentDetailResponse = (
   incident: IncidentDetailRow,
 ): IncidentDetailResponse => ({
   ...toIncidentResponse(incident),
+  resolution: incident.resolution,
   responders: incident.responders.map((responder) => ({
     membershipId: responder.membership.id,
     name: responder.membership.user.name,

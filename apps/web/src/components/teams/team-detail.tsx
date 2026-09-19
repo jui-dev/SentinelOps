@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useState } from "react";
 import type { FormEvent } from "react";
 
+import { RelatedIncidents } from "@/components/incidents/related-incidents";
 import { useMemberships } from "@/components/organizations/membership-list";
 import { CriticalityMark } from "@/components/services/criticality-mark";
 import { serviceHref, useServices } from "@/components/services/service-scope";
@@ -307,12 +308,16 @@ function OwnedServices() {
   );
 }
 
-/** A team: its name, what it is for, who is on it, and what it owns. */
+/**
+ * A team: its name, what it is for, who is on it, what it owns, and the
+ * incidents it is responsible for — active now and recently resolved.
+ */
 export function TeamDetail() {
   const organization = useOrganization();
   const team = useTeam();
   const canManage = useCan(Permission.TEAMS_MANAGE);
   const canReadServices = useCan(Permission.SERVICES_READ);
+  const canReadIncidents = useCan(Permission.INCIDENTS_READ);
 
   return (
     <>
@@ -334,6 +339,12 @@ export function TeamDetail() {
       <PageBody width="list">
         <Members canManage={canManage} />
         {canReadServices && <OwnedServices />}
+        {canReadIncidents && (
+          <RelatedIncidents
+            scope={{ teamId: team.id, param: { team: team.slug } }}
+            description="The incidents this team is responsible for, whichever service they affect."
+          />
+        )}
       </PageBody>
     </>
   );

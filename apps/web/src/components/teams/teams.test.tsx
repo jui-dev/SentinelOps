@@ -390,6 +390,63 @@ describe("teams", () => {
       ).toBeDefined();
     });
 
+    it("lists the incidents it is responsible for, linking to Incidents filtered by it", async () => {
+      const listed = (state: string) =>
+        `GET ${base}/incidents?state=${state}&teamId=${platform.id}`;
+      const incident = (number: number, status: string) => ({
+        id: `0199a1b2-c3d4-7000-8000-0000000001${number}0`,
+        number,
+        title: `Login failures ${number}`,
+        summary: null,
+        severity: "SEV2",
+        status,
+        service: {
+          id: "0199a1b2-c3d4-7000-8000-0000000000e1",
+          name: "Authentication",
+          slug: "authentication",
+          criticality: "HIGH",
+          archivedAt: null,
+        },
+        team: { id: platform.id, name: platform.name, slug: platform.slug },
+        createdBy: { id: currentUser.id, name: "Ada Lovelace" },
+        createdAt: "2026-09-18T12:00:00.000Z",
+        updatedAt: "2026-09-18T12:00:00.000Z",
+        resolvedAt: status === "RESOLVED" ? "2026-09-18T13:00:00.000Z" : null,
+      });
+      const page = (items: unknown[]) => ({
+        items,
+        page: { cursor: null, hasMore: false },
+      });
+
+      api([...READ, "incidents:read"], {
+        handler: (request) =>
+          route(request) === listed("active")
+            ? jsonResponse(200, page([incident(4, "DECLARED")]))
+            : route(request) === listed("resolved")
+              ? jsonResponse(200, page([incident(3, "RESOLVED")]))
+              : undefined,
+      });
+
+      inTeam(<TeamDetail />);
+
+      expect(
+        within(
+          await screen.findByRole("table", { name: "Active incidents" }),
+        ).getByText("Login failures 4"),
+      ).toBeDefined();
+      expect(
+        within(
+          await screen.findByRole("table", { name: "Recently resolved incidents" }),
+        ).getByText("Login failures 3"),
+      ).toBeDefined();
+      expect(
+        screen.getByText(/responsible for, whichever service they affect/),
+      ).toBeDefined();
+      expect(
+        screen.getByRole("link", { name: "View all in Incidents" }).getAttribute("href"),
+      ).toBe("/orgs/acme-ops/incidents?team=platform");
+    });
+
     it("answers an unknown slug with a not-found page", async () => {
       navigation.params = { orgSlug: "acme-ops", teamSlug: "nope" };
       api(READ);

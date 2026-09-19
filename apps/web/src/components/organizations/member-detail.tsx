@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { useState } from "react";
 import type { FormEvent } from "react";
 
+import { MemberResponses } from "@/components/incidents/member-responses";
 import { teamHref, teamsHref, useTeams } from "@/components/teams/team-scope";
 import { Alert, ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -250,6 +251,7 @@ function MemberPage({ member }: { member: OrganizationMembershipResponse }) {
   // Placing people on teams is team configuration: the Admin's, like the
   // Team page's own controls. Advice only; the API checks regardless.
   const canManage = useCan(Permission.TEAMS_MANAGE);
+  const canReadIncidents = useCan(Permission.INCIDENTS_READ);
   const isYou = member.user.id === me.data?.id;
 
   return (
@@ -282,6 +284,9 @@ function MemberPage({ member }: { member: OrganizationMembershipResponse }) {
       />
       <PageBody width="form">
         <Teams member={member} canManage={canManage} />
+        {canReadIncidents && (
+          <MemberResponses membershipId={member.id} name={member.user.name} />
+        )}
       </PageBody>
     </>
   );

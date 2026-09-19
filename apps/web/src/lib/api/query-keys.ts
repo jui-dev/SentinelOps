@@ -1,3 +1,5 @@
+import type { IncidentFilters } from "./contracts";
+
 /**
  * Query keys, in one place so an invalidation names exactly what it means.
  *
@@ -21,12 +23,14 @@
  *   name. Service pages read the service from here. Any service change stales
  *   it and `teams` (each team's service count); a team rename stales it too.
  * - `incidents`: the prefix of every incident query in an organization —
- *   both paged lists (`incidentList`, one per state and range — a range
- *   narrowing each list is its own query) and each incident (`incident`). Every
+ *   both paged lists (`incidentList`, one per state, range, and filters — a
+ *   range or a filter narrowing a list is its own query) and each incident (`incident`). Every
  *   incident embeds its service's name, criticality, and archival, and its
  *   team's name, so a change to a service or a team rename stales the whole
  *   prefix. Declaring or changing an incident writes that incident's entry
  *   and stales the lists.
+ * - `memberResponses`: one member's responses, beneath the prefix. Starting
+ *   or completing a response stales every member's.
  * - `incidentTimeline`: one incident's timeline, beneath its entry. Posting
  *   an update or changing the incident stales it.
  * - `incidentSummary`: the overview's counts and history for one period,
@@ -61,6 +65,7 @@ export const queryKeys = {
     organizationId: string,
     state: "active" | "resolved",
     period?: { from: string; to: string },
+    filters: IncidentFilters = {},
   ) =>
     [
       "organization",
@@ -69,6 +74,11 @@ export const queryKeys = {
       "list",
       state,
       period ? `${period.from}..${period.to}` : "all",
+      // Only the filters in use, so an unfiltered list is one key however
+      // it was asked for.
+      Object.fromEntries(
+        Object.entries(filters).filter(([, value]) => value !== undefined),
+      ),
     ] as const,
   incidentSummary: (organizationId: string, from: string, to: string) =>
     ["organization", organizationId, "incidents", "summary", from, to] as const,
@@ -76,6 +86,14 @@ export const queryKeys = {
     ["organization", organizationId, "incidents", "attention"] as const,
   incident: (organizationId: string, number: number) =>
     ["organization", organizationId, "incidents", "detail", number] as const,
+  memberResponses: (organizationId: string, membershipId: string) =>
+    [
+      "organization",
+      organizationId,
+      "incidents",
+      "member-responses",
+      membershipId,
+    ] as const,
   incidentTimeline: (organizationId: string, number: number) =>
     [
       "organization",

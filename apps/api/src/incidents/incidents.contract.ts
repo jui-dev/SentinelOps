@@ -87,10 +87,14 @@ export interface IncidentResponderResponse {
 /**
  * One incident with its responders — what every single-incident route
  * returns. Lists return `IncidentResponse` alone, so a page of incidents
- * stays one query without joins across responders. `responders` are in the
- * order they started.
+ * stays one query without joins across responders, and without every
+ * resolution's prose. `responders` are in the order they started.
+ *
+ * `resolution` is how a resolved incident ended, in the Admin's words. Null
+ * while it is active, and on incidents resolved before a note was required.
  */
 export interface IncidentDetailResponse extends IncidentResponse {
+  resolution: string | null;
   responders: IncidentResponderResponse[];
 }
 
@@ -118,7 +122,9 @@ export type IncidentActivityType =
  * lifecycle was simplified can name a retired status, IDENTIFIED or
  * MONITORING: history is not rewritten.
  *
- * `message` is set for UPDATE only. `fromValue` and `toValue` are severity or
+ * `message` is set for UPDATE, and on the resolution — STATUS_CHANGED to
+ * RESOLVED — where it is the resolution note (null on resolutions recorded
+ * before notes were required). `fromValue` and `toValue` are severity or
  * status values: DECLARED carries the declared severity in `toValue`; the
  * severity and status changes carry both. TEAM_CHANGED carries the two teams'
  * names as they were when the change was made.
@@ -243,6 +249,31 @@ export interface IncidentAttentionResponse {
  */
 export interface IncidentPage {
   items: IncidentResponse[];
+  page: {
+    cursor: string | null;
+    hasMore: boolean;
+  };
+}
+
+/**
+ * One of a member's responses: an incident they started investigating, and
+ * where their own part of it stands. Only actual participation — a member
+ * who never started has no response, whatever their team.
+ */
+export interface MemberResponseResponse {
+  incident: IncidentResponse;
+  status: IncidentResponderStatus;
+  startedAt: string;
+  completedAt: string | null;
+}
+
+/**
+ * `GET .../memberships/:membershipId/responses`: a member's responses, the
+ * most recently started first, one page at a time. The cursor is opaque, as
+ * the incident lists' are.
+ */
+export interface MemberResponsePage {
+  items: MemberResponseResponse[];
   page: {
     cursor: string | null;
     hasMore: boolean;

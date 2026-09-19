@@ -3,11 +3,13 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Circle, CircleCheck, Lock } from "lucide-react";
 import { useId, useState } from "react";
+import type { FormEvent } from "react";
 
 import { useOrganization } from "@/components/organizations/organization-scope";
 import { Alert, ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { cx } from "@/components/ui/cx";
+import { TextArea } from "@/components/ui/field";
 import { Duration, LocalDateTime } from "@/components/ui/timestamp";
 import { ApiErrorCode } from "@/lib/api/contracts";
 import type {
@@ -19,7 +21,7 @@ import {
   completeIncidentResponse,
   startIncidentResponse,
 } from "@/lib/api/endpoints";
-import { isApiError } from "@/lib/api/errors";
+import { fieldErrorsOf, isApiError } from "@/lib/api/errors";
 import { queryKeys } from "@/lib/api/query-keys";
 
 import {
@@ -128,14 +130,36 @@ function ResponderRows({
   );
 }
 
-/** Resolving, after an inline confirmation: it cannot be undone here. */
+/**
+ * Resolving, after an inline confirmation that asks how it ended: the note
+ * is required, and is kept on the incident and its timeline. It cannot be
+ * undone here.
+ */
 function Resolve({ incident }: { incident: IncidentResponse }) {
   const update = useUpdateIncident(incident);
   const [confirming, setConfirming] = useState(false);
+  const [note, setNote] = useState("");
+  const [blank, setBlank] = useState(false);
 
   if (!confirming) {
     return <Button onClick={() => setConfirming(true)}>Resolve incident</Button>;
   }
+
+  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const resolution = note.trim();
+
+    if (resolution === "") {
+      setBlank(true);
+      return;
+    }
+
+    update.mutate({ status: "RESOLVED", resolution });
+  };
+
+  const fieldError = blank
+    ? "Say how the incident was resolved."
+    : fieldErrorsOf(update.error).resolution;
 
   return (
     <Alert tone="warning" title={`Resolve ${incidentKey(incident.number)}?`}>
@@ -143,7 +167,7 @@ function Resolve({ incident }: { incident: IncidentResponse }) {
         A resolved incident is kept as it is and can no longer be changed or
         responded to. If the problem returns, declare a new incident.
       </p>
-      {update.isError && (
+      {update.isError && !fieldError && (
         <ErrorAlert
           className="mt-2"
           error={update.error}
@@ -156,23 +180,37 @@ function Resolve({ incident }: { incident: IncidentResponse }) {
           }
         />
       )}
-      <div className="flex gap-2 pt-2">
-        <Button
-          size="sm"
-          disabled={update.isPending}
-          onClick={() => update.mutate({ status: "RESOLVED" })}
-        >
-          {update.isPending ? "Resolving…" : "Resolve incident"}
-        </Button>
-        <Button
-          variant="secondary"
-          size="sm"
-          disabled={update.isPending}
-          onClick={() => setConfirming(false)}
-        >
-          Cancel
-        </Button>
-      </div>
+      <form onSubmit={onSubmit} noValidate className="flex flex-col gap-3 pt-3">
+        <TextArea
+          label="How was it resolved?"
+          name="resolution"
+          rows={3}
+          maxLength={2000}
+          value={note}
+          onChange={(event) => {
+            setNote(event.target.value);
+            setBlank(false);
+          }}
+          hint="What fixed it, or why it no longer needs a response. Kept with the incident and on its timeline."
+          error={fieldError}
+        />
+        <div className="flex gap-2">
+          <Button type="submit" size="sm" disabled={update.isPending}>
+            {update.isPending ? "Resolving…" : "Resolve incident"}
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={update.isPending}
+            onClick={() => {
+              setConfirming(false);
+              setBlank(false);
+            }}
+          >
+            Cancel
+          </Button>
+        </div>
+      </form>
     </Alert>
   );
 }

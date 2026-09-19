@@ -26,6 +26,8 @@ describe('incident responses', () => {
     createdAt: CREATED,
     updatedAt: UPDATED,
     resolvedAt: RESOLVED,
+    // Selected for a single incident only; a list item never carries it.
+    resolution: 'Rolled back the 12:40 deploy.',
     service: {
       id: 'service-1',
       name: 'Payment API',
@@ -106,6 +108,7 @@ describe('incident responses', () => {
       ],
     });
 
+    expect(detail.resolution).toBe('Rolled back the 12:40 deploy.');
     expect(detail.responders).toStrictEqual([
       {
         membershipId: 'm-1',

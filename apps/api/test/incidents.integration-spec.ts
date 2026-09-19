@@ -12,6 +12,7 @@ import {
   HISTORY_PREVIEW_LIMIT,
   INCIDENT_PAGE_SIZE,
   IncidentsService,
+  RESPONSE_PAGE_SIZE,
 } from './../src/incidents/incidents.service.js';
 import { leakedKeys } from './leaks.js';
 import { resolveTestDatabaseUrl } from './test-database.js';
@@ -149,6 +150,7 @@ describe('incidents (integration)', () => {
 
     return call('patch', `${organizationId}/incidents/${number}`, userId, {
       status: 'RESOLVED',
+      resolution: 'Rolled back.',
     });
   };
 
@@ -374,6 +376,7 @@ describe('incidents (integration)', () => {
       expectCode(
         await call('patch', path, fx.alice, {
           status: 'RESOLVED',
+          resolution: 'Rolled back.',
           severity: 'SEV3',
         }),
         409,
@@ -400,6 +403,7 @@ describe('incidents (integration)', () => {
       expectCode(
         await call('patch', path, fx.alice, {
           status: 'RESOLVED',
+          resolution: 'Rolled back.',
           severity: 'SEV2',
         }),
         409,
@@ -411,6 +415,7 @@ describe('incidents (integration)', () => {
 
       const resolved = await call('patch', path, fx.alice, {
         status: 'RESOLVED',
+        resolution: 'Rolled back.',
         severity: 'SEV2',
       });
 
@@ -418,11 +423,24 @@ describe('incidents (integration)', () => {
       expect(resolved.body.status).toBe('RESOLVED');
       expect(resolved.body.severity).toBe('SEV2');
       expect(Date.parse(resolved.body.resolvedAt)).not.toBeNaN();
+      expect(resolved.body.resolution).toBe('Rolled back.');
+
+      // The note is history too: the resolution's own timeline entry.
+      const timeline = await call('get', `${path}/timeline`, fx.dave);
+
+      expect(timeline.body.at(-1)).toEqual(
+        expect.objectContaining({
+          type: 'STATUS_CHANGED',
+          fromValue: 'INVESTIGATING',
+          toValue: 'RESOLVED',
+          message: 'Rolled back.',
+        }),
+      );
 
       // Resolved is terminal: nothing about it changes again.
       for (const change of [
         { title: 'Typo fixed' },
-        { status: 'RESOLVED' },
+        { status: 'RESOLVED', resolution: 'Rolled back.' },
         { teamId: fx.platformA },
       ]) {
         expectCode(
@@ -448,7 +466,7 @@ describe('incidents (integration)', () => {
         call('patch', path, fx.dave, { summary: 'Rewritten' }),
         call('patch', path, fx.dave, { severity: 'SEV3' }),
         call('patch', path, fx.dave, { status: 'INVESTIGATING' }),
-        call('patch', path, fx.dave, { status: 'RESOLVED' }),
+        call('patch', path, fx.dave, { status: 'RESOLVED', resolution: 'Rolled back.' }),
         call('patch', path, fx.dave, { teamId: fx.platformA }),
       ]) {
         expectCode(await refused, 403, 'PERMISSION_DENIED');
@@ -784,6 +802,367 @@ describe('incidents (integration)', () => {
         'INVALID_CURSOR',
       );
     });
+
+    describe('filters', () => {
+      interface Listed {
+        number: number;
+        severity: string;
+        service: { id: string };
+        team: { id: string };
+      }
+
+      /** Every page of one state under `filters`, following the cursor. */
+      const walkFiltered = async (
+        state: 'active' | 'resolved',
+        filters: string,
+      ) => {
+        const seen: Listed[] = [];
+        let cursor: string | null = null;
+        let pages = 0;
+
+        do {
+          const query: string = cursor
+            ? `state=${state}&${filters}&cursor=${encodeURIComponent(cursor)}`
+            : `state=${state}&${filters}`;
+          const response = await call(
+            'get',
+            `${fx.orgA}/incidents?${query}`,
+            fx.dave,
+          );
+
+          expect(response.status).toBe(200);
+          seen.push(...response.body.items);
+          cursor = response.body.page.cursor;
+          pages += 1;
+        } while (cursor);
+
+        return { seen, pages };
+      };
+
+      /**
+       * A second service in A, owned by Platform, and `count` incidents per
+       * state spread across both services, both teams, and every severity —
+       * so one filter alone still leaves more than a page.
+       */
+      const spread = async (count: number) => {
+        const { id: portalA } = await prisma.service.create({
+          data: {
+            organizationId: fx.orgA,
+            name: 'Customer Portal',
+            slug: 'customer-portal',
+            ownerTeamId: fx.platformA,
+          },
+          select: { id: true },
+        });
+
+        await prisma.incident.createMany({
+          data: Array.from({ length: count * 2 }, (_, index) => {
+            const resolved = index >= count;
+
+            return {
+              organizationId: fx.orgA,
+              number: index + 1,
+              title: `Incident ${index + 1}`,
+              serviceId: index % 2 === 0 ? fx.apiA : portalA,
+              teamId: index % 3 === 0 ? fx.platformA : fx.paymentsA,
+              createdById: fx.alice,
+              severity: SEVERITY_ORDER[(index * 7) % 4] as 'SEV1',
+              status: resolved
+                ? ('RESOLVED' as const)
+                : ('INVESTIGATING' as const),
+              resolvedAt: resolved ? new Date() : null,
+            };
+          }),
+        });
+
+        return portalA;
+      };
+
+      it.each(['active', 'resolved'] as const)(
+        'should page every %s incident a filter matches, in order, and nothing else',
+        async (state) => {
+          const portalA = await spread(INCIDENT_PAGE_SIZE * 2 + 10);
+          const everything = (await walkFiltered(state, 'q=Incident')).seen;
+          const cases: [string, (each: Listed) => boolean][] = [
+            [`serviceId=${fx.apiA}`, (each) => each.service.id === fx.apiA],
+            [`teamId=${fx.paymentsA}`, (each) => each.team.id === fx.paymentsA],
+            ['severity=SEV2', (each) => each.severity === 'SEV2'],
+            [
+              `severity=SEV2&serviceId=${portalA}&teamId=${fx.platformA}`,
+              (each) =>
+                each.severity === 'SEV2' &&
+                each.service.id === portalA &&
+                each.team.id === fx.platformA,
+            ],
+          ];
+
+          for (const [filters, matches] of cases) {
+            const { seen } = await walkFiltered(state, filters);
+            const expected = everything.filter(matches);
+
+            expect(expected.length).toBeGreaterThan(0);
+            // The same incidents, in the unfiltered order, each once.
+            expect(seen.map(({ number }) => number)).toEqual(
+              expected.map(({ number }) => number),
+            );
+          }
+
+          // One filter alone still spans pages, and pages to the end.
+          const byService = await walkFiltered(state, `serviceId=${fx.apiA}`);
+
+          expect(byService.pages).toBe(2);
+          expect(byService.seen).toHaveLength(INCIDENT_PAGE_SIZE + 5);
+        },
+      );
+
+      it('should search titles case-insensitively, taking % and _ literally, and find an incident by its number', async () => {
+        for (const title of [
+          'Checkout latency',
+          'Slow CHECKOUT for EU customers',
+          '100% CPU on the database',
+          'login_errors spiking',
+          'Login errors in Brazil',
+          String.raw`Path C:\ops\runbook unreadable`,
+        ]) {
+          await declare(fx.orgA, fx.alice, fx.apiA, { title });
+        }
+
+        const found = async (q: string) =>
+          (
+            await call(
+              'get',
+              `${fx.orgA}/incidents?state=active&q=${encodeURIComponent(q)}`,
+              fx.dave,
+            )
+          ).body.items
+            .map((each: { number: number }) => each.number)
+            .sort((a: number, b: number) => a - b);
+
+        expect(await found('checkout')).toEqual([1, 2]);
+        expect(await found('%')).toEqual([3]);
+        expect(await found('_')).toEqual([4]);
+        // The escape character is literal too.
+        expect(await found('\\')).toEqual([6]);
+        expect(await found('INC-5')).toEqual([5]);
+        expect(await found('inc-5')).toEqual([5]);
+        // A number matches that incident, and any title containing it.
+        expect(await found('1')).toEqual([1, 3]);
+        expect(await found('no such words')).toEqual([]);
+      });
+
+      it('should answer a service or team outside the organization with an empty page, not an error', async () => {
+        await declare(fx.orgA, fx.alice, fx.apiA);
+        await declare(fx.orgB, fx.bob, fx.apiB);
+
+        for (const filter of [
+          `serviceId=${fx.apiB}`,
+          `teamId=${fx.paymentsB}`,
+          'serviceId=0199a1b2-c3d4-7000-8000-00000000ffff',
+        ]) {
+          const response = await call(
+            'get',
+            `${fx.orgA}/incidents?state=active&${filter}`,
+            fx.alice,
+          );
+
+          expect(response.status).toBe(200);
+          expect(response.body).toEqual({
+            items: [],
+            page: { cursor: null, hasMore: false },
+          });
+        }
+      });
+
+      it.each([
+        'severity=SEV0',
+        'serviceId=payment-api',
+        'teamId=payments',
+        `q=${'x'.repeat(201)}`,
+      ])('should refuse the filter %s with 400', async (filter) => {
+        expect(
+          (
+            await call(
+              'get',
+              `${fx.orgA}/incidents?state=active&${filter}`,
+              fx.dave,
+            )
+          ).status,
+        ).toBe(400);
+      });
+    });
+  });
+
+  describe("a member's responses", () => {
+    const responses = (
+      organizationId: string,
+      membershipId: string,
+      userId: string,
+      cursor?: string,
+    ) =>
+      call(
+        'get',
+        `${organizationId}/memberships/${membershipId}/responses${
+          cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''
+        }`,
+        userId,
+      );
+
+    it('should list only the incidents a member started, most recently started first, with their own state', async () => {
+      for (let number = 1; number <= 3; number += 1) {
+        await declare(fx.orgA, fx.alice, fx.apiA, { title: `Incident ${number}` });
+      }
+
+      expect((await startAs(fx.orgA, fx.dave, 1)).status).toBe(200);
+      expect((await completeAs(fx.orgA, fx.dave, 1)).status).toBe(200);
+      expect((await startAs(fx.orgA, fx.dave, 2)).status).toBe(200);
+      // Reassigned to Platform: Dave's response stands, and Erin starts one.
+      await call('patch', `${fx.orgA}/incidents/2`, fx.alice, {
+        teamId: fx.platformA,
+      });
+      expect((await startAs(fx.orgA, fx.erin, 2)).status).toBe(200);
+      expect((await startAs(fx.orgA, fx.dave, 3)).status).toBe(200);
+
+      const dave = await responses(fx.orgA, fx.daveInA, fx.erin);
+
+      expect(dave.status).toBe(200);
+      expect(
+        dave.body.items.map(
+          (each: { incident: { number: number }; status: string }) => [
+            each.incident.number,
+            each.status,
+          ],
+        ),
+      ).toEqual([
+        [3, 'INVESTIGATING'],
+        [2, 'INVESTIGATING'],
+        [1, 'COMPLETED'],
+      ]);
+      expect(dave.body.items[2].completedAt).not.toBeNull();
+      expect(dave.body.items[0].completedAt).toBeNull();
+      // The incident as the lists give it: no responders, no resolution.
+      expect(dave.body.items[0].incident).not.toHaveProperty('responders');
+      expect(dave.body.items[0].incident).not.toHaveProperty('resolution');
+      expect(dave.body.page).toEqual({ cursor: null, hasMore: false });
+
+      const erin = await responses(fx.orgA, fx.erinInA, fx.dave);
+
+      expect(
+        erin.body.items.map(
+          (each: { incident: { number: number } }) => each.incident.number,
+        ),
+      ).toEqual([2]);
+
+      // On the responsible team, but never started: no responses at all.
+      await aMemberOn(fx.paymentsA, 'Frank');
+      const frank = await prisma.membership.findFirstOrThrow({
+        where: { organizationId: fx.orgA, user: { name: 'Frank' } },
+        select: { id: true },
+      });
+
+      expect((await responses(fx.orgA, frank.id, fx.dave)).body.items).toEqual(
+        [],
+      );
+    });
+
+    it('should page every response, most recently started first, a tie broken by id', async () => {
+      const count = RESPONSE_PAGE_SIZE * 2 + 3;
+
+      await prisma.incident.createMany({
+        data: Array.from({ length: count }, (_, index) => ({
+          organizationId: fx.orgA,
+          number: index + 1,
+          title: `Incident ${index + 1}`,
+          serviceId: fx.apiA,
+          teamId: fx.paymentsA,
+          createdById: fx.alice,
+          severity: 'SEV3' as const,
+          status: 'INVESTIGATING' as const,
+        })),
+      });
+
+      const incidents = await prisma.incident.findMany({
+        where: { organizationId: fx.orgA },
+        select: { id: true, number: true },
+      });
+
+      // Pairs of responses share a start, so the id decides between them.
+      await prisma.incidentResponder.createMany({
+        data: incidents.map(({ id, number }) => ({
+          organizationId: fx.orgA,
+          incidentId: id,
+          membershipId: fx.daveInA,
+          startedAt: new Date(
+            Date.UTC(2026, 8, 1) + Math.floor(number / 2) * 60_000,
+          ),
+        })),
+      });
+
+      const seen: { startedAt: string; incident: { number: number } }[] = [];
+      let cursor: string | undefined;
+      let pages = 0;
+
+      do {
+        const page = await responses(fx.orgA, fx.daveInA, fx.dave, cursor);
+
+        expect(page.status).toBe(200);
+        seen.push(...page.body.items);
+        cursor = page.body.page.cursor ?? undefined;
+        pages += 1;
+      } while (cursor);
+
+      expect(pages).toBe(3);
+      expect(seen).toHaveLength(count);
+      expect(new Set(seen.map((each) => each.incident.number)).size).toBe(
+        count,
+      );
+
+      const expected = await prisma.incidentResponder.findMany({
+        where: { membershipId: fx.daveInA },
+        orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
+        select: { incident: { select: { number: true } } },
+      });
+
+      expect(seen.map((each) => each.incident.number)).toEqual(
+        expected.map((each) => each.incident.number),
+      );
+    });
+
+    it('should answer a membership of another organization exactly as a missing one', async () => {
+      await declare(fx.orgB, fx.bob, fx.apiB);
+
+      const foreign = await responses(fx.orgA, fx.carolInB, fx.alice);
+      const missing = await responses(
+        fx.orgA,
+        '0199a1b2-c3d4-7000-8000-00000000ffff',
+        fx.alice,
+      );
+      const malformed = await responses(fx.orgA, 'not-a-membership', fx.alice);
+
+      expectCode(foreign, 404, 'MEMBERSHIP_NOT_FOUND');
+      expect(comparable(foreign.body)).toEqual(comparable(missing.body));
+      expect(comparable(foreign.body)).toEqual(comparable(malformed.body));
+
+      // And from the other side: A's member is not B's to read.
+      expectCode(
+        await responses(fx.orgB, fx.daveInA, fx.bob),
+        404,
+        'MEMBERSHIP_NOT_FOUND',
+      );
+    });
+
+    it('should isolate in the service itself, with no guard in front of it', async () => {
+      await declare(fx.orgA, fx.alice, fx.apiA);
+      await startAs(fx.orgA, fx.dave, 1);
+
+      const service = app.get(IncidentsService);
+
+      await expect(
+        service.memberResponses(fx.orgB, fx.daveInA, {}),
+      ).rejects.toMatchObject({ status: 404 });
+      expect(
+        (await service.memberResponses(fx.orgA, fx.daveInA, {})).items,
+      ).toHaveLength(1);
+    });
   });
 
   describe('summary', () => {
@@ -1005,7 +1384,7 @@ describe('incidents (integration)', () => {
       // B has a #2; A does not.
       for (const [method, body] of [
         ['get', undefined],
-        ['patch', { status: 'RESOLVED' }],
+        ['patch', { status: 'RESOLVED', resolution: 'Rolled back.' }],
       ] as const) {
         const foreign = await call(
           method,
@@ -1101,6 +1480,7 @@ describe('incidents (integration)', () => {
         await declare(fx.orgA, fx.alice, fx.apiA),
         await call('patch', `${fx.orgA}/incidents/1`, fx.alice, {
           status: 'RESOLVED',
+          resolution: 'Rolled back.',
         }),
       ]) {
         expectCode(response, 404, 'ORGANIZATION_NOT_FOUND');
@@ -1262,6 +1642,7 @@ describe('incidents (integration)', () => {
       const resolving = inFlight(
         call('patch', `${fx.orgA}/incidents/1`, fx.alice, {
           status: 'RESOLVED',
+          resolution: 'Rolled back.',
         }),
       );
 
@@ -1301,8 +1682,8 @@ describe('incidents (integration)', () => {
       await completeAs(fx.orgA, fx.dave, 1);
 
       const responses = await Promise.all([
-        call('patch', path, fx.alice, { status: 'RESOLVED' }),
-        call('patch', path, fx.carol, { status: 'RESOLVED' }),
+        call('patch', path, fx.alice, { status: 'RESOLVED', resolution: 'Rolled back.' }),
+        call('patch', path, fx.carol, { status: 'RESOLVED', resolution: 'Rolled back.' }),
       ]);
       const statuses = responses.map((response) => response.status).sort();
 
@@ -1607,6 +1988,7 @@ describe('incidents (integration)', () => {
 
       const refused = await call('patch', path(fx.orgA), fx.alice, {
         status: 'RESOLVED',
+        resolution: 'Rolled back.',
         title: 'Renamed',
       });
 
@@ -1622,6 +2004,7 @@ describe('incidents (integration)', () => {
         (
           await call('patch', path(fx.orgA), fx.alice, {
             status: 'RESOLVED',
+            resolution: 'Rolled back.',
           })
         ).status,
       ).toBe(200);
@@ -1679,7 +2062,7 @@ describe('incidents (integration)', () => {
       expect((await post(fx.orgA, fx.dave, 'Handing over.')).status).toBe(201);
       await completeAs(fx.orgA, fx.erin, 1);
       expectCode(
-        await call('patch', path(fx.orgA), fx.alice, { status: 'RESOLVED' }),
+        await call('patch', path(fx.orgA), fx.alice, { status: 'RESOLVED', resolution: 'Rolled back.' }),
         409,
         'RESPONDERS_STILL_INVESTIGATING',
       );
@@ -1855,6 +2238,7 @@ describe('incidents (integration)', () => {
         (
           await call('patch', `${fx.orgA}/incidents/1`, fx.alice, {
             status: 'RESOLVED',
+            resolution: 'Rolled back.',
           })
         ).status,
       ).toBe(200);
@@ -2037,6 +2421,7 @@ describe('incidents (integration)', () => {
       await completeAs(fx.orgA, fx.dave, 1);
       await call('patch', `${fx.orgA}/${incidentPath}`, fx.alice, {
         status: 'RESOLVED',
+        resolution: 'Rolled back.',
       });
 
       const timeline = await timelineOf(fx.orgA, fx.dave);

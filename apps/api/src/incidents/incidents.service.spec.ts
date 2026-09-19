@@ -9,7 +9,9 @@ import { IncidentsErrorCode } from './incidents.errors.js';
 import {
   decodeActiveCursor,
   decodeResolvedCursor,
+  decodeResponseCursor,
   encodeActiveCursor,
+  encodeResponseCursor,
   INCIDENT_PAGE_SIZE,
   IncidentsService,
 } from './incidents.service.js';
@@ -22,6 +24,8 @@ const OTHER_TEAM = '0199a1b2-c3d4-7000-8000-0000000000c2';
 const SERVICE = '0199a1b2-c3d4-7000-8000-0000000000d1';
 const CREATED = new Date('2026-09-18T12:00:00.000Z');
 const ACTOR = { membershipId: MEMBERSHIP };
+/** A resolution, with the note every one requires. */
+const RESOLVE = { status: 'RESOLVED', resolution: 'Rolled back.' } as const;
 const MEMBER_ACTOR = { membershipId: MEMBERSHIP, role: 'MEMBER' as const };
 const ADMIN_ACTOR = { membershipId: MEMBERSHIP, role: 'ADMIN' as const };
 
@@ -339,7 +343,7 @@ describe('IncidentsService', () => {
       await service.update(
         ORG,
         '1',
-        { severity: 'SEV2', status: 'RESOLVED' },
+        { severity: 'SEV2', status: 'RESOLVED', resolution: 'Rolled back.' },
         ACTOR,
       );
 
@@ -361,10 +365,48 @@ describe('IncidentsService', () => {
             type: 'STATUS_CHANGED',
             fromValue: 'INVESTIGATING',
             toValue: 'RESOLVED',
+            // The resolution's entry carries the note.
+            message: 'Rolled back.',
             createdAt: expect.any(Date),
           },
         ],
       });
+    });
+
+    it('should write the resolution note with resolvedAt, in the same write', async () => {
+      const { service, prisma } = serviceWith();
+
+      await service.update(
+        ORG,
+        '1',
+        { status: 'RESOLVED', resolution: 'Rolled back.' },
+        ACTOR,
+      );
+
+      expect(prisma.incident.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            status: 'RESOLVED',
+            resolvedAt: expect.any(Date),
+            resolution: 'Rolled back.',
+          }),
+        }),
+      );
+    });
+
+    it('should write no resolution on a change that does not resolve', async () => {
+      const { service, prisma } = serviceWith();
+
+      await service.update(ORG, '1', { severity: 'SEV2' }, ACTOR);
+
+      expect(prisma.incident.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            resolvedAt: undefined,
+            resolution: undefined,
+          }),
+        }),
+      );
     });
 
     it('should record nothing, and look no actor up, when nothing recorded changes', async () => {
@@ -385,7 +427,7 @@ describe('IncidentsService', () => {
       const { service, prisma } = serviceWith();
 
       await service.update(ORG, '1', { severity: 'SEV2' }, ACTOR);
-      await service.update(ORG, '1', { status: 'RESOLVED' }, ACTOR);
+      await service.update(ORG, '1', RESOLVE, ACTOR);
 
       expect(
         prisma.incident.update.mock.calls[0][0].data.resolvedAt,
@@ -398,7 +440,7 @@ describe('IncidentsService', () => {
     it('should count investigating responders under the row lock before resolving', async () => {
       const { service, prisma } = serviceWith();
 
-      await service.update(ORG, '1', { status: 'RESOLVED' }, ACTOR);
+      await service.update(ORG, '1', RESOLVE, ACTOR);
 
       expect(prisma.incidentResponder.count).toHaveBeenCalledWith({
         where: {
@@ -422,7 +464,7 @@ describe('IncidentsService', () => {
         service.update(
           ORG,
           '1',
-          { status: 'RESOLVED', severity: 'SEV2', teamId: OTHER_TEAM },
+          { ...RESOLVE, severity: 'SEV2', teamId: OTHER_TEAM },
           ACTOR,
         ),
         409,
@@ -451,7 +493,7 @@ describe('IncidentsService', () => {
         service.update(
           ORG,
           '1',
-          { status: 'RESOLVED', severity: 'SEV2', teamId: OTHER_TEAM },
+          { ...RESOLVE, severity: 'SEV2', teamId: OTHER_TEAM },
           ACTOR,
         ),
         409,
@@ -562,7 +604,7 @@ describe('IncidentsService', () => {
         .mockResolvedValueOnce({ status: 'RESOLVED' });
 
       await expectCode(
-        service.update(ORG, '1', { status: 'RESOLVED' }, ACTOR),
+        service.update(ORG, '1', RESOLVE, ACTOR),
         409,
         IncidentsErrorCode.INCIDENT_RESOLVED,
       );
@@ -576,7 +618,7 @@ describe('IncidentsService', () => {
         .mockResolvedValueOnce(null);
 
       await expectCode(
-        service.update(ORG, '1', { status: 'RESOLVED' }, ACTOR),
+        service.update(ORG, '1', RESOLVE, ACTOR),
         404,
         IncidentsErrorCode.INCIDENT_NOT_FOUND,
       );
@@ -1133,6 +1175,28 @@ describe('IncidentsService', () => {
         decodeActiveCursor(encodeActiveCursor({ severity: 'SEV3', number: 9 })),
       ).toEqual({ severity: 'SEV3', number: 9 });
       expect(decodeResolvedCursor('9')).toBe(9);
+
+      const response = {
+        startedAt: new Date('2026-09-18T12:05:00.000Z'),
+        id: '0199a1b2-c3d4-7000-8000-0000000000f1',
+      };
+
+      expect(decodeResponseCursor(encodeResponseCursor(response))).toEqual(
+        response,
+      );
+    });
+
+    it.each([
+      '2026-09-18T12:05:00.000Z',
+      '2026-09-18T12:05:00.000Z~not-an-id',
+      'yesterday~0199a1b2-c3d4-7000-8000-0000000000f1',
+      // A date in another form than the one the server writes.
+      '2026-09-18~0199a1b2-c3d4-7000-8000-0000000000f1',
+      '2026-09-18T12:05:00.000Z~0199a1b2-c3d4-7000-8000-0000000000f1~x',
+    ])("should refuse the response cursor %j with 400 INVALID_CURSOR", (cursor) => {
+      expect(() => decodeResponseCursor(cursor)).toThrow(
+        expect.objectContaining({ status: 400 }),
+      );
     });
   });
 });
