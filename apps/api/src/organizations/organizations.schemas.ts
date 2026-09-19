@@ -1,6 +1,12 @@
 import { z } from 'zod';
 
-import { organizationNameSchema } from '../auth/auth.schemas.js';
+import {
+  emailSchema,
+  organizationNameSchema,
+  passwordSchema,
+  personNameSchema,
+} from '../auth/auth.schemas.js';
+import { Role } from '../generated/prisma/enums.js';
 
 /**
  * Request schemas for organization-scoped writes.
@@ -19,3 +25,18 @@ export const updateOrganizationSchema = z.strictObject({
 export type UpdateOrganizationRequest = z.infer<
   typeof updateOrganizationSchema
 >;
+
+/**
+ * Adding a person to the organization: who they are, the role they hold, and
+ * a one-time password the admin hands them. The same rules as registration's
+ * — a normalised email, a person's name, a password of at least 12 characters
+ * — because this creates an account just as registration does.
+ */
+export const createMemberSchema = z.strictObject({
+  name: personNameSchema,
+  email: emailSchema,
+  role: z.enum([Role.ADMIN, Role.MEMBER]),
+  temporaryPassword: passwordSchema,
+});
+
+export type CreateMemberRequest = z.infer<typeof createMemberSchema>;

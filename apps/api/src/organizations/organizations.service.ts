@@ -1,8 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 
 import type { OrganizationResponse } from '../auth/auth.contract.js';
+import { emailAlreadyRegistered } from '../auth/auth.errors.js';
 import { toOrganizationResponse } from '../auth/auth.responses.js';
+import { PasswordService } from '../auth/password.service.js';
 import { PrismaService } from '../database/prisma.service.js';
+import { uniqueViolationHint } from '../database/unique-violation.js';
 import { Prisma } from '../generated/prisma/client.js';
 import type { Role } from '../generated/prisma/enums.js';
 import { organizationNotFound } from '../tenancy/tenancy.errors.js';
@@ -16,7 +19,10 @@ import {
   toOrganizationDetailResponse,
   toOrganizationMembershipResponse,
 } from './organizations.responses.js';
-import type { UpdateOrganizationRequest } from './organizations.schemas.js';
+import type {
+  CreateMemberRequest,
+  UpdateOrganizationRequest,
+} from './organizations.schemas.js';
 
 /**
  * Prisma's answer to an update whose where matched no row: here, an
@@ -43,11 +49,13 @@ const membershipSelection = {
   id: true,
   role: true,
   createdAt: true,
-  user: { select: { id: true, name: true, email: true } },
+  user: {
+    select: { id: true, name: true, email: true, passwordChangeRequired: true },
+  },
 } as const;
 
 /**
- * Organization-scoped reads.
+ * Organization-scoped reads, and adding a member.
  *
  * Resource isolation lives here, and does not rely on admission. Every method
  * takes the organization id as an explicit argument — never from the request
@@ -57,7 +65,12 @@ const membershipSelection = {
  */
 @Injectable()
 export class OrganizationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(OrganizationsService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly passwords: PasswordService,
+  ) {}
 
   /**
    * The organization, with the caller's own grant alongside it.
@@ -173,6 +186,82 @@ export class OrganizationsService {
     if (!membership) {
       throw membershipNotFound();
     }
+
+    return toOrganizationMembershipResponse(membership);
+  }
+
+  /**
+   * Adds a person to the organization: creates their account with the
+   * one-time password an admin chose, and the membership that places them
+   * here, in one transaction — an account with no membership could do
+   * nothing, so either both exist or neither does.
+   *
+   * The account is marked `passwordChangeRequired`: it can sign in, but
+   * admission refuses it everywhere until the person chooses their own
+   * password. Nobody but them ever knows the password they end up with.
+   *
+   * An address that already has an account is refused with 409, even when
+   * that account belongs to another organization. Attaching an existing
+   * account would let one tenant pull someone in without their consent, and
+   * nothing that exists in this product needs it. The unique index decides,
+   * not a check made first, so two admins adding one address cannot both win.
+   *
+   * The password is hashed before the transaction opens, as registration
+   * does, so a connection is not held across the slow part.
+   */
+  async createMember(
+    organizationId: string,
+    input: CreateMemberRequest,
+  ): Promise<OrganizationMembershipResponse> {
+    const passwordHash = await this.passwords.hash(input.temporaryPassword);
+
+    let membership;
+
+    try {
+      membership = await this.prisma.$transaction(async (tx) => {
+        // Soft deletion could land between admission and this write. The
+        // answer then is the one admission would have given.
+        const organization = await tx.organization.findFirst({
+          where: { id: organizationId, deletedAt: null },
+          select: { id: true },
+        });
+
+        if (!organization) {
+          throw organizationNotFound();
+        }
+
+        const user = await tx.user.create({
+          data: {
+            email: input.email,
+            name: input.name,
+            passwordHash,
+            passwordChangeRequired: true,
+          },
+          select: { id: true },
+        });
+
+        return tx.membership.create({
+          data: { organizationId, userId: user.id, role: input.role },
+          select: membershipSelection,
+        });
+      });
+    } catch (error) {
+      const hint = uniqueViolationHint(error);
+
+      if (hint?.includes('email')) {
+        throw emailAlreadyRegistered();
+      }
+
+      throw error;
+    }
+
+    // Ids and the role only: never the email, and never the password.
+    this.logger.log('Added a member with a one-time password', {
+      organizationId,
+      membershipId: membership.id,
+      userId: membership.user.id,
+      role: membership.role,
+    });
 
     return toOrganizationMembershipResponse(membership);
   }

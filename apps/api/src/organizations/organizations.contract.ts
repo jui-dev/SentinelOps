@@ -37,6 +37,12 @@ export interface MemberUserResponse {
   id: string;
   name: string;
   email: string;
+  /**
+   * True until the person replaces the one-time password an admin gave them.
+   * Tells the organization who has not signed in yet; says nothing about the
+   * password itself.
+   */
+  passwordChangeRequired: boolean;
 }
 
 /**

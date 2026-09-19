@@ -32,6 +32,7 @@ interface MembershipRow {
     id: string;
     name: string;
     email: string;
+    passwordChangeRequired: boolean;
   };
 }
 
@@ -58,5 +59,6 @@ export const toOrganizationMembershipResponse = (
     id: membership.user.id,
     name: membership.user.name,
     email: membership.user.email,
+    passwordChangeRequired: membership.user.passwordChangeRequired,
   },
 });

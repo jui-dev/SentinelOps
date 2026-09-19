@@ -14,6 +14,8 @@ export const Permission = {
   ORGANIZATION_READ: 'organization:read',
   ORGANIZATION_UPDATE: 'organization:update',
   MEMBERSHIPS_READ: 'memberships:read',
+  /** Add a person to the organization, with a one-time password. */
+  MEMBERS_MANAGE: 'members:manage',
   INVITATIONS_READ: 'invitations:read',
   INVITATIONS_MANAGE: 'invitations:manage',
   TEAMS_READ: 'teams:read',

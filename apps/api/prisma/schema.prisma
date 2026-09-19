@@ -133,6 +133,12 @@ model User {
   ///
   /// Never selected except by the login lookup, and never mapped into a response.
   passwordHash String? @map("password_hash")
+  /// True while the password is one somebody else chose: an admin who added
+  /// this person to an organization set a one-time password and handed it
+  /// over. Until they choose their own, the account may sign in and change it,
+  /// and nothing else — organization admission refuses it. Cleared by the
+  /// password change; false for every account that chose its own password.
+  passwordChangeRequired Boolean @default(false) @map("password_change_required")
 
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)

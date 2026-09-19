@@ -36,6 +36,7 @@ describe('organization response mappers', () => {
             'incidents:read',
             'invitations:manage',
             'invitations:read',
+            'members:manage',
             'memberships:read',
             'organization:read',
             'organization:update',
@@ -84,6 +85,7 @@ describe('organization response mappers', () => {
           name: 'Ada Lovelace',
           email: 'ada@example.com',
           passwordHash: '$argon2id$secret',
+          passwordChangeRequired: true,
           deletedAt: null,
           memberships: [{ organizationId: 'org-2' }],
         },
@@ -97,6 +99,7 @@ describe('organization response mappers', () => {
           id: 'user-1',
           name: 'Ada Lovelace',
           email: 'ada@example.com',
+          passwordChangeRequired: true,
         },
       });
     });

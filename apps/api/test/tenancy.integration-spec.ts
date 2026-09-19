@@ -198,6 +198,7 @@ describe('tenancy (integration)', () => {
             'incidents:read',
             'invitations:manage',
             'invitations:read',
+            'members:manage',
             'memberships:read',
             'organization:read',
             'organization:update',
@@ -326,6 +327,7 @@ describe('tenancy (integration)', () => {
           id: fx.carol.id,
           name: 'Carol Chen',
           email: 'carol@both.example',
+          passwordChangeRequired: false,
         },
       });
     });
@@ -358,6 +360,7 @@ describe('tenancy (integration)', () => {
         'email',
         'id',
         'name',
+        'passwordChangeRequired',
       ]);
     });
 

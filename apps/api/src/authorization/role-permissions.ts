@@ -12,7 +12,8 @@ import { Permission } from './permissions.js';
  * Keyed by `Role`, so adding an enum value without deciding what it may do is
  * a compile error rather than a role that silently holds nothing.
  *
- * Configuration — teams, services, invitations — is governed by ADMIN. Incident response is everyone's work: a MEMBER holds
+ * Configuration — members, teams, services, invitations — is governed by
+ * ADMIN. Incident response is everyone's work: a MEMBER holds
  * `incidents:manage`, because the engineer who notices a failure must be able
  * to declare it and move it to resolution without finding an admin first.
  * It remains a distinct permission so a later, narrower role (a read-only
@@ -24,6 +25,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, ReadonlySet<Permission>>> =
       Permission.ORGANIZATION_READ,
       Permission.ORGANIZATION_UPDATE,
       Permission.MEMBERSHIPS_READ,
+      Permission.MEMBERS_MANAGE,
       Permission.INVITATIONS_READ,
       Permission.INVITATIONS_MANAGE,
       Permission.TEAMS_READ,

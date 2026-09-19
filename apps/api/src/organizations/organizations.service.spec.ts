@@ -1,4 +1,7 @@
-import { NotFoundException } from '@nestjs/common';
+import { ConflictException, Logger, NotFoundException } from '@nestjs/common';
+
+import { AuthErrorCode } from '../auth/auth.errors.js';
+import type { PasswordService } from '../auth/password.service.js';
 
 import type { PrismaService } from '../database/prisma.service.js';
 import { Prisma } from '../generated/prisma/client.js';
@@ -25,17 +28,37 @@ const membershipRow = {
     id: '0199a1b2-c3d4-7000-8000-000000000001',
     name: 'Ada Lovelace',
     email: 'ada@example.com',
+    passwordChangeRequired: false,
   },
 };
 
+const knownError = (code: string, index?: string) =>
+  new Prisma.PrismaClientKnownRequestError(code, {
+    code,
+    clientVersion: 'test',
+    meta: index
+      ? { driverAdapterError: { cause: { constraint: { index } } } }
+      : undefined,
+  });
+
+/** One mock client, used both directly and as the transaction client. */
 const serviceWith = () => {
   const prisma = {
     organization: { findFirst: vi.fn(), update: vi.fn() },
-    membership: { findFirst: vi.fn(), findMany: vi.fn() },
+    user: { create: vi.fn() },
+    membership: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn() },
+    $transaction: vi.fn(),
   };
-  const service = new OrganizationsService(prisma as unknown as PrismaService);
+  prisma.$transaction.mockImplementation((work: (tx: unknown) => unknown) =>
+    work(prisma),
+  );
+  const passwords = { hash: vi.fn().mockResolvedValue('$argon2id$hashed') };
+  const service = new OrganizationsService(
+    prisma as unknown as PrismaService,
+    passwords as unknown as PasswordService,
+  );
 
-  return { service, prisma };
+  return { service, prisma, passwords };
 };
 
 const errorOf = (promise: Promise<unknown>): Promise<NotFoundException> =>
@@ -85,6 +108,7 @@ describe('OrganizationsService', () => {
             'incidents:read',
             'invitations:manage',
             'invitations:read',
+            'members:manage',
             'memberships:read',
             'organization:read',
             'organization:update',
@@ -227,7 +251,14 @@ describe('OrganizationsService', () => {
         id: true,
         role: true,
         createdAt: true,
-        user: { select: { id: true, name: true, email: true } },
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            passwordChangeRequired: true,
+          },
+        },
       });
     });
 
@@ -289,5 +320,148 @@ describe('OrganizationsService', () => {
         expect(prisma.membership.findFirst).not.toHaveBeenCalled();
       },
     );
+  });
+
+  describe('createMember', () => {
+    const input = {
+      name: 'Grace Hopper',
+      email: 'grace@example.com',
+      role: 'MEMBER' as const,
+      temporaryPassword: 'one-time-password-123',
+    };
+
+    const newMembershipRow = {
+      id: MEMBERSHIP_ID,
+      role: 'MEMBER',
+      createdAt: CREATED,
+      user: {
+        id: '0199a1b2-c3d4-7000-8000-000000000002',
+        name: 'Grace Hopper',
+        email: 'grace@example.com',
+        passwordChangeRequired: true,
+      },
+    };
+
+    const ready = () => {
+      const context = serviceWith();
+      context.prisma.organization.findFirst.mockResolvedValue({ id: ORG_A });
+      context.prisma.user.create.mockResolvedValue({
+        id: newMembershipRow.user.id,
+      });
+      context.prisma.membership.create.mockResolvedValue(newMembershipRow);
+
+      return context;
+    };
+
+    it('should hash the one-time password before the transaction opens', async () => {
+      const { service, prisma, passwords } = ready();
+
+      await service.createMember(ORG_A, input);
+
+      expect(passwords.hash).toHaveBeenCalledExactlyOnceWith(
+        input.temporaryPassword,
+      );
+      expect(passwords.hash.mock.invocationCallOrder[0]).toBeLessThan(
+        prisma.$transaction.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('should create the account flagged for a password change, and never store the plain password', async () => {
+      const { service, prisma } = ready();
+
+      await service.createMember(ORG_A, input);
+
+      expect(prisma.user.create).toHaveBeenCalledExactlyOnceWith({
+        data: {
+          email: 'grace@example.com',
+          name: 'Grace Hopper',
+          passwordHash: '$argon2id$hashed',
+          passwordChangeRequired: true,
+        },
+        select: { id: true },
+      });
+      expect(JSON.stringify(prisma.user.create.mock.calls)).not.toContain(
+        input.temporaryPassword,
+      );
+    });
+
+    it('should place the account in the admitted organization with the requested role', async () => {
+      const { service, prisma } = ready();
+
+      await service.createMember(ORG_A, { ...input, role: 'ADMIN' });
+
+      expect(prisma.membership.create).toHaveBeenCalledExactlyOnceWith({
+        data: {
+          organizationId: ORG_A,
+          userId: newMembershipRow.user.id,
+          role: 'ADMIN',
+        },
+        select: expect.any(Object),
+      });
+    });
+
+    it('should answer with the membership as the list shows one, and no password', async () => {
+      const { service } = ready();
+
+      const response = await service.createMember(ORG_A, input);
+
+      expect(response).toEqual({
+        id: MEMBERSHIP_ID,
+        role: 'MEMBER',
+        createdAt: '2026-09-01T12:00:00.000Z',
+        user: newMembershipRow.user,
+      });
+      expect(JSON.stringify(response)).not.toContain(input.temporaryPassword);
+    });
+
+    it('should answer the admission 404 and create nothing when the organization vanished after admission', async () => {
+      const { service, prisma } = ready();
+      prisma.organization.findFirst.mockResolvedValue(null);
+
+      const error = await errorOf(service.createMember(ORG_A, input));
+
+      expect(error.errorCode).toBe(TenancyErrorCode.ORGANIZATION_NOT_FOUND);
+      expect(prisma.user.create).not.toHaveBeenCalled();
+      expect(prisma.membership.create).not.toHaveBeenCalled();
+    });
+
+    it('should answer 409 EMAIL_ALREADY_REGISTERED when the email already has an account', async () => {
+      const { service, prisma } = ready();
+      prisma.user.create.mockRejectedValue(
+        knownError('P2002', 'users_email_key'),
+      );
+
+      const error = await service
+        .createMember(ORG_A, input)
+        .catch((caught: ConflictException) => caught);
+
+      expect(error).toBeInstanceOf(ConflictException);
+      expect((error as ConflictException).errorCode).toBe(
+        AuthErrorCode.EMAIL_ALREADY_REGISTERED,
+      );
+      expect(prisma.membership.create).not.toHaveBeenCalled();
+    });
+
+    it('should rethrow anything that is not an email conflict', async () => {
+      const { service, prisma } = ready();
+      const fault = new Error('connection lost');
+      prisma.membership.create.mockRejectedValue(fault);
+
+      await expect(service.createMember(ORG_A, input)).rejects.toBe(fault);
+    });
+
+    it('should never log the password or the email', async () => {
+      const log = vi
+        .spyOn(Logger.prototype, 'log')
+        .mockImplementation(() => {});
+      const { service } = ready();
+
+      await service.createMember(ORG_A, input);
+
+      const logged = JSON.stringify(log.mock.calls);
+      expect(logged).not.toContain(input.temporaryPassword);
+      expect(logged).not.toContain(input.email);
+      log.mockRestore();
+    });
   });
 });

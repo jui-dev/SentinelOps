@@ -18,6 +18,7 @@ const EXPECTED: Record<Role, Record<Permission, boolean>> = {
     'organization:read': true,
     'organization:update': true,
     'memberships:read': true,
+    'members:manage': true,
     'invitations:read': true,
     'invitations:manage': true,
     'teams:read': true,
@@ -31,6 +32,7 @@ const EXPECTED: Record<Role, Record<Permission, boolean>> = {
     'organization:read': true,
     'organization:update': false,
     'memberships:read': true,
+    'members:manage': false,
     'invitations:read': false,
     'invitations:manage': false,
     'teams:read': true,
@@ -60,6 +62,11 @@ describe('role permissions', () => {
 
   it('should not let a member rename the organization', () => {
     expect(hasPermission('MEMBER', Permission.ORGANIZATION_UPDATE)).toBe(false);
+  });
+
+  it('should not let a member add people to the organization', () => {
+    expect(hasPermission('MEMBER', Permission.MEMBERS_MANAGE)).toBe(false);
+    expect(hasPermission('ADMIN', Permission.MEMBERS_MANAGE)).toBe(true);
   });
 
   it('should not let a member see or manage invitations', () => {

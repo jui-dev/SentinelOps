@@ -1,4 +1,4 @@
-import { Body, Get, Param, Patch } from '@nestjs/common';
+import { Body, Get, Param, Patch, Post } from '@nestjs/common';
 
 import type { OrganizationResponse } from '../auth/auth.contract.js';
 import { Permission } from '../authorization/permissions.js';
@@ -10,8 +10,14 @@ import type {
   OrganizationDetailResponse,
   OrganizationMembershipResponse,
 } from './organizations.contract.js';
-import { updateOrganizationSchema } from './organizations.schemas.js';
-import type { UpdateOrganizationRequest } from './organizations.schemas.js';
+import {
+  createMemberSchema,
+  updateOrganizationSchema,
+} from './organizations.schemas.js';
+import type {
+  CreateMemberRequest,
+  UpdateOrganizationRequest,
+} from './organizations.schemas.js';
 import { OrganizationsService } from './organizations.service.js';
 
 /**
@@ -22,7 +28,7 @@ import { OrganizationsService } from './organizations.service.js';
  * `@RequirePermission()` authorizes it (the caller's role holds what the
  * handler needs); and the service isolates it, scoping every query by the
  * organization id the handler passes explicitly. Every member may read;
- * renaming needs `organization:update`.
+ * renaming needs `organization:update`, and adding a member `members:manage`.
  */
 @OrganizationController()
 export class OrganizationsController {
@@ -67,6 +73,21 @@ export class OrganizationsController {
     @CurrentMembership() membership: OrganizationContext,
   ): Promise<OrganizationMembershipResponse[]> {
     return this.organizations.listMemberships(membership.organizationId);
+  }
+
+  /**
+   * Adds a person: creates their account with a one-time password, and their
+   * membership here. They must choose their own password before they can do
+   * anything else. 201, with the new membership as the list shows one; the
+   * password is never echoed.
+   */
+  @Post('memberships')
+  @RequirePermission(Permission.MEMBERS_MANAGE)
+  createMember(
+    @CurrentMembership() membership: OrganizationContext,
+    @Body({ schema: createMemberSchema }) body: CreateMemberRequest,
+  ): Promise<OrganizationMembershipResponse> {
+    return this.organizations.createMember(membership.organizationId, body);
   }
 
   /**

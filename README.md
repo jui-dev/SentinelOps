@@ -28,6 +28,8 @@ deliberately, and this README is updated as capabilities actually land.
   that enforce tenant isolation
 - Authorization: per-route permissions within an organization, mapped from the member's
   role, proven by a rename route that members may not use
+- Members: an `ADMIN` adds a person with a one-time password, which they must replace
+  at first sign-in. See [Adding a member](#adding-a-member)
 - Invitations: an `ADMIN` invites an email address as `ADMIN` or `MEMBER`
   and shares a single-use link; the invitee creates an account or signs in, and joins.
   See [Invitations](#invitations)
@@ -1041,6 +1043,7 @@ put slugs in its own URLs.
 | `PATCH /api/v1/organizations/:organizationId` | Rename the organization: `{ "name": "…" }`, nothing else | `organization:update` |
 | `GET /api/v1/organizations/:organizationId/memberships` | Every membership record, oldest first | `memberships:read` |
 | `GET /api/v1/organizations/:organizationId/memberships/:membershipId` | One membership record | `memberships:read` |
+| `POST /api/v1/organizations/:organizationId/memberships` | Add a person with a one-time password: `{ "name", "email", "role", "temporaryPassword" }` — see [Adding a member](#adding-a-member) | `members:manage` |
 | `POST /api/v1/organizations/:organizationId/invitations` | Invite an email address: `{ "email", "role" }` | `invitations:manage` |
 | `GET /api/v1/organizations/:organizationId/invitations` | Every open invitation, newest first | `invitations:read` |
 | `DELETE /api/v1/organizations/:organizationId/invitations/:invitationId` | Revoke an open invitation | `invitations:manage` |
@@ -1049,8 +1052,8 @@ put slugs in its own URLs.
 | `/api/v1/organizations/:organizationId/incidents…` | Incidents — see [Incidents](#incidents) | `incidents:read` / `incidents:manage` |
 
 All require authentication, a current membership, and the listed permission — every role
-may read the organization and its memberships; only an `ADMIN` may rename it or
-see and manage its invitations (see [Authorization](#authorization) and
+may read the organization and its memberships; only an `ADMIN` may rename it, add
+members, or see and manage its invitations (see [Authorization](#authorization) and
 [Invitations](#invitations)). The
 organization read carries the caller's grant as
 `membership: { id, role, permissions }` — see
@@ -1058,8 +1061,36 @@ organization read carries the caller's grant as
 rename returns the organization without the caller's membership, and leaves the slug
 alone. The resource is named `memberships`, not `members`,
 because each item *is* a membership: its `id` is the membership's id, and it carries the
-role and the date the grant was made, with the user nested inside as `{ id, name, email }`.
-A member's other organizations are never included.
+role and the date the grant was made, with the user nested inside as
+`{ id, name, email, passwordChangeRequired }`. A member's other organizations are never
+included.
+
+### Adding a member
+
+An `ADMIN` adds a person directly: their name, email, role, and a one-time password the
+admin chooses and hands over however they like. There is no email delivery, and none is
+needed.
+
+```jsonc
+POST /api/v1/organizations/:organizationId/memberships
+{
+  "name": "Grace Hopper",
+  "email": "grace@example.com",
+  "role": "MEMBER",                       // or "ADMIN"
+  "temporaryPassword": "at least 12 characters"
+}
+```
+
+One transaction creates the `User` and the `Membership`, so neither exists without the
+other. The password is hashed with Argon2id exactly as registration hashes one, and is
+never logged or echoed: the `201` carries the new membership as the list shows one. The
+account is marked `passwordChangeRequired` — the one-time password signs them in, and they
+must then choose their own.
+
+An address that already has an account is refused with `409 EMAIL_ALREADY_REGISTERED`,
+even when that account belongs to another organization: attaching an existing account
+would let one tenant pull someone in without their consent. The unique index decides, not
+a check made first, so two admins adding one address cannot both succeed.
 
 ### Admission is not isolation
 
@@ -1198,6 +1229,7 @@ Which roles hold which permission is written out once, in
 | `organization:read` | ✓ | ✓ |
 | `organization:update` | ✓ | |
 | `memberships:read` | ✓ | ✓ |
+| `members:manage` | ✓ | |
 | `invitations:read` | ✓ | |
 | `invitations:manage` | ✓ | |
 | `teams:read` | ✓ | ✓ |
