@@ -11,6 +11,11 @@ export interface UserResponse {
   email: string;
   name: string;
   createdAt: string;
+  /**
+   * True while the account is on a one-time password an admin chose. The API
+   * refuses every organization route until it is replaced.
+   */
+  passwordChangeRequired: boolean;
 }
 
 export interface OrganizationResponse {
@@ -68,7 +73,23 @@ export interface OrganizationMembershipResponse {
     id: string;
     name: string;
     email: string;
+    /** True until they replace the one-time password they were given. */
+    passwordChangeRequired: boolean;
   };
+}
+
+/** `POST /organizations/:organizationId/memberships`. */
+export interface CreateMemberRequest {
+  name: string;
+  email: string;
+  role: "ADMIN" | "MEMBER";
+  temporaryPassword: string;
+}
+
+/** `POST /auth/password`. */
+export interface ChangePasswordRequest {
+  currentPassword: string;
+  newPassword: string;
 }
 
 export interface RegisterRequest {
@@ -394,6 +415,7 @@ export const Permission = {
   ORGANIZATION_READ: "organization:read",
   ORGANIZATION_UPDATE: "organization:update",
   MEMBERSHIPS_READ: "memberships:read",
+  MEMBERS_MANAGE: "members:manage",
   INVITATIONS_READ: "invitations:read",
   INVITATIONS_MANAGE: "invitations:manage",
   TEAMS_READ: "teams:read",
@@ -413,6 +435,9 @@ export const ApiErrorCode = {
   REFRESH_TOKEN_EXPIRED: "REFRESH_TOKEN_EXPIRED",
   REFRESH_TOKEN_REUSED: "REFRESH_TOKEN_REUSED",
   UNAUTHENTICATED: "UNAUTHENTICATED",
+  INVALID_CURRENT_PASSWORD: "INVALID_CURRENT_PASSWORD",
+  PASSWORD_UNCHANGED: "PASSWORD_UNCHANGED",
+  PASSWORD_CHANGE_REQUIRED: "PASSWORD_CHANGE_REQUIRED",
   ORGANIZATION_NOT_FOUND: "ORGANIZATION_NOT_FOUND",
   MEMBERSHIP_NOT_FOUND: "MEMBERSHIP_NOT_FOUND",
   PERMISSION_DENIED: "PERMISSION_DENIED",

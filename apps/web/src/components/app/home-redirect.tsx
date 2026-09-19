@@ -10,9 +10,10 @@ import { useCurrentUser, useSession } from "@/lib/auth/session-provider";
 import { SessionUnavailable } from "./session-unavailable";
 
 /**
- * `/` has no content of its own. It sends a signed-out visitor to log in, a
- * member of exactly one organization straight into it, and anyone else to
- * the organization picker.
+ * `/` has no content of its own. It sends a signed-out visitor to log in,
+ * someone on a one-time password to choose their own, a member of exactly
+ * one organization straight into it, and anyone else to the organization
+ * picker.
  */
 export function HomeRedirect() {
   const router = useRouter();
@@ -23,7 +24,9 @@ export function HomeRedirect() {
     status === "unauthenticated"
       ? "/login"
       : me.data
-        ? me.data.memberships.length === 1
+        ? me.data.passwordChangeRequired
+          ? "/change-password"
+          : me.data.memberships.length === 1
           ? `/orgs/${encodeURIComponent(me.data.memberships[0].organization.slug)}`
           : "/orgs"
         : null;

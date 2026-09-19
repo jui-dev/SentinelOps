@@ -1,7 +1,14 @@
-import { authenticatedRequest, publicRequest, sessionRequest } from "./client";
+import {
+  authenticatedRequest,
+  authenticatedSessionRequest,
+  publicRequest,
+  sessionRequest,
+} from "./client";
 import type {
   AuthenticatedResponse,
+  ChangePasswordRequest,
   CreateInvitationRequest,
+  CreateMemberRequest,
   CreateServiceRequest,
   CreateTeamRequest,
   CreatedInvitationResponse,
@@ -67,6 +74,13 @@ export const logout = () =>
 export const getCurrentUser = () =>
   authenticatedRequest<CurrentUserResponse>("/auth/me");
 
+/** Answers with a new session: the response replaces the refresh cookie. */
+export const changePassword = (body: ChangePasswordRequest) =>
+  authenticatedSessionRequest<AuthenticatedResponse>("/auth/password", {
+    method: "POST",
+    body,
+  });
+
 const organizationPath = (organizationId: string) =>
   `/organizations/${encodeURIComponent(organizationId)}`;
 
@@ -87,6 +101,16 @@ export const updateOrganization = (
 export const listMemberships = (organizationId: string) =>
   authenticatedRequest<OrganizationMembershipResponse[]>(
     `${organizationPath(organizationId)}/memberships`,
+  );
+
+/** Adds a person with a one-time password; answers with their membership. */
+export const createMember = (
+  organizationId: string,
+  body: CreateMemberRequest,
+) =>
+  authenticatedRequest<OrganizationMembershipResponse>(
+    `${organizationPath(organizationId)}/memberships`,
+    { method: "POST", body },
   );
 
 const invitationsPath = (organizationId: string) =>

@@ -3,6 +3,7 @@
 import { PageBody, PageHeader, Section } from "@/components/ui/page";
 import { Permission } from "@/lib/api/contracts";
 
+import { AddMemberForm } from "./add-member-form";
 import { InviteMemberForm } from "./invite-member-form";
 import { MembershipList, useMemberships } from "./membership-list";
 import { OpenInvitationList } from "./open-invitation-list";
@@ -22,10 +23,11 @@ export function MembersView() {
         width="list"
         title="Members"
         meta={memberships.data?.length}
-        description="Everyone with access to this organization. A person's role decides what they can change."
+        description="Everyone with access to this organization. Admins set it up — its members, teams, and services; members do the operational work."
       />
       <PageBody width="list">
         <MembershipList />
+        <AddMemberForm />
         {(canInvite || canSeeInvitations) && (
           <Section
             id="invitations"

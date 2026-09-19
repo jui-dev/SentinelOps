@@ -12,6 +12,7 @@ import {
 import type { ReactNode } from "react";
 
 import type {
+  ChangePasswordRequest,
   CurrentUserResponse,
   LoginRequest,
   RegisterRequest,
@@ -55,6 +56,11 @@ interface SessionContextValue {
   register: (body: RegisterRequest) => Promise<void>;
   /** Creates an account by accepting an invitation, and signs it in. */
   registerWithInvitation: (body: RegisterWithInvitationRequest) => Promise<void>;
+  /**
+   * Replaces the signed-in user's password. The API answers with a new
+   * session — every other one ends — which replaces this one in place.
+   */
+  changePassword: (body: ChangePasswordRequest) => Promise<void>;
   logout: () => Promise<void>;
   retry: () => void;
 }
@@ -149,6 +155,22 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     [begin],
   );
 
+  const changePassword = useCallback(
+    async (body: ChangePasswordRequest) => {
+      const response = await api.changePassword(body);
+      // The same identity, so nothing cached is foreign to it — but `me`
+      // carried the old passwordChangeRequired, and must be read again.
+      setAccessToken(response.accessToken);
+      await queryClient.fetchQuery({
+        queryKey: queryKeys.me,
+        queryFn: api.getCurrentUser,
+        // Always a fresh read: a cached `me` still says a change is required.
+        staleTime: 0,
+      });
+    },
+    [queryClient],
+  );
+
   const logout = useCallback(async () => {
     try {
       await api.logout();
@@ -174,6 +196,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       login,
       register,
       registerWithInvitation,
+      changePassword,
       logout,
       retry,
     }),
@@ -183,6 +206,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       login,
       register,
       registerWithInvitation,
+      changePassword,
       logout,
       retry,
     ],

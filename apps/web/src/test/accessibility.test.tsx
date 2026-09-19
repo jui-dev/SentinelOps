@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, it, vi } from "vitest";
 
 import { AuthFrame } from "@/components/app/auth-frame";
 import { WorkspaceShell } from "@/components/app/workspace-shell";
+import { ChangePasswordForm } from "@/components/auth/change-password-form";
 import { LoginForm } from "@/components/auth/login-form";
 import { RegisterForm } from "@/components/auth/register-form";
 import { IncidentDetail } from "@/components/incidents/incident-detail";
@@ -63,6 +64,7 @@ vi.mock("next/navigation", () => ({
 const ADMIN = [
   "invitations:manage",
   "invitations:read",
+  "members:manage",
   "memberships:read",
   "organization:read",
   "organization:update",
@@ -338,11 +340,12 @@ describe("accessibility", () => {
       await expectNoAxeViolations(container);
     });
 
-    it("Members, as an owner who manages invitations", async () => {
+    it("Members, as an admin who adds members and manages invitations", async () => {
       signedIn(ADMIN);
       const { container } = inWorkspace(<MembersView />);
 
       await screen.findByText("linus@example.com");
+      await screen.findByRole("heading", { name: "Add a member" });
       await expectNoAxeViolations(container);
     });
 
@@ -569,6 +572,30 @@ describe("accessibility", () => {
       );
 
       await screen.findByRole("tab", { name: "Create an account" });
+      await expectNoAxeViolations(container);
+    });
+
+    it("Choose your password, on a one-time password", async () => {
+      mockApi((request) => {
+        switch (route(request)) {
+          case "POST /auth/refresh":
+            return refreshed("token");
+          case "GET /auth/me":
+            return jsonResponse(200, {
+              ...currentUser,
+              passwordChangeRequired: true,
+            });
+          default:
+            return apiError(404);
+        }
+      });
+      const { container } = renderWithSession(
+        <AuthFrame>
+          <ChangePasswordForm />
+        </AuthFrame>,
+      );
+
+      await screen.findByLabelText("Confirm new password");
       await expectNoAxeViolations(container);
     });
   });

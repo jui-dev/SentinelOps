@@ -82,6 +82,7 @@ export const currentUser = {
   email: "ada@example.com",
   name: "Ada Lovelace",
   createdAt: "2026-09-01T12:00:00.000Z",
+  passwordChangeRequired: false,
   memberships: [
     {
       id: "0199a1b2-c3d4-7000-8000-0000000000aa",

@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { ErrorAlert } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
+import { Status } from "@/components/ui/status";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { IsoDate } from "@/components/ui/timestamp";
 import { listMemberships } from "@/lib/api/endpoints";
@@ -44,6 +45,14 @@ export function MembershipList() {
               <span className="font-medium">{membership.user.name}</span>
               {membership.user.id === me.data?.id && (
                 <span className="ml-2 text-xs text-fg-subtle">You</span>
+              )}
+              {membership.user.passwordChangeRequired && (
+                // Added with a one-time password they have not replaced yet.
+                <span className="block">
+                  <Status tone="warning" className="text-xs">
+                    Awaiting first sign-in
+                  </Status>
+                </span>
               )}
               {/* On narrow screens the email folds under the name. */}
               <span className="block truncate text-xs text-fg-muted sm:hidden">

@@ -5,7 +5,7 @@ import { useEffect } from "react";
 import type { ReactNode } from "react";
 
 import { PageSpinner } from "@/components/ui/spinner";
-import { useSession } from "@/lib/auth/session-provider";
+import { useCurrentUser, useSession } from "@/lib/auth/session-provider";
 
 import { SessionUnavailable } from "./session-unavailable";
 import { StripFrame } from "./situation";
@@ -31,6 +31,9 @@ function SessionFallback({ children }: { children: ReactNode }) {
  * After an explicit logout the next person to sign in on this browser should
  * not be sent back to the previous user's page.
  *
+ * A user still on a one-time password is sent to choose their own instead:
+ * the API refuses them every organization route until they have.
+ *
  * This is a convenience, not a control: nothing rendered here is fetched
  * without the API authenticating the request.
  */
@@ -38,8 +41,15 @@ export function RequireSession({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const { status, signOutReason } = useSession();
+  const me = useCurrentUser();
+  const mustChangePassword = me.data?.passwordChangeRequired === true;
 
   useEffect(() => {
+    if (mustChangePassword) {
+      router.replace("/change-password");
+      return;
+    }
+
     if (status !== "unauthenticated") return;
 
     router.replace(
@@ -47,9 +57,9 @@ export function RequireSession({ children }: { children: ReactNode }) {
         ? "/login"
         : `/login?next=${encodeURIComponent(pathname)}`,
     );
-  }, [router, pathname, status, signOutReason]);
+  }, [router, pathname, status, signOutReason, mustChangePassword]);
 
-  if (status === "authenticated") return children;
+  if (status === "authenticated" && !mustChangePassword) return children;
 
   return (
     <SessionFallback>

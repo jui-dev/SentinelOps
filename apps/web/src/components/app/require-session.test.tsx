@@ -75,6 +75,36 @@ describe("RequireSession", () => {
     await waitFor(() => expect(navigation.replace).toHaveBeenCalled());
     expect(navigation.replace.mock.calls).toEqual([["/login"]]);
     expect(screen.queryByText("secret")).toBeNull();
-    expect(queryClient.getQueryCache().getAll()).toEqual([]);
+    // Nothing the session fetched survives. A still-mounted observer may
+    // re-register its query key, but the entry holds no data.
+    expect(
+      queryClient
+        .getQueryCache()
+        .getAll()
+        .filter((query) => query.state.data !== undefined),
+    ).toEqual([]);
+  });
+
+  it("sends a user still on a one-time password to choose their own", async () => {
+    mockApi((request) => {
+      switch (route(request)) {
+        case "POST /auth/refresh":
+          return refreshed("token");
+        case "GET /auth/me":
+          return jsonResponse(200, {
+            ...currentUser,
+            passwordChangeRequired: true,
+          });
+        default:
+          return apiError(404);
+      }
+    });
+
+    renderWithSession(<RequireSession>secret</RequireSession>);
+
+    await waitFor(() =>
+      expect(navigation.replace).toHaveBeenCalledWith("/change-password"),
+    );
+    expect(screen.queryByText("secret")).toBeNull();
   });
 });

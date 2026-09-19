@@ -36,8 +36,8 @@ const tokenForRetry = async (refused: string | null): Promise<string> => {
 };
 
 /**
- * A request on behalf of the signed-in user: `/auth/me` and every
- * organization route. Sends the in-memory bearer token and never the cookie.
+ * A request on behalf of the signed-in user, with the in-memory bearer
+ * token.
  *
  * Only a 401 is special, and it gets exactly one recovery:
  *
@@ -48,25 +48,20 @@ const tokenForRetry = async (refused: string | null): Promise<string> => {
  * `PERMISSION_DENIED` or 404 `ORGANIZATION_NOT_FOUND` is thrown to the
  * caller unchanged: those are answers, not authentication failures.
  */
-export const authenticatedRequest = async <T>(
+const bearerRequest = async <T>(
   path: string,
-  options: RequestOptions = {},
+  options: RequestOptions,
+  credentials: "include" | "omit",
 ): Promise<T> => {
   const sentWith = getAccessToken();
-  const first = await send(path, options, {
-    credentials: "omit",
-    token: sentWith,
-  });
+  const first = await send(path, options, { credentials, token: sentWith });
 
   if (first.status !== 401) {
     return read<T>(first);
   }
 
   const retryToken = await tokenForRetry(sentWith);
-  const second = await send(path, options, {
-    credentials: "omit",
-    token: retryToken,
-  });
+  const second = await send(path, options, { credentials, token: retryToken });
 
   if (second.status === 401) {
     endSession();
@@ -74,3 +69,23 @@ export const authenticatedRequest = async <T>(
 
   return read<T>(second);
 };
+
+/**
+ * A request on behalf of the signed-in user: `/auth/me` and every
+ * organization route. Sends the bearer token and never the cookie.
+ */
+export const authenticatedRequest = <T>(
+  path: string,
+  options: RequestOptions = {},
+): Promise<T> => bearerRequest<T>(path, options, "omit");
+
+/**
+ * A request on behalf of the signed-in user that also replaces the session:
+ * changing a password answers with a new refresh cookie, which the browser
+ * only accepts from a credentialed request. The bearer token and the same
+ * single 401 recovery as `authenticatedRequest`.
+ */
+export const authenticatedSessionRequest = <T>(
+  path: string,
+  options: RequestOptions = {},
+): Promise<T> => bearerRequest<T>(path, options, "include");

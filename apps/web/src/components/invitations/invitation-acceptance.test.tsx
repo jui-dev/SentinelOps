@@ -39,6 +39,7 @@ const invitee = {
   email: "grace@example.com",
   name: "Grace Hopper",
   createdAt: "2026-09-17T12:00:00.000Z",
+  passwordChangeRequired: false,
 };
 
 const inviteeWithMembership = {
