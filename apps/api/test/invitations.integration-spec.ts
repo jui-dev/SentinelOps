@@ -914,6 +914,7 @@ describe('invitations (integration)', () => {
           email: NEW_EMAIL,
           name: 'Grace Hopper',
           createdAt: expect.any(String),
+          passwordChangeRequired: false,
         },
       });
       expect(String(response.headers['set-cookie'])).toMatch(
