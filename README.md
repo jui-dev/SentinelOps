@@ -240,19 +240,44 @@ pnpm --filter @sentinelops/web test              # no API or database
 pnpm --filter @sentinelops/web build
 ```
 
-### Development account (temporary)
+### Demo personas (temporary)
 
 When the API runs with `NODE_ENV=development` — `start:dev` with the default `.env` —
-it ensures a known login at every boot, and the web login page shows it with a
-**Use these** button:
+it ensures a small organization to work in, and the web login page lists its people under
+**Demo personas**, each with a one-click **Sign in**. To switch, sign out and pick another.
 
-| Email | Password | Organization |
-| --- | --- | --- |
-| `admin@example.com` | `dev-password-123` | SentinelOps Dev (`ADMIN`) |
+| Persona | Email | Role | Teams |
+| --- | --- | --- | --- |
+| Dev Admin | `admin@example.com` | `ADMIN` | — |
+| Priya Shah | `priya@example.com` | `MEMBER` | Payments |
+| Sam Okafor | `sam@example.com` | `MEMBER` | Payments, Risk |
+| Lee Chen | `lee@example.com` | `MEMBER` | Platform |
+| Jordan Diaz | `jordan@example.com` | `MEMBER` | Risk |
 
-Every boot resets that account's password and restores it if it was deleted. It is never
-created in `test` or `production`, and the login panel is compiled out of production
-builds. It is temporary: to remove it, delete `apps/api/src/dev/` and its line in
+All of them use the password `dev-password-123`. The organization is **AcmePay**
+(`sentinelops-dev`), with three services: Payment API (`CRITICAL`, Payments),
+Authentication (`HIGH`, Platform), and Fraud Detection (`HIGH`, Risk). There are no
+incidents.
+
+The seeder makes two different promises:
+
+- **Setup, once.** The organization's teams, services, and each persona's teams are created
+  only when the organization itself is. After that they belong to the application:
+  renaming, reassigning, or taking someone off a team sticks across restarts.
+- **Login, every boot.** Each persona's account is restored if it was deleted, its password
+  reset to the shared one, any required password change cleared, and its membership
+  recreated if missing. Nothing else is restored — not its name, role, or teams.
+
+Personas never go through the one-time-password flow; a member the `ADMIN` adds through
+the app still does. The seeder never deletes anything. To start over, reset the
+development database — which also drops every incident in it:
+
+```bash
+pnpm --filter @sentinelops/api exec prisma migrate reset
+```
+
+It is never created in `test` or `production`, and the login panel is compiled out of
+production builds. To remove it, delete `apps/api/src/dev/` and its line in
 `app.module.ts`, `apps/web/src/lib/dev/`, and the panel in
 `apps/web/src/components/auth/login-form.tsx`.
 

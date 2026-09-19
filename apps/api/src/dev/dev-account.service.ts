@@ -3,21 +3,41 @@ import type { OnApplicationBootstrap } from '@nestjs/common';
 import type { ConfigType } from '@nestjs/config';
 
 import { PasswordService } from '../auth/password.service.js';
+import { opaqueSlug, slugify } from '../common/slug.js';
 import { appConfig } from '../config/configuration.js';
 import { PrismaService } from '../database/prisma.service.js';
-import { DEV_ACCOUNT } from './dev-account.js';
+import {
+  DEV_ORGANIZATION,
+  DEV_PASSWORD,
+  DEV_PERSONAS,
+  DEV_SERVICES,
+  DEV_TEAMS,
+} from './dev-account.js';
+import type { DevTeam } from './dev-account.js';
 
 /**
- * TEMPORARY — ensures the development account exists whenever the API starts
- * in development. See dev-account.ts for what it is and how to remove it.
+ * TEMPORARY — ensures the development organization and its personas whenever
+ * the API starts in development. See dev-account.ts for what it is and how to
+ * remove it.
  *
  * Does nothing in any other environment: `test` (every automated suite) and
  * `production` never create it.
  *
- * Idempotent, and deliberately forceful: every boot resets the account's
- * password and name, restores the user and organization if they were
- * soft-deleted, and makes the user ADMIN of the organization — so the
- * credentials shown on the login page always work.
+ * Two different promises, deliberately kept apart:
+ *
+ *   * Setup, once. When the organization does not exist yet, its teams,
+ *     services, and each persona's team places are created with it. After
+ *     that they belong to the application: renaming, reassigning, or taking
+ *     someone off a team through the app sticks across restarts. To start
+ *     over, reset the development database.
+ *
+ *   * Login, every boot. Each persona can always sign in with the shared
+ *     password and reach the organization: its user exists, is not deleted,
+ *     has that password, and needs no password change, and it has a
+ *     membership. Nothing else about it is restored — not its name, not its
+ *     role, not its teams.
+ *
+ * Never deletes anything.
  */
 @Injectable()
 export class DevAccountService implements OnApplicationBootstrap {
@@ -38,52 +58,110 @@ export class DevAccountService implements OnApplicationBootstrap {
     await this.ensure();
   }
 
-  /** Creates or restores the account. Separate from the hook for tests. */
+  /** Sets up or restores the organization. Separate from the hook for tests. */
   async ensure(): Promise<void> {
-    const passwordHash = await this.passwords.hash(DEV_ACCOUNT.password);
+    const passwordHash = await this.passwords.hash(DEV_PASSWORD);
 
-    await this.prisma.$transaction(async (tx) => {
-      const organization = await tx.organization.upsert({
-        where: { slug: DEV_ACCOUNT.organizationSlug },
-        create: {
-          name: DEV_ACCOUNT.organizationName,
-          slug: DEV_ACCOUNT.organizationSlug,
-        },
-        update: { deletedAt: null },
+    const created = await this.prisma.$transaction(async (tx) => {
+      const existing = await tx.organization.findUnique({
+        where: { slug: DEV_ORGANIZATION.slug },
         select: { id: true },
       });
 
-      const user = await tx.user.upsert({
-        where: { email: DEV_ACCOUNT.email },
-        create: {
-          email: DEV_ACCOUNT.email,
-          name: DEV_ACCOUNT.name,
-          passwordHash,
-        },
-        update: { name: DEV_ACCOUNT.name, passwordHash, deletedAt: null },
-        select: { id: true },
-      });
+      // A soft-deleted organization would admit nobody; its name is the
+      // application's.
+      const organization = existing
+        ? await tx.organization.update({
+            where: { id: existing.id },
+            data: { deletedAt: null },
+            select: { id: true },
+          })
+        : await tx.organization.create({
+            data: DEV_ORGANIZATION,
+            select: { id: true },
+          });
+      const organizationId = organization.id;
 
-      await tx.membership.upsert({
-        where: {
-          organizationId_userId: {
-            organizationId: organization.id,
-            userId: user.id,
+      // Login, every boot: only what signing in and being admitted need.
+      const placements: { membershipId: string; team: DevTeam }[] = [];
+
+      for (const persona of DEV_PERSONAS) {
+        const user = await tx.user.upsert({
+          where: { email: persona.email },
+          create: { email: persona.email, name: persona.name, passwordHash },
+          update: {
+            passwordHash,
+            passwordChangeRequired: false,
+            deletedAt: null,
           },
-        },
-        create: {
-          organizationId: organization.id,
-          userId: user.id,
-          role: 'ADMIN',
-        },
-        update: { role: 'ADMIN' },
+          select: { id: true },
+        });
+
+        const membership = await tx.membership.upsert({
+          where: {
+            organizationId_userId: { organizationId, userId: user.id },
+          },
+          create: { organizationId, userId: user.id, role: persona.role },
+          update: {},
+          select: { id: true },
+        });
+
+        for (const team of persona.teams) {
+          placements.push({ membershipId: membership.id, team });
+        }
+      }
+
+      if (existing) {
+        return false;
+      }
+
+      // Setup, once. Scalar ids throughout: these relations share
+      // organizationId, and it is that shared column the keys check.
+      const teamIds = {} as Record<DevTeam, string>;
+
+      for (const name of DEV_TEAMS) {
+        const team = await tx.team.create({
+          data: {
+            organizationId,
+            name,
+            slug: slugify(name) ?? opaqueSlug('team'),
+          },
+          select: { id: true },
+        });
+
+        teamIds[name] = team.id;
+      }
+
+      await tx.service.createMany({
+        data: DEV_SERVICES.map((service) => ({
+          organizationId,
+          name: service.name,
+          slug: slugify(service.name) ?? opaqueSlug('service'),
+          ownerTeamId: teamIds[service.ownerTeam],
+          criticality: service.criticality,
+        })),
       });
+
+      await tx.teamMembership.createMany({
+        data: placements.map(({ membershipId, team }) => ({
+          organizationId,
+          teamId: teamIds[team],
+          membershipId,
+        })),
+      });
+
+      return true;
     });
 
-    // The email only. The password is shown on the login page, never logged.
-    this.logger.log('Development account ready', {
-      email: DEV_ACCOUNT.email,
-      organization: DEV_ACCOUNT.organizationSlug,
-    });
+    // Emails only. The password is shown on the login page, never logged.
+    this.logger.log(
+      created
+        ? 'Development organization created'
+        : 'Development personas ready',
+      {
+        organization: DEV_ORGANIZATION.slug,
+        personas: DEV_PERSONAS.map((persona) => persona.email),
+      },
+    );
   }
 }

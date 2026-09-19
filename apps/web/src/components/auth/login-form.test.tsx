@@ -54,16 +54,16 @@ describe("LoginForm", () => {
     navigation.search = "";
   });
 
-  it("shows no development account outside development", async () => {
+  it("shows no demo personas outside development", async () => {
     withLogin(() => apiError(401, "INVALID_CREDENTIALS"));
     renderWithSession(<LoginForm />);
 
     await screen.findByLabelText("Email");
 
-    expect(screen.queryByText("Development account")).toBeNull();
+    expect(screen.queryByText("Demo personas")).toBeNull();
   });
 
-  it("shows the development account in development, and fills it in", async () => {
+  it("signs in as a demo persona in one click, in development", async () => {
     vi.stubEnv("NODE_ENV", "development");
     const user = userEvent.setup();
     const { requests } = withLogin(() =>
@@ -78,18 +78,30 @@ describe("LoginForm", () => {
     try {
       renderWithSession(<LoginForm />);
 
-      expect(await screen.findByText("Development account")).toBeDefined();
-      expect(screen.getByText("admin@example.com")).toBeDefined();
-      expect(screen.getByText("dev-password-123")).toBeDefined();
+      expect(await screen.findByText("Demo personas")).toBeDefined();
 
-      await user.click(screen.getByRole("button", { name: "Use these" }));
-      await user.click(screen.getByRole("button", { name: "Log in" }));
+      for (const name of [
+        "Dev Admin",
+        "Priya Shah",
+        "Sam Okafor",
+        "Lee Chen",
+        "Jordan Diaz",
+      ]) {
+        expect(
+          screen.getByRole("button", { name: `Sign in as ${name}` }),
+        ).toBeDefined();
+      }
+
+      await user.click(
+        screen.getByRole("button", { name: "Sign in as Sam Okafor" }),
+      );
 
       await waitFor(() =>
         expect(
           requests.find((r) => route(r) === "POST /auth/login")?.body,
-        ).toEqual({ email: "admin@example.com", password: "dev-password-123" }),
+        ).toEqual({ email: "sam@example.com", password: "dev-password-123" }),
       );
+      await waitFor(() => expect(navigation.replace).toHaveBeenCalledWith("/"));
     } finally {
       vi.unstubAllEnvs();
     }
