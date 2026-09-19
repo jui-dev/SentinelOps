@@ -7,7 +7,7 @@ import { PageBody, PageHeader } from "@/components/ui/page";
 import { Permission } from "@/lib/api/contracts";
 
 import { AddMemberForm } from "./add-member-form";
-import { membersHref } from "./members-view";
+import { membersHref } from "./member-paths";
 import { useCan, useOrganization } from "./organization-scope";
 
 /**

@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import Link from "next/link";
 
 import { ErrorAlert } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
@@ -13,7 +14,8 @@ import { queryKeys } from "@/lib/api/query-keys";
 import { useCurrentUser } from "@/lib/auth/session-provider";
 
 import { formatRole } from "./format";
-import { useOrganizationId } from "./organization-scope";
+import { memberHref } from "./member-paths";
+import { useOrganization } from "./organization-scope";
 
 export const useMemberships = (organizationId: string) =>
   useQuery({
@@ -55,8 +57,8 @@ export function TeamSummary({
 }
 
 export function MembershipList() {
-  const organizationId = useOrganizationId();
-  const memberships = useMemberships(organizationId);
+  const organization = useOrganization();
+  const memberships = useMemberships(organization.id);
   const me = useCurrentUser();
 
   if (memberships.isError) return <ErrorAlert error={memberships.error} />;
@@ -77,7 +79,13 @@ export function MembershipList() {
         {memberships.data.map((membership) => (
           <TR key={membership.id}>
             <TD>
-              <span className="font-medium">{membership.user.name}</span>
+              {/* The name opens the member's page: who they are, and their teams. */}
+              <Link
+                href={memberHref(organization.slug, membership.id)}
+                className="rounded-sm font-medium text-fg hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+              >
+                {membership.user.name}
+              </Link>
               {membership.user.id === me.data?.id && (
                 <span className="ml-2 text-xs text-fg-subtle">You</span>
               )}

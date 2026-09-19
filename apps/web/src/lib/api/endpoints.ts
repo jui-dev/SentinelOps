@@ -103,6 +103,12 @@ export const listMemberships = (organizationId: string) =>
     `${organizationPath(organizationId)}/memberships`,
   );
 
+/** One membership record, with the teams the member is on. */
+export const getMembership = (organizationId: string, membershipId: string) =>
+  authenticatedRequest<OrganizationMembershipResponse>(
+    `${organizationPath(organizationId)}/memberships/${encodeURIComponent(membershipId)}`,
+  );
+
 /** Adds a person with a one-time password; answers with their membership. */
 export const createMember = (
   organizationId: string,

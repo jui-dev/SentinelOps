@@ -2,19 +2,13 @@
 
 import Link from "next/link";
 
-import { organizationPath } from "@/components/app/navigation";
 import { buttonClasses } from "@/components/ui/button";
 import { PageBody, PageHeader } from "@/components/ui/page";
 import { Permission } from "@/lib/api/contracts";
 
+import { addMemberHref } from "./member-paths";
 import { MembershipList, useMemberships } from "./membership-list";
 import { useCan, useOrganization } from "./organization-scope";
-
-export const membersHref = (orgSlug: string) =>
-  `${organizationPath(orgSlug)}/members`;
-
-export const addMemberHref = (orgSlug: string) =>
-  `${membersHref(orgSlug)}/new`;
 
 /**
  * The organization's people, at a glance: who they are, their role, the

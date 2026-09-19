@@ -6,6 +6,10 @@
  * - `organization`: one organization and the caller's role and permissions.
  * - `memberships`: an organization's membership records. Carries no
  *   organization fields, so nothing about the organization itself stales it.
+ *   Each record lists the member's teams, so placing someone on a team or
+ *   taking them off stales it.
+ * - `membership`: one membership record, beneath `memberships`. Stales with
+ *   it, and when that member's teams change.
  * - `invitations`: an organization's open invitations. Creating or revoking
  *   one stales only this.
  * - `teams`: an organization's teams, each with its member count. Team pages
@@ -38,6 +42,8 @@ export const queryKeys = {
     ["organization", organizationId] as const,
   memberships: (organizationId: string) =>
     ["organization", organizationId, "memberships"] as const,
+  membership: (organizationId: string, membershipId: string) =>
+    ["organization", organizationId, "memberships", membershipId] as const,
   invitations: (organizationId: string) =>
     ["organization", organizationId, "invitations"] as const,
   teams: (organizationId: string) =>

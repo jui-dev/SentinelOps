@@ -11,6 +11,7 @@ import { IncidentDetail } from "@/components/incidents/incident-detail";
 import { IncidentsView } from "@/components/incidents/incidents-view";
 import { InvitationAcceptance } from "@/components/invitations/invitation-acceptance";
 import { AddMemberView } from "@/components/organizations/add-member-view";
+import { MemberDetail } from "@/components/organizations/member-detail";
 import { MembersView } from "@/components/organizations/members-view";
 import { OrganizationOverview } from "@/components/organizations/organization-overview";
 import { OrganizationPicker } from "@/components/organizations/organization-picker";
@@ -51,6 +52,7 @@ const navigation = vi.hoisted(() => ({
     teamSlug?: string;
     serviceSlug?: string;
     incidentNumber?: string;
+    membershipId?: string;
   },
   pathname: "/",
 }));
@@ -220,6 +222,19 @@ const signedIn = (permissions: string[]) =>
             teams: [{ id: team.id, name: team.name, slug: team.slug }],
           },
         ]);
+      case `GET ${base}/memberships/${currentUser.memberships[0].id}`:
+        return jsonResponse(200, {
+            id: currentUser.memberships[0].id,
+            role: "ADMIN",
+            createdAt: "2026-09-01T12:00:00.000Z",
+            user: {
+              id: currentUser.id,
+              name: currentUser.name,
+              email: currentUser.email,
+              passwordChangeRequired: false,
+            },
+            teams: [{ id: team.id, name: team.name, slug: team.slug }],
+          });
       case `GET ${base}/teams`:
         return jsonResponse(200, [team]);
       case `GET ${base}/services`:
@@ -359,6 +374,32 @@ describe("accessibility", () => {
 
       await screen.findByRole("heading", { level: 1, name: "Add member" });
       await screen.findByRole("checkbox", { name: team.name });
+      await expectNoAxeViolations(container);
+    });
+
+    it("Member, as the admin managing their teams", async () => {
+      signedIn(ADMIN);
+      navigation.params = {
+        orgSlug: organization.slug,
+        membershipId: currentUser.memberships[0].id,
+      };
+      const { container } = inWorkspace(<MemberDetail />);
+
+      await screen.findByRole("heading", { level: 1, name: currentUser.name });
+      await screen.findByText("They are on every team.");
+      await expectNoAxeViolations(container);
+    });
+
+    it("Member, as a member", async () => {
+      signedIn(MEMBER);
+      navigation.params = {
+        orgSlug: organization.slug,
+        membershipId: currentUser.memberships[0].id,
+      };
+      const { container } = inWorkspace(<MemberDetail />);
+
+      await screen.findByRole("heading", { level: 1, name: currentUser.name });
+      await screen.findByRole("link", { name: team.name });
       await expectNoAxeViolations(container);
     });
 

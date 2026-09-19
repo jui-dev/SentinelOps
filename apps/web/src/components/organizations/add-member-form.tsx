@@ -20,7 +20,7 @@ import { fieldErrorsOf, isApiError } from "@/lib/api/errors";
 import { queryKeys } from "@/lib/api/query-keys";
 
 import { formatRole } from "./format";
-import { membersHref } from "./members-view";
+import { membersHref } from "./member-paths";
 import { useCan, useOrganization } from "./organization-scope";
 
 /**
