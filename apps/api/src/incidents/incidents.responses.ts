@@ -4,7 +4,7 @@ import type {
   IncidentActivityResponse,
   IncidentActivityType,
   IncidentDetailResponse,
-  IncidentMemberResponse,
+  IncidentResponderStatus,
   IncidentResponse,
   IncidentSeverity,
   IncidentStatus,
@@ -70,32 +70,29 @@ export const toIncidentResponse = (
   resolvedAt: incident.resolvedAt?.toISOString() ?? null,
 });
 
-interface IncidentMemberRow {
-  id: string;
-  user: { name: string };
+interface IncidentResponderRow {
+  status: IncidentResponderStatus;
+  startedAt: Date;
+  completedAt: Date | null;
+  membership: { id: string; user: { name: string } };
 }
 
 interface IncidentDetailRow extends IncidentRow {
-  lead: IncidentMemberRow | null;
-  responders: { membership: IncidentMemberRow }[];
+  responders: IncidentResponderRow[];
 }
 
-const toIncidentMemberResponse = (
-  membership: IncidentMemberRow,
-): IncidentMemberResponse => ({
-  membershipId: membership.id,
-  name: membership.user.name,
-});
-
-/** An incident with its lead and responders. */
+/** An incident with its responders, identity only — never an email. */
 export const toIncidentDetailResponse = (
   incident: IncidentDetailRow,
 ): IncidentDetailResponse => ({
   ...toIncidentResponse(incident),
-  lead: incident.lead ? toIncidentMemberResponse(incident.lead) : null,
-  responders: incident.responders.map(({ membership }) =>
-    toIncidentMemberResponse(membership),
-  ),
+  responders: incident.responders.map((responder) => ({
+    membershipId: responder.membership.id,
+    name: responder.membership.user.name,
+    status: responder.status,
+    startedAt: responder.startedAt.toISOString(),
+    completedAt: responder.completedAt?.toISOString() ?? null,
+  })),
 });
 
 interface IncidentActivityRow {

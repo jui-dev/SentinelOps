@@ -24,11 +24,17 @@ export const Permission = {
   SERVICES_MANAGE: 'services:manage',
   INCIDENTS_READ: 'incidents:read',
   /**
-   * Run an incident's lifecycle: declare it, change it, reassign it, assign
-   * its people, and resolve it.
+   * Run an incident's lifecycle: declare it, change it, reassign it, and
+   * resolve it. Whoever holds it also oversees every incident's response,
+   * and may respond to any.
    */
   INCIDENTS_MANAGE: 'incidents:manage',
-  /** Take part in an incident's response: post operational updates. */
+  /**
+   * Take part in an incident's response: post operational updates. Scoped by
+   * IncidentsService to the incidents the caller's team is responsible for —
+   * a permission this table grants to a role, and the service narrows to
+   * the incident.
+   */
   INCIDENTS_RESPOND: 'incidents:respond',
 } as const;
 

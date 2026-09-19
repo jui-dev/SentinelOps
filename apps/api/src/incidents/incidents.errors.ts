@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
 
@@ -17,8 +18,11 @@ export const IncidentsErrorCode = {
   INCIDENT_RESOLVED: 'INCIDENT_RESOLVED',
   INVALID_STATUS_TRANSITION: 'INVALID_STATUS_TRANSITION',
   INVALID_CURSOR: 'INVALID_CURSOR',
-  ALREADY_A_RESPONDER: 'ALREADY_A_RESPONDER',
-  RESPONDER_NOT_FOUND: 'RESPONDER_NOT_FOUND',
+  NOT_ON_RESPONSIBLE_TEAM: 'NOT_ON_RESPONSIBLE_TEAM',
+  START_INVESTIGATING_FIRST: 'START_INVESTIGATING_FIRST',
+  RESPONSE_ALREADY_COMPLETED: 'RESPONSE_ALREADY_COMPLETED',
+  NOT_INVESTIGATING: 'NOT_INVESTIGATING',
+  RESPONDERS_STILL_INVESTIGATING: 'RESPONDERS_STILL_INVESTIGATING',
 } as const;
 
 export type IncidentsErrorCode =
@@ -49,7 +53,8 @@ export const incidentResolved = (): ConflictException =>
 /**
  * The incident cannot move to that status from where it stands: the
  * lifecycle is DECLARED → INVESTIGATING → RESOLVED, one step at a time. A
- * DECLARED incident is investigated before it is resolved.
+ * DECLARED incident is investigated — someone starts investigating it —
+ * before it is resolved.
  */
 export const invalidStatusTransition = (
   from: string,
@@ -69,17 +74,64 @@ export const invalidCursor = (): BadRequestException =>
     errorCode: IncidentsErrorCode.INVALID_CURSOR,
   });
 
-/** The member is already responding to this incident. */
-export const alreadyAResponder = (): ConflictException =>
-  new ConflictException('This member is already responding to the incident', {
-    errorCode: IncidentsErrorCode.ALREADY_A_RESPONDER,
+/**
+ * The caller may respond to incidents, but may not start investigating this
+ * one: they are not on its responsible team. Reading it is still open to
+ * them.
+ *
+ * 403, and specific, rather than PERMISSION_DENIED: the refusal is about this
+ * incident, not the caller's role, and a client explains it by naming the
+ * team. Given only after the incident is found, so it reveals nothing about
+ * another organization's incidents.
+ */
+export const notOnResponsibleTeam = (): ForbiddenException =>
+  new ForbiddenException(
+    "Only members of this incident's responsible team can start investigating it",
+    {
+      errorCode: IncidentsErrorCode.NOT_ON_RESPONSIBLE_TEAM,
+    },
+  );
+
+/**
+ * A member posting an update to an incident they have not started
+ * investigating. Updates are part of a response: a responsible-team member
+ * starts investigating first, and anyone else cannot respond at all.
+ */
+export const startInvestigatingFirst = (): ForbiddenException =>
+  new ForbiddenException(
+    'Start investigating this incident before posting updates to it',
+    {
+      errorCode: IncidentsErrorCode.START_INVESTIGATING_FIRST,
+    },
+  );
+
+/**
+ * The caller's response to this incident is complete, and a completed
+ * response is final: it is not restarted, and takes no more updates.
+ */
+export const responseAlreadyCompleted = (): ConflictException =>
+  new ConflictException('Your response to this incident is already complete', {
+    errorCode: IncidentsErrorCode.RESPONSE_ALREADY_COMPLETED,
+  });
+
+/** Completing a response the caller never started. */
+export const notInvestigating = (): ConflictException =>
+  new ConflictException('You are not investigating this incident', {
+    errorCode: IncidentsErrorCode.NOT_INVESTIGATING,
   });
 
 /**
- * The membership named in the path is not responding to this incident — or
- * is malformed, or belongs to another organization, which answer the same.
+ * Resolving while someone is still investigating. The incident is resolved
+ * once every responder has marked their response complete.
  */
-export const responderNotFound = (): NotFoundException =>
-  new NotFoundException('Responder not found', {
-    errorCode: IncidentsErrorCode.RESPONDER_NOT_FOUND,
-  });
+export const respondersStillInvestigating = (
+  investigating: number,
+): ConflictException =>
+  new ConflictException(
+    investigating === 1
+      ? 'A responder is still investigating this incident'
+      : `${investigating} responders are still investigating this incident`,
+    {
+      errorCode: IncidentsErrorCode.RESPONDERS_STILL_INVESTIGATING,
+    },
+  );

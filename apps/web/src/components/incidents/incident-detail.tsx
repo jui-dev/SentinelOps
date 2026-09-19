@@ -1,606 +1,49 @@
 "use client";
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useState } from "react";
-import type { FormEvent } from "react";
+import type { ReactNode } from "react";
 
-import { useMemberships } from "@/components/organizations/membership-list";
 import {
   useCan,
   useOrganization,
 } from "@/components/organizations/organization-scope";
 import { CriticalityMark } from "@/components/services/criticality-mark";
 import { serviceHref } from "@/components/services/service-scope";
-import { teamHref, useTeams } from "@/components/teams/team-scope";
+import { teamHref, useTeamMembers } from "@/components/teams/team-scope";
 import { Alert, ErrorAlert } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Field, TextArea } from "@/components/ui/field";
-import { PageBody, PageHeader, Section } from "@/components/ui/page";
+import { PageBody, PageHeader } from "@/components/ui/page";
 import { RecordList, RecordRow } from "@/components/ui/record";
-import { Select } from "@/components/ui/select";
-import { PageSpinner, Spinner } from "@/components/ui/spinner";
+import { PageSpinner } from "@/components/ui/spinner";
 import { Duration, IsoDate, LocalDateTime } from "@/components/ui/timestamp";
 import { linkClasses, quietLinkClasses } from "@/components/ui/link";
-import { ApiErrorCode, Permission } from "@/lib/api/contracts";
+import { Permission } from "@/lib/api/contracts";
 import type {
   IncidentDetailResponse,
-  IncidentResponse,
-  IncidentSeverity,
-  OrganizationMembershipResponse,
-  UpdateIncidentRequest,
+  IncidentResponderResponse,
 } from "@/lib/api/contracts";
-import {
-  addIncidentResponder,
-  removeIncidentResponder,
-  updateIncident,
-} from "@/lib/api/endpoints";
-import { fieldErrorsOf, isApiError } from "@/lib/api/errors";
-import { queryKeys } from "@/lib/api/query-keys";
+import { isApiError } from "@/lib/api/errors";
 
+import { incidentsHref, useIncident } from "./incident-queries";
 import {
-  incidentsHref,
-  storeIncident,
-  useIncident,
-} from "./incident-queries";
+  ResponsePanel,
+  responseErrorMessage,
+  TeamResponse,
+  useOwnResponse,
+  YourResponse,
+} from "./incident-response";
 import { IncidentTimeline } from "./incident-timeline";
-import { SeveritySelect } from "./incidents-view";
-import {
-  incidentKey,
-  SeverityMark,
-  severityOf,
-  StatusMark,
-  statusOf,
-} from "./severity";
+import { ManageIncident } from "./manage-incident";
+import { incidentKey, SeverityMark, StatusMark } from "./severity";
 
 const entityLinkClasses = `font-medium text-fg ${quietLinkClasses}`;
-
-export const RESOLVED_MEANWHILE_MESSAGE =
-  "This incident was resolved by someone else, so it can no longer be changed. It has been refreshed.";
 
 /** The incident number in the URL, or undefined when it cannot be one. */
 const parseNumber = (value: string): number | undefined =>
   /^[1-9][0-9]{0,9}$/.test(value) && Number(value) <= 2_147_483_647
     ? Number(value)
     : undefined;
-
-/**
- * Changes the incident. The API's answer replaces the cached incident and the
- * lists refetch. Refused because it was resolved or has gone meanwhile: the
- * incident is fetched again, so the page shows why.
- */
-const useUpdateIncident = (incident: IncidentResponse) => {
-  const organization = useOrganization();
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (body: UpdateIncidentRequest) =>
-      updateIncident(organization.id, incident.number, body),
-    onSuccess: (updated) =>
-      storeIncident(queryClient, organization.id, updated),
-    onError: (error) => {
-      if (isApiError(error, 404) || isApiError(error, 409)) {
-        void queryClient.invalidateQueries({
-          queryKey: queryKeys.incidents(organization.id),
-        });
-      }
-    },
-  });
-};
-
-const resolvedMeanwhile = (error: unknown) =>
-  isApiError(error, 409) && error.code === ApiErrorCode.INCIDENT_RESOLVED;
-
-/** The status move no longer fits where the incident stands. */
-const movedMeanwhile = (error: unknown) =>
-  isApiError(error, 409) &&
-  error.code === ApiErrorCode.INVALID_STATUS_TRANSITION;
-
-const MOVED_MEANWHILE_MESSAGE =
-  "This incident's status changed meanwhile, so that step no longer applies. It has been refreshed.";
-
-/**
- * How serious the incident is and who is responsible for it. Only what
- * changed is sent. The status is not here: it moves by the lifecycle action
- * in the header, one step at a time.
- */
-function ResponseForm({ incident }: { incident: IncidentResponse }) {
-  const organization = useOrganization();
-  const teams = useTeams(organization.id);
-  const update = useUpdateIncident(incident);
-  const [severity, setSeverity] = useState<IncidentSeverity>(
-    incident.severity,
-  );
-  const [teamId, setTeamId] = useState(incident.team.id);
-  const [saved, setSaved] = useState(false);
-
-  const changes: UpdateIncidentRequest = {
-    ...(severity !== incident.severity && { severity }),
-    ...(teamId !== incident.team.id && { teamId }),
-  };
-  const unchanged = Object.keys(changes).length === 0;
-
-  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setSaved(false);
-    update.mutate(changes, { onSuccess: () => setSaved(true) });
-  };
-
-  const teamGone =
-    isApiError(update.error, 404) &&
-    update.error.code === ApiErrorCode.TEAM_NOT_FOUND;
-  const fields = fieldErrorsOf(update.error);
-
-  return (
-    <Section
-      id="response"
-      title="Response"
-      description="Severity and the responsible team can change as the response unfolds."
-    >
-      <form onSubmit={onSubmit} noValidate className="flex max-w-md flex-col gap-4">
-        {update.isError && !teamGone && Object.keys(fields).length === 0 && (
-          <ErrorAlert
-            error={update.error}
-            message={
-              resolvedMeanwhile(update.error)
-                ? RESOLVED_MEANWHILE_MESSAGE
-                : undefined
-            }
-          />
-        )}
-        {saved && <Alert tone="success">Incident updated.</Alert>}
-        <SeveritySelect
-          value={severity}
-          onChange={(value) => {
-            setSaved(false);
-            setSeverity(value);
-          }}
-          error={fields.severity}
-        />
-        {teams.isError ? (
-          <ErrorAlert error={teams.error} />
-        ) : !teams.data ? (
-          <Spinner label="Loading teams…" />
-        ) : (
-          <Select
-            label="Responsible team"
-            name="teamId"
-            value={teamId}
-            onChange={(event) => {
-              setSaved(false);
-              setTeamId(event.target.value);
-            }}
-            hint={`${incident.service.name} is owned by its owner team; the responsible team can differ.`}
-            error={
-              teamGone
-                ? "That team no longer exists. The list of teams has been refreshed."
-                : fields.teamId
-            }
-          >
-            {teams.data.map((team) => (
-              <option key={team.id} value={team.id}>
-                {team.name}
-              </option>
-            ))}
-          </Select>
-        )}
-        <div>
-          <Button type="submit" disabled={unchanged || update.isPending}>
-            {update.isPending ? "Saving…" : "Save"}
-          </Button>
-        </div>
-      </form>
-    </Section>
-  );
-}
-
-/** The title and summary, edited together. */
-function DetailsForm({ incident }: { incident: IncidentResponse }) {
-  const update = useUpdateIncident(incident);
-  const [saved, setSaved] = useState(false);
-
-  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const data = new FormData(event.currentTarget);
-
-    setSaved(false);
-    update.mutate(
-      {
-        title: String(data.get("title") ?? ""),
-        summary: String(data.get("summary") ?? ""),
-      },
-      { onSuccess: () => setSaved(true) },
-    );
-  };
-
-  const fields = fieldErrorsOf(update.error);
-
-  return (
-    <Section id="details" title="Details">
-      <form onSubmit={onSubmit} noValidate className="flex max-w-xl flex-col gap-4">
-        {update.isError && Object.keys(fields).length === 0 && (
-          <ErrorAlert
-            error={update.error}
-            message={
-              resolvedMeanwhile(update.error)
-                ? RESOLVED_MEANWHILE_MESSAGE
-                : undefined
-            }
-          />
-        )}
-        {saved && <Alert tone="success">Details saved.</Alert>}
-        <Field
-          label="Title"
-          name="title"
-          defaultValue={incident.title}
-          required
-          maxLength={200}
-          autoComplete="off"
-          error={fields.title}
-        />
-        <TextArea
-          label="Summary"
-          name="summary"
-          defaultValue={incident.summary ?? ""}
-          optional
-          maxLength={2000}
-          error={fields.summary}
-        />
-        <div>
-          <Button type="submit" disabled={update.isPending}>
-            {update.isPending ? "Saving…" : "Save details"}
-          </Button>
-        </div>
-      </form>
-    </Section>
-  );
-}
-
-const peopleErrorMessage = (error: unknown): string | undefined => {
-  if (resolvedMeanwhile(error)) return RESOLVED_MEANWHILE_MESSAGE;
-  if (!isApiError(error)) return undefined;
-
-  switch (error.code) {
-    case ApiErrorCode.MEMBERSHIP_NOT_FOUND:
-      return "That person is no longer a member of this organization. The list of members has been refreshed.";
-    case ApiErrorCode.ALREADY_A_RESPONDER:
-      return "That person is already responding. The incident has been refreshed.";
-    case ApiErrorCode.RESPONDER_NOT_FOUND:
-      return "That person was no longer responding. The incident has been refreshed.";
-    default:
-      return undefined;
-  }
-};
-
-/**
- * After a people change is refused as out of date (404 or 409): the incident
- * and the member list are both fetched again, so the page shows why.
- */
-const useRefreshPeople = (incident: IncidentResponse) => {
-  const organization = useOrganization();
-  const queryClient = useQueryClient();
-
-  return () => {
-    void queryClient.invalidateQueries({
-      queryKey: queryKeys.incident(organization.id, incident.number),
-      exact: true,
-    });
-    void queryClient.invalidateQueries({
-      queryKey: queryKeys.memberships(organization.id),
-      exact: true,
-    });
-  };
-};
-
-/** The lead: any member of the organization, or nobody. */
-function LeadForm({
-  incident,
-  members,
-}: {
-  incident: IncidentDetailResponse;
-  members: OrganizationMembershipResponse[];
-}) {
-  const update = useUpdateIncident(incident);
-  const refresh = useRefreshPeople(incident);
-  const current = incident.lead?.membershipId ?? "";
-  const [lead, setLead] = useState(current);
-
-  // No success notice: this form is keyed by the lead, so a saved change
-  // remounts it, and the Incident lead row above shows the result.
-  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    update.mutate(
-      { leadMembershipId: lead || null },
-      {
-        onError: (error) => {
-          if (isApiError(error, 404)) refresh();
-        },
-      },
-    );
-  };
-
-  return (
-    <form onSubmit={onSubmit} noValidate className="flex max-w-md flex-col gap-3">
-      {update.isError && (
-        <ErrorAlert error={update.error} message={peopleErrorMessage(update.error)} />
-      )}
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="min-w-56 flex-1">
-          <Select
-            label="Incident lead"
-            name="leadMembershipId"
-            value={lead}
-            onChange={(event) => setLead(event.target.value)}
-          >
-            <option value="">No lead</option>
-            {/* A lead who has left stays selectable until changed. */}
-            {incident.lead &&
-              !members.some(({ id }) => id === incident.lead?.membershipId) && (
-                <option value={incident.lead.membershipId}>
-                  {incident.lead.name}
-                </option>
-              )}
-            {members.map((membership) => (
-              <option key={membership.id} value={membership.id}>
-                {membership.user.name}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <Button type="submit" disabled={lead === current || update.isPending}>
-          {update.isPending ? "Saving…" : "Save lead"}
-        </Button>
-      </div>
-    </form>
-  );
-}
-
-/** The responders: listed, each removable, and any other member addable. */
-function Responders({
-  incident,
-  members,
-}: {
-  incident: IncidentDetailResponse;
-  members: OrganizationMembershipResponse[];
-}) {
-  const organization = useOrganization();
-  const queryClient = useQueryClient();
-  const refresh = useRefreshPeople(incident);
-  const [removingId, setRemovingId] = useState<string | null>(null);
-
-  const add = useMutation({
-    mutationFn: (membershipId: string) =>
-      addIncidentResponder(organization.id, incident.number, membershipId),
-    onSuccess: (updated) => storeIncident(queryClient, organization.id, updated),
-    onError: (error) => {
-      if (isApiError(error, 404) || isApiError(error, 409)) refresh();
-    },
-  });
-  const remove = useMutation({
-    mutationFn: (membershipId: string) =>
-      removeIncidentResponder(organization.id, incident.number, membershipId),
-    onSuccess: refresh,
-    onError: (error) => {
-      if (isApiError(error, 404) || isApiError(error, 409)) refresh();
-    },
-  });
-
-  const responding = new Set(
-    incident.responders.map(({ membershipId }) => membershipId),
-  );
-  const available = members.filter(({ id }) => !responding.has(id));
-  const failed = add.error ?? remove.error;
-
-  const onAdd = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const membershipId = String(
-      new FormData(event.currentTarget).get("membershipId") ?? "",
-    );
-
-    remove.reset();
-    if (membershipId) add.mutate(membershipId);
-  };
-
-  const onRemove = (membershipId: string) => {
-    add.reset();
-    setRemovingId(membershipId);
-    remove.mutate(membershipId, { onSettled: () => setRemovingId(null) });
-  };
-
-  return (
-    <Section
-      id="responders"
-      title="Responders"
-      level={3}
-      meta={incident.responders.length}
-      className="max-w-xl"
-    >
-      {failed && (
-        <ErrorAlert error={failed} message={peopleErrorMessage(failed)} />
-      )}
-      {incident.responders.length === 0 ? (
-        <p className="text-sm text-fg-muted">No responders yet.</p>
-      ) : (
-        <ul className="flex flex-col divide-y divide-line-subtle rounded-md border border-line-subtle">
-          {incident.responders.map((responder) => (
-            <li
-              key={responder.membershipId}
-              className="flex items-center justify-between gap-3 px-3 py-2"
-            >
-              <span className="text-sm font-medium text-fg">
-                {responder.name}
-              </span>
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled={removingId === responder.membershipId}
-                onClick={() => onRemove(responder.membershipId)}
-                aria-label={`Remove ${responder.name} from responders`}
-              >
-                {removingId === responder.membershipId ? "Removing…" : "Remove"}
-              </Button>
-            </li>
-          ))}
-        </ul>
-      )}
-      {available.length === 0 ? (
-        <p className="text-sm text-fg-muted">
-          Everyone in this organization is responding.
-        </p>
-      ) : (
-        <form onSubmit={onAdd} className="flex flex-wrap items-end gap-3">
-          <div className="min-w-56 flex-1">
-            <Select label="Add a responder" name="membershipId">
-              {available.map((membership) => (
-                <option key={membership.id} value={membership.id}>
-                  {membership.user.name}
-                </option>
-              ))}
-            </Select>
-          </div>
-          <Button type="submit" variant="secondary" disabled={add.isPending}>
-            {add.isPending ? "Adding…" : "Add responder"}
-          </Button>
-        </form>
-      )}
-    </Section>
-  );
-}
-
-/**
- * Who is handling the incident. Anyone in the organization can lead or
- * respond, whichever team they are on; neither role changes what they may do.
- */
-function People({ incident }: { incident: IncidentDetailResponse }) {
-  const organization = useOrganization();
-  const memberships = useMemberships(organization.id);
-
-  return (
-    <Section
-      id="people"
-      title="People"
-      description="Who is leading and working the response. Anyone in the organization can be assigned, whichever team they are on."
-    >
-      {memberships.isError ? (
-        <ErrorAlert error={memberships.error} />
-      ) : !memberships.data ? (
-        <Spinner label="Loading members…" />
-      ) : (
-        <div className="flex flex-col gap-6">
-          <LeadForm
-            key={incident.lead?.membershipId ?? "none"}
-            incident={incident}
-            members={memberships.data}
-          />
-          <Responders incident={incident} members={memberships.data} />
-        </div>
-      )}
-    </Section>
-  );
-}
-
-/**
- * Starting the investigation of a DECLARED incident: routine, and it closes
- * nothing, so it needs no confirmation. The API's answer replaces the cached
- * incident, which then offers Resolve… in its place.
- */
-function StartInvestigation({ incident }: { incident: IncidentResponse }) {
-  const update = useUpdateIncident(incident);
-
-  return (
-    <div className="flex flex-col items-end gap-2">
-      <Button
-        disabled={update.isPending}
-        onClick={() => update.mutate({ status: "INVESTIGATING" })}
-      >
-        {update.isPending ? "Starting…" : "Start investigation"}
-      </Button>
-      {update.isError && (
-        <ErrorAlert
-          error={update.error}
-          message={
-            resolvedMeanwhile(update.error)
-              ? RESOLVED_MEANWHILE_MESSAGE
-              : movedMeanwhile(update.error)
-                ? MOVED_MEANWHILE_MESSAGE
-                : undefined
-          }
-        />
-      )}
-    </div>
-  );
-}
-
-/**
- * The one lifecycle step open to the incident now: start the investigation
- * of a DECLARED incident, or resolve an INVESTIGATING one. Nothing once
- * resolved.
- */
-function LifecycleAction({ incident }: { incident: IncidentResponse }) {
-  switch (incident.status) {
-    case "DECLARED":
-      return <StartInvestigation incident={incident} />;
-    case "INVESTIGATING":
-      return <Resolve incident={incident} />;
-    default:
-      return null;
-  }
-}
-
-/** Resolving, after an inline confirmation: it cannot be undone here. */
-function Resolve({ incident }: { incident: IncidentResponse }) {
-  const update = useUpdateIncident(incident);
-  const [confirming, setConfirming] = useState(false);
-
-  if (!confirming) {
-    return (
-      <Button variant="secondary" onClick={() => setConfirming(true)}>
-        Resolve…
-      </Button>
-    );
-  }
-
-  return (
-    <Alert tone="warning" title={`Resolve ${incidentKey(incident.number)}?`}>
-      <p>
-        A resolved incident is kept as it is and can no longer be changed. If
-        the problem returns, declare a new incident.
-      </p>
-      {update.isError && (
-        <ErrorAlert
-          className="mt-2"
-          error={update.error}
-          message={
-            resolvedMeanwhile(update.error)
-              ? "Someone else resolved this incident already."
-              : movedMeanwhile(update.error)
-                ? MOVED_MEANWHILE_MESSAGE
-                : undefined
-          }
-        />
-      )}
-      <div className="flex gap-2 pt-2">
-        <Button
-          size="sm"
-          disabled={update.isPending}
-          onClick={() => update.mutate({ status: "RESOLVED" })}
-        >
-          {update.isPending ? "Resolving…" : "Resolve incident"}
-        </Button>
-        <Button
-          variant="secondary"
-          size="sm"
-          disabled={update.isPending}
-          onClick={() => setConfirming(false)}
-        >
-          Cancel
-        </Button>
-      </div>
-    </Alert>
-  );
-}
 
 function IncidentNotFound({ orgSlug }: { orgSlug: string }) {
   return (
@@ -624,58 +67,111 @@ function IncidentNotFound({ orgSlug }: { orgSlug: string }) {
   );
 }
 
-function IncidentPage({ incident }: { incident: IncidentDetailResponse }) {
+/**
+ * The caller's part in this incident, from what they may do and the
+ * incident's responders:
+ *
+ *   admin      coordinates and resolves; posts updates; never a responder
+ *   responder  has a response — continues and completes it, even if the
+ *              incident's team has changed since they started
+ *   eligible   on the current responsible team, not yet responding — may
+ *              start investigating
+ *   observer   anyone else — reads
+ *
+ * `undefined` while it cannot yet be told whether an observer is eligible:
+ * the team's members are still loading. Advice for what to offer; the API
+ * decides.
+ */
+type Perspective = "admin" | "responder" | "eligible" | "observer";
+
+const usePerspective = (
+  incident: IncidentDetailResponse,
+): { perspective: Perspective | undefined; own?: IncidentResponderResponse } => {
   const organization = useOrganization();
   const canManage = useCan(Permission.INCIDENTS_MANAGE);
   const canRespond = useCan(Permission.INCIDENTS_RESPOND);
+  const members = useTeamMembers(organization.id, incident.team.id);
+  const own = incident.responders.find(
+    ({ membershipId }) => membershipId === organization.membership.id,
+  );
+
+  if (canManage) return { perspective: "admin" };
+  if (own) return { perspective: "responder", own };
+  if (!canRespond || incident.status === "RESOLVED") {
+    return { perspective: "observer" };
+  }
+  if (members.isError) return { perspective: "observer" };
+  if (!members.data) return { perspective: undefined };
+
+  return {
+    perspective: members.data.some(
+      ({ membershipId }) => membershipId === organization.membership.id,
+    )
+      ? "eligible"
+      : "observer",
+  };
+};
+
+/** A fact in the header's line: a small label, then its value. */
+function Fact({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex items-baseline gap-2">
+      <dt className="label-caps text-fg-subtle">{label}</dt>
+      <dd className="text-sm text-fg">{children}</dd>
+    </div>
+  );
+}
+
+/**
+ * The incident at a glance: its number and how long it has been open, its
+ * title, one line of facts — severity, status, affected service, responsible
+ * team — and its summary as the lead. Links, not cards.
+ */
+function IncidentHeader({
+  incident,
+  canManage,
+}: {
+  incident: IncidentDetailResponse;
+  canManage: boolean;
+}) {
+  const organization = useOrganization();
   const resolved = incident.status === "RESOLVED";
-  const severity = severityOf(incident.severity);
-  const status = statusOf(incident.status);
 
   return (
-    <>
-      <PageHeader
-        eyebrow={<span className="data">{incidentKey(incident.number)}</span>}
-        title={incident.title}
-        wrapTitle
-        description={
-          <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <SeverityMark severity={incident.severity} label />
-            <span aria-hidden="true">·</span>
-            <StatusMark status={incident.status} className="font-medium text-fg" />
+    <PageHeader
+      eyebrow={
+        <>
+          <span className="data">{incidentKey(incident.number)}</span>
+          <span aria-hidden="true"> · </span>
+          <span>
+            {resolved ? "Lasted " : "Open for "}
+            <span className="data">
+              <Duration from={incident.createdAt} to={incident.resolvedAt} />
+            </span>
           </span>
-        }
-        actions={canManage && <LifecycleAction incident={incident} />}
-      />
-      <PageBody width="form">
-        {resolved && incident.resolvedAt && (
-          <Alert tone="info" title="Resolved">
-            <p>
-              Resolved <LocalDateTime value={incident.resolvedAt} />. A
-              resolved incident is kept as it is; if the problem returns,
-              declare a new incident.
-            </p>
-          </Alert>
-        )}
-        <div className="flex flex-col gap-8">
-          <RecordList>
-            <RecordRow label="Severity">
-              <SeverityMark severity={incident.severity} label />
-              {severity.definition && (
-                <span className="mt-0.5 block text-sm text-fg-muted">
-                  {severity.definition}
-                </span>
-              )}
-            </RecordRow>
-            <RecordRow label="Status">
-              <StatusMark status={incident.status} className="font-medium" />
-              {status.definition && (
-                <span className="mt-0.5 block text-sm text-fg-muted">
-                  {status.definition}
-                </span>
-              )}
-            </RecordRow>
-            <RecordRow label="Service">
+        </>
+      }
+      title={incident.title}
+      wrapTitle
+      description={
+        <div className="flex flex-col gap-3 pt-1">
+          <dl className="flex flex-wrap items-center gap-x-6 gap-y-2">
+            <div>
+              <dt className="sr-only">Severity</dt>
+              <dd className="text-sm">
+                <SeverityMark severity={incident.severity} label />
+              </dd>
+            </div>
+            <div>
+              <dt className="sr-only">Status</dt>
+              <dd className="text-sm">
+                <StatusMark
+                  status={incident.status}
+                  className="font-medium text-fg"
+                />
+              </dd>
+            </div>
+            <Fact label="Service">
               <Link
                 href={serviceHref(organization.slug, incident.service.slug)}
                 className={entityLinkClasses}
@@ -685,78 +181,91 @@ function IncidentPage({ incident }: { incident: IncidentDetailResponse }) {
               {incident.service.archivedAt && (
                 <span className="text-fg-muted"> (archived)</span>
               )}
-            </RecordRow>
-            <RecordRow label="Responsible team">
+              <span className="ml-2 text-fg-muted">
+                <CriticalityMark criticality={incident.service.criticality} />
+              </span>
+            </Fact>
+            <Fact label="Team">
               <Link
                 href={teamHref(organization.slug, incident.team.slug)}
                 className={entityLinkClasses}
               >
                 {incident.team.name}
               </Link>
-            </RecordRow>
-            <RecordRow label="Incident lead">
-              {incident.lead ? (
-                <span className="font-medium">{incident.lead.name}</span>
-              ) : (
-                <span className="text-fg-muted">No lead assigned</span>
-              )}
-            </RecordRow>
-            <RecordRow label="Responders">
-              {incident.responders.length > 0 ? (
-                incident.responders.map(({ name }) => name).join(", ")
-              ) : (
-                <span className="text-fg-muted">No responders yet</span>
-              )}
-            </RecordRow>
-            <RecordRow label="Service criticality">
-              <CriticalityMark criticality={incident.service.criticality} />
-            </RecordRow>
-            <RecordRow label="Declared by">{incident.createdBy.name}</RecordRow>
-            <RecordRow label="Declared">
-              <LocalDateTime value={incident.createdAt} />
-            </RecordRow>
-            {incident.resolvedAt && (
-              <RecordRow label="Resolved">
-                <LocalDateTime value={incident.resolvedAt} />
-              </RecordRow>
-            )}
-            <RecordRow label={resolved ? "Lasted" : "Duration"}>
-              <span className="data">
-                <Duration from={incident.createdAt} to={incident.resolvedAt} />
-              </span>
-            </RecordRow>
-          </RecordList>
-          <Section id="summary" title="Summary">
-            {incident.summary ? (
-              <p className="max-w-2xl text-sm whitespace-pre-line text-fg">
-                {incident.summary}
-              </p>
-            ) : (
-              <p className="text-sm text-fg-muted">No summary yet.</p>
-            )}
-          </Section>
-          <IncidentTimeline
-            incident={incident}
-            canPost={canRespond && !resolved}
-          />
-          {canManage && !resolved && (
-            <>
-              <ResponseForm
-                key={`${incident.severity}-${incident.team.id}`}
-                incident={incident}
-              />
-              <People incident={incident} />
-              <DetailsForm
-                key={`${incident.title}-${incident.summary}`}
-                incident={incident}
-              />
-            </>
+            </Fact>
+          </dl>
+          {incident.summary && (
+            <p className="text-base whitespace-pre-line text-fg">
+              {incident.summary}
+            </p>
           )}
-          <RecordList tone="secondary">
-            <RecordRow label="Last changed">
-              <IsoDate value={incident.updatedAt} />
-            </RecordRow>
-          </RecordList>
+        </div>
+      }
+      actions={canManage && !resolved && <ManageIncident incident={incident} />}
+    />
+  );
+}
+
+function IncidentPage({ incident }: { incident: IncidentDetailResponse }) {
+  const { perspective, own } = usePerspective(incident);
+  const actions = useOwnResponse(incident);
+  const resolved = incident.status === "RESOLVED";
+  const canManage = perspective === "admin";
+  const working =
+    perspective === "eligible" || (perspective === "responder" && !!own);
+  const actionError = actions.start.error ?? actions.complete.error;
+
+  return (
+    <>
+      <IncidentHeader incident={incident} canManage={canManage} />
+      <PageBody>
+        {resolved && incident.resolvedAt && (
+          <Alert tone="info" title="Resolved">
+            <p>
+              Resolved <LocalDateTime value={incident.resolvedAt} />. A
+              resolved incident is kept as it is; if the problem returns,
+              declare a new incident.
+            </p>
+          </Alert>
+        )}
+        <div className="grid items-start gap-x-10 gap-y-10 lg:grid-cols-[minmax(0,1fr)_16rem]">
+          <div className="flex min-w-0 flex-col gap-8">
+            {actionError && (
+              <ErrorAlert
+                error={actionError}
+                message={responseErrorMessage(actionError)}
+              />
+            )}
+            {/* A member's own work first, the team's beneath it; everyone
+                else sees the team's response as the page's centre. */}
+            {working ? (
+              <>
+                <YourResponse incident={incident} own={own} actions={actions} />
+                <TeamResponse incident={incident} />
+              </>
+            ) : (
+              <ResponsePanel incident={incident} canManage={canManage} />
+            )}
+            <IncidentTimeline incident={incident} canPost={canManage && !resolved} />
+          </div>
+          <aside aria-label="Incident details">
+            <RecordList stacked>
+              <RecordRow label="Declared">
+                <LocalDateTime value={incident.createdAt} />
+                <span className="mt-0.5 block text-sm text-fg-muted">
+                  by {incident.createdBy.name}
+                </span>
+              </RecordRow>
+              {incident.resolvedAt && (
+                <RecordRow label="Resolved">
+                  <LocalDateTime value={incident.resolvedAt} />
+                </RecordRow>
+              )}
+              <RecordRow label="Last changed">
+                <IsoDate value={incident.updatedAt} />
+              </RecordRow>
+            </RecordList>
+          </aside>
         </div>
       </PageBody>
     </>
@@ -764,10 +273,11 @@ function IncidentPage({ incident }: { incident: IncidentDetailResponse }) {
 }
 
 /**
- * One incident, at `/incidents/[incidentNumber]`: what it is, where the
- * response stands, and its timeline. While it is active, those who may
- * respond post updates to the timeline, and those who may manage it — the
- * Admin — get the controls to change, staff, and resolve it.
+ * One incident, at `/incidents/[incidentNumber]`: what it is and what it
+ * affects, where the response stands, and its timeline. What the page offers
+ * follows the caller's part in it: the Admin coordinates and resolves; a
+ * member of the responsible team starts investigating, posts updates, and
+ * completes their response; anyone else follows it.
  */
 export function IncidentDetail() {
   const organization = useOrganization();

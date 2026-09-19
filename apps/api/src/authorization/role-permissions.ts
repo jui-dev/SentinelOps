@@ -14,13 +14,14 @@ import { Permission } from './permissions.js';
  *
  * Configuration — members, teams, services, invitations — is governed by
  * ADMIN. So is an incident's lifecycle (`incidents:manage`): declaring it,
- * changing its status, severity, or responsible team, assigning its people,
- * and resolving it. Taking part in the response (`incidents:respond`) is
- * everyone's work — today, posting operational updates.
+ * changing its status, severity, or responsible team, and resolving it.
+ * Taking part in the response (`incidents:respond`) is every role's work —
+ * posting operational updates — but a MEMBER's is scoped to the incidents
+ * their team is responsible for. That scope depends on the incident, so it
+ * is IncidentsService's check, not this table's.
  *
  * Declaring is ADMIN-only as the current rule, not a settled one: letting a
- * MEMBER declare against services their own teams own is to be reconsidered
- * once response is scoped to teams.
+ * MEMBER declare against services their own teams own may be reconsidered.
  */
 export const ROLE_PERMISSIONS: Readonly<Record<Role, ReadonlySet<Permission>>> =
   {

@@ -250,6 +250,7 @@ export type IncidentStatus = "DECLARED" | "INVESTIGATING" | "RESOLVED";
  * One incident. `number` is the organization's own sequence, shown as
  * INC-{number} and used to address it. The responsible `team` is the
  * service's owner when the incident was declared, unless reassigned since.
+ * Its members are who may start investigating it.
  */
 export interface IncidentResponse {
   id: string;
@@ -272,19 +273,29 @@ export interface IncidentResponse {
   resolvedAt: string | null;
 }
 
-/** A member assigned to an incident, by membership id. Never an email. */
-export interface IncidentMemberResponse {
+/**
+ * Where one responder's own part of the response stands. Someone who has not
+ * started investigating is not a responder, and has no entry.
+ */
+export type IncidentResponderStatus = "INVESTIGATING" | "COMPLETED";
+
+/** A member who started investigating, by membership id. Never an email. */
+export interface IncidentResponderResponse {
   membershipId: string;
   name: string;
+  status: IncidentResponderStatus;
+  startedAt: string;
+  completedAt: string | null;
 }
 
 /**
- * One incident with the people responding to it — what every single-incident
- * route returns. List items carry neither field.
+ * One incident with its responders — what every single-incident route
+ * returns; list items carry no responders. The responders are the current
+ * state of the response, in the order they started; the timeline is its
+ * history.
  */
 export interface IncidentDetailResponse extends IncidentResponse {
-  lead: IncidentMemberResponse | null;
-  responders: IncidentMemberResponse[];
+  responders: IncidentResponderResponse[];
 }
 
 /**
@@ -292,18 +303,26 @@ export interface IncidentDetailResponse extends IncidentResponse {
  * server records with the change. Starting the investigation is
  * STATUS_CHANGED from DECLARED to INVESTIGATING; resolution is STATUS_CHANGED
  * to RESOLVED. A status change recorded before the lifecycle was simplified
- * can name a retired status, IDENTIFIED or MONITORING.
+ * can name a retired status, IDENTIFIED or MONITORING. TEAM_CHANGED is a
+ * reassignment of the responsible team. RESPONSE_STARTED and
+ * RESPONSE_COMPLETED are a responder starting and completing their own
+ * response; the actor is the responder. The first response to start moves a
+ * DECLARED incident, recorded as a STATUS_CHANGED by the same responder.
  */
 export type IncidentActivityType =
   | "DECLARED"
   | "UPDATE"
   | "SEVERITY_CHANGED"
-  | "STATUS_CHANGED";
+  | "STATUS_CHANGED"
+  | "TEAM_CHANGED"
+  | "RESPONSE_STARTED"
+  | "RESPONSE_COMPLETED";
 
 /**
  * One entry on an incident's timeline. `message` is set for UPDATE only;
  * `fromValue`/`toValue` are severities or statuses (DECLARED carries only the
- * declared severity in `toValue`). The actor is identity only.
+ * declared severity in `toValue`), or for TEAM_CHANGED the two teams' names
+ * as they were then. The actor is identity only.
  */
 export interface IncidentActivityResponse {
   id: string;
@@ -400,18 +419,18 @@ export interface CreateIncidentRequest {
 }
 
 /**
- * `status: "INVESTIGATING"` starts the investigation of a DECLARED incident;
- * `status: "RESOLVED"` resolves an INVESTIGATING one. Any other move is 409
- * INVALID_STATUS_TRANSITION. The service never changes. The lead is a
- * membership id, or null to clear it.
+ * `status: "RESOLVED"` resolves an INVESTIGATING incident once no responder
+ * is still investigating (409 RESPONDERS_STILL_INVESTIGATING otherwise). An
+ * incident becomes INVESTIGATING only when a responder starts investigating.
+ * The service never changes; the responsible team is reassigned, never
+ * cleared.
  */
 export interface UpdateIncidentRequest {
   title?: string;
   summary?: string | null;
   severity?: IncidentSeverity;
-  status?: "INVESTIGATING" | "RESOLVED";
+  status?: "RESOLVED";
   teamId?: string;
-  leadMembershipId?: string | null;
 }
 
 /**
@@ -467,8 +486,11 @@ export const ApiErrorCode = {
   INCIDENT_NOT_FOUND: "INCIDENT_NOT_FOUND",
   INCIDENT_RESOLVED: "INCIDENT_RESOLVED",
   INVALID_STATUS_TRANSITION: "INVALID_STATUS_TRANSITION",
-  ALREADY_A_RESPONDER: "ALREADY_A_RESPONDER",
-  RESPONDER_NOT_FOUND: "RESPONDER_NOT_FOUND",
+  NOT_ON_RESPONSIBLE_TEAM: "NOT_ON_RESPONSIBLE_TEAM",
+  START_INVESTIGATING_FIRST: "START_INVESTIGATING_FIRST",
+  RESPONSE_ALREADY_COMPLETED: "RESPONSE_ALREADY_COMPLETED",
+  NOT_INVESTIGATING: "NOT_INVESTIGATING",
+  RESPONDERS_STILL_INVESTIGATING: "RESPONDERS_STILL_INVESTIGATING",
 } as const;
 
 export interface ValidationErrorDetail {

@@ -81,11 +81,8 @@ describe('incident schemas', () => {
       { title: 'Card payments degraded' },
       { summary: null },
       { severity: 'SEV2' },
-      { status: 'INVESTIGATING' },
       { status: 'RESOLVED' },
       { teamId: TEAM },
-      { leadMembershipId: TEAM },
-      { leadMembershipId: null },
     ])('should accept %o alone', (body) => {
       expect(updateIncidentSchema.safeParse(body).success).toBe(true);
     });
@@ -94,8 +91,10 @@ describe('incident schemas', () => {
       expect(updateIncidentSchema.safeParse({}).success).toBe(false);
     });
 
-    it.each(['DECLARED', 'IDENTIFIED', 'MONITORING', 'OPEN'])(
-      'should refuse moving to %j: only INVESTIGATING and RESOLVED are moves',
+    // INVESTIGATING included: an incident becomes INVESTIGATING only when a
+    // responder starts investigating it, never by a change.
+    it.each(['DECLARED', 'INVESTIGATING', 'IDENTIFIED', 'MONITORING', 'OPEN'])(
+      'should refuse moving to %j: only RESOLVED is a move',
       (status) => {
         expect(updateIncidentSchema.safeParse({ status }).success).toBe(false);
       },
@@ -113,7 +112,9 @@ describe('incident schemas', () => {
       { number: 2 },
       { organizationId: SERVICE },
       { status: 'OPEN' },
-      { leadMembershipId: 'not-a-uuid' },
+      // Lead and responders were removed: unknown keys, refused like any.
+      { leadMembershipId: TEAM },
+      { leadMembershipId: null },
       { responders: [TEAM] },
     ])('should refuse %o', (body) => {
       expect(

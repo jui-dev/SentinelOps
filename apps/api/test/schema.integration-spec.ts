@@ -1189,9 +1189,9 @@ describe('core domain schema (integration)', () => {
       ).rejects.toSatisfy(isRefusedBy('22P02'));
     });
 
-    describe('lead and responders', () => {
-      /** An incident in each tenant, and the user's membership in each. */
-      const assigned = async () => {
+    describe('responders', () => {
+      /** An incident in acme, and the user's membership in each tenant. */
+      const responding = async () => {
         const tenants = await twoTenants();
         const { acme, globex, user, acmePayments, acmeService } = tenants;
         const grant = (organizationId: string) =>
@@ -1212,15 +1212,123 @@ describe('core domain schema (integration)', () => {
         };
       };
 
-      // Restrict keys into memberships, and the organization cascade deletes
-      // memberships, incidents, and responders in one statement. Postgres
-      // must still complete it.
-      it("should remove an organization's incidents with their lead and responders when it is physically deleted", async () => {
-        const { acme, globex, acmeMember, incident } = await assigned();
-        await prisma.incident.update({
-          where: { id: incident.id },
-          data: { leadMembershipId: acmeMember.id },
+      it('should start a response as INVESTIGATING, with a start time and no completion', async () => {
+        const { acme, acmeMember, incident } = await responding();
+
+        const responder = await prisma.incidentResponder.create({
+          data: {
+            organizationId: acme.id,
+            incidentId: incident.id,
+            membershipId: acmeMember.id,
+          },
         });
+
+        expect(responder.status).toBe('INVESTIGATING');
+        expect(responder.startedAt).toBeInstanceOf(Date);
+        expect(responder.completedAt).toBeNull();
+      });
+
+      it("should reject another organization's membership as responder, whichever organization the row claims", async () => {
+        const { acme, globex, globexMember, incident } = await responding();
+
+        for (const organizationId of [acme.id, globex.id]) {
+          await expect(
+            prisma.incidentResponder.create({
+              data: {
+                organizationId,
+                incidentId: incident.id,
+                membershipId: globexMember.id,
+              },
+            }),
+          ).rejects.toSatisfy(isForeignKeyViolation);
+        }
+      });
+
+      it('should hold one response per member per incident', async () => {
+        const { acme, acmeMember, incident } = await responding();
+        const respond = () =>
+          prisma.incidentResponder.create({
+            data: {
+              organizationId: acme.id,
+              incidentId: incident.id,
+              membershipId: acmeMember.id,
+            },
+          });
+
+        await respond();
+
+        await expect(respond()).rejects.toSatisfy(
+          (error) => codeOf(error) === 'P2002',
+        );
+      });
+
+      it('should hold COMPLETED exactly when there is a completion time', async () => {
+        const { acme, acmeMember, incident } = await responding();
+        const responder = await prisma.incidentResponder.create({
+          data: {
+            organizationId: acme.id,
+            incidentId: incident.id,
+            membershipId: acmeMember.id,
+          },
+        });
+        const set = (status: string, completedAt: string) =>
+          prisma.$executeRawUnsafe(
+            `UPDATE incident_responders
+             SET status = $1::incident_responder_status, completed_at = ${completedAt}
+             WHERE id = $2::uuid`,
+            status,
+            responder.id,
+          );
+
+        await expect(set('COMPLETED', 'NULL')).rejects.toSatisfy(
+          isRefusedBy('23514'),
+        );
+        await expect(set('INVESTIGATING', 'now()')).rejects.toSatisfy(
+          isRefusedBy('23514'),
+        );
+
+        const completed = await prisma.incidentResponder.update({
+          where: { id: responder.id },
+          data: { status: 'COMPLETED', completedAt: new Date() },
+        });
+
+        expect(completed.status).toBe('COMPLETED');
+      });
+
+      it('should know exactly two responder statuses', async () => {
+        const labels = await prisma.$queryRaw<{ label: string }[]>`
+          SELECT e.enumlabel AS label
+          FROM pg_enum e
+          JOIN pg_type t ON t.oid = e.enumtypid
+          WHERE t.typname = 'incident_responder_status'
+          ORDER BY e.enumsortorder`;
+
+        expect(labels.map(({ label }) => label)).toEqual([
+          'INVESTIGATING',
+          'COMPLETED',
+        ]);
+      });
+
+      it('should refuse deleting a membership that has responded to an incident', async () => {
+        const { acme, acmeMember, incident } = await responding();
+        await prisma.incidentResponder.create({
+          data: {
+            organizationId: acme.id,
+            incidentId: incident.id,
+            membershipId: acmeMember.id,
+          },
+        });
+
+        await expect(
+          prisma.membership.delete({ where: { id: acmeMember.id } }),
+        ).rejects.toSatisfy(isForeignKeyViolation);
+      });
+
+      // A Restrict key into memberships, and the organization cascade
+      // deletes memberships, incidents, and responders in one statement.
+      // Postgres must still complete it.
+      it("should remove an organization's incidents with their responders when it is physically deleted", async () => {
+        const { acme, globex, acmeMember, incident } = await responding();
         await prisma.incidentResponder.create({
           data: {
             organizationId: acme.id,
@@ -1242,79 +1350,31 @@ describe('core domain schema (integration)', () => {
           }),
         ).toBe(1);
       });
+    });
 
-      it("should reject another organization's membership as lead", async () => {
-        const { globexMember, incident } = await assigned();
+    it('should keep no incident lead, and record team changes and responses on the timeline', async () => {
+      const lead = await prisma.$queryRaw<{ column_name: string }[]>`
+        SELECT column_name FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'incidents'
+          AND column_name = 'lead_membership_id'`;
+      const labels = await prisma.$queryRaw<{ label: string }[]>`
+        SELECT e.enumlabel AS label
+        FROM pg_enum e
+        JOIN pg_type t ON t.oid = e.enumtypid
+        WHERE t.typname = 'incident_activity_type'
+        ORDER BY e.enumsortorder`;
 
-        await expect(
-          prisma.incident.update({
-            where: { id: incident.id },
-            data: { leadMembershipId: globexMember.id },
-          }),
-        ).rejects.toSatisfy(isForeignKeyViolation);
-      });
-
-      it("should reject another organization's membership as responder, whichever organization the row claims", async () => {
-        const { acme, globex, globexMember, incident } = await assigned();
-
-        for (const organizationId of [acme.id, globex.id]) {
-          await expect(
-            prisma.incidentResponder.create({
-              data: {
-                organizationId,
-                incidentId: incident.id,
-                membershipId: globexMember.id,
-              },
-            }),
-          ).rejects.toSatisfy(isForeignKeyViolation);
-        }
-      });
-
-      it('should reject the same responder twice on one incident', async () => {
-        const { acme, acmeMember, incident } = await assigned();
-        const respond = () =>
-          prisma.incidentResponder.create({
-            data: {
-              organizationId: acme.id,
-              incidentId: incident.id,
-              membershipId: acmeMember.id,
-            },
-          });
-
-        await respond();
-
-        await expect(respond()).rejects.toSatisfy(
-          (error) => codeOf(error) === 'P2002',
-        );
-      });
-
-      it('should refuse deleting a membership that leads or responds to an incident', async () => {
-        const { acme, acmeMember, incident } = await assigned();
-        await prisma.incident.update({
-          where: { id: incident.id },
-          data: { leadMembershipId: acmeMember.id },
-        });
-
-        await expect(
-          prisma.membership.delete({ where: { id: acmeMember.id } }),
-        ).rejects.toSatisfy(isForeignKeyViolation);
-
-        await prisma.incident.update({
-          where: { id: incident.id },
-          data: { leadMembershipId: null },
-        });
-        await prisma.incidentResponder.create({
-          data: {
-            organizationId: acme.id,
-            incidentId: incident.id,
-            membershipId: acmeMember.id,
-          },
-        });
-
-        await expect(
-          prisma.membership.delete({ where: { id: acmeMember.id } }),
-        ).rejects.toSatisfy(isForeignKeyViolation);
-      });
+      expect(lead).toEqual([]);
+      expect(labels.map(({ label }) => label)).toEqual([
+        'DECLARED',
+        'UPDATE',
+        'SEVERITY_CHANGED',
+        'STATUS_CHANGED',
+        'TEAM_CHANGED',
+        'RESPONSE_STARTED',
+        'RESPONSE_COMPLETED',
+      ]);
     });
   });
 
@@ -1380,9 +1440,11 @@ describe('core domain schema (integration)', () => {
       >(
         `SELECT column_name, data_type FROM information_schema.columns
          WHERE table_schema = 'public'
+           AND table_name <> '_prisma_migrations'
            AND column_name IN (
              'created_at', 'updated_at', 'deleted_at', 'expires_at',
-             'revoked_at', 'accepted_at', 'archived_at', 'resolved_at'
+             'revoked_at', 'accepted_at', 'archived_at', 'resolved_at',
+             'started_at', 'completed_at'
            )`,
       );
 
@@ -1395,9 +1457,10 @@ describe('core domain schema (integration)', () => {
       // team_memberships only created_at (1): a placement is made or removed,
       // never edited. services adds created_at, updated_at, and archived_at
       // (3); incidents adds created_at, updated_at, and resolved_at (3), and
-      // incident_responders only created_at (1), like team_memberships.
       // incident_activities only created_at (1): an entry is never edited.
-      expect(columns).toHaveLength(27);
+      // incident_responders adds started_at and completed_at (2): a response
+      // starts and completes, and has no other edits.
+      expect(columns).toHaveLength(28);
       for (const column of columns) {
         expect(column.data_type).toBe('timestamp with time zone');
       }

@@ -1,6 +1,5 @@
 import {
   Body,
-  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -22,7 +21,6 @@ import type {
   IncidentSummaryResponse,
 } from './incidents.contract.js';
 import {
-  addResponderSchema,
   createIncidentSchema,
   incidentSummaryQuerySchema,
   listIncidentsQuerySchema,
@@ -30,7 +28,6 @@ import {
   updateIncidentSchema,
 } from './incidents.schemas.js';
 import type {
-  AddResponderRequest,
   CreateIncidentRequest,
   IncidentSummaryQuery,
   ListIncidentsQuery,
@@ -44,10 +41,12 @@ import { IncidentsService } from './incidents.service.js';
  *
  * The same three layers as every organization route: admission by
  * `@OrganizationController()`, authorization by `@RequirePermission()`, and
- * isolation in the service. The lifecycle — declaring, changing, assigning
- * people, resolving — is `incidents:manage`, which only an admin holds.
- * Posting an operational update is `incidents:respond`, which every role
- * holds. Who holds which is decided by the role table alone.
+ * isolation in the service. The lifecycle — declaring, changing,
+ * reassigning, resolving — is `incidents:manage`, which only an admin holds.
+ * Responding — starting to investigate, posting updates, completing one's
+ * own response — is `incidents:respond`, which every role holds; the service
+ * then decides by the incident's responsible team and the caller's own
+ * response. Who holds which permission is decided by the role table alone.
  *
  * Incidents are addressed by number, validated in the service, so a
  * malformed one answers 404 like any other number this organization lacks.
@@ -109,10 +108,9 @@ export class IncidentsController {
   }
 
   /**
-   * Changes an active incident's title, summary, severity, status,
-   * responsible team, or lead (`leadMembershipId`, null to clear). The status
-   * moves forward one step: `INVESTIGATING` starts the investigation of a
-   * DECLARED incident, `RESOLVED` resolves an INVESTIGATING one.
+   * Changes an active incident's title, summary, severity, or responsible
+   * team, or resolves it with `status: 'RESOLVED'` — once it is
+   * INVESTIGATING and no responder is still investigating.
    */
   @Patch(':incidentNumber')
   @RequirePermission(Permission.INCIDENTS_MANAGE)
@@ -130,8 +128,9 @@ export class IncidentsController {
   }
 
   /**
-   * The incident's timeline, oldest first: operational updates and the
-   * severity and status changes the server recorded.
+   * The incident's timeline, oldest first: operational updates, responses
+   * starting and completing, and the severity, status, and team changes the
+   * server recorded.
    */
   @Get(':incidentNumber/timeline')
   @RequirePermission(Permission.INCIDENTS_READ)
@@ -144,7 +143,8 @@ export class IncidentsController {
 
   /**
    * Posts an operational update to an active incident. Who posted it is the
-   * admitted member, and cannot be supplied.
+   * admitted member, and cannot be supplied. A member must be investigating
+   * it (403 START_INVESTIGATING_FIRST otherwise); the Admin may post to any.
    */
   @Post(':incidentNumber/updates')
   @RequirePermission(Permission.INCIDENTS_RESPOND)
@@ -157,38 +157,46 @@ export class IncidentsController {
       membership.organizationId,
       incidentNumber,
       body,
+      { membershipId: membership.membershipId, role: membership.role },
+    );
+  }
+
+  /**
+   * The caller starts investigating the incident, as a member of its
+   * responsible team. The first to start moves a DECLARED incident to
+   * INVESTIGATING. Starting again while investigating changes nothing, so
+   * this answers 200 either way, with the incident. The responder is always
+   * the admitted member: there is no body.
+   */
+  @Post(':incidentNumber/responders/me')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission(Permission.INCIDENTS_RESPOND)
+  startResponse(
+    @CurrentMembership() membership: OrganizationContext,
+    @Param('incidentNumber') incidentNumber: string,
+  ): Promise<IncidentDetailResponse> {
+    return this.incidents.startResponse(
+      membership.organizationId,
+      incidentNumber,
       { membershipId: membership.membershipId },
     );
   }
 
-  /** Adds a member of the organization, by membership id, as a responder. */
-  @Post(':incidentNumber/responders')
-  @RequirePermission(Permission.INCIDENTS_MANAGE)
-  addResponder(
+  /**
+   * The caller marks their own response complete. It resolves nothing, and
+   * completing again changes nothing: 200 either way, with the incident.
+   */
+  @Post(':incidentNumber/responders/me/complete')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission(Permission.INCIDENTS_RESPOND)
+  completeResponse(
     @CurrentMembership() membership: OrganizationContext,
     @Param('incidentNumber') incidentNumber: string,
-    @Body({ schema: addResponderSchema }) body: AddResponderRequest,
   ): Promise<IncidentDetailResponse> {
-    return this.incidents.addResponder(
+    return this.incidents.completeResponse(
       membership.organizationId,
       incidentNumber,
-      body,
-    );
-  }
-
-  /** Takes a responder off the incident, addressed by their membership id. */
-  @Delete(':incidentNumber/responders/:membershipId')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @RequirePermission(Permission.INCIDENTS_MANAGE)
-  removeResponder(
-    @CurrentMembership() membership: OrganizationContext,
-    @Param('incidentNumber') incidentNumber: string,
-    @Param('membershipId') membershipId: string,
-  ): Promise<void> {
-    return this.incidents.removeResponder(
-      membership.organizationId,
-      incidentNumber,
-      membershipId,
+      { membershipId: membership.membershipId },
     );
   }
 }

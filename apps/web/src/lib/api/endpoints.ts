@@ -16,8 +16,8 @@ import type {
   CurrentUserResponse,
   IncidentActivityResponse,
   IncidentDetailResponse,
-  IncidentResponse,
   IncidentPeriod,
+  IncidentResponse,
   IncidentState,
   IncidentSummaryResponse,
   InvitationLookupResponse,
@@ -294,27 +294,24 @@ export const updateIncident = (
     { method: "PATCH", body },
   );
 
-const respondersPath = (organizationId: string, number: number) =>
-  `${incidentPath(organizationId, number)}/responders`;
-
-export const addIncidentResponder = (
-  organizationId: string,
-  number: number,
-  membershipId: string,
-) =>
+/**
+ * The caller starts investigating the incident — only on its responsible
+ * team. Starting again while investigating changes nothing.
+ */
+export const startIncidentResponse = (organizationId: string, number: number) =>
   authenticatedRequest<IncidentDetailResponse>(
-    respondersPath(organizationId, number),
-    { method: "POST", body: { membershipId } },
+    `${incidentPath(organizationId, number)}/responders/me`,
+    { method: "POST" },
   );
 
-export const removeIncidentResponder = (
+/** The caller marks their own response complete. It resolves nothing. */
+export const completeIncidentResponse = (
   organizationId: string,
   number: number,
-  membershipId: string,
 ) =>
-  authenticatedRequest<void>(
-    `${respondersPath(organizationId, number)}/${membershipId}`,
-    { method: "DELETE" },
+  authenticatedRequest<IncidentDetailResponse>(
+    `${incidentPath(organizationId, number)}/responders/me/complete`,
+    { method: "POST" },
   );
 
 /** The incident's timeline, oldest first. Unpaged. */

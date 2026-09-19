@@ -14,7 +14,7 @@ import { PageBody } from "@/components/ui/page";
 import { PageSpinner } from "@/components/ui/spinner";
 import { linkClasses } from "@/components/ui/link";
 import type { TeamResponse } from "@/lib/api/contracts";
-import { listTeams } from "@/lib/api/endpoints";
+import { listTeamMembers, listTeams } from "@/lib/api/endpoints";
 import { queryKeys } from "@/lib/api/query-keys";
 
 export const teamsHref = (orgSlug: string) =>
@@ -28,6 +28,16 @@ export const useTeams = (organizationId: string) =>
   useQuery({
     queryKey: queryKeys.teams(organizationId),
     queryFn: () => listTeams(organizationId),
+  });
+
+/**
+ * Who is on one team. The team page lists them; an incident shows its
+ * responsible team's members as who may respond to it.
+ */
+export const useTeamMembers = (organizationId: string, teamId: string) =>
+  useQuery({
+    queryKey: queryKeys.teamMembers(organizationId, teamId),
+    queryFn: () => listTeamMembers(organizationId, teamId),
   });
 
 /**

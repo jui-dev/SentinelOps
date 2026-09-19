@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useState } from "react";
 import type { FormEvent } from "react";
@@ -23,21 +23,11 @@ import { IsoDate } from "@/components/ui/timestamp";
 import { quietLinkClasses } from "@/components/ui/link";
 import { ApiErrorCode, Permission } from "@/lib/api/contracts";
 import type { TeamMemberResponse } from "@/lib/api/contracts";
-import {
-  addTeamMember,
-  listTeamMembers,
-  removeTeamMember,
-} from "@/lib/api/endpoints";
+import { addTeamMember, removeTeamMember } from "@/lib/api/endpoints";
 import { isApiError } from "@/lib/api/errors";
 import { queryKeys } from "@/lib/api/query-keys";
 
-import { teamHref, useTeam } from "./team-scope";
-
-const useTeamMembers = (organizationId: string, teamId: string) =>
-  useQuery({
-    queryKey: queryKeys.teamMembers(organizationId, teamId),
-    queryFn: () => listTeamMembers(organizationId, teamId),
-  });
+import { teamHref, useTeam, useTeamMembers } from "./team-scope";
 
 /**
  * What a member change stales: who is on the team, and the team list, which

@@ -7,6 +7,7 @@ import { OrganizationScope } from "@/components/organizations/organization-scope
 import type {
   IncidentActivityResponse,
   IncidentDetailResponse,
+  IncidentResponderResponse,
   IncidentResponse,
 } from "@/lib/api/contracts";
 import { queryKeys } from "@/lib/api/query-keys";
@@ -134,7 +135,17 @@ const daniel = {
   },
 };
 
-/** An incident as the single-incident routes return it; lists ignore lead and responders. */
+/** Someone on the incident's responsible team, as the team routes list them. */
+const onTeam = (member: typeof ada) => ({
+  membershipId: member.id,
+  addedAt: "2026-09-03T12:00:00.000Z",
+  user: member.user,
+});
+
+/**
+ * An incident as the single-incident routes return it, with its responders —
+ * by default nobody yet. Lists ignore the responders.
+ */
 const incident = (
   overrides: Partial<IncidentDetailResponse> = {},
 ): IncidentDetailResponse => ({
@@ -156,9 +167,27 @@ const incident = (
   createdAt: "2026-09-18T12:00:00.000Z",
   updatedAt: "2026-09-18T12:00:00.000Z",
   resolvedAt: null,
-  lead: null,
   responders: [],
   ...overrides,
+});
+
+/** Sam, a second member, for responders other than the caller and Daniel. */
+const sam = {
+  ...daniel,
+  id: "0199a1b2-c3d4-7000-8000-0000000000ac",
+  user: { ...daniel.user, id: "0199a1b2-c3d4-7000-8000-000000000003", name: "Sam Okafor" },
+};
+
+/** Someone who started investigating; by default still investigating. */
+const responder = (
+  member: typeof ada,
+  status: IncidentResponderResponse["status"] = "INVESTIGATING",
+): IncidentResponderResponse => ({
+  membershipId: member.id,
+  name: member.user.name,
+  status,
+  startedAt: "2026-09-18T12:05:00.000Z",
+  completedAt: status === "COMPLETED" ? "2026-09-18T12:40:00.000Z" : null,
 });
 
 /** A timeline entry; by default an update Daniel posted. */
@@ -189,6 +218,8 @@ const api = (
     resolved = [] as IncidentResponse[],
     detail = incident(),
     timeline = [] as IncidentActivityResponse[],
+    // The caller and Daniel respond for Payments, the default team.
+    teamMembers = [onTeam(ada), onTeam(daniel)],
     services = [paymentApi],
     handler = () => undefined,
   }: {
@@ -196,6 +227,7 @@ const api = (
     resolved?: IncidentResponse[];
     detail?: IncidentDetailResponse;
     timeline?: IncidentActivityResponse[];
+    teamMembers?: ReturnType<typeof onTeam>[];
     services?: (typeof paymentApi)[];
     handler?: Handler;
   } = {},
@@ -224,6 +256,8 @@ const api = (
         return jsonResponse(200, services);
       case `GET ${base}/teams`:
         return jsonResponse(200, [payments, platform]);
+      case `GET ${base}/teams/${detail.team.id}/members`:
+        return jsonResponse(200, teamMembers);
       case `GET ${base}/memberships`:
         return jsonResponse(200, [ada, daniel]);
       default:
@@ -488,6 +522,30 @@ describe("incidents", () => {
       navigation.params = { orgSlug: "acme-ops", incidentNumber: "42" };
     });
 
+    /** The section a heading names. */
+    const sectionOf = async (name: string | RegExp) =>
+      (await screen.findByRole("heading", { name })).closest(
+        "section",
+      ) as HTMLElement;
+
+    /** The response panel's counts, as { label: value }. */
+    const figures = (panel: HTMLElement) => {
+      const counts = within(panel).getByRole("group", { name: "Response counts" });
+
+      return Object.fromEntries(
+        within(counts)
+          .getAllByRole("definition")
+          .map((value) => [value.previousElementSibling?.textContent, value.textContent]),
+      );
+    };
+
+    /** Opens the Admin's drawer, and answers it. */
+    const openManage = async (user: ReturnType<typeof userEvent.setup>) => {
+      await user.click(await screen.findByRole("button", { name: "Manage incident" }));
+
+      return screen.findByRole("dialog", { name: "Manage incident" });
+    };
+
     it("shows what the record holds", async () => {
       api(READ_ONLY);
 
@@ -504,320 +562,507 @@ describe("incidents", () => {
       expect(
         screen.getByRole("link", { name: "Payments" }).getAttribute("href"),
       ).toBe("/orgs/acme-ops/teams/payments");
-      expect(screen.getByText("Ada Lovelace")).toBeDefined();
+      expect(screen.getByText("by Ada Lovelace")).toBeDefined();
       // Read-only: nothing to change.
-      expect(screen.queryByRole("button", { name: "Resolve…" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Resolve incident" })).toBeNull();
       expect(screen.queryByLabelText("Status")).toBeNull();
     });
 
-    it("sends only what changed in the response, which has no status to choose", async () => {
-      const user = userEvent.setup();
-      const { requests } = api(ADMIN, {
-        handler: (request) =>
-          route(request) === `PATCH ${base}/incidents/42`
-            ? jsonResponse(200, incident({ severity: "SEV2", team: { id: platform.id, name: "Platform", slug: "platform" } }))
-            : undefined,
+    describe("as the admin", () => {
+      it("coordinates a declared incident: awaiting the team, with no investigation to start and nothing to resolve", async () => {
+        api(ADMIN, { detail: incident({ status: "DECLARED" }) });
+
+        inOrganization(<IncidentDetail />);
+
+        const response = await sectionOf("Awaiting team response");
+
+        expect(
+          within(response).getByText("Payments has not started investigating yet."),
+        ).toBeDefined();
+        // No counts before anyone responds.
+        expect(within(response).queryByRole("list", { name: "Responders" })).toBeNull();
+        for (const name of ["Start investigation", "Start investigating", "Resolve incident"]) {
+          expect(screen.queryByRole("button", { name })).toBeNull();
+        }
+        expect(screen.queryByRole("heading", { name: "Your response" })).toBeNull();
+        // The admin still posts updates, without responding.
+        expect(screen.getByLabelText("Post an update")).toBeDefined();
       });
 
-      inOrganization(<IncidentDetail />);
+      it("sees who is investigating, and why it cannot be resolved yet", async () => {
+        api(ADMIN, { detail: incident({ responders: [responder(daniel), responder(sam)] }) });
 
-      const response = (await screen.findByRole("heading", { name: "Response" }))
-        .closest("section") as HTMLElement;
+        inOrganization(<IncidentDetail />);
 
-      // The status moves by the lifecycle action alone.
-      expect(within(response).queryByLabelText("Status")).toBeNull();
+        const response = await sectionOf("Response in progress");
 
-      await user.selectOptions(within(response).getByLabelText("Severity"), "SEV2");
-      await user.selectOptions(await within(response).findByLabelText("Responsible team"), platform.id);
-      await user.click(within(response).getByRole("button", { name: "Save" }));
+        expect(figures(response)).toEqual({
+          Responders: "2",
+          Investigating: "2",
+          Complete: "0",
+        });
+        expect(
+          within(within(response).getByRole("list", { name: "Responders" }))
+            .getAllByRole("listitem")
+            .map((item) => item.textContent),
+        ).toEqual([
+          expect.stringMatching(/^Daniel OkaforInvestigatingfor /),
+          expect.stringMatching(/^Sam OkaforInvestigatingfor /),
+        ]);
+        expect(
+          within(response).getByText(
+            "Resolve becomes available when Daniel Okafor and Sam Okafor complete their responses.",
+          ),
+        ).toBeDefined();
+        expect(screen.queryByRole("button", { name: "Resolve incident" })).toBeNull();
+      });
 
-      await waitFor(() =>
+      it("sees a mixed response, still held by whoever is investigating", async () => {
+        api(ADMIN, {
+          detail: incident({ responders: [responder(daniel), responder(sam, "COMPLETED")] }),
+        });
+
+        inOrganization(<IncidentDetail />);
+
+        const response = await sectionOf("Response in progress");
+
+        expect(figures(response)).toEqual({
+          Responders: "2",
+          Investigating: "1",
+          Complete: "1",
+        });
+        expect(within(response).getByText("Response complete")).toBeDefined();
+        expect(
+          within(response).getByText(
+            "Resolve becomes available when Daniel Okafor completes their response.",
+          ),
+        ).toBeDefined();
+        expect(screen.queryByRole("button", { name: "Resolve incident" })).toBeNull();
+      });
+
+      it("resolves once response work is complete, after confirmation", async () => {
+        const user = userEvent.setup();
+        const { requests } = api(ADMIN, {
+          detail: incident({
+            responders: [responder(daniel, "COMPLETED"), responder(sam, "COMPLETED")],
+          }),
+          handler: (request) =>
+            route(request) === `PATCH ${base}/incidents/42`
+              ? jsonResponse(
+                  200,
+                  incident({
+                    status: "RESOLVED",
+                    resolvedAt: "2026-09-18T13:00:00.000Z",
+                    responders: [responder(daniel, "COMPLETED"), responder(sam, "COMPLETED")],
+                  }),
+                )
+              : undefined,
+        });
+
+        inOrganization(<IncidentDetail />);
+
+        const response = await sectionOf("Response work complete");
+
+        expect(
+          within(response).getByText("2 responders completed their response."),
+        ).toBeDefined();
+
+        await user.click(within(response).getByRole("button", { name: "Resolve incident" }));
+        expect(requests.some((r) => r.method === "PATCH")).toBe(false);
+        await user.click(within(response).getByRole("button", { name: "Resolve incident" }));
+
+        expect(
+          await screen.findByText(/A resolved incident is kept as it is; if the problem returns/),
+        ).toBeDefined();
         expect(requests.find((r) => route(r) === `PATCH ${base}/incidents/42`)?.body).toEqual({
-          severity: "SEV2",
-          teamId: platform.id,
-        }),
-      );
-    });
-
-    it("offers a declared incident's investigation to start, and nothing to resolve", async () => {
-      const user = userEvent.setup();
-      const { requests } = api(ADMIN, {
-        detail: incident({ status: "DECLARED" }),
-        handler: (request) =>
-          route(request) === `PATCH ${base}/incidents/42`
-            ? jsonResponse(200, incident({ status: "INVESTIGATING" }))
-            : undefined,
+          status: "RESOLVED",
+        });
       });
 
-      inOrganization(<IncidentDetail />);
+      it("explains a resolution refused because someone started investigating meanwhile, and refetches", async () => {
+        const user = userEvent.setup();
+        const { requests } = api(ADMIN, {
+          detail: incident({ responders: [responder(daniel, "COMPLETED")] }),
+          handler: (request) =>
+            route(request) === `PATCH ${base}/incidents/42`
+              ? apiError(409, "RESPONDERS_STILL_INVESTIGATING")
+              : undefined,
+        });
 
-      const start = await screen.findByRole("button", { name: "Start investigation" });
-      expect(screen.queryByRole("button", { name: "Resolve…" })).toBeNull();
+        inOrganization(<IncidentDetail />);
 
-      await user.click(start);
+        await user.click(await screen.findByRole("button", { name: "Resolve incident" }));
+        await user.click(screen.getByRole("button", { name: "Resolve incident" }));
 
-      // The next step takes its place.
-      expect(await screen.findByRole("button", { name: "Resolve…" })).toBeDefined();
-      expect(screen.queryByRole("button", { name: "Start investigation" })).toBeNull();
-      expect(requests.find((r) => route(r) === `PATCH ${base}/incidents/42`)?.body).toEqual({
-        status: "INVESTIGATING",
+        expect(await screen.findByText(/Someone started investigating meanwhile/)).toBeDefined();
+        await waitFor(() =>
+          expect(count(requests, `GET ${base}/incidents/42`)).toBeGreaterThan(1),
+        );
+      });
+
+      it("manages the incident from a drawer, and has no personal response", async () => {
+        const user = userEvent.setup();
+        api(ADMIN);
+
+        inOrganization(<IncidentDetail />);
+
+        // Not on the page until asked for.
+        expect(await screen.findByRole("heading", { name: "Awaiting team response" })).toBeDefined();
+        expect(screen.queryByLabelText("Severity")).toBeNull();
+
+        const drawer = await openManage(user);
+
+        for (const heading of ["Severity and responsible team", "Title and summary"]) {
+          expect(within(drawer).getByRole("heading", { name: heading })).toBeDefined();
+        }
+
+        await user.click(within(drawer).getByRole("button", { name: "Close" }));
+        await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+        expect(screen.queryByRole("heading", { name: "Your response" })).toBeNull();
+        expect(screen.queryByRole("button", { name: "Mark my response complete" })).toBeNull();
+      });
+
+      it("sends only what changed in severity and team, which has no status to choose", async () => {
+        const user = userEvent.setup();
+        const { requests } = api(ADMIN, {
+          handler: (request) =>
+            route(request) === `PATCH ${base}/incidents/42`
+              ? jsonResponse(200, incident({ severity: "SEV2", team: { id: platform.id, name: "Platform", slug: "platform" } }))
+              : undefined,
+        });
+
+        inOrganization(<IncidentDetail />);
+
+        await openManage(user);
+        const form = await sectionOf("Severity and responsible team");
+
+        expect(within(form).queryByLabelText("Status")).toBeNull();
+
+        await user.selectOptions(within(form).getByLabelText("Severity"), "SEV2");
+        await user.selectOptions(await within(form).findByLabelText("Responsible team"), platform.id);
+        await user.click(within(form).getByRole("button", { name: "Save" }));
+
+        await waitFor(() =>
+          expect(requests.find((r) => route(r) === `PATCH ${base}/incidents/42`)?.body).toEqual({
+            severity: "SEV2",
+            teamId: platform.id,
+          }),
+        );
+      });
+
+      it("explains a change refused because someone resolved it meanwhile, and refetches it", async () => {
+        const user = userEvent.setup();
+        const { requests } = api(ADMIN, {
+          handler: (request) =>
+            route(request) === `PATCH ${base}/incidents/42`
+              ? apiError(409, "INCIDENT_RESOLVED")
+              : undefined,
+        });
+
+        inOrganization(<IncidentDetail />);
+
+        await openManage(user);
+        const form = await sectionOf("Severity and responsible team");
+
+        await user.selectOptions(within(form).getByLabelText("Severity"), "SEV2");
+        await user.click(within(form).getByRole("button", { name: "Save" }));
+
+        expect(await screen.findByText(/resolved by someone else/)).toBeDefined();
+        await waitFor(() =>
+          expect(count(requests, `GET ${base}/incidents/42`)).toBeGreaterThan(1),
+        );
       });
     });
 
-    it("explains a step refused because the status moved meanwhile, and refetches the incident", async () => {
-      const user = userEvent.setup();
-      const { requests } = api(ADMIN, {
-        detail: incident({ status: "DECLARED" }),
-        handler: (request) =>
-          route(request) === `PATCH ${base}/incidents/42`
-            ? apiError(409, "INVALID_STATUS_TRANSITION")
-            : undefined,
-      });
+    describe("as a member of the responsible team", () => {
+      it("starts investigating, and the page becomes their response", async () => {
+        const user = userEvent.setup();
+        const started = incident({ responders: [responder(ada)] });
+        const { requests } = api(MEMBER, {
+          detail: incident({ status: "DECLARED" }),
+          handler: (request) =>
+            route(request) === `POST ${base}/incidents/42/responders/me`
+              ? jsonResponse(200, started)
+              : undefined,
+        });
 
-      inOrganization(<IncidentDetail />);
+        inOrganization(<IncidentDetail />);
 
-      await user.click(await screen.findByRole("button", { name: "Start investigation" }));
+        const yours = await sectionOf("Your response");
 
-      expect(await screen.findByText(/status changed meanwhile/)).toBeDefined();
-      await waitFor(() =>
-        expect(requests.filter((r) => route(r) === `GET ${base}/incidents/42`)).toHaveLength(2),
-      );
-    });
-
-    it("resolves only after confirmation", async () => {
-      const user = userEvent.setup();
-      const { requests } = api(ADMIN, {
-        handler: (request) =>
-          route(request) === `PATCH ${base}/incidents/42`
-            ? jsonResponse(200, incident({ status: "RESOLVED", resolvedAt: "2026-09-18T13:00:00.000Z" }))
-            : undefined,
-      });
-
-      inOrganization(<IncidentDetail />);
-
-      await user.click(await screen.findByRole("button", { name: "Resolve…" }));
-
-      expect(requests.some((r) => r.method === "PATCH")).toBe(false);
-
-      await user.click(screen.getByRole("button", { name: "Resolve incident" }));
-
-      expect(await screen.findByText(/A resolved incident is kept as it is; if the problem returns/)).toBeDefined();
-      expect(requests.find((r) => route(r) === `PATCH ${base}/incidents/42`)?.body).toEqual({
-        status: "RESOLVED",
-      });
-      expect(screen.queryByLabelText("Status")).toBeNull();
-    });
-
-    it("offers nothing to change once resolved", async () => {
-      api(ADMIN, {
-        detail: incident({ status: "RESOLVED", resolvedAt: "2026-09-18T13:00:00.000Z" }),
-      });
-
-      inOrganization(<IncidentDetail />);
-
-      expect(await screen.findByRole("heading", { level: 1 })).toBeDefined();
-      expect(screen.getByText("Lasted")).toBeDefined();
-      expect(screen.queryByRole("button", { name: "Resolve…" })).toBeNull();
-      expect(screen.queryByRole("heading", { name: "Response" })).toBeNull();
-      expect(screen.queryByRole("heading", { name: "Details" })).toBeNull();
-      expect(screen.queryByRole("heading", { name: "People" })).toBeNull();
-    });
-
-    it("explains a change refused because someone resolved it meanwhile, and refetches it", async () => {
-      const user = userEvent.setup();
-      const { requests } = api(ADMIN, {
-        handler: (request) =>
-          route(request) === `PATCH ${base}/incidents/42`
-            ? apiError(409, "INCIDENT_RESOLVED")
-            : undefined,
-      });
-
-      inOrganization(<IncidentDetail />);
-
-      const response = (await screen.findByRole("heading", { name: "Response" }))
-        .closest("section") as HTMLElement;
-
-      await user.selectOptions(within(response).getByLabelText("Severity"), "SEV2");
-      await user.click(within(response).getByRole("button", { name: "Save" }));
-
-      expect(await screen.findByText(/resolved by someone else/)).toBeDefined();
-      await waitFor(() =>
-        expect(count(requests, `GET ${base}/incidents/42`)).toBeGreaterThan(1),
-      );
-    });
-
-    it("shows who leads and responds, with nothing to change for a reader", async () => {
-      api(READ_ONLY, {
-        detail: incident({
-          lead: { membershipId: daniel.id, name: "Daniel Okafor" },
-          responders: [
-            { membershipId: daniel.id, name: "Daniel Okafor" },
-            { membershipId: ada.id, name: "Ada Lovelace" },
-          ],
-        }),
-      });
-
-      inOrganization(<IncidentDetail />);
-
-      expect(await screen.findByText("Incident lead")).toBeDefined();
-      expect(screen.getByText("Daniel Okafor, Ada Lovelace")).toBeDefined();
-      expect(screen.queryByRole("heading", { name: "People" })).toBeNull();
-    });
-
-    it("gives a member the timeline to post to, and none of the admin's controls", async () => {
-      api(MEMBER);
-
-      inOrganization(<IncidentDetail />);
-
-      expect(await screen.findByLabelText("Post an update")).toBeDefined();
-      expect(screen.getAllByText("Investigating").length).toBeGreaterThan(0);
-      expect(screen.queryByRole("button", { name: "Resolve…" })).toBeNull();
-      expect(screen.queryByRole("button", { name: "Start investigation" })).toBeNull();
-      for (const heading of ["Response", "People", "Details"]) {
-        expect(screen.queryByRole("heading", { name: heading })).toBeNull();
-      }
-      expect(screen.queryByLabelText("Status")).toBeNull();
-      expect(screen.queryByLabelText("Incident lead")).toBeNull();
-      expect(screen.queryByLabelText("Add a responder")).toBeNull();
-    });
-
-    it("gives the admin the controls to change, staff, and resolve an incident", async () => {
-      api(ADMIN);
-
-      inOrganization(<IncidentDetail />);
-
-      expect(await screen.findByRole("button", { name: "Resolve…" })).toBeDefined();
-      for (const heading of ["Response", "People", "Details"]) {
-        expect(screen.getByRole("heading", { name: heading })).toBeDefined();
-      }
-      expect(screen.getByLabelText("Post an update")).toBeDefined();
-    });
-
-    it("says plainly when nobody leads or responds yet", async () => {
-      api(READ_ONLY);
-
-      inOrganization(<IncidentDetail />);
-
-      expect(await screen.findByText("No lead assigned")).toBeDefined();
-      expect(screen.getByText("No responders yet")).toBeDefined();
-    });
-
-    it("assigns and clears the lead, from any member of the organization", async () => {
-      const user = userEvent.setup();
-      const { requests } = api(ADMIN, {
-        handler: (request) =>
-          route(request) === `PATCH ${base}/incidents/42`
-            ? jsonResponse(
-                200,
-                incident({
-                  lead: request.body && (request.body as { leadMembershipId: string | null }).leadMembershipId
-                    ? { membershipId: daniel.id, name: "Daniel Okafor" }
-                    : null,
-                }),
-              )
-            : undefined,
-      });
-
-      inOrganization(<IncidentDetail />);
-
-      const people = (await screen.findByRole("heading", { name: "People" }))
-        .closest("section") as HTMLElement;
-
-      await user.selectOptions(await within(people).findByLabelText("Incident lead"), daniel.id);
-      await user.click(within(people).getByRole("button", { name: "Save lead" }));
-
-      // The record shows the new lead once the API answers.
-      await waitFor(() =>
         expect(
-          screen.getByText("Incident lead", { selector: "dt" }).closest("div")?.textContent,
-        ).toContain("Daniel Okafor"),
-      );
-      expect(requests.filter((r) => route(r) === `PATCH ${base}/incidents/42`)[0].body).toEqual({
-        leadMembershipId: daniel.id,
-      });
+          within(yours).getByText("You have not started responding to this incident."),
+        ).toBeDefined();
+        // Starting comes first: no composer yet.
+        expect(screen.queryByLabelText("Post an update")).toBeNull();
 
-      await user.selectOptions(within(people).getByLabelText("Incident lead"), "");
-      await user.click(within(people).getByRole("button", { name: "Save lead" }));
+        await user.click(within(yours).getByRole("button", { name: "Start investigating" }));
 
-      await waitFor(() =>
-        expect(requests.filter((r) => route(r) === `PATCH ${base}/incidents/42`)[1]?.body).toEqual({
-          leadMembershipId: null,
-        }),
-      );
-    });
-
-    it("adds and removes responders", async () => {
-      const user = userEvent.setup();
-      const { requests } = api(ADMIN, {
-        detail: incident({
-          responders: [{ membershipId: ada.id, name: "Ada Lovelace" }],
-        }),
-        handler: (request) => {
-          if (route(request) === `POST ${base}/incidents/42/responders`) {
-            return jsonResponse(
-              201,
-              incident({
-                responders: [
-                  { membershipId: ada.id, name: "Ada Lovelace" },
-                  { membershipId: daniel.id, name: "Daniel Okafor" },
-                ],
-              }),
-            );
-          }
-          if (route(request) === `DELETE ${base}/incidents/42/responders/${ada.id}`) {
-            return jsonResponse(204);
-          }
-          return undefined;
-        },
-      });
-
-      inOrganization(<IncidentDetail />);
-
-      const responders = (await screen.findByRole("heading", { name: "Responders" }))
-        .closest("section") as HTMLElement;
-
-      // Ada already responds, so only Daniel is offered.
-      const add = await within(responders).findByLabelText("Add a responder");
-      expect(within(add).getAllByRole("option").map((o) => o.textContent)).toEqual([
-        "Daniel Okafor",
-      ]);
-
-      await user.click(within(responders).getByRole("button", { name: "Add responder" }));
-
-      await waitFor(() =>
+        expect(await within(yours).findByText("You are investigating")).toBeDefined();
+        expect(within(yours).getByText(/^Started/)).toBeDefined();
+        // Where they post is their own panel.
+        expect(within(yours).getByLabelText("Post an update")).toBeDefined();
         expect(
-          requests.find((r) => route(r) === `POST ${base}/incidents/42/responders`)?.body,
-        ).toEqual({ membershipId: daniel.id }),
-      );
-      expect(await within(responders).findByText("Daniel Okafor")).toBeDefined();
+          within(yours).getByRole("button", { name: "Mark my response complete" }),
+        ).toBeDefined();
+        expect(within(await sectionOf("Team response")).getByText(/Response in progress/)).toBeDefined();
+        expect(count(requests, `POST ${base}/incidents/42/responders/me`)).toBe(1);
+        // The timeline refetches: starting was recorded there.
+        await waitFor(() =>
+          expect(count(requests, `GET ${base}/incidents/42/timeline`)).toBeGreaterThan(1),
+        );
+      });
 
-      await user.click(
-        within(responders).getByRole("button", { name: "Remove Ada Lovelace from responders" }),
-      );
+      it("marks their response complete, which takes the response controls away and resolves nothing", async () => {
+        const user = userEvent.setup();
+        const { requests } = api(MEMBER, {
+          detail: incident({ responders: [responder(ada), responder(daniel)] }),
+          handler: (request) =>
+            route(request) === `POST ${base}/incidents/42/responders/me/complete`
+              ? jsonResponse(
+                  200,
+                  incident({ responders: [responder(ada, "COMPLETED"), responder(daniel)] }),
+                )
+              : undefined,
+        });
 
-      await waitFor(() =>
-        expect(count(requests, `DELETE ${base}/incidents/42/responders/${ada.id}`)).toBe(1),
-      );
+        inOrganization(<IncidentDetail />);
+
+        const yours = await sectionOf("Your response");
+
+        expect(screen.getByLabelText("Post an update")).toBeDefined();
+
+        await user.click(within(yours).getByRole("button", { name: "Mark my response complete" }));
+
+        expect(await within(yours).findByText("Response complete")).toBeDefined();
+        expect(
+          within(yours).getByText(/Your response work on this incident is complete/),
+        ).toBeDefined();
+        expect(screen.queryByLabelText("Post an update")).toBeNull();
+        expect(screen.queryByRole("button", { name: "Mark my response complete" })).toBeNull();
+        expect(screen.queryByRole("button", { name: "Start investigating" })).toBeNull();
+        // Daniel is still investigating: the incident stays in progress.
+        expect(within(await sectionOf("Team response")).getByText(/Response in progress/)).toBeDefined();
+        expect(requests.some((r) => r.method === "PATCH")).toBe(false);
+      });
+
+      it("explains a start refused because the incident was reassigned meanwhile, and refetches it and its team", async () => {
+        const user = userEvent.setup();
+        const { requests } = api(MEMBER, {
+          handler: (request) =>
+            route(request) === `POST ${base}/incidents/42/responders/me`
+              ? apiError(403, "NOT_ON_RESPONSIBLE_TEAM")
+              : undefined,
+        });
+
+        inOrganization(<IncidentDetail />);
+
+        await user.click(await screen.findByRole("button", { name: "Start investigating" }));
+
+        expect(await screen.findByText(/no longer your team's to respond to/)).toBeDefined();
+        await waitFor(() => {
+          expect(count(requests, `GET ${base}/incidents/42`)).toBeGreaterThan(1);
+          expect(count(requests, `GET ${base}/teams/${payments.id}/members`)).toBeGreaterThan(1);
+        });
+      });
+
+      it("posts an operational update while investigating, and shows it on the timeline", async () => {
+        const user = userEvent.setup();
+        let timeline: IncidentActivityResponse[] = [];
+        const posted = activity({
+          actor: { id: currentUser.id, name: "Ada Lovelace" },
+          message: "Connection pool exhaustion identified.",
+        });
+        const { requests } = api(MEMBER, {
+          detail: incident({ responders: [responder(ada)] }),
+          handler: (request) => {
+            if (route(request) === `GET ${base}/incidents/42/timeline`) {
+              return jsonResponse(200, timeline);
+            }
+            if (route(request) === `POST ${base}/incidents/42/updates`) {
+              timeline = [posted];
+              return jsonResponse(201, posted);
+            }
+            return undefined;
+          },
+        });
+
+        inOrganization(<IncidentDetail />);
+
+        const composer = await screen.findByLabelText("Post an update");
+        expect(await screen.findByText("No activity recorded yet.")).toBeDefined();
+        expect(
+          (screen.getByRole("button", { name: "Post update" }) as HTMLButtonElement).disabled,
+        ).toBe(true);
+
+        await user.type(composer, "Connection pool exhaustion identified.");
+        await user.click(screen.getByRole("button", { name: "Post update" }));
+
+        expect(
+          await screen.findByText("Connection pool exhaustion identified."),
+        ).toBeDefined();
+        expect(
+          requests.find((r) => route(r) === `POST ${base}/incidents/42/updates`)?.body,
+        ).toEqual({ message: "Connection pool exhaustion identified." });
+        expect((composer as HTMLTextAreaElement).value).toBe("");
+      });
+
+      it("explains an update refused because their response was already complete, and refetches", async () => {
+        const user = userEvent.setup();
+        const { requests } = api(MEMBER, {
+          detail: incident({ responders: [responder(ada)] }),
+          handler: (request) =>
+            route(request) === `POST ${base}/incidents/42/updates`
+              ? apiError(409, "RESPONSE_ALREADY_COMPLETED")
+              : undefined,
+        });
+
+        inOrganization(<IncidentDetail />);
+
+        await user.type(await screen.findByLabelText("Post an update"), "One more thing.");
+        await user.click(screen.getByRole("button", { name: "Post update" }));
+
+        expect(await screen.findByText(/already complete, so you cannot post more updates/)).toBeDefined();
+        await waitFor(() =>
+          expect(count(requests, `GET ${base}/incidents/42`)).toBeGreaterThan(1),
+        );
+      });
+
+      it("explains an update refused because the incident was resolved meanwhile", async () => {
+        const user = userEvent.setup();
+        const { requests } = api(MEMBER, {
+          detail: incident({ responders: [responder(ada)] }),
+          handler: (request) =>
+            route(request) === `POST ${base}/incidents/42/updates`
+              ? apiError(409, "INCIDENT_RESOLVED")
+              : undefined,
+        });
+
+        inOrganization(<IncidentDetail />);
+
+        await user.type(await screen.findByLabelText("Post an update"), "Rolled back.");
+        await user.click(screen.getByRole("button", { name: "Post update" }));
+
+        expect(await screen.findByText(/updates can no longer be posted/)).toBeDefined();
+        await waitFor(() =>
+          expect(count(requests, `GET ${base}/incidents/42`)).toBeGreaterThan(1),
+        );
+      });
+
+      it("has none of the admin's controls", async () => {
+        api(MEMBER);
+
+        inOrganization(<IncidentDetail />);
+
+        expect(await screen.findByRole("heading", { name: "Your response" })).toBeDefined();
+        expect(screen.queryByRole("button", { name: "Manage incident" })).toBeNull();
+        for (const heading of ["Severity and responsible team", "Title and summary"]) {
+          expect(screen.queryByRole("heading", { name: heading })).toBeNull();
+        }
+        expect(screen.queryByRole("button", { name: "Resolve incident" })).toBeNull();
+        expect(screen.queryByLabelText("Responsible team")).toBeNull();
+      });
     });
 
-    it("explains a responder refused because the incident was resolved meanwhile", async () => {
-      const user = userEvent.setup();
-      api(ADMIN, {
-        handler: (request) =>
-          route(request) === `POST ${base}/incidents/42/responders`
-            ? apiError(409, "INCIDENT_RESOLVED")
-            : undefined,
+    it("keeps a responder's controls after their incident is reassigned to another team", async () => {
+      // Now Platform's, and the caller is not on Platform — but they started
+      // investigating while Payments was responsible.
+      api(MEMBER, {
+        detail: incident({
+          team: { id: platform.id, name: "Platform", slug: "platform" },
+          responders: [responder(ada)],
+        }),
+        teamMembers: [onTeam(daniel)],
       });
 
       inOrganization(<IncidentDetail />);
 
-      const responders = (await screen.findByRole("heading", { name: "Responders" }))
-        .closest("section") as HTMLElement;
+      const yours = await sectionOf("Your response");
 
-      await within(responders).findByLabelText("Add a responder");
-      await user.click(within(responders).getByRole("button", { name: "Add responder" }));
+      expect(within(yours).getByText("You are investigating")).toBeDefined();
+      expect(
+        within(yours).getByRole("button", { name: "Mark my response complete" }),
+      ).toBeDefined();
+      expect(within(yours).getByLabelText("Post an update")).toBeDefined();
+    });
 
-      expect(await screen.findByText(/resolved by someone else/)).toBeDefined();
+    it("lets a member of another team follow the incident, with nothing to do", async () => {
+      api(MEMBER, {
+        teamMembers: [onTeam(daniel)],
+        detail: incident({ responders: [responder(daniel)] }),
+        timeline: [activity()],
+      });
+
+      inOrganization(<IncidentDetail />);
+
+      expect(await sectionOf("Response in progress")).toBeDefined();
+      expect(
+        await screen.findByText("Investigating elevated database latency."),
+      ).toBeDefined();
+      expect(screen.queryByRole("heading", { name: "Your response" })).toBeNull();
+      for (const name of ["Start investigating", "Mark my response complete", "Resolve incident"]) {
+        expect(screen.queryByRole("button", { name })).toBeNull();
+      }
+      expect(screen.queryByLabelText("Post an update")).toBeNull();
+      expect(screen.queryByRole("button", { name: "Manage incident" })).toBeNull();
+      // Following is not an error.
+      expect(screen.queryByRole("alert")).toBeNull();
+    });
+
+    it.each([
+      ["the admin", ADMIN],
+      ["a responder", MEMBER],
+    ])("keeps a resolved incident read-only for %s, showing how the response ended", async (_, permissions) => {
+      api(permissions, {
+        detail: incident({
+          status: "RESOLVED",
+          resolvedAt: "2026-09-18T13:00:00.000Z",
+          responders: [responder(ada, "COMPLETED"), responder(daniel, "COMPLETED")],
+        }),
+        timeline: [
+          activity(),
+          activity({
+            id: "0199a1b2-c3d4-7000-8000-000000000104",
+            type: "STATUS_CHANGED",
+            message: null,
+            fromValue: "INVESTIGATING",
+            toValue: "RESOLVED",
+          }),
+        ],
+      });
+
+      inOrganization(<IncidentDetail />);
+
+      // The admin sees the response as a whole; a responder, their own part
+      // above the team's.
+      const response =
+        permissions === ADMIN
+          ? await sectionOf("Response")
+          : await sectionOf("Team response");
+
+      if (permissions === ADMIN) {
+        expect(
+          within(response).getByText("2 responders responded to this incident."),
+        ).toBeDefined();
+      } else {
+        expect(within(await sectionOf("Your response")).getByText("Response complete")).toBeDefined();
+      }
+      expect(within(response).getAllByText("Response complete")).toHaveLength(2);
+      expect(screen.getByText(/^Lasted/)).toBeDefined();
+
+      const timeline = await sectionOf(/Timeline/);
+      const entries = await within(timeline).findAllByRole("listitem");
+
+      expect(entries.at(-1)?.textContent).toMatch(/Resolved the incident$/);
+      for (const name of [
+        "Start investigating",
+        "Mark my response complete",
+        "Resolve incident",
+      ]) {
+        expect(screen.queryByRole("button", { name })).toBeNull();
+      }
+      expect(screen.queryByLabelText("Post an update")).toBeNull();
+      expect(screen.queryByRole("button", { name: "Manage incident" })).toBeNull();
     });
 
     it("tells the story on the timeline, oldest first, with nothing to post for a reader", async () => {
@@ -831,6 +1076,18 @@ describe("incidents", () => {
             actor: { id: currentUser.id, name: "Ada Lovelace" },
             createdAt: "2026-09-18T12:00:00.000Z",
           }),
+          activity({
+            id: "0199a1b2-c3d4-7000-8000-000000000110",
+            type: "RESPONSE_STARTED",
+            message: null,
+          }),
+          activity({
+            id: "0199a1b2-c3d4-7000-8000-000000000103",
+            type: "STATUS_CHANGED",
+            message: null,
+            fromValue: "DECLARED",
+            toValue: "INVESTIGATING",
+          }),
           activity(),
           activity({
             id: "0199a1b2-c3d4-7000-8000-000000000102",
@@ -840,70 +1097,40 @@ describe("incidents", () => {
             toValue: "SEV1",
           }),
           activity({
-            id: "0199a1b2-c3d4-7000-8000-000000000103",
-            type: "STATUS_CHANGED",
+            id: "0199a1b2-c3d4-7000-8000-000000000109",
+            type: "TEAM_CHANGED",
             message: null,
-            fromValue: "DECLARED",
-            toValue: "INVESTIGATING",
+            fromValue: "Payments",
+            toValue: "Platform",
+            actor: { id: currentUser.id, name: "Ada Lovelace" },
+          }),
+          activity({
+            id: "0199a1b2-c3d4-7000-8000-000000000111",
+            type: "RESPONSE_COMPLETED",
+            message: null,
           }),
         ],
       });
 
       inOrganization(<IncidentDetail />);
 
-      const timeline = (await screen.findByRole("heading", { name: /Timeline/ }))
-        .closest("section") as HTMLElement;
+      const timeline = await sectionOf(/Timeline/);
       const entries = await within(timeline).findAllByRole("listitem");
 
       expect(entries.map((entry) => entry.textContent)).toEqual([
         expect.stringMatching(/^Ada Lovelace · .*Declared the incident at SEV2/),
+        expect.stringMatching(/^Daniel Okafor started investigating · [^·]*$/),
+        expect.stringMatching(/^Daniel Okafor · .*The incident is now Investigating$/),
         expect.stringMatching(
-          /^Daniel Okafor posted an update · .*Investigating elevated database latency\.$/,
+          /^DODaniel Okafor posted an update · .*Investigating elevated database latency\.$/,
         ),
         expect.stringMatching(/Changed severity SEV2.*→.*SEV1/),
-        expect.stringMatching(/Started the investigation$/),
+        expect.stringMatching(
+          /^Ada Lovelace · .*Reassigned the incident from Payments to Platform$/,
+        ),
+        expect.stringMatching(/^Daniel Okafor completed their response · [^·]*$/),
       ]);
       expect(within(timeline).queryByLabelText("Post an update")).toBeNull();
-    });
-
-    it("posts an operational update and shows it on the timeline", async () => {
-      const user = userEvent.setup();
-      let timeline: IncidentActivityResponse[] = [];
-      const posted = activity({
-        actor: { id: currentUser.id, name: "Ada Lovelace" },
-        message: "Connection pool exhaustion identified.",
-      });
-      const { requests } = api(MEMBER, {
-        handler: (request) => {
-          if (route(request) === `GET ${base}/incidents/42/timeline`) {
-            return jsonResponse(200, timeline);
-          }
-          if (route(request) === `POST ${base}/incidents/42/updates`) {
-            timeline = [posted];
-            return jsonResponse(201, posted);
-          }
-          return undefined;
-        },
-      });
-
-      inOrganization(<IncidentDetail />);
-
-      const composer = await screen.findByLabelText("Post an update");
-      expect(await screen.findByText("No activity recorded yet.")).toBeDefined();
-      expect(
-        (screen.getByRole("button", { name: "Post update" }) as HTMLButtonElement).disabled,
-      ).toBe(true);
-
-      await user.type(composer, "Connection pool exhaustion identified.");
-      await user.click(screen.getByRole("button", { name: "Post update" }));
-
-      expect(
-        await screen.findByText("Connection pool exhaustion identified."),
-      ).toBeDefined();
-      expect(
-        requests.find((r) => route(r) === `POST ${base}/incidents/42/updates`)?.body,
-      ).toEqual({ message: "Connection pool exhaustion identified." });
-      expect((composer as HTMLTextAreaElement).value).toBe("");
     });
 
     it("shows a change recorded under a retired status by its word", async () => {
@@ -921,56 +1148,10 @@ describe("incidents", () => {
 
       inOrganization(<IncidentDetail />);
 
-      const timeline = (await screen.findByRole("heading", { name: /Timeline/ }))
-        .closest("section") as HTMLElement;
+      const timeline = await sectionOf(/Timeline/);
       const [entry] = await within(timeline).findAllByRole("listitem");
 
       expect(entry.textContent).toMatch(/Changed status Identified.*→.*Monitoring$/);
-    });
-
-    it("keeps a resolved incident's timeline readable, with nowhere to post", async () => {
-      api(MEMBER, {
-        detail: incident({ status: "RESOLVED", resolvedAt: "2026-09-18T13:00:00.000Z" }),
-        timeline: [
-          activity(),
-          activity({
-            id: "0199a1b2-c3d4-7000-8000-000000000104",
-            type: "STATUS_CHANGED",
-            message: null,
-            fromValue: "INVESTIGATING",
-            toValue: "RESOLVED",
-          }),
-        ],
-      });
-
-      inOrganization(<IncidentDetail />);
-
-      const timeline = (await screen.findByRole("heading", { name: /Timeline/ }))
-        .closest("section") as HTMLElement;
-      const entries = await within(timeline).findAllByRole("listitem");
-
-      expect(entries.at(-1)?.textContent).toMatch(/Resolved the incident$/);
-      expect(screen.queryByLabelText("Post an update")).toBeNull();
-    });
-
-    it("explains an update refused because the incident was resolved meanwhile", async () => {
-      const user = userEvent.setup();
-      const { requests } = api(MEMBER, {
-        handler: (request) =>
-          route(request) === `POST ${base}/incidents/42/updates`
-            ? apiError(409, "INCIDENT_RESOLVED")
-            : undefined,
-      });
-
-      inOrganization(<IncidentDetail />);
-
-      await user.type(await screen.findByLabelText("Post an update"), "Rolled back.");
-      await user.click(screen.getByRole("button", { name: "Post update" }));
-
-      expect(await screen.findByText(/updates can no longer be posted/)).toBeDefined();
-      await waitFor(() =>
-        expect(count(requests, `GET ${base}/incidents/42`)).toBeGreaterThan(1),
-      );
     });
 
     it("answers an unknown number with a not-found page", async () => {

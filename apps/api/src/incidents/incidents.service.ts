@@ -1,32 +1,34 @@
 import { Injectable, Logger } from '@nestjs/common';
 
+import { Permission } from '../authorization/permissions.js';
+import { hasPermission } from '../authorization/role-permissions.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { foreignKeyViolationHint } from '../database/foreign-key-violation.js';
-import { uniqueViolationHint } from '../database/unique-violation.js';
 import { Prisma } from '../generated/prisma/client.js';
-import { membershipNotFound } from '../organizations/organizations.errors.js';
+import type { Role } from '../generated/prisma/enums.js';
 import {
   serviceArchived,
   serviceNotFound,
 } from '../services/services.errors.js';
 import { teamNotFound } from '../teams/teams.errors.js';
 import { organizationNotFound } from '../tenancy/tenancy.errors.js';
-import { isResourceId } from '../tenancy/tenancy.schemas.js';
 import type {
   IncidentActivityResponse,
   IncidentDetailResponse,
   IncidentPage,
   IncidentSeverity,
-  IncidentStatus,
   IncidentSummaryResponse,
 } from './incidents.contract.js';
 import {
-  alreadyAResponder,
   incidentNotFound,
   incidentResolved,
   invalidCursor,
   invalidStatusTransition,
-  responderNotFound,
+  notInvestigating,
+  notOnResponsibleTeam,
+  respondersStillInvestigating,
+  responseAlreadyCompleted,
+  startInvestigatingFirst,
 } from './incidents.errors.js';
 import {
   toIncidentActivityResponse,
@@ -37,7 +39,6 @@ import {
 import { mergeHistory } from './incidents.history.js';
 import { parseIncidentNumber, summaryBounds } from './incidents.schemas.js';
 import type {
-  AddResponderRequest,
   CreateIncidentRequest,
   IncidentSummaryQuery,
   ListIncidentsQuery,
@@ -67,19 +68,6 @@ const SEVERITIES: readonly IncidentSeverity[] = [
 ];
 
 /**
- * The one status each active status may move to. The lifecycle is DECLARED →
- * INVESTIGATING → RESOLVED, forward only and one step at a time; RESOLVED
- * moves nowhere, and lockActive refuses a resolved incident before this is
- * consulted.
- */
-const NEXT_STATUS: Readonly<
-  Record<Exclude<IncidentStatus, 'RESOLVED'>, IncidentStatus>
-> = {
-  DECLARED: 'INVESTIGATING',
-  INVESTIGATING: 'RESOLVED',
-};
-
-/**
  * Columns an incident response is built from. Embedded records are identity
  * only: never the declarer's email, and never `team.memberships`.
  */
@@ -106,25 +94,28 @@ const incidentSelection = {
   createdBy: { select: { id: true, name: true } },
 } as const;
 
-/** A member as an incident names one: the membership id and a name. */
-const incidentMemberSelection = {
-  select: { id: true, user: { select: { name: true } } },
-} as const;
+/** Responders in the order they started; UUIDv7 ids break a tie. */
+const responderOrder: Prisma.IncidentResponderOrderByWithRelationInput[] = [
+  { startedAt: 'asc' },
+  { id: 'asc' },
+];
 
 /**
- * Columns a single incident is built from: the list's, with the lead and the
- * responders. Lists never select these, so a page stays free of the joins.
- *
- * The user's name is not filtered on deletedAt: who led or responded stays
- * true after they leave, as for the declarer.
+ * Columns a single incident is built from: the list's, with its responders.
+ * Lists never select these, so a page stays free of the join. The user's
+ * name is not filtered on deletedAt: who responded stays true after they
+ * leave, as for the declarer.
  */
 const incidentDetailSelection = {
   ...incidentSelection,
-  lead: incidentMemberSelection,
   responders: {
-    select: { membership: incidentMemberSelection },
-    // UUIDv7: ordering by id is the order responders were added.
-    orderBy: { id: 'asc' },
+    select: {
+      status: true,
+      startedAt: true,
+      completedAt: true,
+      membership: { select: { id: true, user: { select: { name: true } } } },
+    },
+    orderBy: responderOrder,
   },
 } as const;
 
@@ -154,18 +145,6 @@ const violatesServiceKey = (hint: string): boolean =>
 /** The composite team key refused the row. */
 const violatesTeamKey = (hint: string): boolean =>
   hint.includes('team_id') || hint.includes('teamid');
-
-/**
- * A composite membership key refused the row: the lead's on incidents, or
- * the responder's on incident_responders.
- */
-const violatesMembershipKey = (hint: string): boolean =>
-  hint.includes('membership_id') || hint.includes('membershipid');
-
-/** Whether a unique violation came from the one-row-per-responder index. */
-const isResponderConflict = (hint: string): boolean =>
-  hint.includes('incident_responders_incident_id_membership_id_key') ||
-  (hint.includes('incident') && hint.includes('membership'));
 
 /**
  * Where the next page of a list starts: the sort key of the last incident on
@@ -219,6 +198,13 @@ export const decodeResolvedCursor = (cursor: string): number => {
  * hold to the organization — users are global — so it is taken from the
  * admitted membership, inside the declaring transaction, and never from a
  * body.
+ *
+ * Authorization by role is the guards'. What depends on the incident itself
+ * is here: only its responsible team's members may start investigating it
+ * (startResponse), and once they have, their own response — not their team —
+ * governs posting updates and completing it (postUpdate, completeResponse).
+ * The Admin posts to any incident, and resolves one once nobody is still
+ * investigating (update).
  *
  * Titles, summaries, and update messages are free text and may carry
  * customer or system details, so they are never logged. Ids, numbers, and
@@ -424,7 +410,7 @@ export class IncidentsService {
     });
   }
 
-  /** One incident, by its number within the organization. */
+  /** One incident, by its number within the organization, with its responders. */
   async get(
     organizationId: string,
     incidentNumber: string,
@@ -563,31 +549,36 @@ export class IncidentsService {
   }
 
   /**
-   * Changes an active incident: its title, summary, severity, status,
-   * responsible team, or lead. A resolved incident is not changed — any
+   * Changes an active incident: its title, summary, severity, status, or
+   * responsible team. A resolved incident is not changed — any
    * change to one is a 409, whatever it names.
    *
-   * The status moves forward one step at a time: `INVESTIGATING` starts the
-   * investigation of a DECLARED incident, and `RESOLVED` resolves an
-   * INVESTIGATING one, setting resolvedAt in the same write. Any other move —
-   * resolving a DECLARED incident — is 409 INVALID_STATUS_TRANSITION, and
-   * nothing in the request is applied. Asking for the status the incident
-   * already has changes nothing and records nothing, as for every field.
+   * The one status a change can name is `RESOLVED`: an INVESTIGATING incident
+   * is resolved, setting resolvedAt in the same write. A DECLARED incident
+   * is not — nobody has investigated it — and is 409
+   * INVALID_STATUS_TRANSITION. Nor is one that any responder is still
+   * investigating: 409 RESPONDERS_STILL_INVESTIGATING. Either way nothing in
+   * the request is applied. An incident becomes INVESTIGATING only when a
+   * responder starts investigating it (see startResponse).
    *
    * The incident is judged and locked first (see lockActive: 404, then 409),
-   * then the status move against the status read under that lock, and only
-   * then the team or lead a body names, so a foreign incident reveals nothing
-   * about the body. Judged under the lock, a move cannot race another: of
-   * two concurrent starts, the second waits, finds the investigation started,
-   * and changes nothing. Of two concurrent resolutions, the second
-   * waits on the row, then is told the incident is resolved. resolvedAt is
-   * written exactly once; the update itself still re-asserts that the
-   * incident is unresolved.
+   * then the resolution against the status and responders read under that
+   * lock, and only then the team a body names, so a foreign incident reveals
+   * nothing about the body. Judged under the lock, a resolution cannot race a
+   * response: a responder starting first is seen investigating, and one
+   * starting after is told the incident is resolved. Of two concurrent
+   * resolutions, the second waits on the row, then is told the incident is
+   * resolved. resolvedAt is written exactly once; the update itself still
+   * re-asserts that the incident is unresolved.
    *
-   * A severity or status that actually changes is recorded on the timeline in
-   * the same transaction, attributed to the acting member. The previous value
-   * is read, and the entry timestamped, under the row lock, so concurrent
-   * changes each record a true "from" and appear in the order they applied.
+   * A severity, status, or responsible team that actually changes is
+   * recorded on the timeline in the same transaction, attributed to the
+   * acting member. The previous value is read, and the entry timestamped,
+   * under the row lock, so concurrent changes each record a true "from" and
+   * appear in the order they applied. A team change records both teams'
+   * names as they are now: reassigning changes who may start investigating,
+   * and the timeline keeps that history however the teams are renamed later.
+   * Reassigning leaves existing responders as they are.
    */
   async update(
     organizationId: string,
@@ -610,17 +601,35 @@ export class IncidentsService {
         const now = new Date();
         const before = await tx.incident.findFirstOrThrow({
           where: { id: incidentId, organizationId },
-          select: { severity: true, status: true },
+          select: {
+            severity: true,
+            status: true,
+            team: { select: { id: true, name: true } },
+          },
         });
 
-        if (
-          input.status !== undefined &&
-          input.status !== before.status &&
-          (before.status === 'RESOLVED' ||
-            NEXT_STATUS[before.status] !== input.status)
-        ) {
-          throw invalidStatusTransition(before.status, input.status);
+        if (resolving) {
+          // lockActive has refused a resolved incident, so this is DECLARED
+          // or INVESTIGATING.
+          if (before.status !== 'INVESTIGATING') {
+            throw invalidStatusTransition(before.status, 'RESOLVED');
+          }
+
+          // Counted under the row lock, which a responder starting also
+          // takes, so none can start between this count and the resolution.
+          const investigating = await tx.incidentResponder.count({
+            where: { organizationId, incidentId, status: 'INVESTIGATING' },
+          });
+
+          if (investigating > 0) {
+            throw respondersStillInvestigating(investigating);
+          }
         }
+
+        const team =
+          input.teamId !== undefined
+            ? await this.requireTeam(tx, organizationId, input.teamId)
+            : undefined;
 
         const changes = [
           ...(input.severity !== undefined && input.severity !== before.severity
@@ -641,6 +650,15 @@ export class IncidentsService {
                 },
               ]
             : []),
+          ...(team !== undefined && team.id !== before.team.id
+            ? [
+                {
+                  type: 'TEAM_CHANGED' as const,
+                  fromValue: before.team.name,
+                  toValue: team.name,
+                },
+              ]
+            : []),
         ];
 
         // Looked up only when there is a change to attribute.
@@ -648,18 +666,6 @@ export class IncidentsService {
           changes.length > 0
             ? await this.resolveActor(tx, organizationId, actor.membershipId)
             : undefined;
-
-        if (input.teamId !== undefined) {
-          await this.requireTeam(tx, organizationId, input.teamId);
-        }
-
-        if (input.leadMembershipId) {
-          await this.requireMembership(
-            tx,
-            organizationId,
-            input.leadMembershipId,
-          );
-        }
 
         const updated = await tx.incident.update({
           where: {
@@ -673,7 +679,6 @@ export class IncidentsService {
             severity: input.severity,
             status: input.status,
             teamId: input.teamId,
-            leadMembershipId: input.leadMembershipId,
             resolvedAt: resolving ? now : undefined,
           },
           select: incidentDetailSelection,
@@ -706,16 +711,12 @@ export class IncidentsService {
           : incidentNotFound();
       }
 
-      // The team or the lead's membership was deleted between its lookup
-      // and the write: the answer the lookup would have given.
+      // The team was deleted between its lookup and the write: the answer
+      // the lookup would have given.
       const foreignKey = foreignKeyViolationHint(error);
 
       if (foreignKey !== undefined && violatesTeamKey(foreignKey)) {
         throw teamNotFound();
-      }
-
-      if (foreignKey !== undefined && violatesMembershipKey(foreignKey)) {
-        throw membershipNotFound();
       }
 
       throw error;
@@ -732,9 +733,6 @@ export class IncidentsService {
       ...(input.severity !== undefined && { severity: incident.severity }),
       ...(input.status !== undefined && { status: incident.status }),
       ...(input.teamId !== undefined && { teamId: incident.team.id }),
-      ...(input.leadMembershipId !== undefined && {
-        leadMembershipId: input.leadMembershipId,
-      }),
     });
 
     if (resolving) {
@@ -749,19 +747,29 @@ export class IncidentsService {
   }
 
   /**
-   * Adds a member of the organization, from any team, to the incident's
-   * responders.
+   * The caller starts investigating an active incident: their own response,
+   * as INVESTIGATING, recorded on the timeline. The first response to start
+   * also moves a DECLARED incident to INVESTIGATING — nobody moves it by hand.
    *
-   * The incident is judged and locked first (see lockActive), then the
-   * membership is looked up within the organization. A membership deleted
-   * between that read and the insert is refused by the composite key and
-   * answered with the read's 404; a concurrent add of the same member is
-   * refused by the unique index and answered 409.
+   * Only a member of the incident's current responsible team may start: 403
+   * NOT_ON_RESPONSIBLE_TEAM otherwise, the Admin included. Starting again
+   * while investigating changes and records nothing, whatever team the
+   * caller is on now — their response is under way. Starting again after
+   * completing is 409 RESPONSE_ALREADY_COMPLETED: a completed response is
+   * final.
+   *
+   * One transaction under the incident's row lock (see lockActive: 404, then
+   * 409 for a resolved incident), so concurrent starts take turns: the first
+   * moves the status, and the next finds it INVESTIGATING and only adds its
+   * responder. A resolution cannot slip between them either — it takes the
+   * same lock. The status moves by a write conditional on DECLARED, and the
+   * change is recorded only if that write moved it. The one-response-per-
+   * member index is the backstop against a duplicate.
    */
-  async addResponder(
+  async startResponse(
     organizationId: string,
     incidentNumber: string,
-    input: AddResponderRequest,
+    actor: { membershipId: string },
   ): Promise<IncidentDetailResponse> {
     const number = parseIncidentNumber(incidentNumber);
 
@@ -769,97 +777,195 @@ export class IncidentsService {
       throw incidentNotFound();
     }
 
-    let incident;
-
-    try {
-      incident = await this.prisma.$transaction(async (tx) => {
+    const { incident, started, statusChanged } = await this.prisma.$transaction(
+      async (tx) => {
         const incidentId = await this.lockActive(tx, organizationId, number);
+        const actorId = await this.resolveActor(
+          tx,
+          organizationId,
+          actor.membershipId,
+        );
+        const existing = await this.ownResponse(
+          tx,
+          organizationId,
+          incidentId,
+          actor.membershipId,
+        );
 
-        await this.requireMembership(tx, organizationId, input.membershipId);
+        if (existing?.status === 'COMPLETED') {
+          throw responseAlreadyCompleted();
+        }
 
-        // Scalar ids, not nested connects: both relations share
-        // organizationId, and it is that shared column the keys check.
-        await tx.incidentResponder.create({
-          data: {
+        let started = false;
+        let statusChanged = false;
+
+        if (!existing) {
+          await this.requireResponsibleTeamMember(
+            tx,
             organizationId,
             incidentId,
-            membershipId: input.membershipId,
-          },
-          select: { id: true },
-        });
+            actor.membershipId,
+          );
 
-        return tx.incident.findFirstOrThrow({
-          where: { id: incidentId, organizationId },
-          select: incidentDetailSelection,
-        });
+          const now = new Date();
+
+          // Scalar ids, not nested connects: every relation shares
+          // organizationId, and it is that shared column the keys check.
+          await tx.incidentResponder.create({
+            data: {
+              organizationId,
+              incidentId,
+              membershipId: actor.membershipId,
+              startedAt: now,
+            },
+            select: { id: true },
+          });
+
+          const { count } = await tx.incident.updateMany({
+            where: { id: incidentId, organizationId, status: 'DECLARED' },
+            data: { status: 'INVESTIGATING' },
+          });
+
+          statusChanged = count === 1;
+          started = true;
+
+          await tx.incidentActivity.createMany({
+            data: [
+              {
+                organizationId,
+                incidentId,
+                actorId,
+                type: 'RESPONSE_STARTED' as const,
+                createdAt: now,
+              },
+              // A millisecond after the response that caused it, so the
+              // timeline reads in cause-and-effect order however the ids sort.
+              ...(statusChanged
+                ? [
+                    {
+                      organizationId,
+                      incidentId,
+                      actorId,
+                      type: 'STATUS_CHANGED' as const,
+                      fromValue: 'DECLARED',
+                      toValue: 'INVESTIGATING',
+                      createdAt: new Date(now.getTime() + 1),
+                    },
+                  ]
+                : []),
+            ],
+          });
+        }
+
+        return {
+          incident: await tx.incident.findFirstOrThrow({
+            where: { id: incidentId, organizationId },
+            select: incidentDetailSelection,
+          }),
+          started,
+          statusChanged,
+        };
+      },
+    );
+
+    if (started) {
+      this.logger.log('Incident response started', {
+        incidentId: incident.id,
+        incidentNumber: incident.number,
+        membershipId: actor.membershipId,
+        ...(statusChanged && { status: incident.status }),
       });
-    } catch (error) {
-      const unique = uniqueViolationHint(error);
-
-      if (unique !== undefined && isResponderConflict(unique)) {
-        throw alreadyAResponder();
-      }
-
-      const foreignKey = foreignKeyViolationHint(error);
-
-      if (foreignKey !== undefined && violatesMembershipKey(foreignKey)) {
-        throw membershipNotFound();
-      }
-
-      throw error;
     }
-
-    this.logger.log('Incident responder added', {
-      incidentId: incident.id,
-      incidentNumber: incident.number,
-      membershipId: input.membershipId,
-    });
 
     return toIncidentDetailResponse(incident);
   }
 
   /**
-   * Takes a member off the incident's responders. They remain in the
-   * organization, and remain its lead if they are.
+   * The caller marks their own response to an active incident complete:
+   * INVESTIGATING → COMPLETED, with its completion time, recorded on the
+   * timeline. It resolves nothing — the Admin resolves the incident, once no
+   * responder is investigating.
    *
-   * The incident is judged and locked first. A membership that is not
-   * responding — malformed, in another organization, or simply not on it —
-   * is then one 404, which also rolls back lockActive's touch of updatedAt.
+   * Only the caller's own response, found by their membership; there is no
+   * way to name anyone else's. Their response governs this, not the team: a
+   * responder whose incident was reassigned finishes what they started.
+   * Completing again changes and records nothing; completing a response
+   * never started is 409 NOT_INVESTIGATING. A resolved incident is 409, as
+   * for every change (see lockActive).
    */
-  async removeResponder(
+  async completeResponse(
     organizationId: string,
     incidentNumber: string,
-    membershipId: string,
-  ): Promise<void> {
+    actor: { membershipId: string },
+  ): Promise<IncidentDetailResponse> {
     const number = parseIncidentNumber(incidentNumber);
 
     if (number === undefined) {
       throw incidentNotFound();
     }
 
-    const incidentId = await this.prisma.$transaction(async (tx) => {
-      const id = await this.lockActive(tx, organizationId, number);
+    const { incident, completed } = await this.prisma.$transaction(
+      async (tx) => {
+        const incidentId = await this.lockActive(tx, organizationId, number);
+        const actorId = await this.resolveActor(
+          tx,
+          organizationId,
+          actor.membershipId,
+        );
+        const existing = await this.ownResponse(
+          tx,
+          organizationId,
+          incidentId,
+          actor.membershipId,
+        );
 
-      if (!isResourceId(membershipId)) {
-        throw responderNotFound();
-      }
+        if (!existing) {
+          throw notInvestigating();
+        }
 
-      const { count } = await tx.incidentResponder.deleteMany({
-        where: { organizationId, incidentId: id, membershipId },
+        let completed = false;
+
+        if (existing.status === 'INVESTIGATING') {
+          const now = new Date();
+
+          await tx.incidentResponder.update({
+            where: { id: existing.id },
+            data: { status: 'COMPLETED', completedAt: now },
+            select: { id: true },
+          });
+          await tx.incidentActivity.create({
+            data: {
+              organizationId,
+              incidentId,
+              actorId,
+              type: 'RESPONSE_COMPLETED',
+              createdAt: now,
+            },
+            select: { id: true },
+          });
+
+          completed = true;
+        }
+
+        return {
+          incident: await tx.incident.findFirstOrThrow({
+            where: { id: incidentId, organizationId },
+            select: incidentDetailSelection,
+          }),
+          completed,
+        };
+      },
+    );
+
+    if (completed) {
+      this.logger.log('Incident response completed', {
+        incidentId: incident.id,
+        incidentNumber: incident.number,
+        membershipId: actor.membershipId,
       });
+    }
 
-      if (count !== 1) {
-        throw responderNotFound();
-      }
-
-      return id;
-    });
-
-    this.logger.log('Incident responder removed', {
-      incidentId,
-      incidentNumber: number,
-      membershipId,
-    });
+    return toIncidentDetailResponse(incident);
   }
 
   /**
@@ -901,15 +1007,26 @@ export class IncidentsService {
    * to the acting member. A resolved incident is not changed, and that
    * includes its timeline: 409.
    *
-   * The incident is judged and locked first (see lockActive), which orders
-   * the post against a concurrent resolution. The message is free text and is
-   * never logged.
+   * An update is part of a response. A member may post only while their own
+   * response to the incident is INVESTIGATING: one who has not started is
+   * refused with 403 START_INVESTIGATING_FIRST, and one who has completed
+   * with 409 RESPONSE_ALREADY_COMPLETED; nothing is written. Their response
+   * governs this, not their team, so a responder keeps posting after a
+   * reassignment. Whoever runs the incident's lifecycle — `incidents:manage`,
+   * the Admin — oversees every incident and may post to any without
+   * responding. The role is the caller's admitted one, passed in explicitly,
+   * and judged by the same role table the guards use.
+   *
+   * The incident is judged and locked first (see lockActive: 404, then 409),
+   * which orders the post against a concurrent resolution, and only then the
+   * caller's response, so a foreign incident reveals nothing. The message is
+   * free text and is never logged.
    */
   async postUpdate(
     organizationId: string,
     incidentNumber: string,
     input: PostIncidentUpdateRequest,
-    actor: { membershipId: string },
+    actor: { membershipId: string; role: Role },
   ): Promise<IncidentActivityResponse> {
     const number = parseIncidentNumber(incidentNumber);
 
@@ -924,6 +1041,23 @@ export class IncidentsService {
         organizationId,
         actor.membershipId,
       );
+
+      if (!hasPermission(actor.role, Permission.INCIDENTS_MANAGE)) {
+        const response = await this.ownResponse(
+          tx,
+          organizationId,
+          incidentId,
+          actor.membershipId,
+        );
+
+        if (!response) {
+          throw startInvestigatingFirst();
+        }
+
+        if (response.status === 'COMPLETED') {
+          throw responseAlreadyCompleted();
+        }
+      }
 
       return tx.incidentActivity.create({
         data: {
@@ -1041,40 +1175,91 @@ export class IncidentsService {
   }
 
   /**
-   * The team exists in this organization, or 404 TEAM_NOT_FOUND — the same
-   * answer for a missing team and for another organization's.
+   * The team, which exists in this organization, or 404 TEAM_NOT_FOUND — the
+   * same answer for a missing team and for another organization's.
    */
   private async requireTeam(
     tx: Prisma.TransactionClient,
     organizationId: string,
     teamId: string,
-  ): Promise<void> {
+  ): Promise<{ id: string; name: string }> {
     const team = await tx.team.findFirst({
       where: {
         id: teamId,
         organizationId,
         organization: { deletedAt: null },
       },
-      select: { id: true },
+      select: { id: true, name: true },
     });
 
     if (!team) {
       throw teamNotFound();
     }
+
+    return team;
   }
 
   /**
-   * Judges the incident for a change to its responders — 404, then 409 — and
-   * holds its row until the transaction ends. Returns its id.
+   * The caller's own response to the incident, or null when they have not
+   * started one. Scoped by organization, like every query.
+   */
+  private async ownResponse(
+    tx: Prisma.TransactionClient,
+    organizationId: string,
+    incidentId: string,
+    membershipId: string,
+  ): Promise<{ id: string; status: 'INVESTIGATING' | 'COMPLETED' } | null> {
+    return tx.incidentResponder.findFirst({
+      where: { organizationId, incidentId, membershipId },
+      select: { id: true, status: true },
+    });
+  }
+
+  /**
+   * The acting member is on the incident's responsible team, or 403
+   * NOT_ON_RESPONSIBLE_TEAM.
+   *
+   * Called while the caller holds the incident's row lock (see lockActive),
+   * so the responsible team read here is the one the incident has until the
+   * transaction ends: a reassignment racing this waits for it, or has
+   * already committed and is what is judged. One query, joining the incident
+   * to its team's members.
+   */
+  private async requireResponsibleTeamMember(
+    tx: Prisma.TransactionClient,
+    organizationId: string,
+    incidentId: string,
+    membershipId: string,
+  ): Promise<void> {
+    const onTeam = await tx.incident.findFirst({
+      where: {
+        id: incidentId,
+        organizationId,
+        team: { memberships: { some: { membershipId } } },
+      },
+      select: { id: true },
+    });
+
+    if (!onTeam) {
+      throw notOnResponsibleTeam();
+    }
+  }
+
+  /**
+   * Judges the incident for a change — 404, then 409 — and holds its row
+   * until the transaction ends. Returns its id.
    *
    * The pattern update() follows: a read to answer precisely, then a write
    * whose own predicate re-asserts that the incident is unresolved. Here the
-   * write only touches updatedAt — responders are part of the incident, so a
-   * change to them is a change to it — and its row lock orders this change
-   * against a resolution. If the resolution commits first, this write
-   * re-evaluates its predicate, matches nothing, and the caller is told the
-   * incident is resolved; if this commits first, the resolution waits and
-   * follows it. Either way no responder changes on a resolved incident.
+   * write only touches updatedAt — an operational update is part of the
+   * incident, so posting one is a change to it — and its row lock orders
+   * this change against a resolution, a reassignment, or a response
+   * starting. If the resolution
+   * commits first, this write re-evaluates its predicate, matches nothing,
+   * and the caller is told the incident is resolved; if this commits first,
+   * the resolution waits and follows it. Either way nothing is added to a
+   * resolved incident, and whatever is read of the incident after this —
+   * its responsible team — holds until commit.
    */
   private async lockActive(
     tx: Prisma.TransactionClient,
@@ -1104,31 +1289,6 @@ export class IncidentsService {
     }
 
     return current.id;
-  }
-
-  /**
-   * The membership is a current member of this organization, or 404
-   * MEMBERSHIP_NOT_FOUND — the same answer for a missing membership, one in
-   * another organization, and one whose user was soft-deleted.
-   */
-  private async requireMembership(
-    tx: Prisma.TransactionClient,
-    organizationId: string,
-    membershipId: string,
-  ): Promise<void> {
-    const membership = await tx.membership.findFirst({
-      where: {
-        id: membershipId,
-        organizationId,
-        organization: { deletedAt: null },
-        user: { deletedAt: null },
-      },
-      select: { id: true },
-    });
-
-    if (!membership) {
-      throw membershipNotFound();
-    }
   }
 
   private async isResolved(

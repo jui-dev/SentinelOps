@@ -12,8 +12,9 @@ unfold, and turning the result into reviewable operational records.
 > **Early development.** The backend's foundations are in place and tested, and the web
 > app can sign a user in, work within an organization, invite others into it, group its
 > members into teams, catalog the services those teams own, and declare, work, and
-> resolve incidents against those services. Incidents are recorded by hand; nothing
-> detects them yet, and there is no incident timeline yet.
+> resolve incidents against those services. The responsible team's members start
+> investigating, post operational updates, and complete their responses before the Admin
+> resolves. Incidents are recorded by hand; nothing detects them yet.
 
 Anything still described as **planned** below has not been built. Each piece is introduced
 deliberately, and this README is updated as capabilities actually land.
@@ -40,12 +41,14 @@ deliberately, and this README is updated as capabilities actually land.
   by one of its teams and classified by criticality, and retires them by archiving. The
   database itself refuses an owner from another organization, and refuses deleting a
   team that still owns services. See [Services](#services)
-- Incidents: any member declares an incident against a service, and the service's owner
-  team becomes responsible. Any member of the organization can be assigned as its lead
-  or as one of its responders. Responders set its severity and move its status until it
-  is resolved. The database itself keeps every incident's service, team, lead, and
-  responders in its own organization and refuses deleting a service or team while an
-  incident names it. See [Incidents](#incidents)
+- Incidents: the `ADMIN` declares an incident against a service, and the service's owner
+  team becomes responsible. That team's members start investigating — the first start
+  moves it to `INVESTIGATING` — post operational updates, and mark their own responses
+  complete, while every other member can follow it. The `ADMIN` resolves it once no
+  responder is still investigating, and can reassign the responsible team, which the
+  timeline records. The database itself keeps
+  every incident's service and team in its own organization and refuses deleting a
+  service or team while an incident names it. See [Incidents](#incidents)
 - A Next.js web app: registration, login, session restore across reloads and tabs,
   an organization picker, per-organization overview, member list, invitations, teams,
   services, incidents, and rename — each offered only when the API reports the
@@ -59,8 +62,7 @@ deliberately, and this README is updated as capabilities actually land.
 
 **What does not exist yet**
 
-- What builds on incidents: the incident timeline (updates, status and severity
-  history, reopening), an operational overview, and service health.
+- What builds on incidents: reopening, per-team incident views, and service health.
   Detection — monitoring, alerts, paging — and notifications. And no way to remove or
   re-role a member
 - Email delivery: invitation links are shared by hand, and addresses are not verified
@@ -143,9 +145,10 @@ The intended scope, not a feature list. Only the items marked below are built.
   only, with a responsible team. Reopening and history are still to come. See
   [Incidents](#incidents)
 - **Severity management** — ✅ SEV1–SEV4, chosen per incident. See [Incidents](#incidents)
-- **Responder assignment** — ✅ an incident lead and responders, from any team. See
-  [Lead and responders](#lead-and-responders)
-- **Comments and incident timeline** — an ordered record of what happened
+- **Team-based response** — ✅ the responsible team's members respond; everyone else
+  follows. See [Team-based response](#team-based-response)
+- **Incident timeline** — ✅ an ordered record of what happened: operational updates,
+  and every severity, status, and team change. See [Incidents](#incidents)
 - **Real-time incident updates** — live state pushed to connected clients
 - **Notifications and background jobs** — asynchronous delivery and processing
 - **Audit logging** — traceable record of system and user actions
@@ -1308,21 +1311,26 @@ Which roles hold which permission is written out once, in
 | `incidents:manage` | ✓ | |
 
 A `MEMBER` cannot see open invitations: they name people who are not members yet.
-Belonging to a team grants nothing, and neither does a team owning a service or being
-responsible for an incident: authorization is the organization role alone.
+
+Belonging to a team grants one thing: a member starts investigating only the incidents
+their team is responsible for. `incidents:respond` is the role's permission to take part at
+all; which incidents it reaches depends on the incident, so `IncidentsService` narrows it
+— see [Team-based response](#team-based-response). Everything else is authorized by the
+organization role alone; there are no team roles.
 
 **The Admin owns configuration and the incident lifecycle; members take part in the
 response.** Teams, services, and invitations shape the organization, so only an `ADMIN`
 changes them. An incident's lifecycle is `incidents:manage`, also `ADMIN`-only:
-declaring it, changing its title, summary, severity, status, or responsible team,
-assigning its lead and responders, and resolving it. A member finishing their own piece
-of work is not the incident being over, so resolution belongs to whoever sees the whole
-response. Taking part is `incidents:respond`, which every role holds — today, posting
-operational updates to an active incident's timeline.
+declaring it, changing its title, summary, severity, status, or responsible team, and
+resolving it. A member finishing their own piece of work is not the incident being over,
+so resolution belongs to whoever sees the whole response. Taking part is
+`incidents:respond`, which every role holds — starting to investigate an incident one's
+team is responsible for, posting updates while investigating, and completing one's own
+response. The `ADMIN` oversees every incident and may post to any.
 
 Declaring is `ADMIN`-only as the current rule, not a settled one. Whether a member may
-declare an incident against a service one of their teams owns is to be reconsidered
-once response is scoped to teams; it would be a change to this table and the declaring
+declare an incident against a service one of their teams owns may be reconsidered now
+that response is scoped to teams; it would be a change to this table and the declaring
 route alone.
 
 There is no `@RequireRole()`. A route that names roles has to be edited every time the
@@ -1822,24 +1830,26 @@ DECLARED ──▶ INVESTIGATING ──▶ RESOLVED
 
 | Status | Meaning |
 | --- | --- |
-| `DECLARED` | Reported, and visible to the organization and the responsible team. No investigation is implied yet |
-| `INVESTIGATING` | Investigation, diagnosis, mitigation, or repair is under way |
-| `RESOLVED` | Closed by the Admin |
+| `DECLARED` | Declared by the Admin, and visible to the organization. Nobody has started investigating |
+| `INVESTIGATING` | A member of the responsible team started investigating — see [Team-based response](#team-based-response) |
+| `RESOLVED` | Closed by the Admin, once no responder is still investigating |
 
 - **One status for the whole incident**, however many people work on it. What one
   responder is doing is not an incident status. A cause found, or a fix deployed and
   being watched, is an operational update on an `INVESTIGATING` incident.
 - Every incident starts `DECLARED`. `DECLARED` and `INVESTIGATING` are both **active**:
   both count as open, in the lists and on the Overview.
-- The lifecycle moves **forward, one step at a time**, and only the Admin moves it
-  (`incidents:manage`). The Admin starts the investigation with `PATCH { "status":
-  "INVESTIGATING" }` and resolves with `PATCH { "status": "RESOLVED" }`. A declared
-  incident is investigated before it is resolved: resolving it directly is
-  `409 INVALID_STATUS_TRANSITION`, and nothing else in that request is applied. There is
-  no way back — `DECLARED` is set only by declaring, so a request naming it is a `400`.
-- The move is judged against the status read under the incident's row lock, so it cannot
-  race another: of two concurrent starts, the second finds the investigation started and
-  records nothing.
+- The lifecycle moves **forward, one step at a time**. Nobody moves it to
+  `INVESTIGATING` by hand: the first responder to start investigating moves it. The
+  Admin resolves with `PATCH { "status": "RESOLVED" }` (`incidents:manage`) — the only
+  status a change can name, so `INVESTIGATING` or `DECLARED` in a request is a `400`. A
+  declared incident is investigated before it is resolved: resolving it directly is
+  `409 INVALID_STATUS_TRANSITION`. Resolving while any responder is still investigating
+  is `409 RESPONDERS_STILL_INVESTIGATING`. Either way nothing else in that request is
+  applied.
+- Every move is judged against the status and responders read under the incident's row
+  lock, so none can race another: of two members starting at once, the second finds the
+  incident already `INVESTIGATING` and only adds their response.
 - Resolving sets `resolvedAt` in the same write, and a database `CHECK` keeps the two
   consistent for any writer: `status = 'RESOLVED'` exactly when `resolved_at` is set.
 - **`RESOLVED` is final.** Any change to a resolved incident — title included — is
@@ -1860,37 +1870,53 @@ later, its old incidents still say Payments was responsible, and new ones say Pl
 
 The responsible team can be **reassigned** while the incident is active — the owner of a
 service is not always the right team to respond — to any team in the organization.
-Until the incident timeline exists, a reassignment replaces the previous team without a
-record of it. Names are read live: renaming a team shows on its past incidents, because
-the team is the same one.
+Reassigning changes who may start investigating, so the timeline records it as `TEAM_CHANGED`, with
+both teams' names as they were at the time. On the incident itself names are read live:
+renaming a team shows on its past incidents, because the team is the same one.
 
-### Lead and responders
+### Team-based response
 
-An incident has a responsible **team**, and individual **people** handling it: at most
-one **lead**, and any number of **responders**. Both are organization members,
-referenced by their membership, from any team — whoever is best placed to help.
+Responding to an incident is its **responsible team's** work. A member of that team
+**starts investigating**, posts operational updates while investigating, and **marks
+their response complete**. Each response is `INVESTIGATING` or `COMPLETED`; a member who
+never started has no response at all.
 
-- **Nothing is assigned automatically.** Declaring an incident does not make the
-  declarer its lead: noticing a problem and leading the response are different jobs, so
-  `createdBy` and `lead` are separate.
-- **The lead is independent of the responders.** The lead may or may not also be listed
-  as a responder.
-- **Neither grants anything.** Assigning the lead and responders is
-  `incidents:manage`, which only the `ADMIN` holds; being the lead or a responder
-  grants nothing further.
-- **A resolved incident is frozen**, people included: changing its lead or responders is
-  a `409`. Adding or removing a responder takes the incident's row lock through the
-  same conditional write every change uses, so it is ordered against a concurrent
-  resolution — never applied after one.
-- **Tenant consistency is a database invariant.** The lead and each responder are
-  composite foreign keys on the incident's own `organization_id`, as for team members,
-  so a person from another organization cannot be written, however the row is written.
-  Both keys are `RESTRICT`: a membership that has led or responded cannot be physically
-  deleted. Nothing deletes memberships today; member removal, when it arrives, decides
-  what happens to that history.
+| Who | Reads it | Starts investigating | Posts updates | Completes a response | Resolves |
+| --- | --- | --- | --- | --- | --- |
+| The `ADMIN` | ✓ | only if on the responsible team | ✓ any active incident | their own | ✓ once nobody is investigating |
+| A `MEMBER` on the responsible team | ✓ | ✓ | while investigating | their own | |
+| Any other `MEMBER` | ✓ | `403 NOT_ON_RESPONSIBLE_TEAM` | `403 START_INVESTIGATING_FIRST` | | |
 
-Only the single-incident routes carry `lead` and `responders`; the lists do not, so a
-page of incidents stays one query.
+- **Starting** creates the caller's response as `INVESTIGATING` and records
+  `RESPONSE_STARTED`. The first start also moves a `DECLARED` incident to
+  `INVESTIGATING`, recorded once as `STATUS_CHANGED` attributed to that responder. Starting
+  again while investigating changes nothing; starting again after completing is
+  `409 RESPONSE_ALREADY_COMPLETED`.
+- **Posting an update** needs the caller's own response to be `INVESTIGATING`:
+  `403 START_INVESTIGATING_FIRST` before starting, `409 RESPONSE_ALREADY_COMPLETED`
+  after completing. The Admin posts to any active incident without responding.
+- **Completing** sets the caller's own response `COMPLETED`, with its time, and records
+  `RESPONSE_COMPLETED`. It resolves nothing. Completing again changes nothing; completing
+  a response never started is `409 NOT_INVESTIGATING`.
+- **Resolving** waits for every response: the Admin cannot resolve while any responder is
+  `INVESTIGATING`. Team members who never started do not hold it up.
+- **Reassigning** the incident's team changes who may *start*. A response already
+  started stays its responder's to post to and complete — and still holds the resolution
+  until it is complete.
+- **`RESOLVED` closes all of it**: starting, posting, and completing are each
+  `409 INCIDENT_RESOLVED`. The responses and the timeline stay readable.
+- **Under the incident's row lock.** Each of these judges the incident first (`404`,
+  then `409 INCIDENT_RESOLVED`) and holds its row, as a resolution does, so a start and a
+  resolution cannot interleave: whichever commits second sees the other. A unique index
+  on (incident, membership) keeps one response per member.
+
+Single-incident routes return `responders: [{ membershipId, name, status, startedAt,
+completedAt }]`, in the order they started; the lists do not.
+
+There was once an incident **lead** and a list of responders the `ADMIN` assigned from
+any team. Neither granted anything and neither was on the timeline, so migration
+`20260921120000_team_based_incident_response` removed the lead and turned responders into
+members' own responses.
 
 ### Numbers
 
@@ -1911,7 +1937,8 @@ All under `/api/v1/organizations/:organizationId`, with admission, permission, a
 isolation exactly as in [Tenancy](#tenancy) and [Authorization](#authorization). Every
 role holds `incidents:read` and `incidents:respond`; only an `ADMIN` holds
 `incidents:manage`, so a `MEMBER` is answered `403 PERMISSION_DENIED` on every route that
-needs it.
+needs it. Responding is narrowed further by the incident — see
+[Team-based response](#team-based-response).
 
 | Route | Permission | Purpose |
 | --- | --- | --- |
@@ -1919,11 +1946,11 @@ needs it.
 | `GET /incidents?state=resolved` | `incidents:read` | Resolved incidents, most recently declared first |
 | `POST /incidents` | `incidents:manage` | Declare `{ "title", "serviceId", "severity", "summary"? }`. `201` |
 | `GET /incidents/:number` | `incidents:read` | One incident |
-| `PATCH /incidents/:number` | `incidents:manage` | Change `{ "title"?, "summary"?, "severity"?, "status"?, "teamId"?, "leadMembershipId"? }` of an active incident (at least one). `"status": "INVESTIGATING"` starts the investigation of a declared incident; `"status": "RESOLVED"` resolves one under investigation; `"leadMembershipId": null` clears the lead |
-| `POST /incidents/:number/responders` | `incidents:manage` | Add `{ "membershipId" }` as a responder. `201`, with the incident |
-| `DELETE /incidents/:number/responders/:membershipId` | `incidents:manage` | Remove a responder. `204` |
+| `PATCH /incidents/:number` | `incidents:manage` | Change `{ "title"?, "summary"?, "severity"?, "status"?, "teamId"? }` of an active incident (at least one). `"status": "RESOLVED"` resolves one under investigation that nobody is still investigating |
 | `GET /incidents/:number/timeline` | `incidents:read` | The incident's timeline, oldest first |
-| `POST /incidents/:number/updates` | `incidents:respond` | Post `{ "message" }` to an active incident's timeline. `201`, with the entry |
+| `POST /incidents/:number/updates` | `incidents:respond`, and investigating unless `ADMIN` | Post `{ "message" }` to an active incident's timeline. `201`, with the entry |
+| `POST /incidents/:number/responders/me` | `incidents:respond`, and on the responsible team | Start investigating. No body. `200`, with the incident |
+| `POST /incidents/:number/responders/me/complete` | `incidents:respond` | Mark your own response complete. No body. `200`, with the incident |
 
 There is **no delete**. Incidents are history; a mistaken declaration is resolved.
 
@@ -1953,9 +1980,11 @@ strict, and any of those is a `400`.
 | `serviceId` missing, or another organization's service | `404 SERVICE_NOT_FOUND`, identically |
 | `serviceId` archived | `409 SERVICE_ARCHIVED` |
 | `teamId` missing, or another organization's team | `404 TEAM_NOT_FOUND`, identically |
-| A lead or responder that is missing, another organization's, or a deleted account | `404 MEMBERSHIP_NOT_FOUND`, identically |
-| Adding someone already responding | `409 ALREADY_A_RESPONDER` |
-| Removing someone not responding (or a malformed id) | `404 RESPONDER_NOT_FOUND` |
+| Starting to investigate an incident whose responsible team the caller is not on | `403 NOT_ON_RESPONSIBLE_TEAM` |
+| A `MEMBER` posting an update without investigating the incident | `403 START_INVESTIGATING_FIRST` |
+| Posting or starting again after completing one's response | `409 RESPONSE_ALREADY_COMPLETED` |
+| Completing a response never started | `409 NOT_INVESTIGATING` |
+| Resolving while a responder is still investigating | `409 RESPONDERS_STILL_INVESTIGATING` |
 | Any change to a resolved incident, people included | `409 INCIDENT_RESOLVED` |
 | Resolving an incident that is still `DECLARED` | `409 INVALID_STATUS_TRANSITION` |
 | `state` missing or unknown; a malformed cursor | `400`; `400 INVALID_CURSOR` |
@@ -2007,22 +2036,26 @@ system details. See [Sensitive data](#sensitive-data).
 
 ### Not yet
 
-The incident timeline — updates and notes, status, severity, and reassignment history,
-who resolved it, reopening. Acknowledgement, and authority tied to the lead, when impact began, a
-per-service or per-team incident list, the operational overview, and live updates.
-Detection, alerts, paging, and notifications. Deleting or voiding an incident, changing
-its service, and optimistic concurrency on edits.
+Reopening. Editing or deleting an update. Incidents with more than one responsible
+team, an incident commander or lead, acknowledgement, and when impact began. A
+per-service or per-team incident list, and live updates — a page shows others' updates
+when it refetches. Detection, alerts, paging, and notifications. Deleting or voiding an
+incident, changing its service, and optimistic concurrency on edits.
 
 ### Tests
 
 [`incidents.e2e-spec.ts`](apps/api/test/incidents.e2e-spec.ts) proves the wiring: every
-route is admitted and authorized, every role may read and post updates, a `MEMBER` is
-refused every lifecycle route with `403` before anything is written, bodies are strict,
-and there is no delete route.
+route is admitted and authorized, every role may read and post updates — a `MEMBER`
+only on the responsible team — a `MEMBER` is refused every lifecycle route with `403`
+before anything is written, bodies are strict, and there is no delete, lead, or
+responder route.
 [`incidents.integration-spec.ts`](apps/api/test/incidents.integration-spec.ts) runs two
 tenants against a real database: an admin declaring, moving, and resolving; a member
-reading and posting an update while every lifecycle change they try is refused; the
-responsible team surviving a service reassignment; per-organization numbering under ten
+reading and posting an update while every lifecycle change they try is refused; only the
+responsible team's members and the admin posting, a member of another team refused and
+still able to read, and who may post moving with a reassignment that the timeline
+records — including a post waiting on an in-flight reassignment being judged against the
+new team; the responsible team surviving a service reassignment; per-organization numbering under ten
 concurrent declarations; both lists paged completely and in order; foreign incidents,
 services, and teams answered exactly as missing ones; the service isolating with no
 guard; archival refusing declarations; the delete refusals recognised through the real

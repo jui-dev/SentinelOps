@@ -27,12 +27,13 @@ export const incidentSummarySchema = z
 export const incidentSeveritySchema = z.enum(['SEV1', 'SEV2', 'SEV3', 'SEV4']);
 
 /**
- * The statuses a change can move an incident to. DECLARED is not one: an
- * incident is DECLARED only by being declared, and never moves back to it.
- * Whether the move is allowed from where the incident stands is the service's
- * judgement, which needs the current status.
+ * The status a change can move an incident to: RESOLVED, and nothing else.
+ * An incident is DECLARED only by being declared, and becomes INVESTIGATING
+ * only when a responder starts investigating it. Whether resolving is allowed
+ * from where the incident stands is the service's judgement, which needs the
+ * current status and its responders.
  */
-export const incidentStatusTargetSchema = z.enum(['INVESTIGATING', 'RESOLVED']);
+export const incidentStatusTargetSchema = z.enum(['RESOLVED']);
 
 /**
  * Declaring an incident. No status — every incident starts DECLARED —
@@ -48,11 +49,9 @@ export const createIncidentSchema = z.strictObject({
 });
 
 /**
- * Changing an active incident. `status: 'INVESTIGATING'` starts the
- * investigation of a DECLARED incident; `status: 'RESOLVED'` resolves an
- * INVESTIGATING one. The service
- * cannot be changed; the responsible team can be reassigned, never cleared.
- * The lead is a membership id, or null to clear it.
+ * Changing an active incident. `status: 'RESOLVED'` resolves an
+ * INVESTIGATING one. The service cannot be changed; the responsible team can
+ * be reassigned, never cleared.
  */
 export const updateIncidentSchema = z
   .strictObject({
@@ -61,7 +60,6 @@ export const updateIncidentSchema = z
     severity: incidentSeveritySchema.optional(),
     status: incidentStatusTargetSchema.optional(),
     teamId: resourceIdSchema.optional(),
-    leadMembershipId: resourceIdSchema.nullable().optional(),
   })
   .refine(
     (body) =>
@@ -69,15 +67,9 @@ export const updateIncidentSchema = z
       body.summary !== undefined ||
       body.severity !== undefined ||
       body.status !== undefined ||
-      body.teamId !== undefined ||
-      body.leadMembershipId !== undefined,
-    'Provide a title, summary, severity, status, team, or lead to change',
+      body.teamId !== undefined,
+    'Provide a title, summary, severity, status, or team to change',
   );
-
-/** Adding a responder: any member of the organization, by membership id. */
-export const addResponderSchema = z.strictObject({
-  membershipId: resourceIdSchema,
-});
 
 /**
  * Posting an operational update: a short message, and nothing else. Who
@@ -169,7 +161,6 @@ export const summaryBounds = ({
 
 export type CreateIncidentRequest = z.infer<typeof createIncidentSchema>;
 export type UpdateIncidentRequest = z.infer<typeof updateIncidentSchema>;
-export type AddResponderRequest = z.infer<typeof addResponderSchema>;
 export type PostIncidentUpdateRequest = z.infer<
   typeof postIncidentUpdateSchema
 >;

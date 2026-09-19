@@ -20,11 +20,16 @@ import { resolveTestDatabaseUrl } from './test-database.js';
  * Incidents against a real database.
  *
  * Two tenants. Alice owns A, Bob owns B, Carol is ADMIN in A and MEMBER in B
- * — one token, two capacities — and Dave is a plain MEMBER of A. A has two
- * teams, Payments and Platform, and a Payment API owned by Payments; B has
- * its own Payments and Payment API.
+ * — one token, two capacities — and Dave and Erin are plain MEMBERs of A. A
+ * has two teams, Payments (Dave) and Platform (Erin), and a Payment API owned
+ * by Payments; B has its own Payments and Payment API.
  *
- * What is proven here and nowhere else: that a member declares and resolves;
+ * What is proven here and nowhere else: that an admin declares and resolves;
+ * that the responsible team's members start investigating, which moves a
+ * declared incident, post updates while investigating, and complete their
+ * own responses; that nobody resolves while a responder is investigating;
+ * that who may start follows a reassignment, which the timeline records,
+ * while a response already started is finished;
  * that the responsible team is a snapshot of the service's owner; that
  * numbers are per organization and distinct under concurrency; that both
  * lists page completely; that foreign incidents, services, and teams are
@@ -41,7 +46,10 @@ interface Fixture {
   bob: string;
   carol: string;
   dave: string;
+  erin: string;
   carolInB: string;
+  daveInA: string;
+  erinInA: string;
   paymentsA: string;
   platformA: string;
   paymentsB: string;
@@ -109,22 +117,54 @@ describe('incidents (integration)', () => {
       ...extra,
     });
 
+  /** The caller starts investigating incident `number`. */
+  const startAs = (organizationId: string, userId: string, number: number) =>
+    call('post', `${organizationId}/incidents/${number}/responders/me`, userId);
+
+  /** The caller marks their own response to incident `number` complete. */
+  const completeAs = (organizationId: string, userId: string, number: number) =>
+    call(
+      'post',
+      `${organizationId}/incidents/${number}/responders/me/complete`,
+      userId,
+    );
+
   /**
-   * Takes a declared incident through the lifecycle to RESOLVED — starting
-   * its investigation, then resolving it — and answers with the resolution.
+   * Takes a declared Payment API incident in A through the response to
+   * RESOLVED — Dave, on Payments, starts investigating and completes his
+   * response, then `userId` resolves it — and answers with the resolution.
    */
   const resolve = async (
     organizationId: string,
     userId: string,
     number: number,
   ) => {
-    const path = `${organizationId}/incidents/${number}`;
+    expect((await startAs(organizationId, fx.dave, number)).status).toBe(200);
+    expect((await completeAs(organizationId, fx.dave, number)).status).toBe(
+      200,
+    );
 
-    expect(
-      (await call('patch', path, userId, { status: 'INVESTIGATING' })).status,
-    ).toBe(200);
+    return call('patch', `${organizationId}/incidents/${number}`, userId, {
+      status: 'RESOLVED',
+    });
+  };
 
-    return call('patch', path, userId, { status: 'RESOLVED' });
+  /** A new MEMBER of A, placed on `teamId`. Answers their user id. */
+  const aMemberOn = async (teamId: string, name: string) => {
+    const user = await prisma.user.create({
+      data: { email: `${name.toLowerCase()}@acme.example`, name },
+      select: { id: true },
+    });
+    const membership = await prisma.membership.create({
+      data: { organizationId: fx.orgA, userId: user.id, role: 'MEMBER' },
+      select: { id: true },
+    });
+
+    await prisma.teamMembership.create({
+      data: { organizationId: fx.orgA, teamId, membershipId: membership.id },
+    });
+
+    return user.id;
   };
 
   const aTeam = async (organizationId: string, name: string) =>
@@ -185,16 +225,27 @@ describe('incidents (integration)', () => {
     const bob = await user('bob@bravo.example', 'Bob Brandt');
     const carol = await user('carol@both.example', 'Carol Chen');
     const dave = await user('dave@acme.example', 'Dave Duarte');
+    const erin = await user('erin@acme.example', 'Erin Estrada');
 
     await grant(orgA, alice, 'ADMIN');
     await grant(orgB, bob, 'ADMIN');
     await grant(orgA, carol, 'ADMIN');
     const carolInB = await grant(orgB, carol, 'MEMBER');
-    await grant(orgA, dave, 'MEMBER');
+    const daveInA = await grant(orgA, dave, 'MEMBER');
+    const erinInA = await grant(orgA, erin, 'MEMBER');
 
     const paymentsA = await aTeam(orgA, 'Payments');
     const platformA = await aTeam(orgA, 'Platform');
     const paymentsB = await aTeam(orgB, 'Payments');
+
+    // Dave responds for Payments, which owns the Payment API; Erin is on
+    // Platform. Alice and Carol, the admins, are on no team.
+    await prisma.teamMembership.createMany({
+      data: [
+        { organizationId: orgA, teamId: paymentsA, membershipId: daveInA },
+        { organizationId: orgA, teamId: platformA, membershipId: erinInA },
+      ],
+    });
 
     return {
       orgA,
@@ -203,7 +254,10 @@ describe('incidents (integration)', () => {
       bob,
       carol,
       dave,
+      erin,
       carolInB,
+      daveInA,
+      erinInA,
       paymentsA,
       platformA,
       paymentsB,
@@ -324,18 +378,33 @@ describe('incidents (integration)', () => {
       );
       expect((await call('get', path, fx.alice)).body).toEqual(declared.body);
 
-      const started = await call('patch', path, fx.alice, {
-        status: 'INVESTIGATING',
-      });
+      // Nobody starts the investigation by hand, and there is no way back to
+      // DECLARED: neither is a status a change can name.
+      for (const status of ['INVESTIGATING', 'DECLARED']) {
+        expect((await call('patch', path, fx.alice, { status })).status).toBe(
+          400,
+        );
+      }
+
+      // A responder starting to investigate moves it.
+      const started = await startAs(fx.orgA, fx.dave, 1);
 
       expect(started.status).toBe(200);
       expect(started.body.status).toBe('INVESTIGATING');
       expect(started.body.resolvedAt).toBeNull();
 
-      // There is no way back to DECLARED.
-      expect(
-        (await call('patch', path, fx.alice, { status: 'DECLARED' })).status,
-      ).toBe(400);
+      // Not resolved while Dave investigates, and nothing else applied.
+      expectCode(
+        await call('patch', path, fx.alice, {
+          status: 'RESOLVED',
+          severity: 'SEV2',
+        }),
+        409,
+        'RESPONDERS_STILL_INVESTIGATING',
+      );
+      expect((await call('get', path, fx.alice)).body.severity).toBe('SEV1');
+
+      expect((await completeAs(fx.orgA, fx.dave, 1)).status).toBe(200);
 
       const resolved = await call('patch', path, fx.alice, {
         status: 'RESOLVED',
@@ -350,7 +419,6 @@ describe('incidents (integration)', () => {
       // Resolved is terminal: nothing about it changes again.
       for (const change of [
         { title: 'Typo fixed' },
-        { status: 'INVESTIGATING' },
         { status: 'RESOLVED' },
         { teamId: fx.platformA },
       ]) {
@@ -371,13 +439,6 @@ describe('incidents (integration)', () => {
 
       expect(before.status).toBe(200);
 
-      const daveInA = (
-        await prisma.membership.findFirstOrThrow({
-          where: { organizationId: fx.orgA, userId: fx.dave },
-          select: { id: true },
-        })
-      ).id;
-
       for (const refused of [
         declare(fx.orgA, fx.dave, fx.apiA),
         call('patch', path, fx.dave, { title: 'Renamed' }),
@@ -386,21 +447,18 @@ describe('incidents (integration)', () => {
         call('patch', path, fx.dave, { status: 'INVESTIGATING' }),
         call('patch', path, fx.dave, { status: 'RESOLVED' }),
         call('patch', path, fx.dave, { teamId: fx.platformA }),
-        call('patch', path, fx.dave, { leadMembershipId: daveInA }),
-        call('post', `${path}/responders`, fx.dave, { membershipId: daveInA }),
       ]) {
         expectCode(await refused, 403, 'PERMISSION_DENIED');
       }
 
-      // An admin's responder, whom a member cannot take off either.
-      await call('post', `${path}/responders`, fx.alice, {
-        membershipId: daveInA,
-      });
-      expectCode(
-        await call('delete', `${path}/responders/${daveInA}`, fx.dave),
-        403,
-        'PERMISSION_DENIED',
-      );
+      // Nothing the refusals named was written: one incident, as declared.
+      const after = await call('get', path, fx.dave);
+
+      expect(after.body).toEqual(before.body);
+      expect(await prisma.incident.count()).toBe(1);
+
+      // Responding is theirs: start, then post.
+      expect((await startAs(fx.orgA, fx.dave, 1)).status).toBe(200);
 
       const posted = await call('post', `${path}/updates`, fx.dave, {
         message: 'Seeing timeouts from the card processor.',
@@ -408,21 +466,11 @@ describe('incidents (integration)', () => {
 
       expect(posted.status).toBe(201);
       expect(posted.body.actor).toEqual({ id: fx.dave, name: 'Dave Duarte' });
-
-      // Nothing the refusals named was written: one incident, as declared.
-      const after = await call('get', path, fx.dave);
-
-      expect(after.body).toEqual({
-        ...before.body,
-        responders: [{ membershipId: daveInA, name: 'Dave Duarte' }],
-        updatedAt: expect.any(String),
-      });
-      expect(await prisma.incident.count()).toBe(1);
       expect(
         (await call('get', `${path}/timeline`, fx.dave)).body.map(
           ({ type }: { type: string }) => type,
         ),
-      ).toEqual(['DECLARED', 'UPDATE']);
+      ).toEqual(['DECLARED', 'RESPONSE_STARTED', 'STATUS_CHANGED', 'UPDATE']);
     });
 
     it('should snapshot the owner as the responsible team: reassigning the service rewrites no history', async () => {
@@ -1141,27 +1189,113 @@ describe('incidents (integration)', () => {
   });
 
   describe('concurrency', () => {
-    it('should start an investigation once when two starts race: both succeed, one change is recorded', async () => {
+    it('should move the incident once when two members start at once: both respond, one status change', async () => {
+      const finn = await aMemberOn(fx.paymentsA, 'Finn');
       await declare(fx.orgA, fx.alice, fx.apiA);
-      const path = `${fx.orgA}/incidents/1`;
 
       const responses = await Promise.all([
-        call('patch', path, fx.alice, { status: 'INVESTIGATING' }),
-        call('patch', path, fx.carol, { status: 'INVESTIGATING' }),
+        startAs(fx.orgA, fx.dave, 1),
+        startAs(fx.orgA, finn, 1),
       ]);
 
       expect(responses.map((response) => response.status)).toEqual([200, 200]);
+      expect(await prisma.incidentResponder.count()).toBe(2);
       expect(
         await prisma.incidentActivity.count({
           where: { type: 'STATUS_CHANGED' },
         }),
       ).toBe(1);
+      expect(
+        await prisma.incidentActivity.count({
+          where: { type: 'RESPONSE_STARTED' },
+        }),
+      ).toBe(2);
+    });
+
+    it('should record one response when the same member starts twice at once', async () => {
+      await declare(fx.orgA, fx.alice, fx.apiA);
+
+      const responses = await Promise.all([
+        startAs(fx.orgA, fx.dave, 1),
+        startAs(fx.orgA, fx.dave, 1),
+      ]);
+
+      expect(responses.map((response) => response.status)).toEqual([200, 200]);
+      expect(await prisma.incidentResponder.count()).toBe(1);
+      expect(
+        await prisma.incidentActivity.count({
+          where: { type: 'RESPONSE_STARTED' },
+        }),
+      ).toBe(1);
+    });
+
+    it('should refuse a resolution that waits on a response starting', async () => {
+      const finn = await aMemberOn(fx.paymentsA, 'Finn');
+      await declare(fx.orgA, fx.alice, fx.apiA);
+      await startAs(fx.orgA, fx.dave, 1);
+      await completeAs(fx.orgA, fx.dave, 1);
+
+      const incident = await prisma.incident.findFirstOrThrow({
+        where: { organizationId: fx.orgA, number: 1 },
+      });
+      const finnInA = await prisma.membership.findFirstOrThrow({
+        where: { organizationId: fx.orgA, userId: finn },
+      });
+      // A start in flight: it holds the incident's row, as lockActive does,
+      // and has written its response.
+      const held = await hold(async (tx) => {
+        await tx.incident.updateMany({
+          where: { id: incident.id },
+          data: { updatedAt: new Date() },
+        });
+        await tx.incidentResponder.create({
+          data: {
+            organizationId: fx.orgA,
+            incidentId: incident.id,
+            membershipId: finnInA.id,
+          },
+        });
+      });
+      const resolving = inFlight(
+        call('patch', `${fx.orgA}/incidents/1`, fx.alice, {
+          status: 'RESOLVED',
+        }),
+      );
+
+      await someoneIsWaitingOnALock();
+      held.release();
+      await held.done;
+
+      expectCode(await resolving, 409, 'RESPONDERS_STILL_INVESTIGATING');
+    });
+
+    it('should refuse a start that waits on a resolution', async () => {
+      const finn = await aMemberOn(fx.paymentsA, 'Finn');
+      await declare(fx.orgA, fx.alice, fx.apiA);
+      await startAs(fx.orgA, fx.dave, 1);
+      await completeAs(fx.orgA, fx.dave, 1);
+
+      const held = await hold((tx) =>
+        tx.incident.updateMany({
+          where: { organizationId: fx.orgA, number: 1 },
+          data: { status: 'RESOLVED', resolvedAt: new Date() },
+        }),
+      );
+      const starting = inFlight(startAs(fx.orgA, finn, 1));
+
+      await someoneIsWaitingOnALock();
+      held.release();
+      await held.done;
+
+      expectCode(await starting, 409, 'INCIDENT_RESOLVED');
+      expect(await prisma.incidentResponder.count()).toBe(1);
     });
 
     it('should let exactly one of two concurrent resolutions win, writing resolvedAt once', async () => {
       await declare(fx.orgA, fx.alice, fx.apiA);
       const path = `${fx.orgA}/incidents/1`;
-      await call('patch', path, fx.alice, { status: 'INVESTIGATING' });
+      await startAs(fx.orgA, fx.dave, 1);
+      await completeAs(fx.orgA, fx.dave, 1);
 
       const responses = await Promise.all([
         call('patch', path, fx.alice, { status: 'RESOLVED' }),
@@ -1292,252 +1426,358 @@ describe('incidents (integration)', () => {
     });
   });
 
-  describe('incident response: lead and responders', () => {
-    const membershipOf = async (organizationId: string, userId: string) =>
-      (
-        await prisma.membership.findFirstOrThrow({
-          where: { organizationId, userId },
-          select: { id: true },
-        })
-      ).id;
+  describe('team-based response', () => {
+    const path = (organizationId: string) => `${organizationId}/incidents/1`;
+    const post = (organizationId: string, userId: string, message: string) =>
+      call('post', `${path(organizationId)}/updates`, userId, { message });
+    const count = (type: string) =>
+      prisma.incidentActivity.count({
+        where: { type: type as 'UPDATE' },
+      });
 
-    /** Incident 1 — the only one each test declares. */
-    const pathIn = (organizationId: string) => `${organizationId}/incidents/1`;
-
-    it('should declare with no lead and no responders', async () => {
-      const response = await declare(fx.orgA, fx.alice, fx.apiA);
-
-      expect(response.status).toBe(201);
-      expect(response.body.lead).toBeNull();
-      expect(response.body.responders).toEqual([]);
-    });
-
-    it('should set, change, and clear the lead, showing it on the incident but not in lists', async () => {
+    it('should let a responsible-team member start investigating, moving a declared incident and recording both', async () => {
       await declare(fx.orgA, fx.alice, fx.apiA);
-      const dave = await membershipOf(fx.orgA, fx.dave);
-      const carol = await membershipOf(fx.orgA, fx.carol);
 
-      // An admin assigns; the lead may be a MEMBER.
-      const set = await call('patch', pathIn(fx.orgA), fx.alice, {
-        leadMembershipId: dave,
-      });
-      expect(set.status).toBe(200);
-      expect(set.body.lead).toStrictEqual({
-        membershipId: dave,
-        name: 'Dave Duarte',
-      });
-      // Creator and lead are separate: Alice declared, Dave leads.
-      expect(set.body.createdBy.id).toBe(fx.alice);
+      const started = await startAs(fx.orgA, fx.dave, 1);
 
-      await call('patch', pathIn(fx.orgA), fx.alice, {
-        leadMembershipId: carol,
-      });
-      const read = await call('get', pathIn(fx.orgA), fx.alice);
-      expect(read.body.lead.name).toBe('Carol Chen');
+      expect(started.status).toBe(200);
+      expect(started.body.status).toBe('INVESTIGATING');
+      expect(started.body.responders).toEqual([
+        {
+          membershipId: fx.daveInA,
+          name: 'Dave Duarte',
+          status: 'INVESTIGATING',
+          startedAt: expect.any(String),
+          completedAt: null,
+        },
+      ]);
 
+      const timeline = (await call('get', `${path(fx.orgA)}/timeline`, fx.dave))
+        .body;
+
+      expect(
+        timeline.map(
+          (entry: {
+            type: string;
+            fromValue: string | null;
+            toValue: string | null;
+            actor: { id: string };
+          }) => [entry.type, entry.fromValue, entry.toValue, entry.actor.id],
+        ),
+      ).toEqual([
+        ['DECLARED', null, 'SEV1', fx.alice],
+        ['RESPONSE_STARTED', null, null, fx.dave],
+        ['STATUS_CHANGED', 'DECLARED', 'INVESTIGATING', fx.dave],
+      ]);
+
+      // Lists stay lean: no responders on a page.
       const list = await call(
         'get',
         `${fx.orgA}/incidents?state=active`,
-        fx.alice,
+        fx.dave,
       );
-      expect(list.body.items[0]).not.toHaveProperty('lead');
+
       expect(list.body.items[0]).not.toHaveProperty('responders');
-
-      const cleared = await call('patch', pathIn(fx.orgA), fx.alice, {
-        leadMembershipId: null,
-      });
-      expect(cleared.body.lead).toBeNull();
     });
 
-    it('should add responders from any team in the order they were added, and remove them', async () => {
+    it('should add a later responder without another status change, and treat a repeated start as done', async () => {
+      const finn = await aMemberOn(fx.paymentsA, 'Finn');
       await declare(fx.orgA, fx.alice, fx.apiA);
-      const dave = await membershipOf(fx.orgA, fx.dave);
-      const carol = await membershipOf(fx.orgA, fx.carol);
-      const responders = `${pathIn(fx.orgA)}/responders`;
+      await startAs(fx.orgA, fx.dave, 1);
 
-      // Neither is on the responsible team, or any team.
-      await call('post', responders, fx.alice, { membershipId: dave });
-      const added = await call('post', responders, fx.alice, {
-        membershipId: carol,
-      });
+      const later = await startAs(fx.orgA, finn, 1);
+      const again = await startAs(fx.orgA, fx.dave, 1);
 
-      expect(added.status).toBe(201);
-      expect(added.body.responders).toStrictEqual([
-        { membershipId: dave, name: 'Dave Duarte' },
-        { membershipId: carol, name: 'Carol Chen' },
-      ]);
-
-      const removed = await call('delete', `${responders}/${dave}`, fx.alice);
-      expect(removed.status).toBe(204);
-
-      const read = await call('get', pathIn(fx.orgA), fx.alice);
-      expect(read.body.responders).toStrictEqual([
-        { membershipId: carol, name: 'Carol Chen' },
-      ]);
+      expect(later.status).toBe(200);
+      expect(again.status).toBe(200);
+      expect(
+        again.body.responders.map(({ name }: { name: string }) => name),
+      ).toEqual(['Dave Duarte', 'Finn']);
+      expect(await count('STATUS_CHANGED')).toBe(1);
+      expect(await count('RESPONSE_STARTED')).toBe(2);
     });
 
-    it('should let the lead also be a responder, independently', async () => {
+    it('should refuse starting to anyone off the responsible team, the admin included, and leave them able to read', async () => {
       await declare(fx.orgA, fx.alice, fx.apiA);
-      const dave = await membershipOf(fx.orgA, fx.dave);
 
-      await call('patch', pathIn(fx.orgA), fx.alice, {
-        leadMembershipId: dave,
-      });
-      await call('post', `${pathIn(fx.orgA)}/responders`, fx.alice, {
-        membershipId: dave,
-      });
-      await call('delete', `${pathIn(fx.orgA)}/responders/${dave}`, fx.alice);
-
-      const read = await call('get', pathIn(fx.orgA), fx.alice);
-      expect(read.body.lead.membershipId).toBe(dave);
-      expect(read.body.responders).toEqual([]);
-    });
-
-    it('should answer the same responder twice with 409', async () => {
-      await declare(fx.orgA, fx.alice, fx.apiA);
-      const dave = await membershipOf(fx.orgA, fx.dave);
-      const responders = `${pathIn(fx.orgA)}/responders`;
-
-      await call('post', responders, fx.alice, { membershipId: dave });
-
-      expectCode(
-        await call('post', responders, fx.alice, { membershipId: dave }),
-        409,
-        'ALREADY_A_RESPONDER',
-      );
-      expect(await prisma.incidentResponder.count()).toBe(1);
-    });
-
-    it("should answer another organization's membership exactly as a missing one, and change nothing", async () => {
-      await declare(fx.orgA, fx.alice, fx.apiA);
-      const missing = randomUUID();
-
-      for (const membershipId of [fx.carolInB, missing]) {
-        const asLead = await call('patch', pathIn(fx.orgA), fx.alice, {
-          leadMembershipId: membershipId,
-        });
-        const asResponder = await call(
-          'post',
-          `${pathIn(fx.orgA)}/responders`,
-          fx.alice,
-          { membershipId },
-        );
-
-        expectCode(asLead, 404, 'MEMBERSHIP_NOT_FOUND');
-        expectCode(asResponder, 404, 'MEMBERSHIP_NOT_FOUND');
-      }
-
-      const stored = await prisma.incident.findFirstOrThrow({
-        where: { organizationId: fx.orgA },
-      });
-      expect(stored.leadMembershipId).toBeNull();
-      expect(await prisma.incidentResponder.count()).toBe(0);
-    });
-
-    it('should refuse assigning a member whose account was deleted', async () => {
-      await declare(fx.orgA, fx.alice, fx.apiA);
-      const dave = await membershipOf(fx.orgA, fx.dave);
-      await prisma.user.update({
-        where: { id: fx.dave },
-        data: { deletedAt: new Date() },
-      });
-
-      expectCode(
-        await call('post', `${pathIn(fx.orgA)}/responders`, fx.alice, {
-          membershipId: dave,
-        }),
-        404,
-        'MEMBERSHIP_NOT_FOUND',
-      );
-    });
-
-    it("should not reach another organization's incident", async () => {
-      await declare(fx.orgB, fx.bob, fx.apiB);
-      const carolInA = await membershipOf(fx.orgA, fx.carol);
-
-      // Carol is a member of both; incident 1 exists only in B.
-      expectCode(
-        await call('post', `${pathIn(fx.orgA)}/responders`, fx.carol, {
-          membershipId: carolInA,
-        }),
-        404,
-        'INCIDENT_NOT_FOUND',
-      );
-      expect(await prisma.incidentResponder.count()).toBe(0);
-    });
-
-    it('should answer removing someone who is not responding with 404', async () => {
-      await declare(fx.orgA, fx.alice, fx.apiA);
-      const dave = await membershipOf(fx.orgA, fx.dave);
-      const responders = `${pathIn(fx.orgA)}/responders`;
-
-      for (const membershipId of [dave, fx.carolInB, 'not-a-uuid']) {
+      for (const userId of [fx.erin, fx.carol]) {
         expectCode(
-          await call('delete', `${responders}/${membershipId}`, fx.alice),
-          404,
-          'RESPONDER_NOT_FOUND',
+          await startAs(fx.orgA, userId, 1),
+          403,
+          'NOT_ON_RESPONSIBLE_TEAM',
         );
       }
-    });
-
-    it('should keep a resolved incident frozen: no lead or responder changes', async () => {
-      await declare(fx.orgA, fx.alice, fx.apiA);
-      const dave = await membershipOf(fx.orgA, fx.dave);
-      const carol = await membershipOf(fx.orgA, fx.carol);
-      const responders = `${pathIn(fx.orgA)}/responders`;
-      await call('post', responders, fx.alice, { membershipId: dave });
-      await resolve(fx.orgA, fx.alice, 1);
-      const before = await prisma.incident.findFirstOrThrow({
-        where: { organizationId: fx.orgA },
-      });
-
-      expectCode(
-        await call('patch', pathIn(fx.orgA), fx.alice, {
-          leadMembershipId: carol,
-        }),
-        409,
-        'INCIDENT_RESOLVED',
-      );
-      expectCode(
-        await call('post', responders, fx.alice, { membershipId: carol }),
-        409,
-        'INCIDENT_RESOLVED',
-      );
-      expectCode(
-        await call('delete', `${responders}/${dave}`, fx.alice),
-        409,
-        'INCIDENT_RESOLVED',
-      );
-
-      const after = await prisma.incident.findFirstOrThrow({
-        where: { organizationId: fx.orgA },
-      });
-      expect(after.leadMembershipId).toBeNull();
-      expect(after.updatedAt).toEqual(before.updatedAt);
-      expect(await prisma.incidentResponder.count()).toBe(1);
-    });
-
-    it('should wait for an in-flight resolution, then refuse adding a responder', async () => {
-      await declare(fx.orgA, fx.alice, fx.apiA);
-      const dave = await membershipOf(fx.orgA, fx.dave);
-      const held = await hold((tx) =>
-        tx.incident.updateMany({
-          where: { organizationId: fx.orgA, number: 1 },
-          data: { status: 'RESOLVED', resolvedAt: new Date() },
-        }),
-      );
-      const adding = inFlight(
-        call('post', `${pathIn(fx.orgA)}/responders`, fx.alice, {
-          membershipId: dave,
-        }),
-      );
-
-      await someoneIsWaitingOnALock();
-      held.release();
-      await held.done;
-
-      expectCode(await adding, 409, 'INCIDENT_RESOLVED');
       expect(await prisma.incidentResponder.count()).toBe(0);
+      expect((await call('get', path(fx.orgA), fx.erin)).body.status).toBe(
+        'DECLARED',
+      );
+      expect(
+        (await call('get', `${path(fx.orgA)}/timeline`, fx.erin)).status,
+      ).toBe(200);
+    });
+
+    it('should let a member post only while investigating', async () => {
+      await declare(fx.orgA, fx.alice, fx.apiA);
+
+      // Being on the team is not enough, and nor is being on another.
+      for (const userId of [fx.dave, fx.erin]) {
+        expectCode(
+          await post(fx.orgA, userId, 'Looking.'),
+          403,
+          'START_INVESTIGATING_FIRST',
+        );
+      }
+
+      await startAs(fx.orgA, fx.dave, 1);
+      expect((await post(fx.orgA, fx.dave, 'Card processor.')).status).toBe(
+        201,
+      );
+
+      await completeAs(fx.orgA, fx.dave, 1);
+      expectCode(
+        await post(fx.orgA, fx.dave, 'One more thing.'),
+        409,
+        'RESPONSE_ALREADY_COMPLETED',
+      );
+      expect(await count('UPDATE')).toBe(1);
+    });
+
+    it('should let the admin post to any incident without responding', async () => {
+      await declare(fx.orgA, fx.alice, fx.apiA);
+
+      const posted = await post(fx.orgA, fx.carol, 'Support has been told.');
+
+      expect(posted.status).toBe(201);
+      expect(posted.body.actor).toEqual({ id: fx.carol, name: 'Carol Chen' });
+      expect(await prisma.incidentResponder.count()).toBe(0);
+    });
+
+    it("should complete only the caller's own response, resolving nothing, and never restart it", async () => {
+      const finn = await aMemberOn(fx.paymentsA, 'Finn');
+      await declare(fx.orgA, fx.alice, fx.apiA);
+
+      expectCode(
+        await completeAs(fx.orgA, fx.dave, 1),
+        409,
+        'NOT_INVESTIGATING',
+      );
+
+      await startAs(fx.orgA, fx.dave, 1);
+      await startAs(fx.orgA, finn, 1);
+
+      const completed = await completeAs(fx.orgA, fx.dave, 1);
+
+      expect(completed.status).toBe(200);
+      expect(completed.body.status).toBe('INVESTIGATING');
+      expect(
+        completed.body.responders.map(
+          ({ name, status }: { name: string; status: string }) => [
+            name,
+            status,
+          ],
+        ),
+      ).toEqual([
+        ['Dave Duarte', 'COMPLETED'],
+        ['Finn', 'INVESTIGATING'],
+      ]);
+      expect(
+        Date.parse(completed.body.responders[0].completedAt),
+      ).not.toBeNaN();
+
+      // Again changes nothing; restarting is refused.
+      expect((await completeAs(fx.orgA, fx.dave, 1)).status).toBe(200);
+      expect(await count('RESPONSE_COMPLETED')).toBe(1);
+      expectCode(
+        await startAs(fx.orgA, fx.dave, 1),
+        409,
+        'RESPONSE_ALREADY_COMPLETED',
+      );
+    });
+
+    it('should resolve only once every responder has completed, whoever on the team never started', async () => {
+      const finn = await aMemberOn(fx.paymentsA, 'Finn');
+      await aMemberOn(fx.paymentsA, 'Gita');
+      await declare(fx.orgA, fx.alice, fx.apiA);
+      await startAs(fx.orgA, fx.dave, 1);
+      await startAs(fx.orgA, finn, 1);
+      await completeAs(fx.orgA, fx.dave, 1);
+
+      const refused = await call('patch', path(fx.orgA), fx.alice, {
+        status: 'RESOLVED',
+        title: 'Renamed',
+      });
+
+      expectCode(refused, 409, 'RESPONDERS_STILL_INVESTIGATING');
+      expect((await call('get', path(fx.orgA), fx.alice)).body.title).toBe(
+        'Card payments failing',
+      );
+
+      // Gita never started, so she does not hold it up.
+      await completeAs(fx.orgA, finn, 1);
+
+      expect(
+        (
+          await call('patch', path(fx.orgA), fx.alice, {
+            status: 'RESOLVED',
+          })
+        ).status,
+      ).toBe(200);
+    });
+
+    it('should keep a resolved incident closed to every response, and readable', async () => {
+      const finn = await aMemberOn(fx.paymentsA, 'Finn');
+      await declare(fx.orgA, fx.alice, fx.apiA);
+      await resolve(fx.orgA, fx.alice, 1);
+      const before = await prisma.incidentActivity.count();
+
+      for (const refused of [
+        startAs(fx.orgA, finn, 1),
+        startAs(fx.orgA, fx.dave, 1),
+        completeAs(fx.orgA, fx.dave, 1),
+        post(fx.orgA, fx.dave, 'Late.'),
+        post(fx.orgA, fx.alice, 'Late.'),
+      ]) {
+        expectCode(await refused, 409, 'INCIDENT_RESOLVED');
+      }
+
+      expect(await prisma.incidentActivity.count()).toBe(before);
+
+      const read = await call('get', path(fx.orgA), fx.erin);
+
+      expect(read.body.status).toBe('RESOLVED');
+      expect(read.body.responders).toEqual([
+        expect.objectContaining({ name: 'Dave Duarte', status: 'COMPLETED' }),
+      ]);
+    });
+
+    it('should let only the new team start after a reassignment, while a response already started is finished', async () => {
+      const finn = await aMemberOn(fx.paymentsA, 'Finn');
+      await declare(fx.orgA, fx.alice, fx.apiA);
+      await startAs(fx.orgA, fx.dave, 1);
+
+      const reassigned = await call('patch', path(fx.orgA), fx.alice, {
+        teamId: fx.platformA,
+      });
+
+      expect(reassigned.status).toBe(200);
+      expect(reassigned.body.team.name).toBe('Platform');
+      expect(reassigned.body.responders).toHaveLength(1);
+
+      // Payments can no longer start; Platform can.
+      expectCode(
+        await startAs(fx.orgA, finn, 1),
+        403,
+        'NOT_ON_RESPONSIBLE_TEAM',
+      );
+      expect((await startAs(fx.orgA, fx.erin, 1)).status).toBe(200);
+
+      // Dave's response is his to finish, and holds the resolution until he
+      // does.
+      expect((await post(fx.orgA, fx.dave, 'Handing over.')).status).toBe(201);
+      await completeAs(fx.orgA, fx.erin, 1);
+      expectCode(
+        await call('patch', path(fx.orgA), fx.alice, { status: 'RESOLVED' }),
+        409,
+        'RESPONDERS_STILL_INVESTIGATING',
+      );
+      expect((await completeAs(fx.orgA, fx.dave, 1)).status).toBe(200);
+
+      const timeline = (await call('get', `${path(fx.orgA)}/timeline`, fx.dave))
+        .body;
+      const teamChange = timeline.find(
+        (entry: { type: string }) => entry.type === 'TEAM_CHANGED',
+      );
+
+      expect(teamChange).toMatchObject({
+        fromValue: 'Payments',
+        toValue: 'Platform',
+        message: null,
+        actor: { id: fx.alice },
+      });
+
+      // Renaming a team afterwards does not rewrite what was recorded.
+      await prisma.team.update({
+        where: { id: fx.platformA },
+        data: { name: 'Platform Engineering' },
+      });
+      expect(
+        (await call('get', `${path(fx.orgA)}/timeline`, fx.dave)).body.find(
+          (entry: { type: string }) => entry.type === 'TEAM_CHANGED',
+        ),
+      ).toMatchObject({ fromValue: 'Payments', toValue: 'Platform' });
+    });
+
+    it('should record nothing when the team named is the one already responsible', async () => {
+      await declare(fx.orgA, fx.alice, fx.apiA);
+
+      await call('patch', path(fx.orgA), fx.alice, { teamId: fx.paymentsA });
+
+      expect(await count('TEAM_CHANGED')).toBe(0);
+    });
+
+    it('should let a member taken off the team finish their response, but not start one', async () => {
+      const finn = await aMemberOn(fx.paymentsA, 'Finn');
+      const finnInA = await prisma.membership.findFirstOrThrow({
+        where: { organizationId: fx.orgA, userId: finn },
+      });
+      await declare(fx.orgA, fx.alice, fx.apiA);
+      await startAs(fx.orgA, fx.dave, 1);
+
+      for (const membershipId of [fx.daveInA, finnInA.id]) {
+        expect(
+          (
+            await call(
+              'delete',
+              `${fx.orgA}/teams/${fx.paymentsA}/members/${membershipId}`,
+              fx.alice,
+            )
+          ).status,
+        ).toBe(204);
+      }
+
+      expectCode(
+        await startAs(fx.orgA, finn, 1),
+        403,
+        'NOT_ON_RESPONSIBLE_TEAM',
+      );
+      expect((await post(fx.orgA, fx.dave, 'Still on it.')).status).toBe(201);
+      expect((await completeAs(fx.orgA, fx.dave, 1)).status).toBe(200);
+    });
+
+    it("should answer another organization's incident as missing on every response route, writing nothing", async () => {
+      await declare(fx.orgB, fx.bob, fx.apiB);
+
+      for (const response of [
+        await startAs(fx.orgA, fx.dave, 1),
+        await completeAs(fx.orgA, fx.dave, 1),
+        await post(fx.orgA, fx.dave, 'Not my incident.'),
+      ]) {
+        expectCode(response, 404, 'INCIDENT_NOT_FOUND');
+      }
+
+      expect(await prisma.incidentResponder.count()).toBe(0);
+      expect(await count('UPDATE')).toBe(0);
+    });
+
+    it('should offer no lead, and no way to name who responds', async () => {
+      const declared = await declare(fx.orgA, fx.alice, fx.apiA);
+
+      expect(declared.body).not.toHaveProperty('lead');
+      expect(declared.body.responders).toEqual([]);
+      expect(
+        (
+          await call('patch', path(fx.orgA), fx.alice, {
+            leadMembershipId: fx.daveInA,
+          })
+        ).status,
+      ).toBe(400);
+      expect(
+        (
+          await call('post', `${path(fx.orgA)}/responders`, fx.alice, {
+            membershipId: fx.daveInA,
+          })
+        ).status,
+      ).toBe(404);
     });
   });
 
@@ -1552,6 +1792,7 @@ describe('incidents (integration)', () => {
 
     it('should tell the story in order: declared, updates, and each recorded change, attributed', async () => {
       await declare(fx.orgA, fx.alice, fx.apiA, { severity: 'SEV2' });
+      await startAs(fx.orgA, fx.dave, 1);
 
       const posted = await post(
         fx.orgA,
@@ -1573,10 +1814,8 @@ describe('incidents (integration)', () => {
       await call('patch', `${fx.orgA}/${incidentPath}`, fx.carol, {
         severity: 'SEV1',
       });
-      await call('patch', `${fx.orgA}/${incidentPath}`, fx.carol, {
-        status: 'INVESTIGATING',
-      });
       await post(fx.orgA, fx.carol, 'Connection pool exhaustion identified.');
+      await completeAs(fx.orgA, fx.dave, 1);
       await call('patch', `${fx.orgA}/${incidentPath}`, fx.alice, {
         status: 'RESOLVED',
       });
@@ -1595,6 +1834,8 @@ describe('incidents (integration)', () => {
         ),
       ).toEqual([
         ['DECLARED', null, 'SEV2', 'Alice Anders'],
+        ['RESPONSE_STARTED', null, null, 'Dave Duarte'],
+        ['STATUS_CHANGED', 'DECLARED', 'INVESTIGATING', 'Dave Duarte'],
         [
           'UPDATE',
           'Investigating elevated database latency.',
@@ -1602,13 +1843,13 @@ describe('incidents (integration)', () => {
           'Dave Duarte',
         ],
         ['SEVERITY_CHANGED', 'SEV2', 'SEV1', 'Carol Chen'],
-        ['STATUS_CHANGED', 'DECLARED', 'INVESTIGATING', 'Carol Chen'],
         [
           'UPDATE',
           'Connection pool exhaustion identified.',
           null,
           'Carol Chen',
         ],
+        ['RESPONSE_COMPLETED', null, null, 'Dave Duarte'],
         ['STATUS_CHANGED', 'INVESTIGATING', 'RESOLVED', 'Alice Anders'],
       ]);
     });
@@ -1618,11 +1859,10 @@ describe('incidents (integration)', () => {
 
       await call('patch', `${fx.orgA}/${incidentPath}`, fx.alice, {
         severity: 'SEV3',
-        status: 'INVESTIGATING',
+        teamId: fx.platformA,
       });
       await call('patch', `${fx.orgA}/${incidentPath}`, fx.alice, {
         severity: 'SEV3',
-        status: 'INVESTIGATING',
         title: 'Renamed',
         teamId: fx.platformA,
       });
@@ -1631,11 +1871,13 @@ describe('incidents (integration)', () => {
         (entry: { type: string }) => entry.type,
       );
 
+      // The second request changed only the title, which is not recorded;
+      // its severity and team were already so.
       expect(types).toHaveLength(3);
       expect(types[0]).toBe('DECLARED');
       expect(types.slice(1).sort()).toEqual([
         'SEVERITY_CHANGED',
-        'STATUS_CHANGED',
+        'TEAM_CHANGED',
       ]);
     });
 
@@ -1648,8 +1890,9 @@ describe('incidents (integration)', () => {
         409,
         'INCIDENT_RESOLVED',
       );
-      // Declared, investigation started, resolved.
-      expect((await timelineOf(fx.orgA, fx.alice)).body).toHaveLength(3);
+      // Declared; Dave started, which started the investigation; he
+      // completed; resolved.
+      expect((await timelineOf(fx.orgA, fx.alice)).body).toHaveLength(5);
     });
 
     it("should answer another organization's incident exactly as a missing one, and write nothing", async () => {

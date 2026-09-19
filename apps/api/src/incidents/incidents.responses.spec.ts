@@ -78,34 +78,50 @@ describe('incident responses', () => {
     ).toBeNull();
   });
 
-  it('should add the lead and responders as membership id and name only', () => {
+  it('should add the responders as membership id, name, and response state only', () => {
     // Carries what a careless mapper might spread: the user's email and id.
-    const member = (id: string, name: string) => ({
-      id,
-      role: 'MEMBER',
-      user: { id: `user-${id}`, name, email: `${id}@example.com` },
+    const responder = (
+      id: string,
+      name: string,
+      status: 'INVESTIGATING' | 'COMPLETED',
+      completedAt: Date | null,
+    ) => ({
+      id: `responder-${id}`,
+      organizationId: 'org-1',
+      status,
+      startedAt: CREATED,
+      completedAt,
+      membership: {
+        id,
+        role: 'MEMBER',
+        user: { id: `user-${id}`, name, email: `${id}@example.com` },
+      },
     });
 
     const detail = toIncidentDetailResponse({
       ...row,
-      lead: member('m-1', 'Maya Patel'),
       responders: [
-        { membership: member('m-2', 'Daniel Okafor') },
-        { membership: member('m-1', 'Maya Patel') },
+        responder('m-1', 'Priya Shah', 'INVESTIGATING', null),
+        responder('m-2', 'Sam Okafor', 'COMPLETED', RESOLVED),
       ],
     });
 
-    expect(detail.lead).toStrictEqual({
-      membershipId: 'm-1',
-      name: 'Maya Patel',
-    });
     expect(detail.responders).toStrictEqual([
-      { membershipId: 'm-2', name: 'Daniel Okafor' },
-      { membershipId: 'm-1', name: 'Maya Patel' },
+      {
+        membershipId: 'm-1',
+        name: 'Priya Shah',
+        status: 'INVESTIGATING',
+        startedAt: CREATED.toISOString(),
+        completedAt: null,
+      },
+      {
+        membershipId: 'm-2',
+        name: 'Sam Okafor',
+        status: 'COMPLETED',
+        startedAt: CREATED.toISOString(),
+        completedAt: RESOLVED.toISOString(),
+      },
     ]);
-    expect(
-      toIncidentDetailResponse({ ...row, lead: null, responders: [] }),
-    ).toMatchObject({ lead: null, responders: [] });
   });
 
   it('should emit a timeline entry with its actor as identity only', () => {

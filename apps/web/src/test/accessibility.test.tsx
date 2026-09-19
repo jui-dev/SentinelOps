@@ -152,6 +152,34 @@ const resolvedIncident = {
   resolvedAt: "2026-09-18T13:00:00.000Z",
 };
 
+/** Someone who started investigating: the caller, or Grace. */
+const responder = (
+  status: "INVESTIGATING" | "COMPLETED",
+  who: "caller" | "grace" = "caller",
+) => ({
+  membershipId:
+    who === "caller"
+      ? currentUser.memberships[0].id
+      : "0199a1b2-c3d4-7000-8000-0000000000ad",
+  name: who === "caller" ? currentUser.name : "Grace Hopper",
+  status,
+  startedAt: "2026-09-18T12:05:00.000Z",
+  completedAt: status === "COMPLETED" ? "2026-09-18T12:40:00.000Z" : null,
+});
+
+// Every state the response panel draws: in progress (42), awaiting (41),
+// complete and ready to resolve (43), and resolved (7).
+const activeDetail = {
+  ...activeIncident,
+  responders: [responder("INVESTIGATING"), responder("COMPLETED", "grace")],
+};
+const completeDetail = {
+  ...activeIncident,
+  number: 43,
+  title: "Refunds delayed",
+  responders: [responder("COMPLETED", "grace")],
+};
+
 const base = `/organizations/${organization.id}`;
 
 /** Active incidents on one service, and a period with one resolved. */
@@ -251,18 +279,16 @@ const signedIn = (permissions: string[]) =>
           page: { cursor: "7", hasMore: true },
         });
       case `GET ${base}/incidents/42`:
-        // A lead and a responder, so the People section renders its lists.
-        return jsonResponse(200, {
-          ...activeIncident,
-          lead: { membershipId: currentUser.memberships[0].id, name: currentUser.name },
-          responders: [
-            { membershipId: currentUser.memberships[0].id, name: currentUser.name },
-          ],
-        });
+        return jsonResponse(200, activeDetail);
+      case `GET ${base}/incidents/43`:
+        return jsonResponse(200, completeDetail);
       case `GET ${base}/incidents/41`:
-        return jsonResponse(200, { ...majorIncident, lead: null, responders: [] });
+        return jsonResponse(200, { ...majorIncident, responders: [] });
       case `GET ${base}/incidents/7`:
-        return jsonResponse(200, { ...resolvedIncident, lead: null, responders: [] });
+        return jsonResponse(200, {
+          ...resolvedIncident,
+          responders: [responder("COMPLETED")],
+        });
       case `GET ${base}/teams/${team.id}/members`:
         return jsonResponse(200, [
           {
@@ -545,16 +571,37 @@ describe("accessibility", () => {
       await expectNoAxeViolations(container);
     });
 
-    it("Incident, active, as the admin", async () => {
+    it("Incident, response in progress, as the admin", async () => {
       navigation.params = { orgSlug: organization.slug, incidentNumber: "42" };
       signedIn(ADMIN);
       const { container } = inWorkspace(<IncidentDetail />);
 
       await screen.findByRole("heading", { level: 1, name: "Card payments failing" });
+      await screen.findByRole("heading", { name: "Response in progress" });
+      await screen.findByRole("list", { name: "Responders" });
+      await screen.findByRole("group", { name: "Response counts" });
+      await expectNoAxeViolations(container);
+    });
+
+    it("Incident, managed in the drawer, as the admin", async () => {
+      navigation.params = { orgSlug: organization.slug, incidentNumber: "42" };
+      signedIn(ADMIN);
+      const { container } = inWorkspace(<IncidentDetail />);
+
+      (await screen.findByRole("button", { name: "Manage incident" })).click();
+      await screen.findByRole("dialog", { name: "Manage incident" });
       await screen.findByLabelText("Responsible team");
-      await screen.findByLabelText("Incident lead");
-      (await screen.findByRole("button", { name: "Resolve…" })).click();
-      await screen.findByRole("button", { name: "Resolve incident" });
+      await expectNoAxeViolations(container);
+    });
+
+    it("Incident, response complete, as the admin resolving it", async () => {
+      navigation.params = { orgSlug: organization.slug, incidentNumber: "43" };
+      signedIn(ADMIN);
+      const { container } = inWorkspace(<IncidentDetail />);
+
+      await screen.findByRole("heading", { name: "Response work complete" });
+      (await screen.findByRole("button", { name: "Resolve incident" })).click();
+      await screen.findByRole("button", { name: "Cancel" });
       await expectNoAxeViolations(container);
     });
 
@@ -564,17 +611,27 @@ describe("accessibility", () => {
       const { container } = inWorkspace(<IncidentDetail />);
 
       await screen.findByRole("heading", { level: 1, name: "Webhook retries backing up" });
-      await screen.findByRole("button", { name: "Start investigation" });
+      await screen.findByRole("heading", { name: "Awaiting team response" });
       await expectNoAxeViolations(container);
     });
 
-    it("Incident, active, as a member", async () => {
+    it("Incident, declared, as a member of the responsible team", async () => {
+      navigation.params = { orgSlug: organization.slug, incidentNumber: "41" };
+      signedIn(MEMBER);
+      const { container } = inWorkspace(<IncidentDetail />);
+
+      await screen.findByRole("button", { name: "Start investigating" });
+      await expectNoAxeViolations(container);
+    });
+
+    it("Incident, active, as a member investigating it", async () => {
       navigation.params = { orgSlug: organization.slug, incidentNumber: "42" };
       signedIn(MEMBER);
       const { container } = inWorkspace(<IncidentDetail />);
 
       await screen.findByRole("heading", { level: 1, name: "Card payments failing" });
       await screen.findByLabelText("Post an update");
+      await screen.findByRole("button", { name: "Mark my response complete" });
       await expectNoAxeViolations(container);
     });
 
@@ -584,6 +641,7 @@ describe("accessibility", () => {
       const { container } = inWorkspace(<IncidentDetail />);
 
       await screen.findByRole("heading", { level: 1, name: "Reports delayed" });
+      await screen.findByRole("heading", { name: "Your response" });
       await expectNoAxeViolations(container);
     });
 

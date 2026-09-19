@@ -281,29 +281,57 @@ The form sends no team and no status. A service archived or deleted meanwhile is
 explained on the field and the service list is refreshed.
 
 `/incidents/[incidentNumber]` fetches the incident by number — not from a list, which
-is paged — and shows what the record holds: severity and status with their definitions,
-the service (and whether it is archived), the responsible team, the service's
-criticality, who declared it and when, when it was resolved, and how long it ran, then
-its summary, then its timeline. While active, anyone with `incidents:respond` — every
-role — can post an operational update to the timeline, and the Admin
-(`incidents:manage`) gets:
+is paged — with its responders, and is laid out as an incident, not a record. The header
+reads at a glance: the number and how long it has been open, the title, one line of facts
+— severity, status, affected service with its criticality, responsible team — and the
+summary as its lead. A narrow side column holds who declared it and when, when it was
+resolved, and when it last changed.
 
-- **The next lifecycle step**, in the header — never a status to pick from a list:
-  **Start investigation** while the incident is `DECLARED`, sent at once; **Resolve…**
-  while it is `INVESTIGATING`, after an inline confirmation that says a resolved incident
-  is final. A step refused because the status moved meanwhile is explained and the
-  incident refetched.
-- **Response** — severity and responsible team; only what changed is sent.
-- **Details** — the title and summary.
+The main column is the response, then the timeline. The **responders** the API returns
+are where the response stands now; the timeline is its history, and nothing is worked out
+from it. What the page offers follows the caller's part:
 
-Everyone sees the status and its definition. On the timeline, starting the investigation
-reads "Started the investigation"; an older entry naming a retired status (`IDENTIFIED`,
-`MONITORING`) is shown by its word.
+- **The Admin** (`incidents:manage`) coordinates, from one framed **response panel** —
+  the only framed element on the page. Its edge and glyph follow the state: **Awaiting
+  team response**, **Response in progress** (an accent edge), **Response work complete**
+  (a success edge and tint: the milestone), or resolved. Counts are three figures —
+  responders, investigating, complete — and each responder is a ruled row with their
+  own state and how long they have been at it. While anyone is investigating, the panel
+  names who resolution is waiting for; once everyone has completed, **Resolve incident**
+  sits in the panel's header, behind an inline confirmation. The Admin posts updates from
+  beneath the timeline without responding. **Manage incident**, in the header, opens a
+  drawer from the right edge — a native `<dialog>`, like the navigation drawer — with
+  severity and responsible team, where only what changed is sent, and the title and
+  summary. The Admin never starts investigating or has a response of their own.
+- **A member of the current responsible team** works from **Your response**, first on
+  the page: **Start investigating** until they have; then that they are investigating
+  and since when, the update composer inside the panel, and **Mark my response
+  complete**; then that their response is complete, with no more controls. Nothing here
+  resolves the incident. The team's response sits beneath it, secondary: its state in a
+  line and a row per responder, without the Admin's figures or resolution.
+- **A responder whose incident was reassigned** keeps their response and its controls:
+  their response, not their team, governs it. Whether someone *may start* is read from
+  the current team's members and the caller's membership id.
+- **Anyone else** follows the incident — the response panel and the timeline — with
+  nothing to do.
 
-Once resolved, none of these are offered; the page says so. A change refused with
-`409 INCIDENT_RESOLVED` — someone resolved it meanwhile — is explained and the incident
-refetched. A number that cannot be one (`/incidents/INC-42`) is not-found without a
-request.
+Each is advice for what to offer; the API decides. A start or completion answers with
+the incident, which replaces the cached one, and the timeline refetches. A refusal —
+resolved meanwhile, reassigned, already complete — is explained and the incident and its
+team refetched, as is an update refused because the caller's response is not
+investigating, or a resolution refused because someone started meanwhile.
+
+On the timeline, a person's update is the content: their initials on the rail and their
+words in a readable block with an accent rule. Everything the server recorded is a
+quieter line with an icon per kind — a responder "started investigating" or "completed
+their response"; the status change the first start causes reads "The incident is now
+Investigating"; a reassignment reads "Reassigned the incident from Payments to Platform";
+and an older entry naming a retired status (`IDENTIFIED`, `MONITORING`) is shown by its
+word.
+
+Once resolved, nothing is offered to anyone: the responders' final states and the
+timeline stay readable. A number that cannot be one (`/incidents/INC-42`) is not-found
+without a request.
 
 Freshness is the query defaults — 30 seconds stale, refetch on focus. Nothing is pushed
 or polled; live updates arrive with the realtime layer.

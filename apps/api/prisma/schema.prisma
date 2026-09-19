@@ -94,11 +94,12 @@ model Organization {
   /// number. Internal: never selected into a response.
   lastIncidentNumber Int @default(0) @map("last_incident_number")
 
-  memberships Membership[]
-  invitations Invitation[]
-  teams       Team[]
-  services    Service[]
-  incidents   Incident[]
+  memberships        Membership[]
+  invitations        Invitation[]
+  teams              Team[]
+  services           Service[]
+  incidents          Incident[]
+  incidentResponders IncidentResponder[]
 
   @@map("organizations")
 }
@@ -178,15 +179,14 @@ model Membership {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  organization    Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user            User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  teamMemberships TeamMembership[]
-  incidentsLed    Incident[]          @relation("IncidentLead")
-  incidentsJoined IncidentResponder[]
-  // incidentsLed and incidentsJoined are Restrict: a membership that has led
-  // or responded to an incident cannot be physically deleted. Nothing in the
-  // application deletes a membership today; when removing members arrives, it
-  // decides what happens to that history.
+  organization      Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user              User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamMemberships   TeamMembership[]
+  /// Restrict, like the responder key itself: a membership that has
+  /// responded to an incident cannot be physically deleted. Nothing in the
+  /// application deletes a membership today; member removal, when it
+  /// arrives, decides what happens to that history.
+  incidentResponses IncidentResponder[]
 
   /// One capacity per user per organization: nobody is both ADMIN and MEMBER.
   @@unique([organizationId, userId])
@@ -269,8 +269,10 @@ model Invitation {
 /// has been responsible for any incident cannot be deleted at all: incidents
 /// are never deleted, and their team key is Restrict too. It can be renamed.
 ///
-/// Belonging to a team grants nothing. Authorization is the organization role
-/// alone; there are no team roles or team-scoped permissions.
+/// Belonging to a team grants one thing: a MEMBER may respond to — post
+/// operational updates on — the incidents their team is responsible for.
+/// IncidentsService checks it, under the incident's row lock. There are no
+/// team roles; everything else is authorized by the organization role alone.
 model Team {
   id             String  @id @default(uuid(7)) @db.Uuid
   organizationId String  @map("organization_id") @db.Uuid
@@ -452,15 +454,15 @@ enum IncidentSeverity {
 
 /// Where the incident as a whole stands: one status, however many people
 /// are working on it. It moves forward only, one step at a time — DECLARED →
-/// INVESTIGATING → RESOLVED — and only the Admin moves it. RESOLVED is
-/// terminal: a resolved incident is not changed again.
+/// INVESTIGATING → RESOLVED. RESOLVED is terminal: a resolved incident is not
+/// changed again.
 ///
-///   DECLARED       reported and visible; no investigation implied yet
-///   INVESTIGATING  investigation, diagnosis, mitigation, or repair under way
-///   RESOLVED       closed by the Admin
+///   DECLARED       declared by the Admin; nobody has started investigating
+///   INVESTIGATING  the first responder started investigating, which moves it
+///   RESOLVED       closed by the Admin, once no responder is investigating
 ///
-/// What one responder is doing is not an incident status. A cause found or a
-/// fix being watched is an operational update on an INVESTIGATING incident.
+/// What one responder is doing is IncidentResponder.status, not this. A cause
+/// found or a fix being watched is an operational update.
 enum IncidentStatus {
   DECLARED
   INVESTIGATING
@@ -481,8 +483,9 @@ enum IncidentStatus {
 /// teamId is the team responsible for this incident. It is copied from the
 /// service's owner when the incident is declared — a snapshot, so reassigning
 /// the service later does not rewrite who was responsible — and may be
-/// reassigned explicitly while the incident is active. serviceId never
-/// changes after declaration.
+/// reassigned explicitly while the incident is active, which the timeline
+/// records. Its members are who may start investigating it; who did is
+/// IncidentResponder. serviceId never changes after declaration.
 ///
 /// Both keys are Restrict on delete, so a service or team an incident names
 /// cannot be deleted, and Restrict on update, so neither can move to another
@@ -494,21 +497,21 @@ enum IncidentStatus {
 /// cannot declare them (and does not treat them as drift): status is RESOLVED
 /// exactly when resolved_at is set, and number is positive.
 model Incident {
-  id               String           @id @default(uuid(7)) @db.Uuid
-  organizationId   String           @map("organization_id") @db.Uuid
+  id             String           @id @default(uuid(7)) @db.Uuid
+  organizationId String           @map("organization_id") @db.Uuid
   /// The organization's own sequence, shown as INC-{number}. Allocated from
   /// organizations.last_incident_number when the incident is declared:
   /// unique within the organization, never changed, and increasing in the
   /// order declarations commit. Not promised to be gapless.
-  number           Int
-  title            String
+  number         Int
+  title          String
   /// The current understanding of the impact. Null when there is none; blank
   /// is normalised to null at the Zod boundary.
-  summary          String?
-  serviceId        String           @map("service_id") @db.Uuid
-  teamId           String           @map("team_id") @db.Uuid
-  severity         IncidentSeverity
-  status           IncidentStatus   @default(DECLARED)
+  summary        String?
+  serviceId      String           @map("service_id") @db.Uuid
+  teamId         String           @map("team_id") @db.Uuid
+  severity       IncidentSeverity
+  status         IncidentStatus   @default(DECLARED)
   /// Who declared it: the global User rather than the Membership. A
   /// membership is hard-deleted when access is revoked, and attribution must
   /// outlive the grant; a user is soft-deleted and keeps resolving. Restrict,
@@ -516,14 +519,7 @@ model Incident {
   /// procedure, not a cascade. Users are global, so this is the one reference
   /// the database cannot hold to the organization — IncidentsService takes it
   /// from the admitted membership and never from a request body.
-  createdById      String           @map("created_by_id") @db.Uuid
-  /// The member leading the response, or null when nobody has been assigned.
-  /// Assignment, not attribution: it names a current grant in this
-  /// organization, so it references the Membership — through a composite key
-  /// on the incident's own organization_id, which makes a lead from another
-  /// organization unrepresentable. Never set automatically; declaring an
-  /// incident does not make the declarer its lead. Carries no authority.
-  leadMembershipId String?          @map("lead_membership_id") @db.Uuid
+  createdById    String           @map("created_by_id") @db.Uuid
 
   createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -535,10 +531,6 @@ model Incident {
   service      Service             @relation(fields: [organizationId, serviceId], references: [organizationId, id], onDelete: Restrict, onUpdate: Restrict)
   team         Team                @relation(fields: [organizationId, teamId], references: [organizationId, id], onDelete: Restrict, onUpdate: Restrict)
   createdBy    User                @relation("IncidentsDeclared", fields: [createdById], references: [id], onDelete: Restrict)
-  /// Restrict must be explicit. Prisma's default for an optional relation is
-  /// SetNull, which on a composite key would null organization_id as well —
-  /// a NOT NULL column.
-  lead         Membership?         @relation("IncidentLead", fields: [organizationId, leadMembershipId], references: [organizationId, id], onDelete: Restrict, onUpdate: Restrict)
   responders   IncidentResponder[]
   activity     IncidentActivity[]
 
@@ -554,8 +546,6 @@ model Incident {
   @@index([organizationId, teamId])
   /// Serves the Restrict check when a user row is physically deleted.
   @@index([createdById])
-  /// Serves the Restrict check when a membership is deleted.
-  @@index([organizationId, leadMembershipId])
   /// Serves the overview's count of incidents declared in a period.
   @@index([organizationId, createdAt])
   /// Serves the overview's resolved-in-a-period count and its most recent.
@@ -563,46 +553,89 @@ model Incident {
   @@map("incidents")
 }
 
-/// Places an organization member on an incident's response.
+/// Where one responder's own part of the response stands. Two values, and
+/// no others: someone who has not started investigating has no responder row
+/// at all, so only actual participation is ever recorded.
+///
+///   INVESTIGATING  started investigating, and still working on it
+///   COMPLETED      marked their own response complete; final for them
+///
+/// Completing a response is not resolving the incident — only the Admin
+/// resolves, and only while no responder is INVESTIGATING.
+enum IncidentResponderStatus {
+  INVESTIGATING
+  COMPLETED
+
+  @@map("incident_responder_status")
+}
+
+/// One member's response to an incident: created when they start
+/// investigating, completed when they mark their response complete.
+///
+/// A member of the incident's responsible team creates their own row; nobody
+/// assigns anyone. At most one row per member per incident, so starting twice
+/// cannot record a second response, and a completed response is not
+/// restarted. A row outlives a reassignment of the incident's team: whoever
+/// started keeps their response and may finish it.
 ///
 /// Built like TeamMembership: both foreign keys are composite and share the
-/// one organization_id column, so the incident and the membership a row joins
-/// must belong to the same organization. Rows are created with scalar ids,
-/// not nested `connect`.
+/// one organization_id column, so the incident and the membership must belong
+/// to the row's own organization, however it is written. Rows are created with
+/// scalar ids, not nested `connect`. The membership key is Restrict; the
+/// incident key cascades, which only a physical deletion of the organization
+/// ever exercises.
 ///
-/// Any member of the organization may respond, whichever team they are on.
-/// Independent of the lead: the lead may or may not also be a responder.
+/// It also carries a plain key to its organization, which cascades, as
+/// incidents do. Without it, a physical deletion of the organization would
+/// reach these rows only through incidents — one cascade later than the
+/// memberships, whose Restrict check would then find them still there and
+/// refuse the deletion.
 ///
-/// Hard lifecycle: removing a responder deletes the row. The membership key
-/// is Restrict, as for the lead; the incident key cascades, which only a
-/// physical deletion of the organization ever exercises.
+/// One invariant lives as a CHECK constraint in the migration, because Prisma
+/// cannot declare it: status is COMPLETED exactly when completed_at is set.
 model IncidentResponder {
-  id             String @id @default(uuid(7)) @db.Uuid
-  organizationId String @map("organization_id") @db.Uuid
-  incidentId     String @map("incident_id") @db.Uuid
-  membershipId   String @map("membership_id") @db.Uuid
+  id             String                  @id @default(uuid(7)) @db.Uuid
+  organizationId String                  @map("organization_id") @db.Uuid
+  incidentId     String                  @map("incident_id") @db.Uuid
+  membershipId   String                  @map("membership_id") @db.Uuid
+  status         IncidentResponderStatus @default(INVESTIGATING)
 
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  /// When they started investigating: set with the row, under the incident's
+  /// row lock, as timeline entries are.
+  startedAt   DateTime  @default(now()) @map("started_at") @db.Timestamptz(3)
+  /// When they marked their response complete; set in the same write as
+  /// COMPLETED, never supplied by a client.
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(3)
 
-  incident   Incident   @relation(fields: [organizationId, incidentId], references: [organizationId, id], onDelete: Cascade, onUpdate: Restrict)
-  membership Membership @relation(fields: [organizationId, membershipId], references: [organizationId, id], onDelete: Restrict, onUpdate: Restrict)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  incident     Incident     @relation(fields: [organizationId, incidentId], references: [organizationId, id], onDelete: Cascade, onUpdate: Restrict)
+  membership   Membership   @relation(fields: [organizationId, membershipId], references: [organizationId, id], onDelete: Restrict, onUpdate: Restrict)
 
   /// A member responds to an incident at most once. Its leading column serves
-  /// the cascade from incidents and listing an incident's responders.
+  /// the cascade from incidents, listing an incident's responders, and
+  /// counting those still investigating before a resolution.
   @@unique([incidentId, membershipId])
   /// Serves the Restrict check when a membership is deleted.
   @@index([membershipId])
+  /// Serves the cascade from organizations.
+  @@index([organizationId])
   @@map("incident_responders")
 }
 
 /// What an incident's timeline entry records. UPDATE is written by a member;
 /// the others are written by the server, in the transaction of the change
-/// they describe. Resolution is STATUS_CHANGED to RESOLVED.
+/// they describe. Resolution is STATUS_CHANGED to RESOLVED. TEAM_CHANGED is a
+/// reassignment of the responsible team, which changes who may start
+/// investigating. RESPONSE_STARTED and RESPONSE_COMPLETED are a responder
+/// starting and completing their own response, attributed to them.
 enum IncidentActivityType {
   DECLARED
   UPDATE
   SEVERITY_CHANGED
   STATUS_CHANGED
+  TEAM_CHANGED
+  RESPONSE_STARTED
+  RESPONSE_COMPLETED
 
   @@map("incident_activity_type")
 }
@@ -624,9 +657,12 @@ enum IncidentActivityType {
 /// lock, not left to the column default (the transaction's start), so entries
 /// sort in the order their changes applied.
 ///
-/// message is set for UPDATE only. fromValue and toValue carry enum values as
+/// message is set for UPDATE only. fromValue and toValue carry values as
 /// text: DECLARED sets toValue to the declared severity; SEVERITY_CHANGED and
-/// STATUS_CHANGED set both.
+/// STATUS_CHANGED set both to enum values. TEAM_CHANGED sets both to team
+/// names as they were at the time — a snapshot, like a severity, because the
+/// team it moved from may later be renamed or deleted. RESPONSE_STARTED and
+/// RESPONSE_COMPLETED set neither: the actor is the responder.
 model IncidentActivity {
   id             String               @id @default(uuid(7)) @db.Uuid
   organizationId String               @map("organization_id") @db.Uuid

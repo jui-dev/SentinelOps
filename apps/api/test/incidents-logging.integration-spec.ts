@@ -85,6 +85,17 @@ describe('incident logging (integration)', () => {
         slug: 'payments',
       },
     });
+    // Dave is the admin, and also on Payments, so he can respond as well.
+    const membership = await prisma.membership.findFirstOrThrow({
+      where: { organizationId: organization.id, userId: dave.id },
+    });
+    await prisma.teamMembership.create({
+      data: {
+        organizationId: organization.id,
+        teamId: team.id,
+        membershipId: membership.id,
+      },
+    });
     const service = await prisma.service.create({
       data: {
         organizationId: organization.id,
@@ -117,10 +128,10 @@ describe('incident logging (integration)', () => {
       .post(`${base}/1/updates`)
       .set('Authorization', auth)
       .send({ message: MESSAGE });
+    await server().post(`${base}/1/responders/me`).set('Authorization', auth);
     await server()
-      .patch(`${base}/1`)
-      .set('Authorization', auth)
-      .send({ status: 'INVESTIGATING' });
+      .post(`${base}/1/responders/me/complete`)
+      .set('Authorization', auth);
     await server()
       .patch(`${base}/1`)
       .set('Authorization', auth)
@@ -154,6 +165,8 @@ describe('incident logging (integration)', () => {
         'Incident declared',
         'Incident updated',
         'Incident update posted',
+        'Incident response started',
+        'Incident response completed',
         'Incident resolved',
       ]),
     );

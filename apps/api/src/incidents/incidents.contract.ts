@@ -33,6 +33,9 @@ export type IncidentStatus = 'DECLARED' | 'INVESTIGATING' | 'RESOLVED';
  *
  * `createdBy` names the declarer even if their account was since deleted:
  * attribution is history, not access. It never carries an email.
+ *
+ * The responsible team's members are who may start investigating it. Who
+ * did is `IncidentDetailResponse.responders`, on the single-incident routes.
  */
 export interface IncidentResponse {
   id: string;
@@ -63,35 +66,51 @@ export interface IncidentResponse {
 }
 
 /**
- * A member assigned to an incident, addressed by their membership id — the
- * id the lead and responder routes take. Identity only: never an email.
+ * Where one responder's own part of the response stands. Someone who has not
+ * started investigating is not a responder at all, and has no entry.
  */
-export interface IncidentMemberResponse {
+export type IncidentResponderStatus = 'INVESTIGATING' | 'COMPLETED';
+
+/**
+ * A member who started investigating an incident, addressed by their
+ * membership id. Identity only: never an email. `completedAt` is set exactly
+ * when `status` is COMPLETED.
+ */
+export interface IncidentResponderResponse {
   membershipId: string;
   name: string;
+  status: IncidentResponderStatus;
+  startedAt: string;
+  completedAt: string | null;
 }
 
 /**
- * One incident with the people responding to it: what every route about a
- * single incident returns. Lists return `IncidentResponse` alone, so a page
- * of incidents stays one query without joins across responders.
- *
- * `lead` is null until someone is assigned; declaring an incident does not
- * make its declarer the lead. `responders` are in the order they were added.
+ * One incident with its responders — what every single-incident route
+ * returns. Lists return `IncidentResponse` alone, so a page of incidents
+ * stays one query without joins across responders. `responders` are in the
+ * order they started.
  */
 export interface IncidentDetailResponse extends IncidentResponse {
-  lead: IncidentMemberResponse | null;
-  responders: IncidentMemberResponse[];
+  responders: IncidentResponderResponse[];
 }
 
 /**
  * What a timeline entry records. UPDATE is posted by a member; the others are
  * recorded by the server with the change they describe. Starting the
  * investigation is STATUS_CHANGED from DECLARED to INVESTIGATING; resolution
- * is STATUS_CHANGED with `toValue: 'RESOLVED'`.
+ * is STATUS_CHANGED with `toValue: 'RESOLVED'`. TEAM_CHANGED is a
+ * reassignment of the responsible team. RESPONSE_STARTED and
+ * RESPONSE_COMPLETED are a responder starting and completing their own
+ * response; the actor is the responder.
  */
 export type IncidentActivityType =
-  'DECLARED' | 'UPDATE' | 'SEVERITY_CHANGED' | 'STATUS_CHANGED';
+  | 'DECLARED'
+  | 'UPDATE'
+  | 'SEVERITY_CHANGED'
+  | 'STATUS_CHANGED'
+  | 'TEAM_CHANGED'
+  | 'RESPONSE_STARTED'
+  | 'RESPONSE_COMPLETED';
 
 /**
  * One entry on an incident's timeline. History, not state: the incident
@@ -100,8 +119,13 @@ export type IncidentActivityType =
  * MONITORING: history is not rewritten.
  *
  * `message` is set for UPDATE only. `fromValue` and `toValue` are severity or
- * status values: DECLARED carries the declared severity in `toValue`; the two
- * changes carry both. `actor` names who posted or made the change even if
+ * status values: DECLARED carries the declared severity in `toValue`; the
+ * severity and status changes carry both. TEAM_CHANGED carries the two teams'
+ * names as they were when the change was made.
+ *
+ * Who took part in the response is read from these entries: an UPDATE is the
+ * participation, and its actor the participant. There is no separate record
+ * of it. `actor` names who posted or made the change even if
  * their account was since deleted, as `createdBy` does. Never an email.
  */
 export interface IncidentActivityResponse {

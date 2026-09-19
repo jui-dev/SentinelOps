@@ -2,22 +2,29 @@
 
 import {
   useInfiniteQuery,
+  useMutation,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
 import type { QueryClient } from "@tanstack/react-query";
 
 import { organizationPath } from "@/components/app/navigation";
+import { useOrganization } from "@/components/organizations/organization-scope";
+import { ApiErrorCode } from "@/lib/api/contracts";
 import type {
   IncidentDetailResponse,
   IncidentPeriod,
+  IncidentResponse,
   IncidentState,
+  UpdateIncidentRequest,
 } from "@/lib/api/contracts";
 import {
   getIncident,
   getIncidentTimeline,
   listIncidents,
+  updateIncident,
 } from "@/lib/api/endpoints";
+import { isApiError } from "@/lib/api/errors";
 import { queryKeys } from "@/lib/api/query-keys";
 
 export const incidentsHref = (orgSlug: string) =>
@@ -100,3 +107,34 @@ export const useInvalidateIncidents = () => {
       queryKey: queryKeys.incidents(organizationId),
     });
 };
+
+/**
+ * Changes the incident. The API's answer replaces the cached incident and the
+ * lists refetch. Refused because it was resolved or has gone meanwhile: the
+ * incident is fetched again, so the page shows why.
+ */
+export const useUpdateIncident = (incident: IncidentResponse) => {
+  const organization = useOrganization();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (body: UpdateIncidentRequest) =>
+      updateIncident(organization.id, incident.number, body),
+    onSuccess: (updated) =>
+      storeIncident(queryClient, organization.id, updated),
+    onError: (error) => {
+      if (isApiError(error, 404) || isApiError(error, 409)) {
+        void queryClient.invalidateQueries({
+          queryKey: queryKeys.incidents(organization.id),
+        });
+      }
+    },
+  });
+};
+
+/** A change refused because someone resolved the incident meanwhile. */
+export const resolvedMeanwhile = (error: unknown) =>
+  isApiError(error, 409) && error.code === ApiErrorCode.INCIDENT_RESOLVED;
+
+export const RESOLVED_MEANWHILE_MESSAGE =
+  "This incident was resolved by someone else, so it can no longer be changed. It has been refreshed.";
