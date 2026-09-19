@@ -45,10 +45,26 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace: navigation.replace, push: navigation.push }),
 }));
 
-/** What a MEMBER holds: every read, and incident response. */
-const MEMBER = [
+/** What the ADMIN holds: everything, the incident lifecycle included. */
+const ADMIN = [
   "incidents:manage",
   "incidents:read",
+  "incidents:respond",
+  "invitations:manage",
+  "invitations:read",
+  "members:manage",
+  "memberships:read",
+  "organization:read",
+  "organization:update",
+  "services:manage",
+  "services:read",
+  "teams:manage",
+  "teams:read",
+];
+/** What a MEMBER holds: every read, and posting operational updates. */
+const MEMBER = [
+  "incidents:read",
+  "incidents:respond",
   "memberships:read",
   "organization:read",
   "services:read",
@@ -288,14 +304,24 @@ describe("incidents", () => {
       expect(screen.queryByRole("button", { name: "Declare incident" })).toBeNull();
     });
 
-    it("lets a member declare, without any configuration permission", async () => {
-      api(MEMBER);
+    it("lets the admin declare", async () => {
+      api(ADMIN);
 
       inOrganization(<IncidentsView />);
 
       expect(
         await screen.findByRole("button", { name: "Declare incident" }),
       ).toBeDefined();
+    });
+
+    it("offers a member no declaration", async () => {
+      api(MEMBER);
+
+      inOrganization(<IncidentsView />);
+
+      await screen.findByRole("table", { name: "Active incidents" });
+
+      expect(screen.queryByRole("button", { name: "Declare incident" })).toBeNull();
     });
 
     it("narrows each list to the range in the URL, by the moment that defines it", async () => {
@@ -389,7 +415,7 @@ describe("incidents", () => {
   describe("declaring", () => {
     it("offers only services in use, names who will be responsible, and sends no team or status", async () => {
       const user = userEvent.setup();
-      const { requests } = api(MEMBER, {
+      const { requests } = api(ADMIN, {
         services: [paymentApi, legacyPortal],
         handler: (request) =>
           route(request) === `POST ${base}/incidents`
@@ -435,7 +461,7 @@ describe("incidents", () => {
 
     it("explains a service archived meanwhile, and refreshes the services", async () => {
       const user = userEvent.setup();
-      const { requests } = api(MEMBER, {
+      const { requests } = api(ADMIN, {
         handler: (request) =>
           route(request) === `POST ${base}/incidents`
             ? apiError(409, "SERVICE_ARCHIVED")
@@ -486,7 +512,7 @@ describe("incidents", () => {
 
     it("sends only what changed in the response", async () => {
       const user = userEvent.setup();
-      const { requests } = api(MEMBER, {
+      const { requests } = api(ADMIN, {
         handler: (request) =>
           route(request) === `PATCH ${base}/incidents/42`
             ? jsonResponse(200, incident({ status: "IDENTIFIED", team: { id: platform.id, name: "Platform", slug: "platform" } }))
@@ -514,7 +540,7 @@ describe("incidents", () => {
 
     it("resolves only after confirmation", async () => {
       const user = userEvent.setup();
-      const { requests } = api(MEMBER, {
+      const { requests } = api(ADMIN, {
         handler: (request) =>
           route(request) === `PATCH ${base}/incidents/42`
             ? jsonResponse(200, incident({ status: "RESOLVED", resolvedAt: "2026-09-18T13:00:00.000Z" }))
@@ -537,7 +563,7 @@ describe("incidents", () => {
     });
 
     it("offers nothing to change once resolved", async () => {
-      api(MEMBER, {
+      api(ADMIN, {
         detail: incident({ status: "RESOLVED", resolvedAt: "2026-09-18T13:00:00.000Z" }),
       });
 
@@ -553,7 +579,7 @@ describe("incidents", () => {
 
     it("explains a change refused because someone resolved it meanwhile, and refetches it", async () => {
       const user = userEvent.setup();
-      const { requests } = api(MEMBER, {
+      const { requests } = api(ADMIN, {
         handler: (request) =>
           route(request) === `PATCH ${base}/incidents/42`
             ? apiError(409, "INCIDENT_RESOLVED")
@@ -592,6 +618,33 @@ describe("incidents", () => {
       expect(screen.queryByRole("heading", { name: "People" })).toBeNull();
     });
 
+    it("gives a member the timeline to post to, and none of the admin's controls", async () => {
+      api(MEMBER);
+
+      inOrganization(<IncidentDetail />);
+
+      expect(await screen.findByLabelText("Post an update")).toBeDefined();
+      expect(screen.queryByRole("button", { name: "Resolve…" })).toBeNull();
+      for (const heading of ["Response", "People", "Details"]) {
+        expect(screen.queryByRole("heading", { name: heading })).toBeNull();
+      }
+      expect(screen.queryByLabelText("Status")).toBeNull();
+      expect(screen.queryByLabelText("Incident lead")).toBeNull();
+      expect(screen.queryByLabelText("Add a responder")).toBeNull();
+    });
+
+    it("gives the admin the controls to change, staff, and resolve an incident", async () => {
+      api(ADMIN);
+
+      inOrganization(<IncidentDetail />);
+
+      expect(await screen.findByRole("button", { name: "Resolve…" })).toBeDefined();
+      for (const heading of ["Response", "People", "Details"]) {
+        expect(screen.getByRole("heading", { name: heading })).toBeDefined();
+      }
+      expect(screen.getByLabelText("Post an update")).toBeDefined();
+    });
+
     it("says plainly when nobody leads or responds yet", async () => {
       api(READ_ONLY);
 
@@ -603,7 +656,7 @@ describe("incidents", () => {
 
     it("assigns and clears the lead, from any member of the organization", async () => {
       const user = userEvent.setup();
-      const { requests } = api(MEMBER, {
+      const { requests } = api(ADMIN, {
         handler: (request) =>
           route(request) === `PATCH ${base}/incidents/42`
             ? jsonResponse(
@@ -647,7 +700,7 @@ describe("incidents", () => {
 
     it("adds and removes responders", async () => {
       const user = userEvent.setup();
-      const { requests } = api(MEMBER, {
+      const { requests } = api(ADMIN, {
         detail: incident({
           responders: [{ membershipId: ada.id, name: "Ada Lovelace" }],
         }),
@@ -701,7 +754,7 @@ describe("incidents", () => {
 
     it("explains a responder refused because the incident was resolved meanwhile", async () => {
       const user = userEvent.setup();
-      api(MEMBER, {
+      api(ADMIN, {
         handler: (request) =>
           route(request) === `POST ${base}/incidents/42/responders`
             ? apiError(409, "INCIDENT_RESOLVED")

@@ -250,8 +250,8 @@ describe('Tenancy (e2e)', () => {
           id: MEMBERSHIP_ID,
           role: 'MEMBER',
           permissions: [
-            'incidents:manage',
             'incidents:read',
+            'incidents:respond',
             'memberships:read',
             'organization:read',
             'services:read',

@@ -11,11 +11,12 @@ import type { Role } from './../src/generated/prisma/enums.js';
 /**
  * Incident routes wired through the real AppModule, with Prisma mocked.
  *
- * Proves the wiring: every route is admitted and authorized, every role —
- * MEMBER included — may declare and change incidents and assign their lead
- * and responders, bodies are validated
- * strictly, there is no delete route, and a non-member receives admission's
- * 404. Behaviour against real rows, tenant isolation, concurrency, and the
+ * Proves the wiring: every route is admitted and authorized; every role may
+ * read incidents and post operational updates; only an ADMIN may declare,
+ * change, or resolve an incident or assign its lead and responders, and a
+ * MEMBER is refused each of those with 403 before anything is written;
+ * bodies are validated strictly, there is no delete route, and a non-member
+ * receives admission's 404. Behaviour against real rows, tenant isolation, concurrency, and the
  * database invariants are proven in incidents.integration-spec.ts and
  * schema.integration-spec.ts.
  */
@@ -204,6 +205,42 @@ describe('Incidents (e2e)', () => {
       expect(prisma.incident.findFirst).not.toHaveBeenCalled();
     });
 
+    it('should read an incident by its number', async () => {
+      const response = await send('get', `${base}/1`);
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({ number: 1, lead: null });
+    });
+
+    it('should post an operational update and read the timeline', async () => {
+      const expected = {
+        id: activityRow.id,
+        type: 'UPDATE',
+        message: 'Investigating elevated database latency.',
+        fromValue: null,
+        toValue: null,
+        actor: { id: USER_ID, name: 'Ada Lovelace' },
+        createdAt: '2026-09-18T12:00:00.000Z',
+      };
+
+      const posted = await send('post', `${base}/1/updates`, {
+        message: 'Investigating elevated database latency.',
+      });
+
+      expect(posted.status).toBe(201);
+      expect(posted.body).toEqual(expected);
+
+      prisma.incident.findFirst.mockResolvedValue({ activity: [activityRow] });
+      const timeline = await send('get', `${base}/1/timeline`);
+
+      expect(timeline.status).toBe(200);
+      expect(timeline.body).toEqual([expected]);
+    });
+  });
+
+  describe('as ADMIN', () => {
+    beforeEach(() => admitAs('ADMIN'));
+
     it('should declare an incident and answer with the declared shape', async () => {
       const response = await send('post', base, declaration);
 
@@ -256,34 +293,101 @@ describe('Incidents (e2e)', () => {
       ).toBe(204);
     });
 
-    it('should post an operational update and read the timeline', async () => {
-      const expected = {
-        id: activityRow.id,
-        type: 'UPDATE',
-        message: 'Investigating elevated database latency.',
-        fromValue: null,
-        toValue: null,
-        actor: { id: USER_ID, name: 'Ada Lovelace' },
-        createdAt: '2026-09-18T12:00:00.000Z',
-      };
-
-      const posted = await send('post', `${base}/1/updates`, {
-        message: 'Investigating elevated database latency.',
-      });
-
-      expect(posted.status).toBe(201);
-      expect(posted.body).toEqual(expected);
-
-      prisma.incident.findFirst.mockResolvedValue({ activity: [activityRow] });
-      const timeline = await send('get', `${base}/1/timeline`);
-
-      expect(timeline.status).toBe(200);
-      expect(timeline.body).toEqual([expected]);
+    it('should resolve an incident', async () => {
+      expect(
+        (await send('patch', `${base}/1`, { status: 'RESOLVED' })).status,
+      ).toBe(200);
     });
   });
 
-  describe('validation', () => {
+  describe('as MEMBER', () => {
     beforeEach(() => admitAs('MEMBER'));
+
+    it.each([
+      {
+        name: 'declaring',
+        method: 'post' as const,
+        path: base,
+        body: undefined,
+      },
+      {
+        name: 'changing the title',
+        method: 'patch' as const,
+        path: `${base}/1`,
+        body: { title: 'Renamed' },
+      },
+      {
+        name: 'changing the summary',
+        method: 'patch' as const,
+        path: `${base}/1`,
+        body: { summary: 'Rewritten' },
+      },
+      {
+        name: 'changing the severity',
+        method: 'patch' as const,
+        path: `${base}/1`,
+        body: { severity: 'SEV2' },
+      },
+      {
+        name: 'changing the status',
+        method: 'patch' as const,
+        path: `${base}/1`,
+        body: { status: 'IDENTIFIED' },
+      },
+      {
+        name: 'resolving',
+        method: 'patch' as const,
+        path: `${base}/1`,
+        body: { status: 'RESOLVED' },
+      },
+      {
+        name: 'reassigning the team',
+        method: 'patch' as const,
+        path: `${base}/1`,
+        body: { teamId: TEAM_ID },
+      },
+      {
+        name: 'assigning the lead',
+        method: 'patch' as const,
+        path: `${base}/1`,
+        body: { leadMembershipId: MEMBERSHIP_ID },
+      },
+      {
+        name: 'adding a responder',
+        method: 'post' as const,
+        path: `${base}/1/responders`,
+        body: { membershipId: MEMBERSHIP_ID },
+      },
+      {
+        name: 'removing a responder',
+        method: 'delete' as const,
+        path: `${base}/1/responders/${MEMBERSHIP_ID}`,
+        body: undefined,
+      },
+    ])(
+      'should refuse $name with 403, writing nothing',
+      async ({ method, path, body }) => {
+        const response = await send(
+          method,
+          path,
+          method === 'post' && body === undefined ? declaration : body,
+        );
+
+        expect(response.status).toBe(403);
+        expect(response.body.code).toBe('PERMISSION_DENIED');
+        expect(prisma.$transaction).not.toHaveBeenCalled();
+        expect(prisma.incident.create).not.toHaveBeenCalled();
+        expect(prisma.incident.update).not.toHaveBeenCalled();
+        expect(prisma.incidentResponder.create).not.toHaveBeenCalled();
+        expect(prisma.incidentResponder.deleteMany).not.toHaveBeenCalled();
+      },
+    );
+  });
+
+  describe('validation', () => {
+    // An admin, who holds every incident permission: a MEMBER is refused the
+    // lifecycle routes with 403 before their bodies are read.
+    beforeEach(() => admitAs('ADMIN'));
 
     it('should require a list state', async () => {
       const response = await send('get', base);

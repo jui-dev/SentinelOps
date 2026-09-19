@@ -123,6 +123,7 @@ describe('OrganizationsService', () => {
           permissions: [
             'incidents:manage',
             'incidents:read',
+            'incidents:respond',
             'invitations:manage',
             'invitations:read',
             'members:manage',

@@ -27,6 +27,7 @@ const EXPECTED: Record<Role, Record<Permission, boolean>> = {
     'services:manage': true,
     'incidents:read': true,
     'incidents:manage': true,
+    'incidents:respond': true,
   },
   MEMBER: {
     'organization:read': true,
@@ -40,7 +41,8 @@ const EXPECTED: Record<Role, Record<Permission, boolean>> = {
     'services:read': true,
     'services:manage': false,
     'incidents:read': true,
-    'incidents:manage': true,
+    'incidents:manage': false,
+    'incidents:respond': true,
   },
 };
 
@@ -93,11 +95,16 @@ describe('role permissions', () => {
   });
 
   it('should let every role read and respond to incidents', () => {
-    // Configuration is admin-governed; incident response is member-driven.
     for (const role of ROLES) {
       expect(hasPermission(role, Permission.INCIDENTS_READ)).toBe(true);
-      expect(hasPermission(role, Permission.INCIDENTS_MANAGE)).toBe(true);
+      expect(hasPermission(role, Permission.INCIDENTS_RESPOND)).toBe(true);
     }
+  });
+
+  it("should let only admins run an incident's lifecycle", () => {
+    // Declaring, changing, assigning people, and resolving.
+    expect(hasPermission('ADMIN', Permission.INCIDENTS_MANAGE)).toBe(true);
+    expect(hasPermission('MEMBER', Permission.INCIDENTS_MANAGE)).toBe(false);
   });
 
   it('should let every role read the organization and its memberships', () => {

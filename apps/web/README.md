@@ -273,7 +273,7 @@ responsible team, and the status and how long it has run (or when it was resolve
 long it lasted). Both lists are the API's cursor pages, loaded with **Show more**; the page
 shows no counts, which would be wrong past the first page.
 
-**Declare incident** opens a form in place (`incidents:manage`, which every role holds):
+**Declare incident** opens a form in place (`incidents:manage`, which only the Admin holds):
 a title, the affected service — services in use only — a severity with **nothing
 preselected**, and an optional summary. Choosing the service says which team will be
 responsible and the service's criticality, as context: severity is never derived from it.
@@ -284,8 +284,9 @@ explained on the field and the service list is refreshed.
 is paged — and shows what the record holds: severity and status with their definitions,
 the service (and whether it is archived), the responsible team, the service's
 criticality, who declared it and when, when it was resolved, and how long it ran, then
-its summary. There is no timeline section; the timeline arrives with its own model.
-While active, a responder gets:
+its summary, then its timeline. While active, anyone with `incidents:respond` — every
+role — can post an operational update to the timeline, and the Admin
+(`incidents:manage`) gets:
 
 - **Response** — status (the three active ones), severity, and responsible team; only
   what changed is sent.

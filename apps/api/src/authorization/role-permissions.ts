@@ -13,11 +13,14 @@ import { Permission } from './permissions.js';
  * a compile error rather than a role that silently holds nothing.
  *
  * Configuration — members, teams, services, invitations — is governed by
- * ADMIN. Incident response is everyone's work: a MEMBER holds
- * `incidents:manage`, because the engineer who notices a failure must be able
- * to declare it and move it to resolution without finding an admin first.
- * It remains a distinct permission so a later, narrower role (a read-only
- * stakeholder) is a change to this table alone.
+ * ADMIN. So is an incident's lifecycle (`incidents:manage`): declaring it,
+ * changing its status, severity, or responsible team, assigning its people,
+ * and resolving it. Taking part in the response (`incidents:respond`) is
+ * everyone's work — today, posting operational updates.
+ *
+ * Declaring is ADMIN-only as the current rule, not a settled one: letting a
+ * MEMBER declare against services their own teams own is to be reconsidered
+ * once response is scoped to teams.
  */
 export const ROLE_PERMISSIONS: Readonly<Record<Role, ReadonlySet<Permission>>> =
   {
@@ -34,6 +37,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, ReadonlySet<Permission>>> =
       Permission.SERVICES_MANAGE,
       Permission.INCIDENTS_READ,
       Permission.INCIDENTS_MANAGE,
+      Permission.INCIDENTS_RESPOND,
     ]),
     MEMBER: new Set([
       Permission.ORGANIZATION_READ,
@@ -41,7 +45,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, ReadonlySet<Permission>>> =
       Permission.TEAMS_READ,
       Permission.SERVICES_READ,
       Permission.INCIDENTS_READ,
-      Permission.INCIDENTS_MANAGE,
+      Permission.INCIDENTS_RESPOND,
     ]),
   };
 

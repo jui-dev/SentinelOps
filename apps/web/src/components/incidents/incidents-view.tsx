@@ -196,7 +196,7 @@ function DeclareIncidentForm({ onCancel }: { onCancel: () => void }) {
         <p>
           Every incident affects a service, and this organization has none in
           use.
-          {canManageServices ? "" : " An owner or admin can add one."}
+          {canManageServices ? "" : " The Admin can add one."}
         </p>
       </EmptyState>
     );

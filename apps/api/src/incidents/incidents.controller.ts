@@ -44,9 +44,10 @@ import { IncidentsService } from './incidents.service.js';
  *
  * The same three layers as every organization route: admission by
  * `@OrganizationController()`, authorization by `@RequirePermission()`, and
- * isolation in the service. Every role holds both incident permissions —
- * responding is members' work, not configuration — but each route still
- * declares one, so narrowing that is a change to the role table alone.
+ * isolation in the service. The lifecycle — declaring, changing, assigning
+ * people, resolving — is `incidents:manage`, which only an admin holds.
+ * Posting an operational update is `incidents:respond`, which every role
+ * holds. Who holds which is decided by the role table alone.
  *
  * Incidents are addressed by number, validated in the service, so a
  * malformed one answers 404 like any other number this organization lacks.
@@ -145,7 +146,7 @@ export class IncidentsController {
    * admitted member, and cannot be supplied.
    */
   @Post(':incidentNumber/updates')
-  @RequirePermission(Permission.INCIDENTS_MANAGE)
+  @RequirePermission(Permission.INCIDENTS_RESPOND)
   postUpdate(
     @CurrentMembership() membership: OrganizationContext,
     @Param('incidentNumber') incidentNumber: string,

@@ -270,8 +270,8 @@ describe('incidents (integration)', () => {
   });
 
   describe('lifecycle', () => {
-    it('should let a member declare an incident, move it in any direction, and resolve it', async () => {
-      const declared = await declare(fx.orgA, fx.dave, fx.apiA, {
+    it('should let an admin declare an incident, move it in any direction, and resolve it', async () => {
+      const declared = await declare(fx.orgA, fx.alice, fx.apiA, {
         summary: 'Card declines since 14:02',
       });
 
@@ -288,21 +288,21 @@ describe('incidents (integration)', () => {
             criticality: 'NORMAL',
           }),
           team: expect.objectContaining({ id: fx.paymentsA, name: 'Payments' }),
-          createdBy: { id: fx.dave, name: 'Dave Duarte' },
+          createdBy: { id: fx.alice, name: 'Alice Anders' },
         }),
       );
 
       const path = `${fx.orgA}/incidents/1`;
 
       for (const status of ['IDENTIFIED', 'INVESTIGATING', 'MONITORING']) {
-        const moved = await call('patch', path, fx.dave, { status });
+        const moved = await call('patch', path, fx.alice, { status });
 
         expect(moved.status).toBe(200);
         expect(moved.body.status).toBe(status);
         expect(moved.body.resolvedAt).toBeNull();
       }
 
-      const resolved = await call('patch', path, fx.dave, {
+      const resolved = await call('patch', path, fx.alice, {
         status: 'RESOLVED',
         severity: 'SEV2',
       });
@@ -329,6 +329,67 @@ describe('incidents (integration)', () => {
       expect((await call('get', path, fx.dave)).body).toEqual(resolved.body);
     });
 
+    it('should let a member read an incident and post updates, but not run its lifecycle', async () => {
+      await declare(fx.orgA, fx.alice, fx.apiA);
+      const path = `${fx.orgA}/incidents/1`;
+      const before = await call('get', path, fx.dave);
+
+      expect(before.status).toBe(200);
+
+      const daveInA = (
+        await prisma.membership.findFirstOrThrow({
+          where: { organizationId: fx.orgA, userId: fx.dave },
+          select: { id: true },
+        })
+      ).id;
+
+      for (const refused of [
+        declare(fx.orgA, fx.dave, fx.apiA),
+        call('patch', path, fx.dave, { title: 'Renamed' }),
+        call('patch', path, fx.dave, { summary: 'Rewritten' }),
+        call('patch', path, fx.dave, { severity: 'SEV3' }),
+        call('patch', path, fx.dave, { status: 'MONITORING' }),
+        call('patch', path, fx.dave, { status: 'RESOLVED' }),
+        call('patch', path, fx.dave, { teamId: fx.platformA }),
+        call('patch', path, fx.dave, { leadMembershipId: daveInA }),
+        call('post', `${path}/responders`, fx.dave, { membershipId: daveInA }),
+      ]) {
+        expectCode(await refused, 403, 'PERMISSION_DENIED');
+      }
+
+      // An admin's responder, whom a member cannot take off either.
+      await call('post', `${path}/responders`, fx.alice, {
+        membershipId: daveInA,
+      });
+      expectCode(
+        await call('delete', `${path}/responders/${daveInA}`, fx.dave),
+        403,
+        'PERMISSION_DENIED',
+      );
+
+      const posted = await call('post', `${path}/updates`, fx.dave, {
+        message: 'Seeing timeouts from the card processor.',
+      });
+
+      expect(posted.status).toBe(201);
+      expect(posted.body.actor).toEqual({ id: fx.dave, name: 'Dave Duarte' });
+
+      // Nothing the refusals named was written: one incident, as declared.
+      const after = await call('get', path, fx.dave);
+
+      expect(after.body).toEqual({
+        ...before.body,
+        responders: [{ membershipId: daveInA, name: 'Dave Duarte' }],
+        updatedAt: expect.any(String),
+      });
+      expect(await prisma.incident.count()).toBe(1);
+      expect(
+        (await call('get', `${path}/timeline`, fx.dave)).body.map(
+          ({ type }: { type: string }) => type,
+        ),
+      ).toEqual(['DECLARED', 'UPDATE']);
+    });
+
     it('should snapshot the owner as the responsible team: reassigning the service rewrites no history', async () => {
       await declare(fx.orgA, fx.alice, fx.apiA);
 
@@ -351,7 +412,7 @@ describe('incidents (integration)', () => {
       await declare(fx.orgA, fx.alice, fx.apiA);
       const path = `${fx.orgA}/incidents/1`;
 
-      const moved = await call('patch', path, fx.dave, {
+      const moved = await call('patch', path, fx.alice, {
         teamId: fx.platformA,
       });
 
@@ -377,21 +438,25 @@ describe('incidents (integration)', () => {
     });
 
     it('should name the declarer after their account is deleted', async () => {
-      await declare(fx.orgA, fx.dave, fx.apiA);
+      await declare(fx.orgA, fx.carol, fx.apiA);
       await prisma.user.update({
-        where: { id: fx.dave },
+        where: { id: fx.carol },
         data: { deletedAt: new Date() },
       });
 
       expect(
         (await call('get', `${fx.orgA}/incidents/1`, fx.alice)).body.createdBy,
-      ).toEqual({ id: fx.dave, name: 'Dave Duarte' });
+      ).toEqual({ id: fx.carol, name: 'Carol Chen' });
     });
 
     it('should judge one token by the role it holds in each organization', async () => {
-      // Carol is ADMIN in A and MEMBER in B; both may respond.
+      // Carol is ADMIN in A and MEMBER in B: she may declare only in A.
       expect((await declare(fx.orgA, fx.carol, fx.apiA)).status).toBe(201);
-      expect((await declare(fx.orgB, fx.carol, fx.apiB)).status).toBe(201);
+      expectCode(
+        await declare(fx.orgB, fx.carol, fx.apiB),
+        403,
+        'PERMISSION_DENIED',
+      );
     });
   });
 
@@ -970,7 +1035,7 @@ describe('incidents (integration)', () => {
       expect(Date.parse(archived.body.archivedAt)).not.toBeNaN();
 
       expectCode(
-        await declare(fx.orgA, fx.dave, fx.apiA),
+        await declare(fx.orgA, fx.alice, fx.apiA),
         409,
         'SERVICE_ARCHIVED',
       );
@@ -982,7 +1047,7 @@ describe('incidents (integration)', () => {
       expect(existing.body.service.archivedAt).toBe(archived.body.archivedAt);
       expect(
         (
-          await call('patch', `${fx.orgA}/incidents/1`, fx.dave, {
+          await call('patch', `${fx.orgA}/incidents/1`, fx.alice, {
             status: 'RESOLVED',
           })
         ).status,
@@ -992,7 +1057,7 @@ describe('incidents (integration)', () => {
         archived: false,
       });
 
-      expect((await declare(fx.orgA, fx.dave, fx.apiA)).status).toBe(201);
+      expect((await declare(fx.orgA, fx.alice, fx.apiA)).status).toBe(201);
     });
 
     it('should not let a member archive a service', async () => {
@@ -1049,7 +1114,7 @@ describe('incidents (integration)', () => {
 
       const responses = await Promise.all([
         call('patch', path, fx.alice, { status: 'RESOLVED' }),
-        call('patch', path, fx.dave, { status: 'RESOLVED' }),
+        call('patch', path, fx.carol, { status: 'RESOLVED' }),
       ]);
       const statuses = responses.map((response) => response.status).sort();
 
@@ -1188,8 +1253,8 @@ describe('incidents (integration)', () => {
     /** Incident 1 — the only one each test declares. */
     const pathIn = (organizationId: string) => `${organizationId}/incidents/1`;
 
-    it('should declare with no lead and no responders, whoever declares', async () => {
-      const response = await declare(fx.orgA, fx.dave, fx.apiA);
+    it('should declare with no lead and no responders', async () => {
+      const response = await declare(fx.orgA, fx.alice, fx.apiA);
 
       expect(response.status).toBe(201);
       expect(response.body.lead).toBeNull();
@@ -1201,8 +1266,8 @@ describe('incidents (integration)', () => {
       const dave = await membershipOf(fx.orgA, fx.dave);
       const carol = await membershipOf(fx.orgA, fx.carol);
 
-      // A MEMBER may assign: incident response is everyone's work.
-      const set = await call('patch', pathIn(fx.orgA), fx.dave, {
+      // An admin assigns; the lead may be a MEMBER.
+      const set = await call('patch', pathIn(fx.orgA), fx.alice, {
         leadMembershipId: dave,
       });
       expect(set.status).toBe(200);
@@ -1251,7 +1316,7 @@ describe('incidents (integration)', () => {
         { membershipId: carol, name: 'Carol Chen' },
       ]);
 
-      const removed = await call('delete', `${responders}/${dave}`, fx.dave);
+      const removed = await call('delete', `${responders}/${dave}`, fx.alice);
       expect(removed.status).toBe(204);
 
       const read = await call('get', pathIn(fx.orgA), fx.alice);

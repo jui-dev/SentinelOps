@@ -75,7 +75,7 @@ describe('incident logging (integration)', () => {
       data: {
         organizationId: organization.id,
         userId: dave.id,
-        role: 'MEMBER',
+        role: 'ADMIN',
       },
     });
     const team = await prisma.team.create({

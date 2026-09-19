@@ -23,8 +23,13 @@ export const Permission = {
   SERVICES_READ: 'services:read',
   SERVICES_MANAGE: 'services:manage',
   INCIDENTS_READ: 'incidents:read',
-  /** Declare, change, reassign, and resolve incidents. */
+  /**
+   * Run an incident's lifecycle: declare it, change it, reassign it, assign
+   * its people, and resolve it.
+   */
   INCIDENTS_MANAGE: 'incidents:manage',
+  /** Take part in an incident's response: post operational updates. */
+  INCIDENTS_RESPOND: 'incidents:respond',
 } as const;
 
 export type Permission = (typeof Permission)[keyof typeof Permission];

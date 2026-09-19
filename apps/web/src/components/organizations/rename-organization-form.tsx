@@ -54,7 +54,7 @@ export function RenameOrganizationForm() {
     return (
       <Alert tone="info">
         You do not have permission to change this organization&apos;s settings.
-        An owner or admin can change them.
+        The Admin can change them.
       </Alert>
     );
   }

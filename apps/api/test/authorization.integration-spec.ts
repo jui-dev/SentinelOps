@@ -59,6 +59,7 @@ const comparable = (body: Record<string, unknown>) => {
 const FULL_PERMISSIONS: readonly string[] = [
   'incidents:manage',
   'incidents:read',
+  'incidents:respond',
   'invitations:manage',
   'invitations:read',
   'members:manage',
@@ -72,8 +73,8 @@ const FULL_PERMISSIONS: readonly string[] = [
 ];
 /** What a MEMBER holds: every read, and incident response. */
 const MEMBER_PERMISSIONS: readonly string[] = [
-  'incidents:manage',
   'incidents:read',
+  'incidents:respond',
   'memberships:read',
   'organization:read',
   'services:read',

@@ -1075,7 +1075,7 @@ put slugs in its own URLs.
 | `DELETE /api/v1/organizations/:organizationId/invitations/:invitationId` | Revoke an open invitation | `invitations:manage` |
 | `/api/v1/organizations/:organizationId/teams…` | Teams and who is on them — see [Teams](#teams) | `teams:read` / `teams:manage` |
 | `/api/v1/organizations/:organizationId/services…` | Services and who owns them — see [Services](#services) | `services:read` / `services:manage` |
-| `/api/v1/organizations/:organizationId/incidents…` | Incidents — see [Incidents](#incidents) | `incidents:read` / `incidents:manage` |
+| `/api/v1/organizations/:organizationId/incidents…` | Incidents — see [Incidents](#incidents) | `incidents:read` / `incidents:respond` / `incidents:manage` |
 
 All require authentication, a current membership, and the listed permission — every role
 may read the organization and its memberships; only an `ADMIN` may rename it, add
@@ -1304,18 +1304,26 @@ Which roles hold which permission is written out once, in
 | `services:read` | ✓ | ✓ |
 | `services:manage` | ✓ | |
 | `incidents:read` | ✓ | ✓ |
-| `incidents:manage` | ✓ | ✓ |
+| `incidents:respond` | ✓ | ✓ |
+| `incidents:manage` | ✓ | |
 
 A `MEMBER` cannot see open invitations: they name people who are not members yet.
 Belonging to a team grants nothing, and neither does a team owning a service or being
 responsible for an incident: authorization is the organization role alone.
 
-**Configuration is admin-governed; incident response is member-driven.** Teams,
-services, and invitations shape the organization, so only an `ADMIN` changes
-them. Incidents are operational work: the engineer who notices card payments failing
-must be able to declare it and move it to resolution without finding an admin first, so
-every role holds `incidents:manage`. It is still a distinct permission, so a narrower
-role later — a read-only stakeholder — is a change to the table alone.
+**The Admin owns configuration and the incident lifecycle; members take part in the
+response.** Teams, services, and invitations shape the organization, so only an `ADMIN`
+changes them. An incident's lifecycle is `incidents:manage`, also `ADMIN`-only:
+declaring it, changing its title, summary, severity, status, or responsible team,
+assigning its lead and responders, and resolving it. A member finishing their own piece
+of work is not the incident being over, so resolution belongs to whoever sees the whole
+response. Taking part is `incidents:respond`, which every role holds — today, posting
+operational updates to an active incident's timeline.
+
+Declaring is `ADMIN`-only as the current rule, not a settled one. Whether a member may
+declare an incident against a service one of their teams owns is to be reconsidered
+once response is scoped to teams; it would be a change to this table and the declaring
+route alone.
 
 There is no `@RequireRole()`. A route that names roles has to be edited every time the
 policy changes; a route that names an operation does not. The table is explicit per role
@@ -1851,8 +1859,9 @@ referenced by their membership, from any team — whoever is best placed to help
   `createdBy` and `lead` are separate.
 - **The lead is independent of the responders.** The lead may or may not also be listed
   as a responder.
-- **Neither grants anything.** Assigning, leading, and responding all use
-  `incidents:manage`, which every role holds; a lead has no extra authority.
+- **Neither grants anything.** Assigning the lead and responders is
+  `incidents:manage`, which only the `ADMIN` holds; being the lead or a responder
+  grants nothing further.
 - **A resolved incident is frozen**, people included: changing its lead or responders is
   a `409`. Adding or removing a responder takes the incident's row lock through the
   same conditional write every change uses, so it is ordered against a concurrent
@@ -1884,7 +1893,9 @@ number means nothing outside the organization it was admitted to.
 
 All under `/api/v1/organizations/:organizationId`, with admission, permission, and
 isolation exactly as in [Tenancy](#tenancy) and [Authorization](#authorization). Every
-role holds both permissions.
+role holds `incidents:read` and `incidents:respond`; only an `ADMIN` holds
+`incidents:manage`, so a `MEMBER` is answered `403 PERMISSION_DENIED` on every route that
+needs it.
 
 | Route | Permission | Purpose |
 | --- | --- | --- |
@@ -1895,6 +1906,8 @@ role holds both permissions.
 | `PATCH /incidents/:number` | `incidents:manage` | Change `{ "title"?, "summary"?, "severity"?, "status"?, "teamId"?, "leadMembershipId"? }` of an active incident (at least one). `"status": "RESOLVED"` resolves it; `"leadMembershipId": null` clears the lead |
 | `POST /incidents/:number/responders` | `incidents:manage` | Add `{ "membershipId" }` as a responder. `201`, with the incident |
 | `DELETE /incidents/:number/responders/:membershipId` | `incidents:manage` | Remove a responder. `204` |
+| `GET /incidents/:number/timeline` | `incidents:read` | The incident's timeline, oldest first |
+| `POST /incidents/:number/updates` | `incidents:respond` | Post `{ "message" }` to an active incident's timeline. `201`, with the entry |
 
 There is **no delete**. Incidents are history; a mistaken declaration is resolved.
 
@@ -1986,10 +1999,12 @@ its service, and optimistic concurrency on edits.
 ### Tests
 
 [`incidents.e2e-spec.ts`](apps/api/test/incidents.e2e-spec.ts) proves the wiring: every
-route is admitted and authorized, every role may respond, bodies are strict, and there
-is no delete route.
+route is admitted and authorized, every role may read and post updates, a `MEMBER` is
+refused every lifecycle route with `403` before anything is written, bodies are strict,
+and there is no delete route.
 [`incidents.integration-spec.ts`](apps/api/test/incidents.integration-spec.ts) runs two
-tenants against a real database: a member declaring, moving, and resolving; the
+tenants against a real database: an admin declaring, moving, and resolving; a member
+reading and posting an update while every lifecycle change they try is refused; the
 responsible team surviving a service reassignment; per-organization numbering under ten
 concurrent declarations; both lists paged completely and in order; foreign incidents,
 services, and teams answered exactly as missing ones; the service isolating with no

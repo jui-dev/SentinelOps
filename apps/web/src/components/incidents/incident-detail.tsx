@@ -589,6 +589,7 @@ function IncidentNotFound({ orgSlug }: { orgSlug: string }) {
 function IncidentPage({ incident }: { incident: IncidentDetailResponse }) {
   const organization = useOrganization();
   const canManage = useCan(Permission.INCIDENTS_MANAGE);
+  const canRespond = useCan(Permission.INCIDENTS_RESPOND);
   const resolved = incident.status === "RESOLVED";
   const severity = severityOf(incident.severity);
   const status = statusOf(incident.status);
@@ -698,7 +699,7 @@ function IncidentPage({ incident }: { incident: IncidentDetailResponse }) {
           </Section>
           <IncidentTimeline
             incident={incident}
-            canPost={canManage && !resolved}
+            canPost={canRespond && !resolved}
           />
           {canManage && !resolved && (
             <>
@@ -726,8 +727,9 @@ function IncidentPage({ incident }: { incident: IncidentDetailResponse }) {
 
 /**
  * One incident, at `/incidents/[incidentNumber]`: what it is, where the
- * response stands, and — for those who may respond, while it is active — the
- * controls to move it on — and its timeline, where updates are posted.
+ * response stands, and its timeline. While it is active, those who may
+ * respond post updates to the timeline, and those who may manage it — the
+ * Admin — get the controls to change, staff, and resolve it.
  */
 export function IncidentDetail() {
   const organization = useOrganization();

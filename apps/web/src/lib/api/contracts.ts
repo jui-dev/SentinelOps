@@ -427,6 +427,7 @@ export const Permission = {
   SERVICES_MANAGE: "services:manage",
   INCIDENTS_READ: "incidents:read",
   INCIDENTS_MANAGE: "incidents:manage",
+  INCIDENTS_RESPOND: "incidents:respond",
 } as const;
 
 /** Machine-readable error codes this client branches on. */

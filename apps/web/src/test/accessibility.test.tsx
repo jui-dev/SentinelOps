@@ -77,10 +77,11 @@ const ADMIN = [
   "teams:read",
   "incidents:manage",
   "incidents:read",
+  "incidents:respond",
 ];
 const MEMBER = [
-  "incidents:manage",
   "incidents:read",
+  "incidents:respond",
   "memberships:read",
   "organization:read",
   "services:read",
@@ -531,8 +532,8 @@ describe("accessibility", () => {
       await expectNoAxeViolations(container);
     });
 
-    it("Incidents, as a member declaring one", async () => {
-      signedIn(MEMBER);
+    it("Incidents, as the admin declaring one", async () => {
+      signedIn(ADMIN);
       const { container } = inWorkspace(<IncidentsView />);
 
       await screen.findByRole("table", { name: "Active incidents" });
@@ -542,9 +543,9 @@ describe("accessibility", () => {
       await expectNoAxeViolations(container);
     });
 
-    it("Incident, active, as a member", async () => {
+    it("Incident, active, as the admin", async () => {
       navigation.params = { orgSlug: organization.slug, incidentNumber: "42" };
-      signedIn(MEMBER);
+      signedIn(ADMIN);
       const { container } = inWorkspace(<IncidentDetail />);
 
       await screen.findByRole("heading", { level: 1, name: "Card payments failing" });
@@ -552,6 +553,16 @@ describe("accessibility", () => {
       await screen.findByLabelText("Incident lead");
       (await screen.findByRole("button", { name: "Resolve…" })).click();
       await screen.findByRole("button", { name: "Resolve incident" });
+      await expectNoAxeViolations(container);
+    });
+
+    it("Incident, active, as a member", async () => {
+      navigation.params = { orgSlug: organization.slug, incidentNumber: "42" };
+      signedIn(MEMBER);
+      const { container } = inWorkspace(<IncidentDetail />);
+
+      await screen.findByRole("heading", { level: 1, name: "Card payments failing" });
+      await screen.findByLabelText("Post an update");
       await expectNoAxeViolations(container);
     });
 
