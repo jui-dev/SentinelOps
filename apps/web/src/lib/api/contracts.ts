@@ -240,12 +240,11 @@ export interface UpdateServiceRequest {
 /** How serious one incident is, SEV1 the most severe. Not criticality. */
 export type IncidentSeverity = "SEV1" | "SEV2" | "SEV3" | "SEV4";
 
-/** Three active statuses, which move freely, then RESOLVED — terminal. */
-export type IncidentStatus =
-  | "INVESTIGATING"
-  | "IDENTIFIED"
-  | "MONITORING"
-  | "RESOLVED";
+/**
+ * DECLARED → INVESTIGATING → RESOLVED, forward only. The first two are
+ * active; RESOLVED is terminal.
+ */
+export type IncidentStatus = "DECLARED" | "INVESTIGATING" | "RESOLVED";
 
 /**
  * One incident. `number` is the organization's own sequence, shown as
@@ -290,7 +289,10 @@ export interface IncidentDetailResponse extends IncidentResponse {
 
 /**
  * What a timeline entry records. UPDATE is posted by a member; the others the
- * server records with the change. Resolution is STATUS_CHANGED to RESOLVED.
+ * server records with the change. Starting the investigation is
+ * STATUS_CHANGED from DECLARED to INVESTIGATING; resolution is STATUS_CHANGED
+ * to RESOLVED. A status change recorded before the lifecycle was simplified
+ * can name a retired status, IDENTIFIED or MONITORING.
  */
 export type IncidentActivityType =
   | "DECLARED"
@@ -387,7 +389,7 @@ export interface Page<T> {
 export type IncidentState = "active" | "resolved";
 
 /**
- * No status (every incident starts INVESTIGATING) and no team (the service's
+ * No status (every incident starts DECLARED) and no team (the service's
  * owner is responsible). Severity is required.
  */
 export interface CreateIncidentRequest {
@@ -398,14 +400,16 @@ export interface CreateIncidentRequest {
 }
 
 /**
- * `status: "RESOLVED"` resolves. The service never changes. The lead is a
+ * `status: "INVESTIGATING"` starts the investigation of a DECLARED incident;
+ * `status: "RESOLVED"` resolves an INVESTIGATING one. Any other move is 409
+ * INVALID_STATUS_TRANSITION. The service never changes. The lead is a
  * membership id, or null to clear it.
  */
 export interface UpdateIncidentRequest {
   title?: string;
   summary?: string | null;
   severity?: IncidentSeverity;
-  status?: IncidentStatus;
+  status?: "INVESTIGATING" | "RESOLVED";
   teamId?: string;
   leadMembershipId?: string | null;
 }
@@ -462,6 +466,7 @@ export const ApiErrorCode = {
   SERVICE_ARCHIVED: "SERVICE_ARCHIVED",
   INCIDENT_NOT_FOUND: "INCIDENT_NOT_FOUND",
   INCIDENT_RESOLVED: "INCIDENT_RESOLVED",
+  INVALID_STATUS_TRANSITION: "INVALID_STATUS_TRANSITION",
   ALREADY_A_RESPONDER: "ALREADY_A_RESPONDER",
   RESPONDER_NOT_FOUND: "RESPONDER_NOT_FOUND",
 } as const;

@@ -26,15 +26,16 @@ export const incidentSummarySchema = z
 /** The four levels, spelled as the database enum spells them. */
 export const incidentSeveritySchema = z.enum(['SEV1', 'SEV2', 'SEV3', 'SEV4']);
 
-export const incidentStatusSchema = z.enum([
-  'INVESTIGATING',
-  'IDENTIFIED',
-  'MONITORING',
-  'RESOLVED',
-]);
+/**
+ * The statuses a change can move an incident to. DECLARED is not one: an
+ * incident is DECLARED only by being declared, and never moves back to it.
+ * Whether the move is allowed from where the incident stands is the service's
+ * judgement, which needs the current status.
+ */
+export const incidentStatusTargetSchema = z.enum(['INVESTIGATING', 'RESOLVED']);
 
 /**
- * Declaring an incident. No status — every incident starts INVESTIGATING —
+ * Declaring an incident. No status — every incident starts DECLARED —
  * and no team: the responsible team is the service's owner at the moment of
  * declaration, and is reassigned explicitly afterwards if needed. Severity
  * has no default: declaring one is a judgement the declarer makes.
@@ -47,7 +48,9 @@ export const createIncidentSchema = z.strictObject({
 });
 
 /**
- * Changing an active incident. `status: 'RESOLVED'` resolves it. The service
+ * Changing an active incident. `status: 'INVESTIGATING'` starts the
+ * investigation of a DECLARED incident; `status: 'RESOLVED'` resolves an
+ * INVESTIGATING one. The service
  * cannot be changed; the responsible team can be reassigned, never cleared.
  * The lead is a membership id, or null to clear it.
  */
@@ -56,7 +59,7 @@ export const updateIncidentSchema = z
     title: incidentTitleSchema.optional(),
     summary: incidentSummarySchema.optional(),
     severity: incidentSeveritySchema.optional(),
-    status: incidentStatusSchema.optional(),
+    status: incidentStatusTargetSchema.optional(),
     teamId: resourceIdSchema.optional(),
     leadMembershipId: resourceIdSchema.nullable().optional(),
   })

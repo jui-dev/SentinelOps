@@ -139,7 +139,7 @@ const majorIncident = {
   number: 41,
   title: "Webhook retries backing up",
   severity: "SEV2",
-  status: "IDENTIFIED",
+  status: "DECLARED",
 };
 
 const resolvedIncident = {
@@ -259,6 +259,8 @@ const signedIn = (permissions: string[]) =>
             { membershipId: currentUser.memberships[0].id, name: currentUser.name },
           ],
         });
+      case `GET ${base}/incidents/41`:
+        return jsonResponse(200, { ...majorIncident, lead: null, responders: [] });
       case `GET ${base}/incidents/7`:
         return jsonResponse(200, { ...resolvedIncident, lead: null, responders: [] });
       case `GET ${base}/teams/${team.id}/members`:
@@ -553,6 +555,16 @@ describe("accessibility", () => {
       await screen.findByLabelText("Incident lead");
       (await screen.findByRole("button", { name: "Resolve…" })).click();
       await screen.findByRole("button", { name: "Resolve incident" });
+      await expectNoAxeViolations(container);
+    });
+
+    it("Incident, declared, as the admin", async () => {
+      navigation.params = { orgSlug: organization.slug, incidentNumber: "41" };
+      signedIn(ADMIN);
+      const { container } = inWorkspace(<IncidentDetail />);
+
+      await screen.findByRole("heading", { level: 1, name: "Webhook retries backing up" });
+      await screen.findByRole("button", { name: "Start investigation" });
       await expectNoAxeViolations(container);
     });
 

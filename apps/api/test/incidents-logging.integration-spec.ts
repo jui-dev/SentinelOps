@@ -120,6 +120,10 @@ describe('incident logging (integration)', () => {
     await server()
       .patch(`${base}/1`)
       .set('Authorization', auth)
+      .send({ status: 'INVESTIGATING' });
+    await server()
+      .patch(`${base}/1`)
+      .set('Authorization', auth)
       .send({ status: 'RESOLVED' });
     await server()
       .patch(`${base}/1`)

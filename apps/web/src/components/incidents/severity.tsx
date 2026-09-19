@@ -1,4 +1,4 @@
-import { Activity, CircleCheck, CircleDashed, Crosshair } from "lucide-react";
+import { Circle, CircleCheck, CircleDashed } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -52,8 +52,8 @@ export const severityOf = (value: IncidentSeverity) =>
   { value, label: value, definition: "" };
 
 /**
- * The statuses in the order a response usually moves through them. The
- * three active ones may move in either direction; RESOLVED is the end.
+ * The statuses in the only order an incident moves through them: DECLARED,
+ * then INVESTIGATING, then RESOLVED — forward, one step at a time.
  */
 export const STATUS_LEVELS: readonly {
   value: IncidentStatus;
@@ -61,39 +61,42 @@ export const STATUS_LEVELS: readonly {
   definition: string;
 }[] = [
   {
+    value: "DECLARED",
+    label: "Declared",
+    definition:
+      "Reported and visible to the responsible team. Investigation has not started yet.",
+  },
+  {
     value: "INVESTIGATING",
     label: "Investigating",
-    definition: "The problem is known. Its cause and fix are not yet.",
-  },
-  {
-    value: "IDENTIFIED",
-    label: "Identified",
-    definition: "The likely cause is known and remediation is under way.",
-  },
-  {
-    value: "MONITORING",
-    label: "Monitoring",
     definition:
-      "A fix or mitigation is in place, and recovery is being watched.",
+      "Investigation, diagnosis, mitigation, or repair is under way.",
   },
   {
     value: "RESOLVED",
     label: "Resolved",
-    definition: "The incident is over.",
+    definition: "The incident has been closed.",
   },
 ];
 
-export const statusOf = (value: IncidentStatus) =>
+/**
+ * Statuses the lifecycle no longer has, which older timeline entries can
+ * still name. History only: nothing is ever moved to one.
+ */
+export type RetiredIncidentStatus = "IDENTIFIED" | "MONITORING";
+
+const RETIRED_STATUS_LABELS: Record<RetiredIncidentStatus, string> = {
+  IDENTIFIED: "Identified",
+  MONITORING: "Monitoring",
+};
+
+export const statusOf = (value: IncidentStatus | RetiredIncidentStatus) =>
   STATUS_LEVELS.find((level) => level.value === value) ?? {
     value,
-    label: value,
+    // A retired status, or one this client does not know yet: its word.
+    label: RETIRED_STATUS_LABELS[value as RetiredIncidentStatus] ?? value,
     definition: "",
   };
-
-/** The active statuses — what a responder can move an incident between. */
-export const ACTIVE_STATUSES = STATUS_LEVELS.filter(
-  ({ value }) => value !== "RESOLVED",
-);
 
 /** An incident's human identifier: INC-42. */
 export const incidentKey = (number: number) => `INC-${number}`;
@@ -190,19 +193,16 @@ export function SeverityMark({
 }
 
 /**
- * One outline icon per status. Distinct shapes, not steps of a progress bar:
- * the active statuses move in either direction, so none looks "more done"
- * than another. Outlines, where severity marks are filled solids, so the two
- * never read as one scale. Neutral ink for the active statuses — severity
- * is the signal — and the nominal green only once resolved.
+ * One outline icon per status. Outlines, where severity marks are filled
+ * solids, so the two never read as one scale. Neutral ink for the active
+ * statuses — severity is the signal — and the nominal green only once
+ * resolved. A retired status has no icon: its word carries it.
  */
 const statusIcons: Record<IncidentStatus, { Icon: LucideIcon; colour: string }> = {
-  // An open question.
+  // Reported; nobody has started on it.
+  DECLARED: { Icon: Circle, colour: "text-fg-muted" },
+  // An open question being worked.
   INVESTIGATING: { Icon: CircleDashed, colour: "text-fg-muted" },
-  // The cause pinpointed.
-  IDENTIFIED: { Icon: Crosshair, colour: "text-fg-muted" },
-  // Recovery being watched.
-  MONITORING: { Icon: Activity, colour: "text-fg-muted" },
   RESOLVED: { Icon: CircleCheck, colour: "text-signal-nominal" },
 };
 
@@ -211,10 +211,10 @@ export function StatusMark({
   status,
   className,
 }: {
-  status: IncidentStatus;
+  status: IncidentStatus | RetiredIncidentStatus;
   className?: string;
 }) {
-  const icon = statusIcons[status];
+  const icon = statusIcons[status as IncidentStatus];
 
   return (
     <span

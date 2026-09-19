@@ -29,7 +29,6 @@ import type {
   IncidentDetailResponse,
   IncidentResponse,
   IncidentSeverity,
-  IncidentStatus,
   OrganizationMembershipResponse,
   UpdateIncidentRequest,
 } from "@/lib/api/contracts";
@@ -49,7 +48,6 @@ import {
 import { IncidentTimeline } from "./incident-timeline";
 import { SeveritySelect } from "./incidents-view";
 import {
-  ACTIVE_STATUSES,
   incidentKey,
   SeverityMark,
   severityOf,
@@ -95,15 +93,23 @@ const useUpdateIncident = (incident: IncidentResponse) => {
 const resolvedMeanwhile = (error: unknown) =>
   isApiError(error, 409) && error.code === ApiErrorCode.INCIDENT_RESOLVED;
 
+/** The status move no longer fits where the incident stands. */
+const movedMeanwhile = (error: unknown) =>
+  isApiError(error, 409) &&
+  error.code === ApiErrorCode.INVALID_STATUS_TRANSITION;
+
+const MOVED_MEANWHILE_MESSAGE =
+  "This incident's status changed meanwhile, so that step no longer applies. It has been refreshed.";
+
 /**
- * Where the response stands: status, severity, and the responsible team.
- * Only what changed is sent. Resolving is its own action, not a status here.
+ * How serious the incident is and who is responsible for it. Only what
+ * changed is sent. The status is not here: it moves by the lifecycle action
+ * in the header, one step at a time.
  */
 function ResponseForm({ incident }: { incident: IncidentResponse }) {
   const organization = useOrganization();
   const teams = useTeams(organization.id);
   const update = useUpdateIncident(incident);
-  const [status, setStatus] = useState<IncidentStatus>(incident.status);
   const [severity, setSeverity] = useState<IncidentSeverity>(
     incident.severity,
   );
@@ -111,7 +117,6 @@ function ResponseForm({ incident }: { incident: IncidentResponse }) {
   const [saved, setSaved] = useState(false);
 
   const changes: UpdateIncidentRequest = {
-    ...(status !== incident.status && { status }),
     ...(severity !== incident.severity && { severity }),
     ...(teamId !== incident.team.id && { teamId }),
   };
@@ -132,7 +137,7 @@ function ResponseForm({ incident }: { incident: IncidentResponse }) {
     <Section
       id="response"
       title="Response"
-      description="Statuses can move in either direction as the response unfolds."
+      description="Severity and the responsible team can change as the response unfolds."
     >
       <form onSubmit={onSubmit} noValidate className="flex max-w-md flex-col gap-4">
         {update.isError && !teamGone && Object.keys(fields).length === 0 && (
@@ -146,23 +151,6 @@ function ResponseForm({ incident }: { incident: IncidentResponse }) {
           />
         )}
         {saved && <Alert tone="success">Incident updated.</Alert>}
-        <Select
-          label="Status"
-          name="status"
-          value={status}
-          onChange={(event) => {
-            setSaved(false);
-            setStatus(event.target.value as IncidentStatus);
-          }}
-          hint={statusOf(status).definition}
-          error={fields.status}
-        >
-          {ACTIVE_STATUSES.map((level) => (
-            <option key={level.value} value={level.value}>
-              {level.label}
-            </option>
-          ))}
-        </Select>
         <SeveritySelect
           value={severity}
           onChange={(value) => {
@@ -513,6 +501,54 @@ function People({ incident }: { incident: IncidentDetailResponse }) {
   );
 }
 
+/**
+ * Starting the investigation of a DECLARED incident: routine, and it closes
+ * nothing, so it needs no confirmation. The API's answer replaces the cached
+ * incident, which then offers Resolve… in its place.
+ */
+function StartInvestigation({ incident }: { incident: IncidentResponse }) {
+  const update = useUpdateIncident(incident);
+
+  return (
+    <div className="flex flex-col items-end gap-2">
+      <Button
+        disabled={update.isPending}
+        onClick={() => update.mutate({ status: "INVESTIGATING" })}
+      >
+        {update.isPending ? "Starting…" : "Start investigation"}
+      </Button>
+      {update.isError && (
+        <ErrorAlert
+          error={update.error}
+          message={
+            resolvedMeanwhile(update.error)
+              ? RESOLVED_MEANWHILE_MESSAGE
+              : movedMeanwhile(update.error)
+                ? MOVED_MEANWHILE_MESSAGE
+                : undefined
+          }
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * The one lifecycle step open to the incident now: start the investigation
+ * of a DECLARED incident, or resolve an INVESTIGATING one. Nothing once
+ * resolved.
+ */
+function LifecycleAction({ incident }: { incident: IncidentResponse }) {
+  switch (incident.status) {
+    case "DECLARED":
+      return <StartInvestigation incident={incident} />;
+    case "INVESTIGATING":
+      return <Resolve incident={incident} />;
+    default:
+      return null;
+  }
+}
+
 /** Resolving, after an inline confirmation: it cannot be undone here. */
 function Resolve({ incident }: { incident: IncidentResponse }) {
   const update = useUpdateIncident(incident);
@@ -539,7 +575,9 @@ function Resolve({ incident }: { incident: IncidentResponse }) {
           message={
             resolvedMeanwhile(update.error)
               ? "Someone else resolved this incident already."
-              : undefined
+              : movedMeanwhile(update.error)
+                ? MOVED_MEANWHILE_MESSAGE
+                : undefined
           }
         />
       )}
@@ -607,7 +645,7 @@ function IncidentPage({ incident }: { incident: IncidentDetailResponse }) {
             <StatusMark status={incident.status} className="font-medium text-fg" />
           </span>
         }
-        actions={canManage && !resolved && <Resolve incident={incident} />}
+        actions={canManage && <LifecycleAction incident={incident} />}
       />
       <PageBody width="form">
         {resolved && incident.resolvedAt && (
@@ -704,7 +742,7 @@ function IncidentPage({ incident }: { incident: IncidentDetailResponse }) {
           {canManage && !resolved && (
             <>
               <ResponseForm
-                key={`${incident.status}-${incident.severity}-${incident.team.id}`}
+                key={`${incident.severity}-${incident.team.id}`}
                 incident={incident}
               />
               <People incident={incident} />

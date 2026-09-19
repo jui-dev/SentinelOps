@@ -14,9 +14,12 @@ import type { ServiceCriticality } from '../services/services.contract.js';
  */
 export type IncidentSeverity = 'SEV1' | 'SEV2' | 'SEV3' | 'SEV4';
 
-/** The three active statuses, then RESOLVED — which is terminal. */
-export type IncidentStatus =
-  'INVESTIGATING' | 'IDENTIFIED' | 'MONITORING' | 'RESOLVED';
+/**
+ * Where the incident as a whole stands: DECLARED → INVESTIGATING → RESOLVED,
+ * forward only. DECLARED and INVESTIGATING are active; RESOLVED is terminal.
+ * See IncidentStatus in schema.prisma for what each means.
+ */
+export type IncidentStatus = 'DECLARED' | 'INVESTIGATING' | 'RESOLVED';
 
 /**
  * One incident. `number` is the organization's own sequence — the client
@@ -83,15 +86,18 @@ export interface IncidentDetailResponse extends IncidentResponse {
 
 /**
  * What a timeline entry records. UPDATE is posted by a member; the others are
- * recorded by the server with the change they describe. Resolution is
- * STATUS_CHANGED with `toValue: 'RESOLVED'`.
+ * recorded by the server with the change they describe. Starting the
+ * investigation is STATUS_CHANGED from DECLARED to INVESTIGATING; resolution
+ * is STATUS_CHANGED with `toValue: 'RESOLVED'`.
  */
 export type IncidentActivityType =
   'DECLARED' | 'UPDATE' | 'SEVERITY_CHANGED' | 'STATUS_CHANGED';
 
 /**
  * One entry on an incident's timeline. History, not state: the incident
- * itself says where it stands now.
+ * itself says where it stands now. A status change recorded before the
+ * lifecycle was simplified can name a retired status, IDENTIFIED or
+ * MONITORING: history is not rewritten.
  *
  * `message` is set for UPDATE only. `fromValue` and `toValue` are severity or
  * status values: DECLARED carries the declared severity in `toValue`; the two

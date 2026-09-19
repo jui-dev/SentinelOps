@@ -450,19 +450,20 @@ enum IncidentSeverity {
   @@map("incident_severity")
 }
 
-/// Where the response to an incident stands. The three active statuses may
-/// move in any direction — a fix that fails sends MONITORING back to
-/// INVESTIGATING. RESOLVED is terminal: a resolved incident is not changed
-/// again (reopening arrives with the incident timeline, where it is recorded).
+/// Where the incident as a whole stands: one status, however many people
+/// are working on it. It moves forward only, one step at a time — DECLARED →
+/// INVESTIGATING → RESOLVED — and only the Admin moves it. RESOLVED is
+/// terminal: a resolved incident is not changed again.
 ///
-///   INVESTIGATING  the problem is known; cause and fix are not
-///   IDENTIFIED     the likely cause is known; remediation is under way
-///   MONITORING     a fix or mitigation is in place; recovery is being watched
-///   RESOLVED       the incident is over
+///   DECLARED       reported and visible; no investigation implied yet
+///   INVESTIGATING  investigation, diagnosis, mitigation, or repair under way
+///   RESOLVED       closed by the Admin
+///
+/// What one responder is doing is not an incident status. A cause found or a
+/// fix being watched is an operational update on an INVESTIGATING incident.
 enum IncidentStatus {
+  DECLARED
   INVESTIGATING
-  IDENTIFIED
-  MONITORING
   RESOLVED
 
   @@map("incident_status")
@@ -507,7 +508,7 @@ model Incident {
   serviceId        String           @map("service_id") @db.Uuid
   teamId           String           @map("team_id") @db.Uuid
   severity         IncidentSeverity
-  status           IncidentStatus   @default(INVESTIGATING)
+  status           IncidentStatus   @default(DECLARED)
   /// Who declared it: the global User rather than the Membership. A
   /// membership is hard-deleted when access is revoked, and attribution must
   /// outlive the grant; a user is soft-deleted and keeps resolving. Restrict,

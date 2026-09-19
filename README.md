@@ -139,8 +139,8 @@ The intended scope, not a feature list. Only the items marked below are built.
 - **Service catalog** — ✅ the systems an organization runs, which team owns each, and
   how critical each is, with ownership kept within the tenant by the database. Health,
   dependencies, and monitoring are still to come. See [Services](#services)
-- **Incident lifecycle management** — ✅ declare, investigate, identify, monitor, and
-  resolve, with a responsible team. Reopening and history are still to come. See
+- **Incident lifecycle management** — ✅ declare, investigate, and resolve, forward
+  only, with a responsible team. Reopening and history are still to come. See
   [Incidents](#incidents)
 - **Severity management** — ✅ SEV1–SEV4, chosen per incident. See [Incidents](#incidents)
 - **Responder assignment** — ✅ an incident lead and responders, from any team. See
@@ -582,7 +582,7 @@ holds sessions rather than domain data.
                    │ team_id          uuid     NOT NULL       │
                    │ severity         incident_severity       │
                    │ status           incident_status         │
-                   │                  DEFAULT 'INVESTIGATING' │
+                   │                  DEFAULT 'DECLARED'      │
                    │ created_by_id    uuid FK  (restrict)     │
                    │ created_at / updated_at                  │
                    │ resolved_at      NULL                    │
@@ -1784,7 +1784,7 @@ way; what differs is only the teams and services they have.
 | service | The affected service. Required, and **never changes** after declaration. |
 | responsible team | Who is responsible for this incident. See below. |
 | `severity` | How serious this incident is: `SEV1`–`SEV4`. Required — there is no default. |
-| `status` | Where the response stands. Starts `INVESTIGATING`. |
+| `status` | Where the incident as a whole stands. Starts `DECLARED`. |
 | declared by | The member who declared it, by name. |
 | `createdAt` | When it was declared. |
 | `resolvedAt` | When it was resolved; set by the server, never by a client. |
@@ -1816,24 +1816,40 @@ colours, each level with its own glyph shape.
 
 ### Lifecycle
 
+```
+DECLARED ──▶ INVESTIGATING ──▶ RESOLVED
+```
+
 | Status | Meaning |
 | --- | --- |
-| `INVESTIGATING` | The problem is known; its cause and fix are not |
-| `IDENTIFIED` | The likely cause is known; remediation is under way |
-| `MONITORING` | A fix or mitigation is in place; recovery is being watched |
-| `RESOLVED` | The incident is over |
+| `DECLARED` | Reported, and visible to the organization and the responsible team. No investigation is implied yet |
+| `INVESTIGATING` | Investigation, diagnosis, mitigation, or repair is under way |
+| `RESOLVED` | Closed by the Admin |
 
-- Every incident starts `INVESTIGATING`. There is no separate "open": the problem is
-  known the moment someone declares it.
-- The three active statuses move **in any direction**. A fix that does not hold sends
-  `MONITORING` back to `INVESTIGATING`; a forward-only machine would make people misreport.
-- Any active status can move to `RESOLVED`, with the same `PATCH`. `resolvedAt` is set in
-  the same write, and a database `CHECK` keeps the two consistent for any writer:
-  `status = 'RESOLVED'` exactly when `resolved_at` is set.
+- **One status for the whole incident**, however many people work on it. What one
+  responder is doing is not an incident status. A cause found, or a fix deployed and
+  being watched, is an operational update on an `INVESTIGATING` incident.
+- Every incident starts `DECLARED`. `DECLARED` and `INVESTIGATING` are both **active**:
+  both count as open, in the lists and on the Overview.
+- The lifecycle moves **forward, one step at a time**, and only the Admin moves it
+  (`incidents:manage`). The Admin starts the investigation with `PATCH { "status":
+  "INVESTIGATING" }` and resolves with `PATCH { "status": "RESOLVED" }`. A declared
+  incident is investigated before it is resolved: resolving it directly is
+  `409 INVALID_STATUS_TRANSITION`, and nothing else in that request is applied. There is
+  no way back — `DECLARED` is set only by declaring, so a request naming it is a `400`.
+- The move is judged against the status read under the incident's row lock, so it cannot
+  race another: of two concurrent starts, the second finds the investigation started and
+  records nothing.
+- Resolving sets `resolvedAt` in the same write, and a database `CHECK` keeps the two
+  consistent for any writer: `status = 'RESOLVED'` exactly when `resolved_at` is set.
 - **`RESOLVED` is final.** Any change to a resolved incident — title included — is
-  `409 INCIDENT_RESOLVED`. Reopening arrives with the incident timeline, where it will
-  be recorded as an event rather than silently overwriting the first resolution. Until
-  then, a problem that returns is a new incident.
+  `409 INCIDENT_RESOLVED`. There is no reopening: a problem that returns is a new
+  incident.
+- **`IDENTIFIED` and `MONITORING` are retired.** Migration
+  `20260920120000_simplify_incident_lifecycle` moved any incident in either to
+  `INVESTIGATING` — work was under way — and left `INVESTIGATING` and `RESOLVED` incidents
+  as they were. No timeline entry records the remap, since no one made it, and older
+  timeline entries that name a retired status are kept as written.
 
 ### The responsible team is a snapshot
 
@@ -1903,7 +1919,7 @@ needs it.
 | `GET /incidents?state=resolved` | `incidents:read` | Resolved incidents, most recently declared first |
 | `POST /incidents` | `incidents:manage` | Declare `{ "title", "serviceId", "severity", "summary"? }`. `201` |
 | `GET /incidents/:number` | `incidents:read` | One incident |
-| `PATCH /incidents/:number` | `incidents:manage` | Change `{ "title"?, "summary"?, "severity"?, "status"?, "teamId"?, "leadMembershipId"? }` of an active incident (at least one). `"status": "RESOLVED"` resolves it; `"leadMembershipId": null` clears the lead |
+| `PATCH /incidents/:number` | `incidents:manage` | Change `{ "title"?, "summary"?, "severity"?, "status"?, "teamId"?, "leadMembershipId"? }` of an active incident (at least one). `"status": "INVESTIGATING"` starts the investigation of a declared incident; `"status": "RESOLVED"` resolves one under investigation; `"leadMembershipId": null` clears the lead |
 | `POST /incidents/:number/responders` | `incidents:manage` | Add `{ "membershipId" }` as a responder. `201`, with the incident |
 | `DELETE /incidents/:number/responders/:membershipId` | `incidents:manage` | Remove a responder. `204` |
 | `GET /incidents/:number/timeline` | `incidents:read` | The incident's timeline, oldest first |
@@ -1925,7 +1941,7 @@ ones, so a deep page costs what the first does. An incident whose status or seve
 changes between two page requests can be skipped or repeated; that is the nature of
 paging a changing set, and the active list is rarely more than one page.
 
-Declaring takes no `status` (every incident starts `INVESTIGATING`), no team (the
+Declaring takes no `status` (every incident starts `DECLARED`), no team (the
 service's owner is responsible), and no number, declarer, or `resolvedAt`: bodies are
 strict, and any of those is a `400`.
 
@@ -1941,6 +1957,7 @@ strict, and any of those is a `400`.
 | Adding someone already responding | `409 ALREADY_A_RESPONDER` |
 | Removing someone not responding (or a malformed id) | `404 RESPONDER_NOT_FOUND` |
 | Any change to a resolved incident, people included | `409 INCIDENT_RESOLVED` |
+| Resolving an incident that is still `DECLARED` | `409 INVALID_STATUS_TRANSITION` |
 | `state` missing or unknown; a malformed cursor | `400`; `400 INVALID_CURSOR` |
 | `serviceId` or `teamId` not a uuid; a severity or status outside the enums | `400`, naming the field |
 

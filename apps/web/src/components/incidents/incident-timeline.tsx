@@ -24,6 +24,10 @@ import { queryKeys } from "@/lib/api/query-keys";
 
 import { useIncidentTimeline } from "./incident-queries";
 import { SeverityMark, StatusMark } from "./severity";
+import type { RetiredIncidentStatus } from "./severity";
+
+/** A status a timeline entry names: current, or retired since it was recorded. */
+type RecordedStatus = IncidentStatus | RetiredIncidentStatus;
 
 const RESOLVED_MEANWHILE =
   "This incident was resolved by someone else, so updates can no longer be posted. It has been refreshed.";
@@ -54,19 +58,27 @@ function describe(entry: IncidentActivityResponse): ReactNode {
         </>
       );
     case "STATUS_CHANGED":
-      return entry.toValue === "RESOLVED" ? (
-        <>
-          <StatusMark status="RESOLVED" className="font-semibold text-fg" />{" "}
-          the incident
-        </>
-      ) : (
+      if (entry.toValue === "RESOLVED") {
+        return (
+          <>
+            <StatusMark status="RESOLVED" className="font-semibold text-fg" />{" "}
+            the incident
+          </>
+        );
+      }
+      if (entry.fromValue === "DECLARED" && entry.toValue === "INVESTIGATING") {
+        return <>Started the investigation</>;
+      }
+      // Any other change was recorded before the lifecycle was simplified,
+      // and can name a retired status: shown as it was.
+      return (
         <>
           Changed status{" "}
-          <StatusMark status={entry.fromValue as IncidentStatus} />
+          <StatusMark status={entry.fromValue as RecordedStatus} />
           <span aria-hidden="true"> → </span>
           <span className="sr-only"> to </span>
           <StatusMark
-            status={entry.toValue as IncidentStatus}
+            status={entry.toValue as RecordedStatus}
             className="font-medium text-fg"
           />
         </>

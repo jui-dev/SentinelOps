@@ -17,6 +17,7 @@ import type {
   IncidentDetailResponse,
   IncidentPage,
   IncidentSeverity,
+  IncidentStatus,
   IncidentSummaryResponse,
 } from './incidents.contract.js';
 import {
@@ -24,6 +25,7 @@ import {
   incidentNotFound,
   incidentResolved,
   invalidCursor,
+  invalidStatusTransition,
   responderNotFound,
 } from './incidents.errors.js';
 import {
@@ -63,6 +65,19 @@ const SEVERITIES: readonly IncidentSeverity[] = [
   'SEV3',
   'SEV4',
 ];
+
+/**
+ * The one status each active status may move to. The lifecycle is DECLARED →
+ * INVESTIGATING → RESOLVED, forward only and one step at a time; RESOLVED
+ * moves nowhere, and lockActive refuses a resolved incident before this is
+ * consulted.
+ */
+const NEXT_STATUS: Readonly<
+  Record<Exclude<IncidentStatus, 'RESOLVED'>, IncidentStatus>
+> = {
+  DECLARED: 'INVESTIGATING',
+  INVESTIGATING: 'RESOLVED',
+};
 
 /**
  * Columns an incident response is built from. Embedded records are identity
@@ -549,13 +564,22 @@ export class IncidentsService {
 
   /**
    * Changes an active incident: its title, summary, severity, status,
-   * responsible team, or lead. `status: 'RESOLVED'` resolves it, and resolvedAt is set
-   * in the same write. A resolved incident is not changed — any change to one
-   * is a 409, whatever it names.
+   * responsible team, or lead. A resolved incident is not changed — any
+   * change to one is a 409, whatever it names.
+   *
+   * The status moves forward one step at a time: `INVESTIGATING` starts the
+   * investigation of a DECLARED incident, and `RESOLVED` resolves an
+   * INVESTIGATING one, setting resolvedAt in the same write. Any other move —
+   * resolving a DECLARED incident — is 409 INVALID_STATUS_TRANSITION, and
+   * nothing in the request is applied. Asking for the status the incident
+   * already has changes nothing and records nothing, as for every field.
    *
    * The incident is judged and locked first (see lockActive: 404, then 409),
-   * and only then the team or lead a body names, so a foreign incident
-   * reveals nothing about the body. Of two concurrent resolutions, the second
+   * then the status move against the status read under that lock, and only
+   * then the team or lead a body names, so a foreign incident reveals nothing
+   * about the body. Judged under the lock, a move cannot race another: of
+   * two concurrent starts, the second waits, finds the investigation started,
+   * and changes nothing. Of two concurrent resolutions, the second
    * waits on the row, then is told the incident is resolved. resolvedAt is
    * written exactly once; the update itself still re-asserts that the
    * incident is unresolved.
@@ -588,6 +612,15 @@ export class IncidentsService {
           where: { id: incidentId, organizationId },
           select: { severity: true, status: true },
         });
+
+        if (
+          input.status !== undefined &&
+          input.status !== before.status &&
+          (before.status === 'RESOLVED' ||
+            NEXT_STATUS[before.status] !== input.status)
+        ) {
+          throw invalidStatusTransition(before.status, input.status);
+        }
 
         const changes = [
           ...(input.severity !== undefined && input.severity !== before.severity

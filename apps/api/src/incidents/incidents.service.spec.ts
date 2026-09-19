@@ -324,11 +324,15 @@ describe('IncidentsService', () => {
 
     it('should record each severity or status that changes, from and to, attributed to the actor', async () => {
       const { service, prisma } = serviceWith();
+      prisma.incident.findFirstOrThrow.mockResolvedValue({
+        severity: 'SEV1',
+        status: 'DECLARED',
+      });
 
       await service.update(
         ORG,
         '1',
-        { severity: 'SEV2', status: 'IDENTIFIED' },
+        { severity: 'SEV2', status: 'INVESTIGATING' },
         ACTOR,
       );
 
@@ -348,8 +352,8 @@ describe('IncidentsService', () => {
             incidentId: 'incident-1',
             actorId: USER,
             type: 'STATUS_CHANGED',
-            fromValue: 'INVESTIGATING',
-            toValue: 'IDENTIFIED',
+            fromValue: 'DECLARED',
+            toValue: 'INVESTIGATING',
             createdAt: expect.any(Date),
           },
         ],
@@ -372,8 +376,11 @@ describe('IncidentsService', () => {
 
     it('should set resolvedAt only when resolving', async () => {
       const { service, prisma } = serviceWith();
+      prisma.incident.findFirstOrThrow
+        .mockResolvedValueOnce({ severity: 'SEV1', status: 'DECLARED' })
+        .mockResolvedValueOnce({ severity: 'SEV1', status: 'INVESTIGATING' });
 
-      await service.update(ORG, '1', { status: 'MONITORING' }, ACTOR);
+      await service.update(ORG, '1', { status: 'INVESTIGATING' }, ACTOR);
       await service.update(ORG, '1', { status: 'RESOLVED' }, ACTOR);
 
       expect(
@@ -382,6 +389,28 @@ describe('IncidentsService', () => {
       expect(
         prisma.incident.update.mock.calls[1][0].data.resolvedAt,
       ).toBeInstanceOf(Date);
+    });
+
+    it('should refuse resolving a declared incident with 409, applying nothing in the request', async () => {
+      const { service, prisma } = serviceWith();
+      prisma.incident.findFirstOrThrow.mockResolvedValue({
+        severity: 'SEV1',
+        status: 'DECLARED',
+      });
+
+      await expectCode(
+        service.update(
+          ORG,
+          '1',
+          { status: 'RESOLVED', severity: 'SEV2', teamId: OTHER_TEAM },
+          ACTOR,
+        ),
+        409,
+        IncidentsErrorCode.INVALID_STATUS_TRANSITION,
+      );
+      expect(prisma.team.findFirst).not.toHaveBeenCalled();
+      expect(prisma.incident.update).not.toHaveBeenCalled();
+      expect(prisma.incidentActivity.createMany).not.toHaveBeenCalled();
     });
 
     it('should refuse any change to a resolved incident with 409 and write nothing', async () => {
@@ -481,7 +510,7 @@ describe('IncidentsService', () => {
       const { service, prisma } = serviceWith();
       prisma.incident.update.mockRejectedValue(knownError('P2025'));
       prisma.incident.findFirst
-        .mockResolvedValueOnce({ status: 'MONITORING' })
+        .mockResolvedValueOnce({ status: 'INVESTIGATING' })
         .mockResolvedValueOnce({ status: 'RESOLVED' });
 
       await expectCode(
@@ -495,7 +524,7 @@ describe('IncidentsService', () => {
       const { service, prisma } = serviceWith();
       prisma.incident.update.mockRejectedValue(knownError('P2025'));
       prisma.incident.findFirst
-        .mockResolvedValueOnce({ status: 'MONITORING' })
+        .mockResolvedValueOnce({ status: 'INVESTIGATING' })
         .mockResolvedValueOnce(null);
 
       await expectCode(

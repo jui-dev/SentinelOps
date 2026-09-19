@@ -288,10 +288,17 @@ its summary, then its timeline. While active, anyone with `incidents:respond` �
 role — can post an operational update to the timeline, and the Admin
 (`incidents:manage`) gets:
 
-- **Response** — status (the three active ones), severity, and responsible team; only
-  what changed is sent.
+- **The next lifecycle step**, in the header — never a status to pick from a list:
+  **Start investigation** while the incident is `DECLARED`, sent at once; **Resolve…**
+  while it is `INVESTIGATING`, after an inline confirmation that says a resolved incident
+  is final. A step refused because the status moved meanwhile is explained and the
+  incident refetched.
+- **Response** — severity and responsible team; only what changed is sent.
 - **Details** — the title and summary.
-- **Resolve…** — after an inline confirmation that says a resolved incident is final.
+
+Everyone sees the status and its definition. On the timeline, starting the investigation
+reads "Started the investigation"; an older entry naming a retired status (`IDENTIFIED`,
+`MONITORING`) is shown by its word.
 
 Once resolved, none of these are offered; the page says so. A change refused with
 `409 INCIDENT_RESOLVED` — someone resolved it meanwhile — is explained and the incident

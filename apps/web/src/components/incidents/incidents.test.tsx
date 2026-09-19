@@ -249,7 +249,7 @@ describe("incidents", () => {
   describe("the list", () => {
     it("shows what is happening: severity in words, the incident, where, who, status, and how long", async () => {
       api(READ_ONLY, {
-        active: [incident(), incident({ number: 7, severity: "SEV3", title: "Reports delayed", status: "MONITORING" })],
+        active: [incident(), incident({ number: 7, severity: "SEV3", title: "Reports delayed", status: "DECLARED" })],
       });
 
       inOrganization(<IncidentsView />);
@@ -267,13 +267,13 @@ describe("incidents", () => {
       expect(within(first).getByText("Payments")).toBeDefined();
       expect(within(first).getByText("Investigating")).toBeDefined();
       expect(within(first).getByText(/^(<1m|\d+[mhd])/)).toBeDefined();
-      expect(within(second).getByText("Monitoring")).toBeDefined();
+      expect(within(second).getByText("Declared")).toBeDefined();
       expect(await screen.findByText("No resolved incidents")).toBeDefined();
     });
 
     it("makes each row one link, and folds where and who under the title for narrow screens", async () => {
       api(READ_ONLY, {
-        active: [incident(), incident({ number: 7, severity: "SEV3", title: "Reports delayed", status: "MONITORING" })],
+        active: [incident(), incident({ number: 7, severity: "SEV3", title: "Reports delayed", status: "DECLARED" })],
       });
 
       inOrganization(<IncidentsView />);
@@ -510,12 +510,12 @@ describe("incidents", () => {
       expect(screen.queryByLabelText("Status")).toBeNull();
     });
 
-    it("sends only what changed in the response", async () => {
+    it("sends only what changed in the response, which has no status to choose", async () => {
       const user = userEvent.setup();
       const { requests } = api(ADMIN, {
         handler: (request) =>
           route(request) === `PATCH ${base}/incidents/42`
-            ? jsonResponse(200, incident({ status: "IDENTIFIED", team: { id: platform.id, name: "Platform", slug: "platform" } }))
+            ? jsonResponse(200, incident({ severity: "SEV2", team: { id: platform.id, name: "Platform", slug: "platform" } }))
             : undefined,
       });
 
@@ -524,18 +524,64 @@ describe("incidents", () => {
       const response = (await screen.findByRole("heading", { name: "Response" }))
         .closest("section") as HTMLElement;
 
-      await user.selectOptions(within(response).getByLabelText("Status"), "IDENTIFIED");
+      // The status moves by the lifecycle action alone.
+      expect(within(response).queryByLabelText("Status")).toBeNull();
+
+      await user.selectOptions(within(response).getByLabelText("Severity"), "SEV2");
       await user.selectOptions(await within(response).findByLabelText("Responsible team"), platform.id);
       await user.click(within(response).getByRole("button", { name: "Save" }));
 
       await waitFor(() =>
         expect(requests.find((r) => route(r) === `PATCH ${base}/incidents/42`)?.body).toEqual({
-          status: "IDENTIFIED",
+          severity: "SEV2",
           teamId: platform.id,
         }),
       );
-      // Resolving is its own action, never a status in this form.
-      expect(within(response).queryByRole("option", { name: "Resolved" })).toBeNull();
+    });
+
+    it("offers a declared incident's investigation to start, and nothing to resolve", async () => {
+      const user = userEvent.setup();
+      const { requests } = api(ADMIN, {
+        detail: incident({ status: "DECLARED" }),
+        handler: (request) =>
+          route(request) === `PATCH ${base}/incidents/42`
+            ? jsonResponse(200, incident({ status: "INVESTIGATING" }))
+            : undefined,
+      });
+
+      inOrganization(<IncidentDetail />);
+
+      const start = await screen.findByRole("button", { name: "Start investigation" });
+      expect(screen.queryByRole("button", { name: "Resolve…" })).toBeNull();
+
+      await user.click(start);
+
+      // The next step takes its place.
+      expect(await screen.findByRole("button", { name: "Resolve…" })).toBeDefined();
+      expect(screen.queryByRole("button", { name: "Start investigation" })).toBeNull();
+      expect(requests.find((r) => route(r) === `PATCH ${base}/incidents/42`)?.body).toEqual({
+        status: "INVESTIGATING",
+      });
+    });
+
+    it("explains a step refused because the status moved meanwhile, and refetches the incident", async () => {
+      const user = userEvent.setup();
+      const { requests } = api(ADMIN, {
+        detail: incident({ status: "DECLARED" }),
+        handler: (request) =>
+          route(request) === `PATCH ${base}/incidents/42`
+            ? apiError(409, "INVALID_STATUS_TRANSITION")
+            : undefined,
+      });
+
+      inOrganization(<IncidentDetail />);
+
+      await user.click(await screen.findByRole("button", { name: "Start investigation" }));
+
+      expect(await screen.findByText(/status changed meanwhile/)).toBeDefined();
+      await waitFor(() =>
+        expect(requests.filter((r) => route(r) === `GET ${base}/incidents/42`)).toHaveLength(2),
+      );
     });
 
     it("resolves only after confirmation", async () => {
@@ -624,7 +670,9 @@ describe("incidents", () => {
       inOrganization(<IncidentDetail />);
 
       expect(await screen.findByLabelText("Post an update")).toBeDefined();
+      expect(screen.getAllByText("Investigating").length).toBeGreaterThan(0);
       expect(screen.queryByRole("button", { name: "Resolve…" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Start investigation" })).toBeNull();
       for (const heading of ["Response", "People", "Details"]) {
         expect(screen.queryByRole("heading", { name: heading })).toBeNull();
       }
@@ -795,8 +843,8 @@ describe("incidents", () => {
             id: "0199a1b2-c3d4-7000-8000-000000000103",
             type: "STATUS_CHANGED",
             message: null,
-            fromValue: "INVESTIGATING",
-            toValue: "IDENTIFIED",
+            fromValue: "DECLARED",
+            toValue: "INVESTIGATING",
           }),
         ],
       });
@@ -813,7 +861,7 @@ describe("incidents", () => {
           /^Daniel Okafor posted an update · .*Investigating elevated database latency\.$/,
         ),
         expect.stringMatching(/Changed severity SEV2.*→.*SEV1/),
-        expect.stringMatching(/Changed status Investigating.*→.*Identified/),
+        expect.stringMatching(/Started the investigation$/),
       ]);
       expect(within(timeline).queryByLabelText("Post an update")).toBeNull();
     });
@@ -858,6 +906,28 @@ describe("incidents", () => {
       expect((composer as HTMLTextAreaElement).value).toBe("");
     });
 
+    it("shows a change recorded under a retired status by its word", async () => {
+      api(READ_ONLY, {
+        timeline: [
+          activity({
+            id: "0199a1b2-c3d4-7000-8000-000000000105",
+            type: "STATUS_CHANGED",
+            message: null,
+            fromValue: "IDENTIFIED",
+            toValue: "MONITORING",
+          }),
+        ],
+      });
+
+      inOrganization(<IncidentDetail />);
+
+      const timeline = (await screen.findByRole("heading", { name: /Timeline/ }))
+        .closest("section") as HTMLElement;
+      const [entry] = await within(timeline).findAllByRole("listitem");
+
+      expect(entry.textContent).toMatch(/Changed status Identified.*→.*Monitoring$/);
+    });
+
     it("keeps a resolved incident's timeline readable, with nowhere to post", async () => {
       api(MEMBER, {
         detail: incident({ status: "RESOLVED", resolvedAt: "2026-09-18T13:00:00.000Z" }),
@@ -867,7 +937,7 @@ describe("incidents", () => {
             id: "0199a1b2-c3d4-7000-8000-000000000104",
             type: "STATUS_CHANGED",
             message: null,
-            fromValue: "MONITORING",
+            fromValue: "INVESTIGATING",
             toValue: "RESOLVED",
           }),
         ],
@@ -931,7 +1001,7 @@ describe("incidents", () => {
     it("stores a changed incident and stales both lists, the overview's counts, and its timeline, and nothing outside incidents", () => {
       const queryClient = new QueryClient();
       const orgId = organization.id;
-      const changed = incident({ status: "MONITORING" });
+      const changed = incident({ status: "DECLARED" });
 
       queryClient.setQueryData(queryKeys.incidentList(orgId, "active"), { pages: [], pageParams: [] });
       queryClient.setQueryData(queryKeys.incidentList(orgId, "resolved"), { pages: [], pageParams: [] });

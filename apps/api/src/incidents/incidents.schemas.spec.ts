@@ -61,7 +61,8 @@ describe('incident schemas', () => {
     });
 
     it.each([
-      { status: 'IDENTIFIED' },
+      { status: 'DECLARED' },
+      { status: 'INVESTIGATING' },
       { teamId: TEAM },
       { organizationId: SERVICE },
       { number: 7 },
@@ -80,7 +81,6 @@ describe('incident schemas', () => {
       { title: 'Card payments degraded' },
       { summary: null },
       { severity: 'SEV2' },
-      { status: 'MONITORING' },
       { status: 'INVESTIGATING' },
       { status: 'RESOLVED' },
       { teamId: TEAM },
@@ -93,6 +93,13 @@ describe('incident schemas', () => {
     it('should refuse an empty change', () => {
       expect(updateIncidentSchema.safeParse({}).success).toBe(false);
     });
+
+    it.each(['DECLARED', 'IDENTIFIED', 'MONITORING', 'OPEN'])(
+      'should refuse moving to %j: only INVESTIGATING and RESOLVED are moves',
+      (status) => {
+        expect(updateIncidentSchema.safeParse({ status }).success).toBe(false);
+      },
+    );
 
     it('should refuse clearing the responsible team', () => {
       expect(updateIncidentSchema.safeParse({ teamId: null }).success).toBe(

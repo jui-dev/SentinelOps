@@ -35,7 +35,7 @@ const incidentRow = {
   title: 'Card payments failing',
   summary: null,
   severity: 'SEV1',
-  status: 'INVESTIGATING',
+  status: 'DECLARED',
   createdAt: CREATED,
   updatedAt: CREATED,
   resolvedAt: null,
@@ -251,7 +251,7 @@ describe('Incidents (e2e)', () => {
         title: 'Card payments failing',
         summary: null,
         severity: 'SEV1',
-        status: 'INVESTIGATING',
+        status: 'DECLARED',
         service: {
           id: SERVICE_ID,
           name: 'Payment API',
@@ -269,10 +269,10 @@ describe('Incidents (e2e)', () => {
       });
     });
 
-    it('should read and change an incident by its number', async () => {
+    it('should read an incident and start its investigation', async () => {
       expect((await send('get', `${base}/1`)).status).toBe(200);
       expect(
-        (await send('patch', `${base}/1`, { status: 'IDENTIFIED' })).status,
+        (await send('patch', `${base}/1`, { status: 'INVESTIGATING' })).status,
       ).toBe(200);
     });
 
@@ -293,10 +293,24 @@ describe('Incidents (e2e)', () => {
       ).toBe(204);
     });
 
-    it('should resolve an incident', async () => {
+    it('should resolve an incident under investigation', async () => {
+      prisma.incident.findFirstOrThrow.mockResolvedValueOnce({
+        ...incidentRow,
+        status: 'INVESTIGATING',
+      });
+
       expect(
         (await send('patch', `${base}/1`, { status: 'RESOLVED' })).status,
       ).toBe(200);
+    });
+
+    it('should refuse resolving a declared incident with 409, writing nothing', async () => {
+      const response = await send('patch', `${base}/1`, { status: 'RESOLVED' });
+
+      expect(response.status).toBe(409);
+      expect(response.body.code).toBe('INVALID_STATUS_TRANSITION');
+      expect(prisma.incident.update).not.toHaveBeenCalled();
+      expect(prisma.incidentActivity.createMany).not.toHaveBeenCalled();
     });
   });
 
@@ -329,10 +343,10 @@ describe('Incidents (e2e)', () => {
         body: { severity: 'SEV2' },
       },
       {
-        name: 'changing the status',
+        name: 'starting the investigation',
         method: 'patch' as const,
         path: `${base}/1`,
-        body: { status: 'IDENTIFIED' },
+        body: { status: 'INVESTIGATING' },
       },
       {
         name: 'resolving',
@@ -446,7 +460,7 @@ describe('Incidents (e2e)', () => {
     });
 
     it.each([
-      { status: 'INVESTIGATING' },
+      { status: 'DECLARED' },
       { teamId: TEAM_ID },
       { organizationId: OTHER_ORG_ID },
       { number: 9 },
@@ -492,6 +506,19 @@ describe('Incidents (e2e)', () => {
       expect(response.status).toBe(400);
       expect(prisma.incident.update).not.toHaveBeenCalled();
     });
+
+    it.each(['DECLARED', 'IDENTIFIED', 'MONITORING'])(
+      'should refuse moving an incident to %s with 400, naming the field',
+      async (status) => {
+        const response = await send('patch', `${base}/1`, { status });
+
+        expect(response.status).toBe(400);
+        expect(response.body.details).toEqual([
+          { field: 'status', message: expect.any(String) },
+        ]);
+        expect(prisma.incident.update).not.toHaveBeenCalled();
+      },
+    );
 
     it('should refuse changing the service with 400', async () => {
       const response = await send('patch', `${base}/1`, {

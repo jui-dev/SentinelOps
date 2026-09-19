@@ -73,7 +73,7 @@ describe('incident responses', () => {
 
   it('should emit null for an unresolved incident', () => {
     expect(
-      toIncidentResponse({ ...row, status: 'MONITORING', resolvedAt: null })
+      toIncidentResponse({ ...row, status: 'DECLARED', resolvedAt: null })
         .resolvedAt,
     ).toBeNull();
   });

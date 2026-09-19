@@ -44,7 +44,7 @@ const incident = (overrides: Partial<IncidentResponse> = {}): IncidentResponse =
   title: "Card payments failing",
   summary: null,
   severity: "SEV1",
-  status: "IDENTIFIED",
+  status: "DECLARED",
   service: {
     id: "0199a1b2-c3d4-7000-8000-0000000000e1",
     name: "Payment API",

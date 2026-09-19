@@ -280,7 +280,7 @@ function DeclareIncidentForm({ onCancel }: { onCancel: () => void }) {
     <Section
       id="declare-incident"
       title="Declare an incident"
-      description="An operational problem affecting one of this organization's services. It starts as Investigating."
+      description="An operational problem affecting one of this organization's services. It starts as Declared."
     >
       {body}
     </Section>

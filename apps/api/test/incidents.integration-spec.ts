@@ -109,6 +109,24 @@ describe('incidents (integration)', () => {
       ...extra,
     });
 
+  /**
+   * Takes a declared incident through the lifecycle to RESOLVED — starting
+   * its investigation, then resolving it — and answers with the resolution.
+   */
+  const resolve = async (
+    organizationId: string,
+    userId: string,
+    number: number,
+  ) => {
+    const path = `${organizationId}/incidents/${number}`;
+
+    expect(
+      (await call('patch', path, userId, { status: 'INVESTIGATING' })).status,
+    ).toBe(200);
+
+    return call('patch', path, userId, { status: 'RESOLVED' });
+  };
+
   const aTeam = async (organizationId: string, name: string) =>
     (
       await prisma.team.create({
@@ -270,7 +288,7 @@ describe('incidents (integration)', () => {
   });
 
   describe('lifecycle', () => {
-    it('should let an admin declare an incident, move it in any direction, and resolve it', async () => {
+    it('should let an admin declare an incident, start its investigation, and resolve it, one step at a time', async () => {
       const declared = await declare(fx.orgA, fx.alice, fx.apiA, {
         summary: 'Card declines since 14:02',
       });
@@ -279,7 +297,7 @@ describe('incidents (integration)', () => {
       expect(declared.body).toEqual(
         expect.objectContaining({
           number: 1,
-          status: 'INVESTIGATING',
+          status: 'DECLARED',
           severity: 'SEV1',
           summary: 'Card declines since 14:02',
           resolvedAt: null,
@@ -294,13 +312,30 @@ describe('incidents (integration)', () => {
 
       const path = `${fx.orgA}/incidents/1`;
 
-      for (const status of ['IDENTIFIED', 'INVESTIGATING', 'MONITORING']) {
-        const moved = await call('patch', path, fx.alice, { status });
+      // A declared incident is investigated before it is resolved, and a
+      // refused move applies nothing else the request names.
+      expectCode(
+        await call('patch', path, fx.alice, {
+          status: 'RESOLVED',
+          severity: 'SEV3',
+        }),
+        409,
+        'INVALID_STATUS_TRANSITION',
+      );
+      expect((await call('get', path, fx.alice)).body).toEqual(declared.body);
 
-        expect(moved.status).toBe(200);
-        expect(moved.body.status).toBe(status);
-        expect(moved.body.resolvedAt).toBeNull();
-      }
+      const started = await call('patch', path, fx.alice, {
+        status: 'INVESTIGATING',
+      });
+
+      expect(started.status).toBe(200);
+      expect(started.body.status).toBe('INVESTIGATING');
+      expect(started.body.resolvedAt).toBeNull();
+
+      // There is no way back to DECLARED.
+      expect(
+        (await call('patch', path, fx.alice, { status: 'DECLARED' })).status,
+      ).toBe(400);
 
       const resolved = await call('patch', path, fx.alice, {
         status: 'RESOLVED',
@@ -315,7 +350,7 @@ describe('incidents (integration)', () => {
       // Resolved is terminal: nothing about it changes again.
       for (const change of [
         { title: 'Typo fixed' },
-        { status: 'MONITORING' },
+        { status: 'INVESTIGATING' },
         { status: 'RESOLVED' },
         { teamId: fx.platformA },
       ]) {
@@ -348,7 +383,7 @@ describe('incidents (integration)', () => {
         call('patch', path, fx.dave, { title: 'Renamed' }),
         call('patch', path, fx.dave, { summary: 'Rewritten' }),
         call('patch', path, fx.dave, { severity: 'SEV3' }),
-        call('patch', path, fx.dave, { status: 'MONITORING' }),
+        call('patch', path, fx.dave, { status: 'INVESTIGATING' }),
         call('patch', path, fx.dave, { status: 'RESOLVED' }),
         call('patch', path, fx.dave, { teamId: fx.platformA }),
         call('patch', path, fx.dave, { leadMembershipId: daveInA }),
@@ -514,7 +549,12 @@ describe('incidents (integration)', () => {
           teamId: fx.paymentsA,
           createdById: fx.alice,
           severity: SEVERITY_ORDER[(index * 7) % 4] as 'SEV1',
-          status: resolved ? ('RESOLVED' as const) : ('MONITORING' as const),
+          // Both active statuses, so both are paged as active.
+          status: resolved
+            ? ('RESOLVED' as const)
+            : index % 2 === 0
+              ? ('DECLARED' as const)
+              : ('INVESTIGATING' as const),
           resolvedAt: resolved ? new Date() : null,
         })),
       });
@@ -581,9 +621,7 @@ describe('incidents (integration)', () => {
     it('should keep the two states apart and each organization to itself', async () => {
       await declare(fx.orgA, fx.alice, fx.apiA);
       await declare(fx.orgA, fx.alice, fx.apiA);
-      await call('patch', `${fx.orgA}/incidents/2`, fx.alice, {
-        status: 'RESOLVED',
-      });
+      await resolve(fx.orgA, fx.alice, 2);
       await declare(fx.orgB, fx.bob, fx.apiB);
 
       const active = await call(
@@ -631,7 +669,8 @@ describe('incidents (integration)', () => {
           teamId: fx.paymentsA,
           createdById: fx.alice,
           severity: 'SEV3',
-          status: 'INVESTIGATING',
+          // Not yet investigated: still active, and still open.
+          status: 'DECLARED',
           createdAt: new Date('2026-09-15T09:00:00Z'),
         },
       });
@@ -940,7 +979,7 @@ describe('incidents (integration)', () => {
             where: { organizationId: fx.orgB, number: 2 },
           })
         ).status,
-      ).toBe('INVESTIGATING');
+      ).toBe('DECLARED');
     });
 
     it('should answer a foreign service exactly as a nonexistent one, and write nothing', async () => {
@@ -1045,13 +1084,7 @@ describe('incidents (integration)', () => {
       const existing = await call('get', `${fx.orgA}/incidents/1`, fx.dave);
 
       expect(existing.body.service.archivedAt).toBe(archived.body.archivedAt);
-      expect(
-        (
-          await call('patch', `${fx.orgA}/incidents/1`, fx.alice, {
-            status: 'RESOLVED',
-          })
-        ).status,
-      ).toBe(200);
+      expect((await resolve(fx.orgA, fx.alice, 1)).status).toBe(200);
 
       await call('patch', `${fx.orgA}/services/${fx.apiA}`, fx.alice, {
         archived: false,
@@ -1108,9 +1141,27 @@ describe('incidents (integration)', () => {
   });
 
   describe('concurrency', () => {
+    it('should start an investigation once when two starts race: both succeed, one change is recorded', async () => {
+      await declare(fx.orgA, fx.alice, fx.apiA);
+      const path = `${fx.orgA}/incidents/1`;
+
+      const responses = await Promise.all([
+        call('patch', path, fx.alice, { status: 'INVESTIGATING' }),
+        call('patch', path, fx.carol, { status: 'INVESTIGATING' }),
+      ]);
+
+      expect(responses.map((response) => response.status)).toEqual([200, 200]);
+      expect(
+        await prisma.incidentActivity.count({
+          where: { type: 'STATUS_CHANGED' },
+        }),
+      ).toBe(1);
+    });
+
     it('should let exactly one of two concurrent resolutions win, writing resolvedAt once', async () => {
       await declare(fx.orgA, fx.alice, fx.apiA);
       const path = `${fx.orgA}/incidents/1`;
+      await call('patch', path, fx.alice, { status: 'INVESTIGATING' });
 
       const responses = await Promise.all([
         call('patch', path, fx.alice, { status: 'RESOLVED' }),
@@ -1435,7 +1486,7 @@ describe('incidents (integration)', () => {
       const carol = await membershipOf(fx.orgA, fx.carol);
       const responders = `${pathIn(fx.orgA)}/responders`;
       await call('post', responders, fx.alice, { membershipId: dave });
-      await call('patch', pathIn(fx.orgA), fx.alice, { status: 'RESOLVED' });
+      await resolve(fx.orgA, fx.alice, 1);
       const before = await prisma.incident.findFirstOrThrow({
         where: { organizationId: fx.orgA },
       });
@@ -1523,7 +1574,7 @@ describe('incidents (integration)', () => {
         severity: 'SEV1',
       });
       await call('patch', `${fx.orgA}/${incidentPath}`, fx.carol, {
-        status: 'IDENTIFIED',
+        status: 'INVESTIGATING',
       });
       await post(fx.orgA, fx.carol, 'Connection pool exhaustion identified.');
       await call('patch', `${fx.orgA}/${incidentPath}`, fx.alice, {
@@ -1551,14 +1602,14 @@ describe('incidents (integration)', () => {
           'Dave Duarte',
         ],
         ['SEVERITY_CHANGED', 'SEV2', 'SEV1', 'Carol Chen'],
-        ['STATUS_CHANGED', 'INVESTIGATING', 'IDENTIFIED', 'Carol Chen'],
+        ['STATUS_CHANGED', 'DECLARED', 'INVESTIGATING', 'Carol Chen'],
         [
           'UPDATE',
           'Connection pool exhaustion identified.',
           null,
           'Carol Chen',
         ],
-        ['STATUS_CHANGED', 'IDENTIFIED', 'RESOLVED', 'Alice Anders'],
+        ['STATUS_CHANGED', 'INVESTIGATING', 'RESOLVED', 'Alice Anders'],
       ]);
     });
 
@@ -1567,11 +1618,11 @@ describe('incidents (integration)', () => {
 
       await call('patch', `${fx.orgA}/${incidentPath}`, fx.alice, {
         severity: 'SEV3',
-        status: 'MONITORING',
+        status: 'INVESTIGATING',
       });
       await call('patch', `${fx.orgA}/${incidentPath}`, fx.alice, {
         severity: 'SEV3',
-        status: 'MONITORING',
+        status: 'INVESTIGATING',
         title: 'Renamed',
         teamId: fx.platformA,
       });
@@ -1590,16 +1641,15 @@ describe('incidents (integration)', () => {
 
     it('should keep the timeline of a resolved incident readable, and refuse new updates with 409', async () => {
       await declare(fx.orgA, fx.alice, fx.apiA);
-      await call('patch', `${fx.orgA}/${incidentPath}`, fx.alice, {
-        status: 'RESOLVED',
-      });
+      await resolve(fx.orgA, fx.alice, 1);
 
       expectCode(
         await post(fx.orgA, fx.alice, 'Customer comms sent.'),
         409,
         'INCIDENT_RESOLVED',
       );
-      expect((await timelineOf(fx.orgA, fx.alice)).body).toHaveLength(2);
+      // Declared, investigation started, resolved.
+      expect((await timelineOf(fx.orgA, fx.alice)).body).toHaveLength(3);
     });
 
     it("should answer another organization's incident exactly as a missing one, and write nothing", async () => {

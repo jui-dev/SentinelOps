@@ -784,7 +784,7 @@ describe('core domain schema (integration)', () => {
       expect(await prisma.incident.count()).toBe(1);
     });
 
-    it('should default status to INVESTIGATING and start the organization counter at 0', async () => {
+    it('should default status to DECLARED and start the organization counter at 0', async () => {
       const { acme, user, acmePayments, acmeService } = await twoTenants();
 
       const incident = await anIncident({
@@ -794,7 +794,7 @@ describe('core domain schema (integration)', () => {
         createdById: user.id,
       });
 
-      expect(incident.status).toBe('INVESTIGATING');
+      expect(incident.status).toBe('DECLARED');
       expect(incident.resolvedAt).toBeNull();
       expect(acme.lastIncidentNumber).toBe(0);
     });
@@ -1103,6 +1103,26 @@ describe('core domain schema (integration)', () => {
         ),
       ).rejects.toSatisfy(isRefusedBy('23514'));
     });
+
+    it.each(['IDENTIFIED', 'MONITORING'])(
+      'should refuse the retired status %s',
+      async (status) => {
+        const { acme, user, acmePayments, acmeService } = await twoTenants();
+        const incident = await anIncident({
+          organizationId: acme.id,
+          serviceId: acmeService.id,
+          teamId: acmePayments.id,
+          createdById: user.id,
+        });
+
+        await expect(
+          prisma.$executeRawUnsafe(
+            `UPDATE incidents SET status = '${status}' WHERE id = $1::uuid`,
+            incident.id,
+          ),
+        ).rejects.toSatisfy(isRefusedBy('22P02'));
+      },
+    );
 
     it('should refuse RESOLVED without a resolution time, and a resolution time without RESOLVED', async () => {
       const { acme, user, acmePayments, acmeService } = await twoTenants();

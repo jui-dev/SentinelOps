@@ -15,6 +15,7 @@ import {
 export const IncidentsErrorCode = {
   INCIDENT_NOT_FOUND: 'INCIDENT_NOT_FOUND',
   INCIDENT_RESOLVED: 'INCIDENT_RESOLVED',
+  INVALID_STATUS_TRANSITION: 'INVALID_STATUS_TRANSITION',
   INVALID_CURSOR: 'INVALID_CURSOR',
   ALREADY_A_RESPONDER: 'ALREADY_A_RESPONDER',
   RESPONDER_NOT_FOUND: 'RESPONDER_NOT_FOUND',
@@ -44,6 +45,19 @@ export const incidentResolved = (): ConflictException =>
       errorCode: IncidentsErrorCode.INCIDENT_RESOLVED,
     },
   );
+
+/**
+ * The incident cannot move to that status from where it stands: the
+ * lifecycle is DECLARED → INVESTIGATING → RESOLVED, one step at a time. A
+ * DECLARED incident is investigated before it is resolved.
+ */
+export const invalidStatusTransition = (
+  from: string,
+  to: string,
+): ConflictException =>
+  new ConflictException(`An incident that is ${from} cannot move to ${to}`, {
+    errorCode: IncidentsErrorCode.INVALID_STATUS_TRANSITION,
+  });
 
 /**
  * A page cursor this list did not issue. A query parameter is part of the

@@ -110,8 +110,9 @@ export class IncidentsController {
 
   /**
    * Changes an active incident's title, summary, severity, status,
-   * responsible team, or lead (`leadMembershipId`, null to clear);
-   * `status: 'RESOLVED'` resolves it.
+   * responsible team, or lead (`leadMembershipId`, null to clear). The status
+   * moves forward one step: `INVESTIGATING` starts the investigation of a
+   * DECLARED incident, `RESOLVED` resolves an INVESTIGATING one.
    */
   @Patch(':incidentNumber')
   @RequirePermission(Permission.INCIDENTS_MANAGE)
