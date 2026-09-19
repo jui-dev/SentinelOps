@@ -329,6 +329,7 @@ describe('tenancy (integration)', () => {
           email: 'carol@both.example',
           passwordChangeRequired: false,
         },
+        teams: [],
       });
     });
 

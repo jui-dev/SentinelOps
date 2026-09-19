@@ -82,6 +82,7 @@ describe('Authorization (e2e)', () => {
             role,
             createdAt: CREATED,
             user: { id: USER_ID, name: 'Ada', email: 'ada@example.com' },
+            teamMemberships: [],
           };
         }
 

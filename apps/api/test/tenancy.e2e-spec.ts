@@ -104,6 +104,7 @@ describe('Tenancy (e2e)', () => {
               role: 'MEMBER',
               createdAt: CREATED,
               user: { id: USER_ID, name: 'Ada', email: 'ada@example.com' },
+              teamMemberships: [],
             },
     );
 

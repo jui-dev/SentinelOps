@@ -89,6 +89,23 @@ describe('organization response mappers', () => {
           deletedAt: null,
           memberships: [{ organizationId: 'org-2' }],
         },
+        teamMemberships: [
+          {
+            id: 'team-membership-1',
+            organizationId: 'org-1',
+            createdAt: CREATED,
+            // Columns a careless team select could carry. None may reach
+            // the wire.
+            team: {
+              id: 'team-1',
+              name: 'Payments',
+              slug: 'payments',
+              description: 'Card processing.',
+              organizationId: 'org-1',
+              memberships: [{ membershipId: 'membership-9' }],
+            },
+          },
+        ],
       };
 
       expect(toOrganizationMembershipResponse(row)).toStrictEqual({
@@ -101,7 +118,44 @@ describe('organization response mappers', () => {
           email: 'ada@example.com',
           passwordChangeRequired: true,
         },
+        teams: [{ id: 'team-1', name: 'Payments', slug: 'payments' }],
       });
+    });
+
+    const baseRow = {
+      id: 'membership-1',
+      role: 'MEMBER',
+      createdAt: CREATED,
+      user: {
+        id: 'user-1',
+        name: 'Ada Lovelace',
+        email: 'ada@example.com',
+        passwordChangeRequired: false,
+      },
+    };
+
+    it('should list every team, in the order selected', () => {
+      const response = toOrganizationMembershipResponse({
+        ...baseRow,
+        teamMemberships: [
+          { team: { id: 'team-1', name: 'Payments', slug: 'payments' } },
+          { team: { id: 'team-2', name: 'Platform', slug: 'platform' } },
+        ],
+      });
+
+      expect(response.teams).toEqual([
+        { id: 'team-1', name: 'Payments', slug: 'payments' },
+        { id: 'team-2', name: 'Platform', slug: 'platform' },
+      ]);
+    });
+
+    it('should answer an empty array for a member on no team', () => {
+      const response = toOrganizationMembershipResponse({
+        ...baseRow,
+        teamMemberships: [],
+      });
+
+      expect(response.teams).toEqual([]);
     });
   });
 });

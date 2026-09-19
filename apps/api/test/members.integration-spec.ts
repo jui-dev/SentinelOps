@@ -18,7 +18,9 @@ import { resolveTestDatabaseUrl } from './test-database.js';
  * and flagged for a password change; that the stored hash verifies the
  * one-time password and nothing stores it in the clear; that the new person
  * can sign in with it; that only an admin of the organization may do this;
- * and that an address with an account anywhere is refused.
+ * that an address with an account anywhere is refused; and that a member's
+ * record lists every team they are on — by name, empty when none, and only
+ * from the organization being read.
  */
 
 const ONE_TIME_PASSWORD = 'one-time-password-123';
@@ -129,6 +131,7 @@ describe('members (integration)', () => {
         email: 'grace@acme.example',
         passwordChangeRequired: true,
       },
+      teams: [],
     });
 
     const user = await prisma.user.findUniqueOrThrow({
@@ -257,5 +260,103 @@ describe('members (integration)', () => {
 
     expect(response.status).toBe(400);
     expect(await prisma.user.count()).toBe(3);
+  });
+
+  describe("a member's teams", () => {
+    const aTeam = (organizationId: string, name: string) =>
+      prisma.team.create({
+        data: { organizationId, name, slug: name.toLowerCase() },
+        select: { id: true, name: true, slug: true },
+      });
+    const membershipOf = async (organizationId: string, userId: string) =>
+      (
+        await prisma.membership.findUniqueOrThrow({
+          where: { organizationId_userId: { organizationId, userId } },
+          select: { id: true },
+        })
+      ).id;
+    const place = (
+      organizationId: string,
+      teamId: string,
+      membershipId: string,
+    ) =>
+      prisma.teamMembership.create({
+        data: { organizationId, teamId, membershipId },
+      });
+    const read = async (path: string, callerId: string) =>
+      request(app.getHttpServer())
+        .get(`/api/v1/organizations/${path}`)
+        .set(
+          'Authorization',
+          `Bearer ${await tokens.signAccessToken(callerId)}`,
+        )
+        .expect(200);
+
+    it('should list every team a member is on, by name, and an empty list for one on none', async () => {
+      const platform = await aTeam(fx.orgA, 'Platform');
+      const payments = await aTeam(fx.orgA, 'Payments');
+      const daveInA = await membershipOf(fx.orgA, fx.dave);
+      // Placed in the opposite order to the one expected back.
+      await place(fx.orgA, platform.id, daveInA);
+      await place(fx.orgA, payments.id, daveInA);
+
+      const list = await read(`${fx.orgA}/memberships`, fx.dave);
+
+      expect(leakedKeys(list.body)).toEqual([]);
+      expect(
+        list.body.map((m: { user: { email: string }; teams: unknown }) => [
+          m.user.email,
+          m.teams,
+        ]),
+      ).toEqual([
+        ['alice@acme.example', []],
+        ['dave@acme.example', [payments, platform]],
+      ]);
+
+      const one = await read(`${fx.orgA}/memberships/${daveInA}`, fx.alice);
+
+      expect(one.body.teams).toEqual([payments, platform]);
+    });
+
+    it('should never show a team from another organization, even for someone in both', async () => {
+      const platform = await aTeam(fx.orgA, 'Platform');
+      const bravoOps = await aTeam(fx.orgB, 'Operations');
+      const daveInA = await membershipOf(fx.orgA, fx.dave);
+      const daveInB = (
+        await prisma.membership.create({
+          data: { organizationId: fx.orgB, userId: fx.dave, role: 'MEMBER' },
+          select: { id: true },
+        })
+      ).id;
+      await place(fx.orgA, platform.id, daveInA);
+      await place(fx.orgB, bravoOps.id, daveInB);
+
+      const inA = await read(`${fx.orgA}/memberships/${daveInA}`, fx.dave);
+      const inB = await read(`${fx.orgB}/memberships/${daveInB}`, fx.dave);
+
+      expect(inA.body.teams).toEqual([platform]);
+      expect(inB.body.teams).toEqual([bravoOps]);
+      expect(JSON.stringify(inA.body)).not.toContain(bravoOps.id);
+    });
+
+    it('should drop a team from the list once the member is taken off it', async () => {
+      const platform = await aTeam(fx.orgA, 'Platform');
+      const daveInA = await membershipOf(fx.orgA, fx.dave);
+      await place(fx.orgA, platform.id, daveInA);
+
+      await request(app.getHttpServer())
+        .delete(
+          `/api/v1/organizations/${fx.orgA}/teams/${platform.id}/members/${daveInA}`,
+        )
+        .set(
+          'Authorization',
+          `Bearer ${await tokens.signAccessToken(fx.alice)}`,
+        )
+        .expect(204);
+
+      const one = await read(`${fx.orgA}/memberships/${daveInA}`, fx.alice);
+
+      expect(one.body.teams).toEqual([]);
+    });
   });
 });

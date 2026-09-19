@@ -34,6 +34,9 @@ interface MembershipRow {
     email: string;
     passwordChangeRequired: boolean;
   };
+  teamMemberships: {
+    team: { id: string; name: string; slug: string };
+  }[];
 }
 
 export const toOrganizationDetailResponse = (
@@ -48,7 +51,10 @@ export const toOrganizationDetailResponse = (
   },
 });
 
-/** Never emits the user's password hash, deletion state, or other memberships. */
+/**
+ * Never emits the user's password hash, deletion state, or other
+ * memberships. Teams are identity only, in the order they were selected.
+ */
 export const toOrganizationMembershipResponse = (
   membership: MembershipRow,
 ): OrganizationMembershipResponse => ({
@@ -61,4 +67,9 @@ export const toOrganizationMembershipResponse = (
     email: membership.user.email,
     passwordChangeRequired: membership.user.passwordChangeRequired,
   },
+  teams: membership.teamMemberships.map(({ team }) => ({
+    id: team.id,
+    name: team.name,
+    slug: team.slug,
+  })),
 });

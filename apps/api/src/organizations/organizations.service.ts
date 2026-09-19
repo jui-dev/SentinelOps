@@ -44,6 +44,12 @@ const organizationSelection = {
  * The nested user is limited to identity. In particular it never selects
  * `user.memberships`, which would disclose the other organizations a member
  * belongs to.
+ *
+ * Teams come through the membership's own TeamMembership rows. Those rows
+ * are joined to the membership by a composite key on the shared
+ * organization_id, and to their team the same way, so every team reached
+ * here belongs to this membership's organization — the database guarantees
+ * it, whatever the query. Identity only, ordered by name.
  */
 const membershipSelection = {
   id: true,
@@ -51,6 +57,11 @@ const membershipSelection = {
   createdAt: true,
   user: {
     select: { id: true, name: true, email: true, passwordChangeRequired: true },
+  },
+  teamMemberships: {
+    select: { team: { select: { id: true, name: true, slug: true } } },
+    // Team names are unique within an organization, so this is total.
+    orderBy: { team: { name: 'asc' } },
   },
 } as const;
 

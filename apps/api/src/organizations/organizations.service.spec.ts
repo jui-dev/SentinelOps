@@ -30,6 +30,15 @@ const membershipRow = {
     email: 'ada@example.com',
     passwordChangeRequired: false,
   },
+  teamMemberships: [
+    {
+      team: {
+        id: '0199a1b2-c3d4-7000-8000-0000000000d1',
+        name: 'Payments',
+        slug: 'payments',
+      },
+    },
+  ],
 };
 
 const knownError = (code: string, index?: string) =>
@@ -239,7 +248,7 @@ describe('OrganizationsService', () => {
       expect(args.orderBy).toEqual([{ createdAt: 'asc' }, { id: 'asc' }]);
     });
 
-    it("should never select a member's other memberships", async () => {
+    it("should never select a member's other memberships, and select each team as identity only, by name", async () => {
       const { service, prisma } = serviceWith();
       prisma.membership.findMany.mockResolvedValue([]);
 
@@ -259,6 +268,10 @@ describe('OrganizationsService', () => {
             passwordChangeRequired: true,
           },
         },
+        teamMemberships: {
+          select: { team: { select: { id: true, name: true, slug: true } } },
+          orderBy: { team: { name: 'asc' } },
+        },
       });
     });
 
@@ -272,6 +285,13 @@ describe('OrganizationsService', () => {
           role: 'ADMIN',
           createdAt: '2026-09-01T12:00:00.000Z',
           user: membershipRow.user,
+          teams: [
+            {
+              id: '0199a1b2-c3d4-7000-8000-0000000000d1',
+              name: 'Payments',
+              slug: 'payments',
+            },
+          ],
         },
       ]);
     });
@@ -339,6 +359,7 @@ describe('OrganizationsService', () => {
         email: 'grace@example.com',
         passwordChangeRequired: true,
       },
+      teamMemberships: [],
     };
 
     const ready = () => {
@@ -409,6 +430,7 @@ describe('OrganizationsService', () => {
         role: 'MEMBER',
         createdAt: '2026-09-01T12:00:00.000Z',
         user: newMembershipRow.user,
+        teams: [],
       });
       expect(JSON.stringify(response)).not.toContain(input.temporaryPassword);
     });

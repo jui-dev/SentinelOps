@@ -45,15 +45,28 @@ export interface MemberUserResponse {
   passwordChangeRequired: boolean;
 }
 
+/** A team a member is on: identity only — never its members or services. */
+export interface MemberTeamResponse {
+  id: string;
+  name: string;
+  slug: string;
+}
+
 /**
  * One membership record within an organization.
  *
  * The resource is the membership, not the user: `id` is the membership's id,
  * which is why the routes are `/memberships` rather than `/members`.
+ *
+ * `teams` is every team in this organization the member is on, ordered by
+ * name — always an array, empty for a member on no team. Team membership
+ * belongs to the organization membership, not the user, so it sits here
+ * rather than on `user`.
  */
 export interface OrganizationMembershipResponse {
   id: string;
   role: string;
   createdAt: string;
   user: MemberUserResponse;
+  teams: MemberTeamResponse[];
 }

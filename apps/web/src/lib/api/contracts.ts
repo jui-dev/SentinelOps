@@ -76,6 +76,8 @@ export interface OrganizationMembershipResponse {
     /** True until they replace the one-time password they were given. */
     passwordChangeRequired: boolean;
   };
+  /** Every team in this organization they are on, by name; empty for none. */
+  teams: { id: string; name: string; slug: string }[];
 }
 
 /** `POST /organizations/:organizationId/memberships`. */

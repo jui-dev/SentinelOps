@@ -1063,8 +1063,11 @@ rename returns the organization without the caller's membership, and leaves the 
 alone. The resource is named `memberships`, not `members`,
 because each item *is* a membership: its `id` is the membership's id, and it carries the
 role and the date the grant was made, with the user nested inside as
-`{ id, name, email, passwordChangeRequired }`. A member's other organizations are never
-included.
+`{ id, name, email, passwordChangeRequired }`, and `teams`: every team in this organization
+the member is on, as `{ id, name, slug }`, ordered by name — always an array, empty for a
+member on no team. The teams come through the member's own `team_memberships` rows, whose
+composite keys hold them to the same organization, so a team from another organization can
+never appear. A member's other organizations are never included.
 
 ### Adding a member
 
