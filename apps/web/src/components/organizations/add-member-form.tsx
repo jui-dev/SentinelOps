@@ -2,6 +2,7 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { KeyRound } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 import type { FormEvent } from "react";
 
@@ -9,7 +10,10 @@ import { Alert, ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { CopyField } from "@/components/ui/copy-field";
 import { Field } from "@/components/ui/field";
+import { linkClasses } from "@/components/ui/link";
 import { Section } from "@/components/ui/page";
+import { Spinner } from "@/components/ui/spinner";
+import { teamsHref, useTeams } from "@/components/teams/team-scope";
 import { ApiErrorCode, Permission } from "@/lib/api/contracts";
 import type { CreateMemberRequest } from "@/lib/api/contracts";
 import { createMember } from "@/lib/api/endpoints";
@@ -17,7 +21,7 @@ import { fieldErrorsOf, isApiError } from "@/lib/api/errors";
 import { queryKeys } from "@/lib/api/query-keys";
 
 import { formatRole } from "./format";
-import { useCan, useOrganizationId } from "./organization-scope";
+import { useCan, useOrganization } from "./organization-scope";
 
 /**
  * 32 characters, so a random byte masked to five bits picks one without bias.
@@ -40,8 +44,9 @@ export const generateOneTimePassword = (): string => {
 };
 
 /**
- * Adds a member. What goes stale is the membership list: the new person is in
- * it, marked as awaiting their first sign-in.
+ * Adds a member. What goes stale is the membership list — the new person is
+ * in it, marked as awaiting their first sign-in — and, when they were placed
+ * on teams, the teams: their member counts and member lists.
  *
  * The one-time password is in the request only. It is never in the response,
  * and the mutation is dropped from the cache as soon as nothing observes it.
@@ -53,11 +58,27 @@ const useCreateMember = (organizationId: string) => {
     mutationFn: (body: CreateMemberRequest) =>
       createMember(organizationId, body),
     gcTime: 0,
-    onSuccess: () => {
+    onSuccess: (membership) => {
       void queryClient.invalidateQueries({
         queryKey: queryKeys.memberships(organizationId),
         exact: true,
       });
+
+      if (membership.teams.length > 0) {
+        // A prefix: the team list and every team's member list beneath it.
+        void queryClient.invalidateQueries({
+          queryKey: queryKeys.teams(organizationId),
+        });
+      }
+    },
+    onError: (error) => {
+      // A chosen team was deleted meanwhile: show the teams as they are now.
+      if (isApiError(error, 404) && error.code === ApiErrorCode.TEAM_NOT_FOUND) {
+        void queryClient.invalidateQueries({
+          queryKey: queryKeys.teams(organizationId),
+          exact: true,
+        });
+      }
     },
   });
 };
@@ -68,6 +89,8 @@ const messageFor = (error: unknown): string | undefined => {
   switch (error.code) {
     case ApiErrorCode.EMAIL_ALREADY_REGISTERED:
       return "An account with this email already exists.";
+    case ApiErrorCode.TEAM_NOT_FOUND:
+      return "One of the chosen teams no longer exists. The list has been refreshed; choose again. No one was added.";
     case ApiErrorCode.PERMISSION_DENIED:
       return "You do not have permission to add members.";
     default:
@@ -82,6 +105,61 @@ interface Added {
   email: string;
   role: string;
   password: string;
+  teams: string[];
+}
+
+/**
+ * The organization's teams as checkboxes, all optional. Native inputs in the
+ * design system's colours rather than a new control: a fieldset and a legend
+ * are exactly the semantics a set of choices needs.
+ */
+function TeamChoices({ disabled }: { disabled: boolean }) {
+  const organization = useOrganization();
+  const teams = useTeams(organization.id);
+
+  return (
+    <fieldset className="flex flex-col gap-2" disabled={disabled}>
+      <legend className="flex items-baseline gap-2 text-sm font-medium text-fg">
+        Teams
+        <span className="text-xs font-normal text-fg-subtle">Optional</span>
+      </legend>
+      {teams.isError ? (
+        <ErrorAlert error={teams.error} />
+      ) : !teams.data ? (
+        <Spinner label="Loading teams…" />
+      ) : teams.data.length === 0 ? (
+        <p className="text-sm text-fg-muted">
+          There are no teams yet.{" "}
+          <Link href={teamsHref(organization.slug)} className={linkClasses}>
+            Create one
+          </Link>{" "}
+          to give people operational responsibility.
+        </p>
+      ) : (
+        <>
+          <ul className="flex flex-col gap-1.5">
+            {teams.data.map((team) => (
+              <li key={team.id}>
+                <label className="inline-flex items-center gap-2 text-sm text-fg">
+                  <input
+                    type="checkbox"
+                    name="teamIds"
+                    value={team.id}
+                    className="size-4 accent-accent"
+                  />
+                  {team.name}
+                </label>
+              </li>
+            ))}
+          </ul>
+          <p className="text-xs text-fg-subtle">
+            The teams whose incidents they will respond to. You can change this
+            later.
+          </p>
+        </>
+      )}
+    </fieldset>
+  );
 }
 
 /**
@@ -100,7 +178,12 @@ function AddedMember({ added, onDone }: { added: Added; onDone: () => void }) {
       }
     >
       <div className="flex flex-col gap-3 pt-1">
-        <p className="text-fg-muted">Give them these sign-in details.</p>
+        <p className="text-fg-muted">
+          {added.teams.length > 0
+            ? `On ${added.teams.join(", ")}. `
+            : "Not on any team yet. "}
+          Give them these sign-in details.
+        </p>
         <CopyField
           label="Sign-in email"
           value={added.email}
@@ -127,7 +210,8 @@ function AddedMember({ added, onDone }: { added: Added; onDone: () => void }) {
 }
 
 export function AddMemberForm() {
-  const organizationId = useOrganizationId();
+  const organization = useOrganization();
+  const organizationId = organization.id;
   const canManage = useCan(Permission.MEMBERS_MANAGE);
   const create = useCreateMember(organizationId);
   const [password, setPassword] = useState("");
@@ -143,6 +227,7 @@ export function AddMemberForm() {
       name: String(data.get("name") ?? ""),
       email: String(data.get("email") ?? ""),
       temporaryPassword: password,
+      teamIds: data.getAll("teamIds").map(String),
     };
 
     setAdded(null);
@@ -153,6 +238,7 @@ export function AddMemberForm() {
           email: membership.user.email,
           role: membership.role,
           password: body.temporaryPassword,
+          teams: membership.teams.map(({ name }) => name),
         });
         create.reset();
         form.reset();
@@ -221,6 +307,7 @@ export function AddMemberForm() {
             Generate
           </Button>
         </div>
+        <TeamChoices disabled={create.isPending} />
         <div>
           <Button type="submit" disabled={create.isPending}>
             {create.isPending ? "Adding…" : "Add member"}

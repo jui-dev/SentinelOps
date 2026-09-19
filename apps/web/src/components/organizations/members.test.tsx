@@ -40,7 +40,7 @@ const ada = {
     name: "Ada Lovelace",
     email: "ada@example.com",
     passwordChangeRequired: false,
-  },
+  },  teams: [],
 };
 
 const grace = {
@@ -52,8 +52,26 @@ const grace = {
     name: "Grace Hopper",
     email: "grace@example.com",
     passwordChangeRequired: true,
-  },
+  },  teams: [],
 };
+
+const team = (id: string, name: string) => ({
+  id,
+  name,
+  slug: name.toLowerCase(),
+  description: null,
+  memberCount: 0,
+  serviceCount: 0,
+  createdAt: "2026-09-18T12:00:00.000Z",
+  updatedAt: "2026-09-18T12:00:00.000Z",
+});
+
+const PAYMENTS = team("0199a1b2-c3d4-7000-8000-0000000000d1", "Payments");
+const PLATFORM = team("0199a1b2-c3d4-7000-8000-0000000000d2", "Platform");
+const INFRASTRUCTURE = team(
+  "0199a1b2-c3d4-7000-8000-0000000000d3",
+  "Infrastructure",
+);
 
 type Handler = (request: SentRequest) => Response | undefined;
 
@@ -76,6 +94,8 @@ const api = (
         return jsonResponse(200, organizationDetail(permissions));
       case `GET ${base}/memberships`:
         return jsonResponse(200, members);
+      case `GET ${base}/teams`:
+        return jsonResponse(200, [INFRASTRUCTURE, PAYMENTS, PLATFORM]);
       default:
         return apiError(404);
     }
@@ -164,7 +184,9 @@ describe("adding a member", () => {
       name: "Grace Hopper",
       email: "grace@example.com",
       temporaryPassword: "one-time-password-123",
+      teamIds: [],
     });
+    expect(panel.textContent).toContain("Not on any team yet.");
 
     // The list shows the new person, still to sign in for the first time.
     expect(await screen.findByText("Awaiting first sign-in")).toBeDefined();
@@ -200,6 +222,114 @@ describe("adding a member", () => {
     expect(
       await screen.findByText("An account with this email already exists."),
     ).toBeDefined();
+  });
+});
+
+describe("choosing teams when adding a member", () => {
+  beforeEach(() => {
+    clearAccessToken();
+  });
+
+  const fillIn = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.type(await screen.findByLabelText("Name"), "Grace Hopper");
+    await user.type(screen.getByLabelText("Email"), "grace@example.com");
+    await user.type(
+      screen.getByLabelText("One-time password"),
+      "one-time-password-123",
+    );
+  };
+
+  it("offers every team as an optional choice, none chosen", async () => {
+    api(MANAGE);
+
+    renderMembers();
+
+    const teams = await screen.findByRole("group", { name: /Teams/ });
+    const boxes = await within(teams).findAllByRole("checkbox");
+
+    expect(boxes.map((box) => box.closest("label")?.textContent)).toEqual([
+      "Infrastructure",
+      "Payments",
+      "Platform",
+    ]);
+    expect(boxes.every((box) => !(box as HTMLInputElement).checked)).toBe(true);
+  });
+
+  it("sends the chosen teams and says which the member is on", async () => {
+    const { requests } = api(MANAGE, [ada], (request) =>
+      route(request) === `POST ${base}/memberships`
+        ? jsonResponse(201, {
+            ...grace,
+            teams: [
+              { id: PAYMENTS.id, name: "Payments", slug: "payments" },
+              { id: PLATFORM.id, name: "Platform", slug: "platform" },
+            ],
+          })
+        : undefined,
+    );
+    const user = userEvent.setup();
+
+    renderMembers();
+    await fillIn(user);
+    await user.click(await screen.findByRole("checkbox", { name: "Platform" }));
+    await user.click(screen.getByRole("checkbox", { name: "Payments" }));
+    await user.click(screen.getByRole("button", { name: "Add member" }));
+
+    const panel = await screen.findByRole("status");
+
+    expect(panel.textContent).toContain("On Payments, Platform.");
+    expect(
+      requests.find((r) => route(r) === `POST ${base}/memberships`)?.body,
+    ).toMatchObject({ teamIds: [PAYMENTS.id, PLATFORM.id] });
+    // The form is clear for the next person.
+    expect(
+      (screen.getByRole("checkbox", { name: "Payments" }) as HTMLInputElement)
+        .checked,
+    ).toBe(false);
+  });
+
+  it("explains a team that vanished, and says no one was added", async () => {
+    api(MANAGE, [ada], (request) =>
+      route(request) === `POST ${base}/memberships`
+        ? apiError(404, "TEAM_NOT_FOUND")
+        : undefined,
+    );
+    const user = userEvent.setup();
+
+    renderMembers();
+    await fillIn(user);
+    await user.click(await screen.findByRole("checkbox", { name: "Payments" }));
+    await user.click(screen.getByRole("button", { name: "Add member" }));
+
+    expect(
+      await screen.findByText(/One of the chosen teams no longer exists/),
+    ).toBeDefined();
+    expect(screen.getByText(/No one was added/)).toBeDefined();
+  });
+
+  it("points to creating a team when there are none", async () => {
+    mockApi((request) => {
+      switch (route(request)) {
+        case "POST /auth/refresh":
+          return refreshed("token");
+        case "GET /auth/me":
+          return jsonResponse(200, currentUser);
+        case `GET ${base}`:
+          return jsonResponse(200, organizationDetail(MANAGE));
+        case `GET ${base}/memberships`:
+          return jsonResponse(200, [ada]);
+        case `GET ${base}/teams`:
+          return jsonResponse(200, []);
+        default:
+          return apiError(404);
+      }
+    });
+
+    renderMembers();
+
+    expect(await screen.findByText(/There are no teams yet/)).toBeDefined();
+    expect(screen.getByRole("link", { name: "Create one" })).toBeDefined();
+    expect(screen.queryByRole("checkbox")).toBeNull();
   });
 });
 

@@ -359,4 +359,157 @@ describe('members (integration)', () => {
       expect(one.body.teams).toEqual([]);
     });
   });
+
+  describe('placing a new member on teams', () => {
+    const aTeam = (organizationId: string, name: string) =>
+      prisma.team.create({
+        data: { organizationId, name, slug: name.toLowerCase() },
+        select: { id: true, name: true, slug: true },
+      });
+    const counts = async () => ({
+      users: await prisma.user.count(),
+      memberships: await prisma.membership.count(),
+      teamMemberships: await prisma.teamMembership.count(),
+    });
+    const before = { users: 3, memberships: 3, teamMemberships: 0 };
+
+    it('should add a member on no team when the list is empty', async () => {
+      await aTeam(fx.orgA, 'Payments');
+
+      const response = await addMember(fx.orgA, fx.alice, {
+        ...grace,
+        teamIds: [],
+      });
+
+      expect(response.status).toBe(201);
+      expect(response.body.teams).toEqual([]);
+      expect(await prisma.teamMembership.count()).toBe(0);
+    });
+
+    it('should place the member on one team', async () => {
+      const payments = await aTeam(fx.orgA, 'Payments');
+
+      const response = await addMember(fx.orgA, fx.alice, {
+        ...grace,
+        teamIds: [payments.id],
+      });
+
+      expect(response.status).toBe(201);
+      expect(response.body.teams).toEqual([payments]);
+    });
+
+    it('should place the member on several teams, answer them by name, and show them on each team', async () => {
+      const platform = await aTeam(fx.orgA, 'Platform');
+      const payments = await aTeam(fx.orgA, 'Payments');
+      await aTeam(fx.orgA, 'Infrastructure');
+
+      const response = await addMember(fx.orgA, fx.alice, {
+        ...grace,
+        teamIds: [platform.id, payments.id],
+      });
+
+      expect(response.status).toBe(201);
+      expect(response.body.teams).toEqual([payments, platform]);
+
+      const onPlatform = await request(app.getHttpServer())
+        .get(`/api/v1/organizations/${fx.orgA}/teams/${platform.id}/members`)
+        .set('Authorization', `Bearer ${await tokens.signAccessToken(fx.dave)}`)
+        .expect(200);
+
+      expect(
+        onPlatform.body.map((m: { membershipId: string }) => m.membershipId),
+      ).toEqual([response.body.id]);
+    });
+
+    it('should place the member once on a team named twice', async () => {
+      const payments = await aTeam(fx.orgA, 'Payments');
+
+      const response = await addMember(fx.orgA, fx.alice, {
+        ...grace,
+        teamIds: [payments.id, payments.id, payments.id.toUpperCase()],
+      });
+
+      expect(response.status).toBe(201);
+      expect(response.body.teams).toEqual([payments]);
+      expect(await prisma.teamMembership.count()).toBe(1);
+    });
+
+    it.each([
+      [
+        'a team that does not exist',
+        async () => '0199a1b2-c3d4-7000-8000-0000000000ff',
+      ],
+      [
+        "another organization's team",
+        async () => (await aTeam(fx.orgB, 'Operations')).id,
+      ],
+    ])(
+      'should refuse %s with 404 TEAM_NOT_FOUND and create nothing at all',
+      async (_what, teamIdOf) => {
+        const payments = await aTeam(fx.orgA, 'Payments');
+        const foreign = await teamIdOf();
+
+        const response = await addMember(fx.orgA, fx.alice, {
+          ...grace,
+          // A valid team first, so a partial placement would be visible.
+          teamIds: [payments.id, foreign],
+        });
+
+        expect(response.status).toBe(404);
+        expect(response.body.code).toBe('TEAM_NOT_FOUND');
+        // The account, the membership, and the valid placement all rolled
+        // back together.
+        expect(await counts()).toEqual(before);
+        expect(
+          await prisma.user.findUnique({
+            where: { email: 'grace@acme.example' },
+          }),
+        ).toBeNull();
+      },
+    );
+
+    it('should refuse a malformed team id with 400 before writing anything', async () => {
+      const response = await addMember(fx.orgA, fx.alice, {
+        ...grace,
+        teamIds: ['not-a-uuid'],
+      });
+
+      expect(response.status).toBe(400);
+      expect(await counts()).toEqual(before);
+    });
+
+    it('should still require the one-time password to be replaced before anything else', async () => {
+      const payments = await aTeam(fx.orgA, 'Payments');
+      await addMember(fx.orgA, fx.alice, { ...grace, teamIds: [payments.id] });
+
+      const signedIn = await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({ email: 'grace@acme.example', password: ONE_TIME_PASSWORD })
+        .expect(200);
+      const bearer = `Bearer ${signedIn.body.accessToken}`;
+
+      expect(signedIn.body.user.passwordChangeRequired).toBe(true);
+
+      const refused = await request(app.getHttpServer())
+        .get(`/api/v1/organizations/${fx.orgA}/teams/${payments.id}/members`)
+        .set('Authorization', bearer)
+        .expect(403);
+
+      expect(refused.body.code).toBe('PASSWORD_CHANGE_REQUIRED');
+
+      const changed = await request(app.getHttpServer())
+        .post('/api/v1/auth/password')
+        .set('Authorization', bearer)
+        .send({
+          currentPassword: ONE_TIME_PASSWORD,
+          newPassword: 'graces-own-passphrase',
+        })
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .get(`/api/v1/organizations/${fx.orgA}/teams/${payments.id}/members`)
+        .set('Authorization', `Bearer ${changed.body.accessToken}`)
+        .expect(200);
+    });
+  });
 });

@@ -5,9 +5,11 @@ import { emailAlreadyRegistered } from '../auth/auth.errors.js';
 import { toOrganizationResponse } from '../auth/auth.responses.js';
 import { PasswordService } from '../auth/password.service.js';
 import { PrismaService } from '../database/prisma.service.js';
+import { foreignKeyViolationHint } from '../database/foreign-key-violation.js';
 import { uniqueViolationHint } from '../database/unique-violation.js';
 import { Prisma } from '../generated/prisma/client.js';
 import type { Role } from '../generated/prisma/enums.js';
+import { teamNotFound } from '../teams/teams.errors.js';
 import { organizationNotFound } from '../tenancy/tenancy.errors.js';
 import { isResourceId } from '../tenancy/tenancy.schemas.js';
 import type {
@@ -220,6 +222,15 @@ export class OrganizationsService {
    * Always MEMBER, never taken from the request: the organization has one
    * Admin — whoever created it — and adding people does not make another.
    *
+   * Optionally places them on teams, in the same transaction, through the
+   * ordinary TeamMembership rows. Every team must be one of this
+   * organization's: the teams are read within it first, and any id that is
+   * not found — malformed ones never reach here — answers 404
+   * TEAM_NOT_FOUND and rolls the whole addition back, account included. The
+   * composite foreign keys refuse a team from another organization in any
+   * case, so a team deleted between that read and the insert is answered
+   * the same way. Duplicates were collapsed by the request schema.
+   *
    * The password is hashed before the transaction opens, as registration
    * does, so a connection is not held across the slow part.
    */
@@ -254,8 +265,37 @@ export class OrganizationsService {
           select: { id: true },
         });
 
-        return tx.membership.create({
+        const created = await tx.membership.create({
           data: { organizationId, userId: user.id, role: 'MEMBER' },
+          select: { id: true },
+        });
+
+        const teamIds = input.teamIds ?? [];
+
+        if (teamIds.length > 0) {
+          const teams = await tx.team.findMany({
+            where: { organizationId, id: { in: teamIds } },
+            select: { id: true },
+          });
+
+          if (teams.length !== teamIds.length) {
+            throw teamNotFound();
+          }
+
+          // Scalar ids, not nested connects: both relations share
+          // organizationId, and it is that shared column the keys check.
+          await tx.teamMembership.createMany({
+            data: teamIds.map((teamId) => ({
+              organizationId,
+              teamId,
+              membershipId: created.id,
+            })),
+          });
+        }
+
+        // Read back whole, teams included, as the list would show it.
+        return tx.membership.findUniqueOrThrow({
+          where: { id: created.id },
           select: membershipSelection,
         });
       });
@@ -264,6 +304,12 @@ export class OrganizationsService {
 
       if (hint?.includes('email')) {
         throw emailAlreadyRegistered();
+      }
+
+      const foreignKey = foreignKeyViolationHint(error);
+
+      if (foreignKey?.includes('team_id') || foreignKey?.includes('teamid')) {
+        throw teamNotFound();
       }
 
       throw error;
@@ -275,6 +321,7 @@ export class OrganizationsService {
       membershipId: membership.id,
       userId: membership.user.id,
       role: membership.role,
+      teamCount: membership.teamMemberships.length,
     });
 
     return toOrganizationMembershipResponse(membership);

@@ -85,6 +85,8 @@ export interface CreateMemberRequest {
   name: string;
   email: string;
   temporaryPassword: string;
+  /** Teams to place them on, all in this organization. Optional. */
+  teamIds?: string[];
 }
 
 /** `POST /auth/password`. */

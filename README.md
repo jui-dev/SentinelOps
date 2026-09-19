@@ -1044,7 +1044,7 @@ put slugs in its own URLs.
 | `PATCH /api/v1/organizations/:organizationId` | Rename the organization: `{ "name": "…" }`, nothing else | `organization:update` |
 | `GET /api/v1/organizations/:organizationId/memberships` | Every membership record, oldest first | `memberships:read` |
 | `GET /api/v1/organizations/:organizationId/memberships/:membershipId` | One membership record | `memberships:read` |
-| `POST /api/v1/organizations/:organizationId/memberships` | Add a `MEMBER` with a one-time password: `{ "name", "email", "temporaryPassword" }` — see [Adding a member](#adding-a-member) | `members:manage` |
+| `POST /api/v1/organizations/:organizationId/memberships` | Add a `MEMBER` with a one-time password, optionally on teams: `{ "name", "email", "temporaryPassword", "teamIds"? }` — see [Adding a member](#adding-a-member) | `members:manage` |
 | `POST /api/v1/organizations/:organizationId/invitations` | Invite an email address: `{ "email", "role" }` | `invitations:manage` |
 | `GET /api/v1/organizations/:organizationId/invitations` | Every open invitation, newest first | `invitations:read` |
 | `DELETE /api/v1/organizations/:organizationId/invitations/:invitationId` | Revoke an open invitation | `invitations:manage` |
@@ -1080,7 +1080,8 @@ POST /api/v1/organizations/:organizationId/memberships
 {
   "name": "Grace Hopper",
   "email": "grace@example.com",
-  "temporaryPassword": "at least 12 characters"
+  "temporaryPassword": "at least 12 characters",
+  "teamIds": ["…", "…"]                   // optional: this organization's teams
 }
 ```
 
@@ -1090,10 +1091,19 @@ application rule, not a database constraint — every flow that writes a members
 (registration, adding a member, the dev seeder) keeps to it, and there is no endpoint that
 changes a role, so a later version that wants several admins needs no migration to undo.
 
-One transaction creates the `User` and the `Membership`, so neither exists without the
-other. The password is hashed with Argon2id exactly as registration hashes one, and is
-never logged or echoed: the `201` carries the new membership as the list shows one. The
-account is marked `passwordChangeRequired` — the one-time password signs them in, and they
+One transaction creates the `User`, the `Membership`, and — when `teamIds` is given — a
+`TeamMembership` row per team, so none exists without the others. Teams are optional: a
+member may exist before they have operational responsibility, and can be placed later.
+`teamIds` is de-duplicated (letter case included) before anything is written, so naming a
+team twice places the member once. Every team is looked up within the organization first;
+one that does not exist there — including another organization's — answers
+`404 TEAM_NOT_FOUND` and rolls the whole addition back, account included. The composite
+foreign keys refuse a cross-organization team regardless. The `201` lists the teams the
+member was placed on, in the same shape as every membership record.
+
+The password is hashed with Argon2id exactly as registration hashes one, and is never
+logged or echoed: the `201` carries the new membership as the list shows one. The account
+is marked `passwordChangeRequired` — the one-time password signs them in, and they
 must then choose their own.
 
 An address that already has an account is refused with `409 EMAIL_ALREADY_REGISTERED`,

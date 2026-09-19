@@ -5,6 +5,7 @@ import type { PasswordService } from '../auth/password.service.js';
 
 import type { PrismaService } from '../database/prisma.service.js';
 import { Prisma } from '../generated/prisma/client.js';
+import { TeamsErrorCode } from '../teams/teams.errors.js';
 import { TenancyErrorCode } from '../tenancy/tenancy.errors.js';
 import { OrganizationsErrorCode } from './organizations.errors.js';
 import { OrganizationsService } from './organizations.service.js';
@@ -55,7 +56,14 @@ const serviceWith = () => {
   const prisma = {
     organization: { findFirst: vi.fn(), update: vi.fn() },
     user: { create: vi.fn() },
-    membership: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn() },
+    membership: {
+      findFirst: vi.fn(),
+      findMany: vi.fn(),
+      create: vi.fn(),
+      findUniqueOrThrow: vi.fn(),
+    },
+    team: { findMany: vi.fn() },
+    teamMembership: { createMany: vi.fn() },
     $transaction: vi.fn(),
   };
   prisma.$transaction.mockImplementation((work: (tx: unknown) => unknown) =>
@@ -368,10 +376,16 @@ describe('OrganizationsService', () => {
       context.prisma.user.create.mockResolvedValue({
         id: newMembershipRow.user.id,
       });
-      context.prisma.membership.create.mockResolvedValue(newMembershipRow);
+      context.prisma.membership.create.mockResolvedValue({ id: MEMBERSHIP_ID });
+      context.prisma.membership.findUniqueOrThrow.mockResolvedValue(
+        newMembershipRow,
+      );
 
       return context;
     };
+
+    const PAYMENTS = '0199a1b2-c3d4-7000-8000-0000000000d1';
+    const PLATFORM = '0199a1b2-c3d4-7000-8000-0000000000d2';
 
     it('should hash the one-time password before the transaction opens', async () => {
       const { service, prisma, passwords } = ready();
@@ -416,8 +430,94 @@ describe('OrganizationsService', () => {
           userId: newMembershipRow.user.id,
           role: 'MEMBER',
         },
-        select: expect.any(Object),
+        select: { id: true },
       });
+    });
+
+    it('should touch no team when none is asked for, and read the membership back whole', async () => {
+      const { service, prisma } = ready();
+
+      await service.createMember(ORG_A, { ...input, teamIds: [] });
+
+      expect(prisma.team.findMany).not.toHaveBeenCalled();
+      expect(prisma.teamMembership.createMany).not.toHaveBeenCalled();
+      expect(
+        prisma.membership.findUniqueOrThrow,
+      ).toHaveBeenCalledExactlyOnceWith({
+        where: { id: MEMBERSHIP_ID },
+        select: expect.objectContaining({
+          teamMemberships: expect.any(Object),
+        }),
+      });
+    });
+
+    it('should look the teams up within the organization, then place the member on each', async () => {
+      const { service, prisma } = ready();
+      prisma.team.findMany.mockResolvedValue([
+        { id: PAYMENTS },
+        { id: PLATFORM },
+      ]);
+
+      await service.createMember(ORG_A, {
+        ...input,
+        teamIds: [PAYMENTS, PLATFORM],
+      });
+
+      expect(prisma.team.findMany).toHaveBeenCalledExactlyOnceWith({
+        where: { organizationId: ORG_A, id: { in: [PAYMENTS, PLATFORM] } },
+        select: { id: true },
+      });
+      expect(prisma.teamMembership.createMany).toHaveBeenCalledExactlyOnceWith({
+        data: [
+          {
+            organizationId: ORG_A,
+            teamId: PAYMENTS,
+            membershipId: MEMBERSHIP_ID,
+          },
+          {
+            organizationId: ORG_A,
+            teamId: PLATFORM,
+            membershipId: MEMBERSHIP_ID,
+          },
+        ],
+      });
+      expect(
+        prisma.teamMembership.createMany.mock.invocationCallOrder[0],
+      ).toBeLessThan(
+        prisma.membership.findUniqueOrThrow.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('should answer 404 TEAM_NOT_FOUND, placing no one, when a team is not in the organization', async () => {
+      const { service, prisma } = ready();
+      // Only one of the two was found within ORG_A.
+      prisma.team.findMany.mockResolvedValue([{ id: PAYMENTS }]);
+
+      const error = await errorOf(
+        service.createMember(ORG_A, {
+          ...input,
+          teamIds: [PAYMENTS, PLATFORM],
+        }),
+      );
+
+      expect(error).toBeInstanceOf(NotFoundException);
+      expect(error.errorCode).toBe(TeamsErrorCode.TEAM_NOT_FOUND);
+      expect(prisma.teamMembership.createMany).not.toHaveBeenCalled();
+    });
+
+    it('should answer 404 TEAM_NOT_FOUND when a team key refuses the placement', async () => {
+      // A team deleted between the lookup and the insert.
+      const { service, prisma } = ready();
+      prisma.team.findMany.mockResolvedValue([{ id: PAYMENTS }]);
+      prisma.teamMembership.createMany.mockRejectedValue(
+        knownError('P2003', 'team_memberships_organization_id_team_id_fkey'),
+      );
+
+      const error = await errorOf(
+        service.createMember(ORG_A, { ...input, teamIds: [PAYMENTS] }),
+      );
+
+      expect(error.errorCode).toBe(TeamsErrorCode.TEAM_NOT_FOUND);
     });
 
     it('should answer with the membership as the list shows one, and no password', async () => {
@@ -432,6 +532,27 @@ describe('OrganizationsService', () => {
         user: newMembershipRow.user,
         teams: [],
       });
+      expect(JSON.stringify(response)).not.toContain(input.temporaryPassword);
+    });
+
+    it('should answer with the teams the member was placed on', async () => {
+      const { service, prisma } = ready();
+      prisma.team.findMany.mockResolvedValue([{ id: PAYMENTS }]);
+      prisma.membership.findUniqueOrThrow.mockResolvedValue({
+        ...newMembershipRow,
+        teamMemberships: [
+          { team: { id: PAYMENTS, name: 'Payments', slug: 'payments' } },
+        ],
+      });
+
+      const response = await service.createMember(ORG_A, {
+        ...input,
+        teamIds: [PAYMENTS],
+      });
+
+      expect(response.teams).toEqual([
+        { id: PAYMENTS, name: 'Payments', slug: 'payments' },
+      ]);
       expect(JSON.stringify(response)).not.toContain(input.temporaryPassword);
     });
 
