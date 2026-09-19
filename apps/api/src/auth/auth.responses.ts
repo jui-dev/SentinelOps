@@ -28,6 +28,7 @@ interface UserRow {
   email: string;
   name: string;
   createdAt: Date;
+  passwordChangeRequired: boolean;
 }
 
 interface OrganizationRow {
@@ -49,6 +50,7 @@ export const toUserResponse = (user: UserRow): UserResponse => ({
   email: user.email,
   name: user.name,
   createdAt: user.createdAt.toISOString(),
+  passwordChangeRequired: user.passwordChangeRequired,
 });
 
 /** Never emits deletedAt: a soft-deleted row is filtered, not disclosed. */

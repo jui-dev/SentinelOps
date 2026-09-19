@@ -13,11 +13,17 @@ import type {
 import {
   emailAlreadyRegistered,
   invalidCredentials,
+  invalidCurrentPassword,
   organizationSlugTaken,
+  passwordUnchanged,
   unauthenticated,
 } from './auth.errors.js';
 import { toCurrentUserResponse, toUserResponse } from './auth.responses.js';
-import type { LoginRequest, RegisterRequest } from './auth.schemas.js';
+import type {
+  ChangePasswordRequest,
+  LoginRequest,
+  RegisterRequest,
+} from './auth.schemas.js';
 import { PasswordService } from './password.service.js';
 import type { IssuedRefreshToken } from './refresh-token.service.js';
 import { RefreshTokenService } from './refresh-token.service.js';
@@ -47,6 +53,7 @@ const userSelection = {
   email: true,
   name: true,
   createdAt: true,
+  passwordChangeRequired: true,
 } as const;
 
 @Injectable()
@@ -221,6 +228,73 @@ export class AuthService {
   }
 
   /**
+   * Replaces the caller's password, and starts a fresh session.
+   *
+   * The current password is required even though the caller is
+   * authenticated: an access token left in an unattended browser must not be
+   * enough to take the account over. It is checked like a login's, but a
+   * wrong one answers 400 rather than 401 — the session itself is fine.
+   *
+   * One transaction writes the new hash, clears `passwordChangeRequired`, and
+   * revokes every refresh token the user holds — every other session ends.
+   * The update is conditional on the hash just verified, so two changes
+   * racing with the same current password cannot both succeed: the loser is
+   * told its current password is wrong, which by then it is.
+   *
+   * Returns a new session, as login does, so the device that changed the
+   * password stays signed in.
+   */
+  async changePassword(
+    userId: string,
+    request: ChangePasswordRequest,
+    now: Date = new Date(),
+  ): Promise<AuthenticationResult> {
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, deletedAt: null },
+      select: { ...userSelection, passwordHash: true },
+    });
+
+    if (!user) {
+      // As in currentUser: the token verified, but its account is gone.
+      throw unauthenticated('Invalid or expired access token');
+    }
+
+    if (
+      !user.passwordHash ||
+      !(await this.passwords.verify(user.passwordHash, request.currentPassword))
+    ) {
+      throw invalidCurrentPassword();
+    }
+
+    if (request.newPassword === request.currentPassword) {
+      throw passwordUnchanged();
+    }
+
+    const passwordHash = await this.passwords.hash(request.newPassword);
+
+    await this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.user.updateMany({
+        where: { id: userId, deletedAt: null, passwordHash: user.passwordHash },
+        data: { passwordHash, passwordChangeRequired: false },
+      });
+
+      if (count === 0) {
+        throw invalidCurrentPassword();
+      }
+
+      await this.refreshTokens.revokeAllFor(tx, userId, now);
+    });
+
+    this.logger.log('Changed a password; every other session was ended', {
+      userId,
+    });
+
+    const { passwordHash: _passwordHash, ...safe } = user;
+
+    return this.authenticate({ ...safe, passwordChangeRequired: false });
+  }
+
+  /**
    * Exchanges a refresh token for a new access token and its successor.
    *
    * All of the interesting rules -- expiry, revocation, reuse detection -- live
@@ -295,6 +369,7 @@ export class AuthService {
     email: string;
     name: string;
     createdAt: Date;
+    passwordChangeRequired: boolean;
   }): Promise<AuthenticationResult> {
     const [accessToken, refresh] = await Promise.all([
       this.tokens.signAccessToken(user.id),

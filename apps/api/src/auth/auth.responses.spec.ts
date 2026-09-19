@@ -22,6 +22,7 @@ const userRow = {
   createdAt: CREATED_AT,
   updatedAt: CREATED_AT,
   passwordHash: '$argon2id$v=19$m=19456,t=2,p=1$c2FsdA$aGFzaA',
+  passwordChangeRequired: true,
   deletedAt: new Date('2026-02-01T00:00:00.000Z'),
 };
 
@@ -52,6 +53,7 @@ describe('auth responses', () => {
         email: 'ada@example.com',
         name: 'Ada Lovelace',
         createdAt: '2026-01-02T03:04:05.678Z',
+        passwordChangeRequired: true,
       });
     });
 
@@ -126,6 +128,7 @@ describe('auth responses', () => {
         email: 'ada@example.com',
         name: 'Ada Lovelace',
         createdAt: '2026-01-02T03:04:05.678Z',
+        passwordChangeRequired: true,
         memberships: [
           {
             id: 'membership-1',

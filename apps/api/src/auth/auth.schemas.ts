@@ -82,5 +82,16 @@ export const loginSchema = z.object({
   password: z.string().min(1).max(128),
 });
 
+/**
+ * Replacing one's own password. The current one is checked like a login's —
+ * any length, so a password set under an older rule can still be replaced —
+ * and the new one against the policy for passwords being set.
+ */
+export const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1).max(128),
+  newPassword: passwordSchema,
+});
+
 export type RegisterRequest = z.infer<typeof registerSchema>;
 export type LoginRequest = z.infer<typeof loginSchema>;
+export type ChangePasswordRequest = z.infer<typeof changePasswordSchema>;

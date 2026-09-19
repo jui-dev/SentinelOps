@@ -60,7 +60,12 @@ describe('Invitations (e2e)', () => {
     prisma.membership.findFirst.mockImplementation(
       (args: { where: Record<string, unknown> }) =>
         role && args.where.userId === USER_ID
-          ? { id: MEMBERSHIP_ID, organizationId: ORG_ID, role }
+          ? {
+              id: MEMBERSHIP_ID,
+              organizationId: ORG_ID,
+              role,
+              user: { passwordChangeRequired: false },
+            }
           : null,
     );
 

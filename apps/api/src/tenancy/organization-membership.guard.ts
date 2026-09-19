@@ -10,12 +10,17 @@ import {
 } from '../common/request-context.js';
 import { MembershipResolver } from './membership-resolver.service.js';
 import { ORGANIZATION_ID_PARAM } from './tenancy.constants.js';
-import { organizationNotFound } from './tenancy.errors.js';
+import {
+  organizationNotFound,
+  passwordChangeRequired,
+} from './tenancy.errors.js';
 import { isResourceId } from './tenancy.schemas.js';
 
 /**
  * Tenant admission: lets a request into an organization only if the caller is
- * a current member of it.
+ * a current member of it — and has replaced any one-time password an admin
+ * gave them. A member still on one is refused with 403
+ * PASSWORD_CHANGE_REQUIRED on every organization route.
  *
  * Admission is not resource isolation. Passing this guard means the caller may
  * act within `organizationId`; it says nothing about whether a resource id
@@ -88,10 +93,18 @@ export class OrganizationMembershipGuard implements CanActivate {
       throw organizationNotFound();
     }
 
-    const organization = await this.memberships.resolve(userId, organizationId);
+    const resolved = await this.memberships.resolve(userId, organizationId);
 
-    if (!organization) {
+    if (!resolved) {
       throw organizationNotFound();
+    }
+
+    // After the membership check, so a non-member still receives the same 404
+    // as everyone else: this refusal is only ever given to a member.
+    const { passwordChangeRequired: mustChange, ...organization } = resolved;
+
+    if (mustChange) {
+      throw passwordChangeRequired();
     }
 
     setRequestOrganization(organization);

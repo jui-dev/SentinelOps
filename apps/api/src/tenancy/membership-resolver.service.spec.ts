@@ -27,7 +27,12 @@ describe('MembershipResolver', () => {
         organization: { deletedAt: null },
         user: { deletedAt: null },
       },
-      select: { id: true, organizationId: true, role: true },
+      select: {
+        id: true,
+        organizationId: true,
+        role: true,
+        user: { select: { passwordChangeRequired: true } },
+      },
     });
   });
 
@@ -36,12 +41,14 @@ describe('MembershipResolver', () => {
       id: MEMBERSHIP_ID,
       organizationId: ORG_ID,
       role: 'ADMIN',
+      user: { passwordChangeRequired: true },
     });
 
     await expect(resolver.resolve(USER_ID, ORG_ID)).resolves.toEqual({
       organizationId: ORG_ID,
       membershipId: MEMBERSHIP_ID,
       role: 'ADMIN',
+      passwordChangeRequired: true,
     });
   });
 
@@ -58,6 +65,7 @@ describe('MembershipResolver', () => {
       id: MEMBERSHIP_ID,
       organizationId: ORG_ID,
       role: 'MEMBER',
+      user: { passwordChangeRequired: false },
     });
 
     await resolver.resolve(USER_ID, ORG_ID);

@@ -108,6 +108,7 @@ describe('Incidents (e2e)', () => {
               organizationId: ORG_ID,
               role,
               userId: USER_ID,
+              user: { passwordChangeRequired: false },
             }
           : null,
     );

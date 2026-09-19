@@ -86,7 +86,12 @@ describe('Authorization (e2e)', () => {
         }
 
         return args.where.organizationId === ORG_ID
-          ? { id: MEMBERSHIP_ID, organizationId: ORG_ID, role }
+          ? {
+              id: MEMBERSHIP_ID,
+              organizationId: ORG_ID,
+              role,
+              user: { passwordChangeRequired: false },
+            }
           : null;
       },
     );

@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 
 /**
  * The machine-readable `code` values this module puts on the error contract.
@@ -6,6 +6,7 @@ import { NotFoundException } from '@nestjs/common';
  */
 export const TenancyErrorCode = {
   ORGANIZATION_NOT_FOUND: 'ORGANIZATION_NOT_FOUND',
+  PASSWORD_CHANGE_REQUIRED: 'PASSWORD_CHANGE_REQUIRED',
 } as const;
 
 export type TenancyErrorCode =
@@ -23,4 +24,18 @@ export type TenancyErrorCode =
 export const organizationNotFound = (): NotFoundException =>
   new NotFoundException('Organization not found', {
     errorCode: TenancyErrorCode.ORGANIZATION_NOT_FOUND,
+  });
+
+/**
+ * A member still signing in with the one-time password an admin gave them.
+ * They are refused everything within the organization until they choose their
+ * own, at `POST /auth/password`.
+ *
+ * 403, not 404: only a caller who *is* a member reaches this — admission has
+ * already confirmed the organization to them — so it reveals nothing, and a
+ * client needs the distinct code to send them to change it.
+ */
+export const passwordChangeRequired = (): ForbiddenException =>
+  new ForbiddenException('Choose a new password to continue', {
+    errorCode: TenancyErrorCode.PASSWORD_CHANGE_REQUIRED,
   });

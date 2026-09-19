@@ -29,6 +29,12 @@ export interface UserResponse {
   email: string;
   name: string;
   createdAt: string;
+  /**
+   * True while the account is on a one-time password an admin chose. A client
+   * sends the person to choose their own; the API refuses them every
+   * organization route until they do.
+   */
+  passwordChangeRequired: boolean;
 }
 
 /** An organization, as any authenticated response renders one. */

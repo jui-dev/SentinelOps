@@ -845,6 +845,7 @@ Nothing here uses Passport. `@nestjs/jwt` signs and verifies; the guard is forty
 | `POST /api/v1/auth/refresh` | public | Rotate the refresh cookie, mint a new access token |
 | `POST /api/v1/auth/logout` | public | End the session, clear the cookie |
 | `GET /api/v1/auth/me` | **required** | The caller and their memberships |
+| `POST /api/v1/auth/password` | **required** | Replace the caller's password: `{ "currentPassword", "newPassword" }` — see [Choosing a new password](#choosing-a-new-password) |
 
 Logout is public on purpose: it authenticates off the refresh cookie, so an expired access
 token must not be able to strand a session. It is idempotent — an unknown or absent cookie
@@ -1091,6 +1092,29 @@ An address that already has an account is refused with `409 EMAIL_ALREADY_REGIST
 even when that account belongs to another organization: attaching an existing account
 would let one tenant pull someone in without their consent. The unique index decides, not
 a check made first, so two admins adding one address cannot both succeed.
+
+### Choosing a new password
+
+`POST /api/v1/auth/password` takes `{ "currentPassword", "newPassword" }` from any signed-in
+account. The current password is required even though the caller is authenticated, so an
+access token left in an unattended browser is not enough to take the account over. A wrong
+one is a `400 INVALID_CURRENT_PASSWORD` — not a `401`, which would tell the client its
+session had expired — and reusing the current password is `400 PASSWORD_UNCHANGED`. The
+new one is held to the same 12-character rule as any password being set.
+
+One transaction writes the new hash, clears `passwordChangeRequired`, and revokes every
+refresh token the user holds, so every other session ends. The update is conditional on the
+hash just verified, so two changes racing with the same current password cannot both win.
+The response is a fresh session, as login's is, so the device that made the change stays
+signed in.
+
+**A one-time password opens nothing but this.** Organization admission reads the flag in
+the same query that resolves the membership, and while it is set answers every
+organization route with `403 PASSWORD_CHANGE_REQUIRED`. Only a member receives it — a
+non-member still gets the ordinary admission `404`. `/auth/me` stays readable and reports
+`passwordChangeRequired`, which is how a client knows to send the person to choose a
+password. Because the flag is read from the database on every request rather than carried
+in a token, changing the password takes effect on the very next request.
 
 ### Admission is not isolation
 

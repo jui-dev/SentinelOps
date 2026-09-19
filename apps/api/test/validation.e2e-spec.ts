@@ -15,7 +15,9 @@ const createIncidentSchema = z.object({
   title: z.string().min(1).max(200),
   severity: z.enum(['low', 'medium', 'high', 'critical']),
   responders: z
-    .array(z.object({ email: z.email(), pageCount: z.coerce.number().int().min(1) }))
+    .array(
+      z.object({ email: z.email(), pageCount: z.coerce.number().int().min(1) }),
+    )
     .optional(),
 });
 
@@ -151,9 +153,9 @@ describe('Request validation (e2e)', () => {
         .send({ title: '', severity: 'catastrophic' })
         .expect(400);
 
-      expect(response.body.details.map((d: { field: string }) => d.field)).toEqual(
-        expect.arrayContaining(['title', 'severity']),
-      );
+      expect(
+        response.body.details.map((d: { field: string }) => d.field),
+      ).toEqual(expect.arrayContaining(['title', 'severity']));
       expect(response.body.details.length).toBe(2);
     });
 

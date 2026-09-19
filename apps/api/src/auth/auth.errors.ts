@@ -1,4 +1,8 @@
-import { ConflictException, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  UnauthorizedException,
+} from '@nestjs/common';
 
 /**
  * The machine-readable `code` values this module puts on the error contract.
@@ -15,6 +19,8 @@ export const AuthErrorCode = {
   REFRESH_TOKEN_EXPIRED: 'REFRESH_TOKEN_EXPIRED',
   REFRESH_TOKEN_REUSED: 'REFRESH_TOKEN_REUSED',
   UNAUTHENTICATED: 'UNAUTHENTICATED',
+  INVALID_CURRENT_PASSWORD: 'INVALID_CURRENT_PASSWORD',
+  PASSWORD_UNCHANGED: 'PASSWORD_UNCHANGED',
 } as const;
 
 export type AuthErrorCode = (typeof AuthErrorCode)[keyof typeof AuthErrorCode];
@@ -70,3 +76,39 @@ export const unauthenticated = (message: string): UnauthorizedException =>
   new UnauthorizedException(message, {
     errorCode: AuthErrorCode.UNAUTHENTICATED,
   });
+
+/**
+ * The current password given to change it was wrong.
+ *
+ * 400 rather than 401. The caller *is* authenticated — by their access token —
+ * and a 401 would tell a client its session had expired, sending it to
+ * refresh and retry instead of showing the person their mistake.
+ */
+export const invalidCurrentPassword = (): BadRequestException =>
+  new BadRequestException(
+    {
+      message: 'The current password is incorrect',
+      details: [
+        {
+          field: 'currentPassword',
+          message: 'The current password is incorrect',
+        },
+      ],
+    },
+    { errorCode: AuthErrorCode.INVALID_CURRENT_PASSWORD },
+  );
+
+/** The new password is the one being replaced. */
+export const passwordUnchanged = (): BadRequestException =>
+  new BadRequestException(
+    {
+      message: 'Choose a password different from the current one',
+      details: [
+        {
+          field: 'newPassword',
+          message: 'Choose a password different from the current one',
+        },
+      ],
+    },
+    { errorCode: AuthErrorCode.PASSWORD_UNCHANGED },
+  );

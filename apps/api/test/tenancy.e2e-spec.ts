@@ -93,7 +93,12 @@ describe('Tenancy (e2e)', () => {
     prisma.membership.findFirst.mockImplementation(
       (args: { where: Record<string, unknown> }) =>
         'userId' in args.where
-          ? { id: MEMBERSHIP_ID, organizationId: ORG_ID, role: 'MEMBER' }
+          ? {
+              id: MEMBERSHIP_ID,
+              organizationId: ORG_ID,
+              role: 'MEMBER',
+              user: { passwordChangeRequired: false },
+            }
           : {
               id: MEMBERSHIP_ID,
               role: 'MEMBER',

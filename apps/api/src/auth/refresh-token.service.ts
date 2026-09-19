@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 
 import { PrismaService } from '../database/prisma.service.js';
+import type { Prisma } from '../generated/prisma/client.js';
 import {
   invalidRefreshToken,
   refreshTokenExpired,
@@ -213,6 +214,24 @@ export class RefreshTokenService {
   ): Promise<number> {
     const { count } = await this.prisma.refreshToken.updateMany({
       where: { familyId, revokedAt: null },
+      data: { revokedAt: now },
+    });
+
+    return count;
+  }
+
+  /**
+   * Revokes every live token the user holds, in every family: signs them out
+   * everywhere. Takes the transaction client, so a password change and the
+   * revocation it implies commit together or not at all.
+   */
+  async revokeAllFor(
+    db: Prisma.TransactionClient,
+    userId: string,
+    now: Date = new Date(),
+  ): Promise<number> {
+    const { count } = await db.refreshToken.updateMany({
+      where: { userId, revokedAt: null },
       data: { revokedAt: now },
     });
 

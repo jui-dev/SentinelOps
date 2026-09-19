@@ -1,4 +1,8 @@
-import { NotFoundException, SetMetadata } from '@nestjs/common';
+import {
+  ForbiddenException,
+  NotFoundException,
+  SetMetadata,
+} from '@nestjs/common';
 import type { ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 
@@ -10,7 +14,10 @@ import {
   setRequestUser,
 } from '../common/request-context.js';
 import type { OrganizationContext } from '../common/request-context.js';
-import type { MembershipResolver } from './membership-resolver.service.js';
+import type {
+  MembershipResolver,
+  ResolvedMembership,
+} from './membership-resolver.service.js';
 import { OrganizationMembershipGuard } from './organization-membership.guard.js';
 import { TenancyErrorCode } from './tenancy.errors.js';
 
@@ -48,7 +55,12 @@ const contextWith = (
     getClass: () => class Controller {},
   }) as unknown as ExecutionContext;
 
-const guardWith = (result: OrganizationContext | null = ADMITTED) => {
+const guardWith = (
+  result: ResolvedMembership | null = {
+    ...ADMITTED,
+    passwordChangeRequired: false,
+  },
+) => {
   const resolve = vi.fn().mockResolvedValue(result);
   const guard = new OrganizationMembershipGuard(
     { resolve } as unknown as MembershipResolver,
@@ -117,6 +129,42 @@ describe('OrganizationMembershipGuard', () => {
       });
 
       expect(resolve).toHaveBeenCalledExactlyOnceWith(USER_ID, ORG_A);
+    });
+  });
+
+  describe('a member still on a one-time password', () => {
+    it('should refuse them with 403 PASSWORD_CHANGE_REQUIRED and record nothing', async () => {
+      const { guard } = guardWith({
+        ...ADMITTED,
+        passwordChangeRequired: true,
+      });
+
+      await inRequest(async () => {
+        const error = await guard
+          .canActivate(contextWith({ params: { organizationId: ORG_A } }))
+          .then(
+            () => {
+              throw new Error('Expected a rejection');
+            },
+            (caught: ForbiddenException) => caught,
+          );
+
+        expect(error).toBeInstanceOf(ForbiddenException);
+        expect(error.errorCode).toBe(TenancyErrorCode.PASSWORD_CHANGE_REQUIRED);
+        expect(getRequestOrganization()).toBeUndefined();
+      });
+    });
+
+    it('should still answer a non-member with the admission 404', async () => {
+      // The resolver finds no membership, so nothing about the password is
+      // known — or told.
+      const { guard } = guardWith(null);
+
+      await inRequest(async () => {
+        await expect(
+          guard.canActivate(contextWith({ params: { organizationId: ORG_A } })),
+        ).rejects.toBeInstanceOf(NotFoundException);
+      });
     });
   });
 

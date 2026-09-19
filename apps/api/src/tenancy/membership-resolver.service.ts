@@ -4,6 +4,14 @@ import type { OrganizationContext } from '../common/request-context.js';
 import { PrismaService } from '../database/prisma.service.js';
 
 /**
+ * A current membership, as admission sees it: the context a request runs
+ * with, and whether the account still has to replace a one-time password.
+ */
+export interface ResolvedMembership extends OrganizationContext {
+  passwordChangeRequired: boolean;
+}
+
+/**
  * Answers the admission question: is this user a current member of this
  * organization, and in what capacity?
  *
@@ -26,11 +34,15 @@ export class MembershipResolver {
    *
    * `organizationId` must already be a well-formed uuid; the guard checks that
    * before calling.
+   *
+   * Also reports whether the account is still on a one-time password, from
+   * the same row join — so enforcing that costs no second query, and takes
+   * effect on the very next request once the password is changed.
    */
   async resolve(
     userId: string,
     organizationId: string,
-  ): Promise<OrganizationContext | null> {
+  ): Promise<ResolvedMembership | null> {
     const membership = await this.prisma.membership.findFirst({
       where: {
         organizationId,
@@ -38,7 +50,12 @@ export class MembershipResolver {
         organization: { deletedAt: null },
         user: { deletedAt: null },
       },
-      select: { id: true, organizationId: true, role: true },
+      select: {
+        id: true,
+        organizationId: true,
+        role: true,
+        user: { select: { passwordChangeRequired: true } },
+      },
     });
 
     if (!membership) {
@@ -49,6 +66,7 @@ export class MembershipResolver {
       organizationId: membership.organizationId,
       membershipId: membership.id,
       role: membership.role,
+      passwordChangeRequired: membership.user.passwordChangeRequired,
     };
   }
 }

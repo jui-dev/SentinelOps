@@ -503,6 +503,154 @@ describe('authentication (integration)', () => {
     });
   });
 
+  describe('changing a password', () => {
+    const NEW_PASSWORD = 'an-entirely-new-passphrase';
+
+    const changePassword = (
+      accessToken: string | undefined,
+      body: Record<string, unknown>,
+    ) => {
+      const pending = http().post('/api/v1/auth/password');
+
+      return (
+        accessToken
+          ? pending.set('Authorization', `Bearer ${accessToken}`)
+          : pending
+      ).send(body);
+    };
+
+    it('should require authentication', async () => {
+      const response = await changePassword(undefined, {
+        currentPassword: PASSWORD,
+        newPassword: NEW_PASSWORD,
+      }).expect(401);
+
+      expect(response.body.code).toBe('UNAUTHENTICATED');
+    });
+
+    it('should refuse a wrong current password with 400, changing nothing', async () => {
+      const { accessToken } = (await register().expect(201)).body;
+
+      const response = await changePassword(accessToken, {
+        currentPassword: 'not-the-current-one',
+        newPassword: NEW_PASSWORD,
+      }).expect(400);
+
+      expect(response.body.code).toBe('INVALID_CURRENT_PASSWORD');
+      expect(response.body.details).toEqual([
+        {
+          field: 'currentPassword',
+          message: 'The current password is incorrect',
+        },
+      ]);
+      await login('ada@example.com', PASSWORD).expect(200);
+    });
+
+    it('should refuse keeping the same password', async () => {
+      const { accessToken } = (await register().expect(201)).body;
+
+      const response = await changePassword(accessToken, {
+        currentPassword: PASSWORD,
+        newPassword: PASSWORD,
+      }).expect(400);
+
+      expect(response.body.code).toBe('PASSWORD_UNCHANGED');
+    });
+
+    it('should hold the new password to the policy for setting one', async () => {
+      const { accessToken } = (await register().expect(201)).body;
+
+      await changePassword(accessToken, {
+        currentPassword: PASSWORD,
+        newPassword: 'too-short',
+      }).expect(400);
+      await login('ada@example.com', PASSWORD).expect(200);
+    });
+
+    it('should replace the password, end every other session, and keep this one signed in', async () => {
+      const registered = await register().expect(201);
+      const firstSession = refreshCookieOf(registered) as string;
+      const secondSession = refreshCookieOf(
+        await login().expect(200),
+      ) as string;
+
+      const response = await changePassword(registered.body.accessToken, {
+        currentPassword: PASSWORD,
+        newPassword: NEW_PASSWORD,
+      }).expect(200);
+
+      expect(response.body).toMatchObject({
+        accessToken: expect.any(String),
+        tokenType: 'Bearer',
+        user: { email: 'ada@example.com', passwordChangeRequired: false },
+      });
+      expect(leakedKeys(response.body)).toEqual([]);
+
+      await refreshWith(firstSession).expect(401);
+      await refreshWith(secondSession).expect(401);
+      await refreshWith(refreshCookieOf(response) as string).expect(200);
+
+      await login('ada@example.com', PASSWORD).expect(401);
+      await login('ada@example.com', NEW_PASSWORD).expect(200);
+    });
+
+    it('should keep an account on a one-time password out of its organizations until it changes it', async () => {
+      await register().expect(201);
+      await prisma.user.update({
+        where: { email: 'ada@example.com' },
+        data: { passwordChangeRequired: true },
+      });
+      const { organizationId } = await prisma.membership.findFirstOrThrow({
+        select: { organizationId: true },
+      });
+      const organizationPath = `/api/v1/organizations/${organizationId}`;
+
+      const signedIn = await login().expect(200);
+      const bearer = `Bearer ${signedIn.body.accessToken}`;
+
+      expect(signedIn.body.user.passwordChangeRequired).toBe(true);
+
+      const refused = await http()
+        .get(organizationPath)
+        .set('Authorization', bearer)
+        .expect(403);
+
+      expect(refused.body.code).toBe('PASSWORD_CHANGE_REQUIRED');
+
+      // Who they are stays readable: a client needs it to send them on.
+      const me = await http()
+        .get('/api/v1/auth/me')
+        .set('Authorization', bearer)
+        .expect(200);
+
+      expect(me.body.passwordChangeRequired).toBe(true);
+
+      const changed = await changePassword(signedIn.body.accessToken, {
+        currentPassword: PASSWORD,
+        newPassword: NEW_PASSWORD,
+      }).expect(200);
+
+      // Both the new token and the old one are admitted now: the flag is read
+      // from the database on every request, not carried in a token.
+      await http()
+        .get(organizationPath)
+        .set('Authorization', `Bearer ${changed.body.accessToken}`)
+        .expect(200);
+      await http()
+        .get(organizationPath)
+        .set('Authorization', bearer)
+        .expect(200);
+
+      expect(
+        (
+          await prisma.user.findUniqueOrThrow({
+            where: { email: 'ada@example.com' },
+          })
+        ).passwordChangeRequired,
+      ).toBe(false);
+    });
+  });
+
   describe('response leak prevention', () => {
     it('should never expose a persistence internal in any auth response', async () => {
       const registered = await register().expect(201);

@@ -26,8 +26,16 @@ import type {
   RefreshedResponse,
 } from './auth.contract.js';
 import { invalidRefreshToken } from './auth.errors.js';
-import { loginSchema, registerSchema } from './auth.schemas.js';
-import type { LoginRequest, RegisterRequest } from './auth.schemas.js';
+import {
+  changePasswordSchema,
+  loginSchema,
+  registerSchema,
+} from './auth.schemas.js';
+import type {
+  ChangePasswordRequest,
+  LoginRequest,
+  RegisterRequest,
+} from './auth.schemas.js';
 import { AuthService } from './auth.service.js';
 import { CurrentUserId } from './current-user.decorator.js';
 import { Public } from './public.decorator.js';
@@ -35,8 +43,9 @@ import { Public } from './public.decorator.js';
 /**
  * The authentication routes.
  *
- * All but one are `@Public()`: they are how a caller obtains the
+ * All but two are `@Public()`: they are how a caller obtains the
  * credential the global guard demands, so requiring one would be circular.
+ * `me` and changing a password act on the signed-in account, so they need it.
  * Logout is public for a different reason -- it authenticates off the refresh
  * cookie, so an expired access token must not be able to strand a session.
  *
@@ -155,7 +164,27 @@ export class AuthController {
     clearRefreshCookie(res, this.config);
   }
 
-  /** The caller and their memberships. The one protected route here. */
+  /**
+   * Replaces the caller's password, given the current one, and returns a
+   * fresh session with a new refresh cookie. Every other session ends. 200:
+   * it creates no resource.
+   *
+   * Protected, and deliberately not organization-scoped: it is the one thing
+   * an account on a one-time password is allowed to do.
+   */
+  @Post('password')
+  @HttpCode(HttpStatus.OK)
+  async changePassword(
+    @CurrentUserId() userId: string,
+    @Body({ schema: changePasswordSchema }) body: ChangePasswordRequest,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<AuthenticatedResponse> {
+    const { response, refresh } = await this.auth.changePassword(userId, body);
+    setRefreshCookie(res, refresh.token, refresh.expiresAt, this.config);
+    return response;
+  }
+
+  /** The caller and their memberships. */
   @Get('me')
   me(@CurrentUserId() userId: string): Promise<CurrentUserResponse> {
     return this.auth.currentUser(userId);
