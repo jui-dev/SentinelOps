@@ -261,8 +261,8 @@ it ensures a small organization to work in, and the web login page lists its peo
 
 All of them use the password `dev-password-123`. The organization is **AcmePay**
 (`sentinelops-dev`), with three services: Payment API (`CRITICAL`, Payments),
-Authentication (`HIGH`, Platform), and Fraud Detection (`HIGH`, Risk). There are no
-incidents.
+Authentication (`HIGH`, Platform), and Fraud Detection (`HIGH`, Risk). It starts with no
+incidents; see [Demo history](#demo-history-temporary) to give it some.
 
 The seeder makes two different promises:
 
@@ -285,6 +285,44 @@ It is never created in `test` or `production`, and the login panel is compiled o
 production builds. To remove it, delete `apps/api/src/dev/` and its line in
 `app.module.ts`, `apps/web/src/lib/dev/`, and the panel in
 `apps/web/src/components/auth/login-form.tsx`.
+
+### Demo history (temporary)
+
+To make AcmePay look used — for a demo or screenshots — replace its incidents with about
+26 weeks of believable history:
+
+```bash
+pnpm --filter @sentinelops/api demo:history                         # up to 00:00 UTC today
+pnpm --filter @sentinelops/api demo:history -- --anchor=2026-09-18  # up to 00:00 UTC that day
+```
+
+It writes about 75 incidents (a Payments card-network migration with a SEV1, an
+Authentication signing-key outage, a fraud-model rollout, quiet holiday weeks, and each
+persona away for a stretch) and ends with four active incidents: one nobody on Risk has
+picked up, two under investigation, and one waiting for the Admin to resolve. Every
+incident follows the application's own rules — the Admin declares, the responsible team's
+members start, post, and complete their own responses, and the Admin resolves with a
+note — and the history is checked against those rules before anything is written.
+
+What a run does, in one transaction:
+
+- **Replaces every incident in AcmePay** — including any you created by hand — with their
+  responses and timelines, numbered from INC-1 in the order they were declared. The next
+  incident you declare continues from there. The command prints how many it removed.
+- **Changes nothing else.** Users, memberships, teams, and services are only read, and no
+  other organization is touched. If AcmePay's teams, services, or personas' teams no longer
+  match the table above, it refuses and changes nothing; reset the development database to
+  start over.
+
+Run it twice on the same day, or with the same `--anchor`, and you get exactly the same
+history again (only row ids differ). Run it on a later day and the same story moves forward
+to end there.
+
+It refuses to run unless `NODE_ENV` is `development` **and** `DATABASE_URL` points at this
+machine (`localhost`, `127.0.0.1`, or `::1`), and checks both before connecting. It has no
+HTTP route or button. The command builds the API first, then runs
+`dist/dev/demo-history/demo-history.cli.js`; it lives in `apps/api/src/dev/demo-history/`
+and goes with the rest of `src/dev/`.
 
 The API refuses to boot without a `JWT_SECRET` of at least 32 characters. That is
 deliberate: a defaulted signing key is a key every deployment that forgot to set one
