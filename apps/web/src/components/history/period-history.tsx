@@ -192,12 +192,13 @@ export function PeriodHistory({
     >
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
         <div className="flex items-baseline gap-2">
-          <h3
+          {/* The page's own section, so an h2 beneath its title. */}
+          <h2
             id="incidents-in-period"
             className="text-[0.9375rem] leading-6 font-semibold text-fg"
           >
             Incidents in this period
-          </h3>
+          </h2>
           <span className="numeric text-sm text-fg-subtle">
             {history.total}
           </span>
@@ -222,9 +223,9 @@ export function PeriodHistory({
             <div key={day} className="flex flex-col gap-2">
               {/* The date is the history's spine: each group under its own. */}
               <div className="flex items-baseline gap-3">
-                <h4 className="text-sm font-semibold text-fg">
+                <h3 className="text-sm font-semibold text-fg">
                   {UTC_DATE.format(new Date(`${day}T00:00:00.000Z`))}
-                </h4>
+                </h3>
                 <span className="h-px flex-1 bg-line-subtle" />
                 <span className="numeric text-xs text-fg-subtle">
                   {items.length}

@@ -30,6 +30,8 @@ const USER_ID = '0199a1b2-c3d4-7000-8000-000000000001';
 const ORG_ID = '0199a1b2-c3d4-7000-8000-00000000000a';
 const OTHER_ORG_ID = '0199a1b2-c3d4-7000-8000-00000000000b';
 const MEMBERSHIP_ID = '0199a1b2-c3d4-7000-8000-0000000000aa';
+/** Well formed, and not a membership of ORG_ID. */
+const OTHER_MEMBERSHIP_ID = '0199a1b2-c3d4-7000-8000-0000000000ab';
 const TEAM_ID = '0199a1b2-c3d4-7000-8000-0000000000c1';
 const SERVICE_ID = '0199a1b2-c3d4-7000-8000-0000000000d1';
 const INCIDENT_ID = '0199a1b2-c3d4-7000-8000-0000000000e1';
@@ -70,6 +72,9 @@ const activityRow = {
 
 const base = `/api/v1/organizations/${ORG_ID}/incidents`;
 
+/** A period of whole UTC days, as both activity routes take one. */
+const PERIOD = 'from=2026-09-13&to=2026-09-19';
+
 /** A resolution, with the note every one requires. */
 const RESOLVE = { status: 'RESOLVED', resolution: 'Rolled back.' };
 
@@ -101,7 +106,11 @@ describe('Incidents (e2e)', () => {
       updateMany: vi.fn(),
       findFirstOrThrow: vi.fn(),
     },
-    incidentActivity: { create: vi.fn(), createMany: vi.fn() },
+    incidentActivity: {
+      create: vi.fn(),
+      createMany: vi.fn(),
+      findMany: vi.fn(),
+    },
     incidentResponder: {
       count: vi.fn(),
       findFirst: vi.fn(),
@@ -180,6 +189,7 @@ describe('Incidents (e2e)', () => {
     prisma.incident.findFirstOrThrow.mockResolvedValue(incidentRow);
     prisma.incidentActivity.create.mockResolvedValue(activityRow);
     prisma.incidentActivity.createMany.mockResolvedValue({ count: 1 });
+    prisma.incidentActivity.findMany.mockResolvedValue([]);
     // By default the caller is investigating the incident, and nobody else.
     prisma.incidentResponder.findFirst.mockResolvedValue({
       id: 'responder-1',
@@ -225,6 +235,31 @@ describe('Incidents (e2e)', () => {
         items: expect.any(Array),
       });
       expect(prisma.incident.findFirst).not.toHaveBeenCalled();
+    });
+
+    it("should read the organization's activity, not mistaking the path for a number", async () => {
+      const response = await send(
+        'get',
+        `${base}/activity?from=2026-09-13&to=2026-09-19`,
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        from: '2026-09-13',
+        to: '2026-09-19',
+        total: 0,
+        activeDays: 0,
+        thresholds: [1, 3, 6, 11],
+      });
+      // Every day of the period, quiet ones included.
+      expect(response.body.days).toHaveLength(7);
+      expect(prisma.incident.findFirst).not.toHaveBeenCalled();
+      // The organization is the admitted one, never anything the request names.
+      expect(prisma.incidentActivity.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ organizationId: ORG_ID }),
+        }),
+      );
     });
 
     it("should read the caller's attention, not mistaking the path for a number", async () => {
@@ -603,6 +638,20 @@ describe('Incidents (e2e)', () => {
     });
 
     it.each([
+      '',
+      'from=2026-09-13',
+      'to=2026-09-19',
+      'from=2026-09-19&to=2026-09-13',
+      'from=2025-01-01&to=2026-09-19',
+      'from=2026-09-13T00:00:00Z&to=2026-09-19',
+    ])('should refuse the activity period %s with 400', async (query) => {
+      const response = await send('get', `${base}/activity?${query}`);
+
+      expect(response.status).toBe(400);
+      expect(prisma.incidentActivity.findMany).not.toHaveBeenCalled();
+    });
+
+    it.each([
       'from=2026-09-13',
       'from=2026-09-19&to=2026-09-13',
       'from=2025-01-01&to=2026-09-19',
@@ -735,6 +784,10 @@ describe('Incidents (e2e)', () => {
         method: 'get' as const,
         path: `${base}/summary?from=2026-09-13&to=2026-09-19`,
       },
+      {
+        method: 'get' as const,
+        path: `${base}/activity?from=2026-09-13&to=2026-09-19`,
+      },
       { method: 'get' as const, path: `${base}/attention` },
       { method: 'post' as const, path: base },
       { method: 'patch' as const, path: `${base}/1` },
@@ -801,6 +854,91 @@ describe('Incidents (e2e)', () => {
       expect(response.status).toBe(400);
       expect(response.body.code).toBe('INVALID_CURSOR');
       expect(prisma.incidentResponder.findMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("a member's response activity", () => {
+    const activity = (membershipId: string, query = PERIOD) =>
+      `/api/v1/organizations/${ORG_ID}/memberships/${membershipId}/activity?${query}`;
+
+    it.each(['ADMIN', 'MEMBER'] as const)(
+      'should let a %s read it, as a calendar of days',
+      async (role) => {
+        admitAs(role);
+
+        const response = await send('get', activity(MEMBERSHIP_ID));
+
+        expect(response.status).toBe(200);
+        expect(response.body).toMatchObject({
+          from: '2026-09-13',
+          to: '2026-09-19',
+          total: 0,
+          activeDays: 0,
+          // A person's bands, not the organization's.
+          thresholds: [1, 2, 4, 6],
+        });
+        expect(response.body.days).toHaveLength(7);
+      },
+    );
+
+    it('should read the entries this member wrote in the admitted organization', async () => {
+      admitAs('MEMBER');
+
+      const response = await send('get', activity(MEMBERSHIP_ID));
+
+      expect(response.status).toBe(200);
+      // The actor is the membership's own user, resolved within the
+      // organization — never anything the request named.
+      expect(prisma.incidentActivity.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            organizationId: ORG_ID,
+            actorId: USER_ID,
+          }),
+        }),
+      );
+    });
+
+    it('should answer a malformed membership id with 404, reading no activity', async () => {
+      admitAs('MEMBER');
+
+      const response = await send('get', activity('not-a-membership'));
+
+      expect(response.status).toBe(404);
+      expect(response.body.code).toBe('MEMBERSHIP_NOT_FOUND');
+      expect(prisma.incidentActivity.findMany).not.toHaveBeenCalled();
+    });
+
+    it('should answer a membership this organization lacks with 404', async () => {
+      const admitted = admitAs('MEMBER').getMockImplementation();
+
+      // Admission still resolves the caller; the addressed membership, which
+      // this organization does not have, resolves to nothing.
+      prisma.membership.findFirst.mockImplementation(
+        (args: { where: Record<string, unknown> }) =>
+          args.where.id === OTHER_MEMBERSHIP_ID ? null : admitted?.(args),
+      );
+
+      const response = await send('get', activity(OTHER_MEMBERSHIP_ID));
+
+      expect(response.status).toBe(404);
+      expect(response.body.code).toBe('MEMBERSHIP_NOT_FOUND');
+      expect(prisma.incidentActivity.findMany).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      '',
+      'from=2026-09-13',
+      'to=2026-09-19',
+      'from=2026-09-19&to=2026-09-13',
+      'from=2025-01-01&to=2026-09-19',
+    ])('should refuse the period %s with 400', async (query) => {
+      admitAs('MEMBER');
+
+      const response = await send('get', activity(MEMBERSHIP_ID, query));
+
+      expect(response.status).toBe(400);
+      expect(prisma.incidentActivity.findMany).not.toHaveBeenCalled();
     });
   });
 });

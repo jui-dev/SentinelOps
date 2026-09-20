@@ -38,6 +38,18 @@ export const incidentHref = (orgSlug: string, number: number) =>
   `${incidentsHref(orgSlug)}/${number}`;
 
 /**
+ * Incident history: part of the Incidents domain, so the rail keeps
+ * Incidents current while it is open. A period may be named in the address.
+ */
+export const incidentHistoryHref = (
+  orgSlug: string,
+  period?: IncidentPeriod,
+) =>
+  `${incidentsHref(orgSlug)}/history${
+    period ? `?from=${period.from}&to=${period.to}` : ""
+  }`;
+
+/**
  * One state's incidents, a page at a time. `fetchNextPage` follows the API's
  * cursor; there is no page size or total here — both are the API's.
  */
@@ -143,7 +155,8 @@ export const attentionCount = ({
 /**
  * After an incident is declared or changed: its own entry holds the API's
  * answer, and both lists refetch — its status, severity, or team may have
- * moved it between them or within one — as do the overview's counts. Its
+ * moved it between them or within one — as do the overview's counts, and its
+ * activity, since each of these writes a timeline entry. Its
  * timeline refetches too: the change may have been recorded there. So does
  * the caller's attention: declaring, reassigning, resolving, starting, or
  * completing each moves an incident into or out of someone's lists. And
@@ -164,6 +177,9 @@ export const storeIncident = (
   });
   void queryClient.invalidateQueries({
     queryKey: [...queryKeys.incidents(organizationId), "summary"],
+  });
+  void queryClient.invalidateQueries({
+    queryKey: [...queryKeys.incidents(organizationId), "activity"],
   });
   void queryClient.invalidateQueries({
     queryKey: queryKeys.incidentTimeline(organizationId, incident.number),

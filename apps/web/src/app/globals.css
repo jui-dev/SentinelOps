@@ -118,6 +118,35 @@
   --color-signal-inactive: light-dark(#6b7485, #7d8799);
 
   /*
+   * Activity — how much operational history a day holds. A density, never a
+   * signal: it says how much happened, never how bad. Two families, so an
+   * organization's activity and one person's are never mistaken for each
+   * other, and neither is the accent:
+   *
+   *   operational  azure, the organization's — cooler than the accent's indigo
+   *   personal     violet, one member's own   — warmer than it
+   *
+   * Four steps each, and one shared `empty` for a day with nothing on it,
+   * which has no domain and so no hue. Each ramp darkens in light and
+   * lightens in dark, strictly.
+   *
+   * `empty` sits close to the surface on purpose: a day nothing happened on
+   * should recede, and the hairline around it is what says a cell is there
+   * at all (see activity-calendar.tsx). Keeping it near the surface also
+   * carries it further from the ramp's first step, which is what tells
+   * "nothing" from "a little" now that every day is the same size.
+   */
+  --color-activity-empty: light-dark(#edeff4, #1d212b);
+  --color-activity-operational-1: light-dark(#bcd8f0, #1e3d5c);
+  --color-activity-operational-2: light-dark(#82b4e0, #2d608c);
+  --color-activity-operational-3: light-dark(#4184bc, #3f89c0);
+  --color-activity-operational-4: light-dark(#1b5c94, #63ade0);
+  --color-activity-personal-1: light-dark(#d4cdec, #2f2a60);
+  --color-activity-personal-2: light-dark(#aea0dc, #4c4196);
+  --color-activity-personal-3: light-dark(#8271c2, #7163c4);
+  --color-activity-personal-4: light-dark(#57459e, #9e91e6);
+
+  /*
    * The situation strip: an ink band in both themes, the darkest layer. Its
    * colours come from its level (see situation.tsx); only `neutral` exists.
    */
@@ -204,6 +233,46 @@
 /* Counts and quantities: aligned figures in the body face, not mono. */
 @utility numeric {
   font-variant-numeric: tabular-nums;
+}
+
+/*
+ * A scrollbar for content that scrolls inside a panel rather than the page:
+ * thin, with no track, and the same line colour a control's edge uses — so
+ * it reads as part of the surface instead of a grey bar across it. Opt in
+ * where a region scrolls on its own; the page's own scrollbar is the
+ * browser's.
+ *
+ * Both spellings are set. `scrollbar-width`/`scrollbar-color` are the
+ * standard ones (Firefox, and Chrome 121+); the `::-webkit-` rules are what
+ * older WebKit and Blink read, and are ignored once the standard ones are
+ * understood. Neither hides the scrollbar: it stays where a pointer expects
+ * to find it, and stays draggable.
+ */
+@utility scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line-strong) transparent;
+
+  &::-webkit-scrollbar {
+    height: 8px;
+    width: 8px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background-color: var(--color-line-strong);
+    border-radius: var(--radius-full);
+  }
+
+  &:hover {
+    scrollbar-color: var(--color-line-control) transparent;
+  }
+
+  &:hover::-webkit-scrollbar-thumb {
+    background-color: var(--color-line-control);
+  }
 }
 
 /*

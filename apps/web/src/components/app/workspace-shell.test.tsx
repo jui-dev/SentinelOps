@@ -182,6 +182,23 @@ describe("WorkspaceShell", () => {
       ).toEqual(["Incidents", "Services"]);
     });
 
+    it("keeps Incidents current on Incident history, without a rail item of its own", async () => {
+      at("/orgs/acme-ops/incidents/history", "acme-ops");
+      api({ permissions: [...READ, "incidents:read", "services:read"] });
+
+      renderShell();
+
+      const incidents = await within(primaryNav()).findByRole("link", {
+        name: "Incidents",
+      });
+
+      // History is part of the Incidents domain, so the rail says so.
+      expect(incidents.getAttribute("aria-current")).toBe("page");
+      expect(
+        within(primaryNav()).queryByRole("link", { name: /history/i }),
+      ).toBeNull();
+    });
+
     it("does not offer Incidents without incidents:read", async () => {
       at("/orgs/acme-ops", "acme-ops");
       api({ permissions: [...READ, "services:read"] });

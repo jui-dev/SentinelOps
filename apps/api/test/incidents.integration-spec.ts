@@ -1375,6 +1375,492 @@ describe('incidents (integration)', () => {
     });
   });
 
+  describe('operational activity', () => {
+    let next = 0;
+
+    /**
+     * An incident with timeline entries written directly, so a test can put
+     * activity on the days it means to. Every entry is on the incident's own
+     * organization, as the application only ever writes them.
+     */
+    const withActivity = async (
+      entries: {
+        type:
+          | 'DECLARED'
+          | 'UPDATE'
+          | 'SEVERITY_CHANGED'
+          | 'STATUS_CHANGED'
+          | 'RESPONSE_STARTED'
+          | 'RESPONSE_COMPLETED';
+        at: string;
+        toValue?: string;
+      }[],
+      { organizationId = fx.orgA }: { organizationId?: string } = {},
+    ) => {
+      const inA = organizationId === fx.orgA;
+
+      next += 1;
+
+      const incident = await prisma.incident.create({
+        data: {
+          organizationId,
+          number: next,
+          title: `Incident ${next}`,
+          serviceId: inA ? fx.apiA : fx.apiB,
+          teamId: inA ? fx.paymentsA : fx.paymentsB,
+          createdById: inA ? fx.alice : fx.bob,
+          severity: 'SEV2',
+          status: 'INVESTIGATING',
+          createdAt: new Date(entries[0].at),
+        },
+      });
+
+      await prisma.incidentActivity.createMany({
+        data: entries.map((entry) => ({
+          organizationId,
+          incidentId: incident.id,
+          actorId: inA ? fx.alice : fx.bob,
+          type: entry.type,
+          toValue: entry.toValue ?? null,
+          createdAt: new Date(entry.at),
+        })),
+      });
+
+      return incident;
+    };
+
+    const activity = async (
+      from: string,
+      to: string,
+      organizationId = fx.orgA,
+    ) => {
+      const response = await call(
+        'get',
+        `${organizationId}/incidents/activity?from=${from}&to=${to}`,
+        organizationId === fx.orgA ? fx.dave : fx.bob,
+      );
+
+      expect(response.status).toBe(200);
+
+      return response.body;
+    };
+
+    /** The days that had anything, as [date, total, level]. */
+    const busy = (body: {
+      days: { date: string; total: number; level: number }[];
+    }) =>
+      body.days
+        .filter((day) => day.total > 0)
+        .map((day) => [day.date, day.total, day.level]);
+
+    beforeEach(() => {
+      next = 0;
+    });
+
+    it('should count a period by whole UTC days, both ends included', async () => {
+      await withActivity([
+        // The last instant before the period.
+        { type: 'DECLARED', at: '2026-09-12T23:59:59.999Z' },
+        // The period's first instant, and its last.
+        { type: 'UPDATE', at: '2026-09-13T00:00:00.000Z' },
+        { type: 'UPDATE', at: '2026-09-19T23:59:59.999Z' },
+        // The first instant after it.
+        { type: 'UPDATE', at: '2026-09-20T00:00:00.000Z' },
+      ]);
+
+      const body = await activity('2026-09-13', '2026-09-19');
+
+      expect(body).toMatchObject({
+        from: '2026-09-13',
+        to: '2026-09-19',
+        total: 2,
+        activeDays: 2,
+        thresholds: [1, 3, 6, 11],
+      });
+      // Every day of the period, quiet ones included.
+      expect(body.days).toHaveLength(7);
+      expect(busy(body)).toEqual([
+        ['2026-09-13', 1, 1],
+        ['2026-09-19', 1, 1],
+      ]);
+    });
+
+    it('should break a day down, and not count the status change a start causes', async () => {
+      await withActivity([
+        { type: 'DECLARED', at: '2026-09-15T09:00:00Z', toValue: 'SEV2' },
+        { type: 'RESPONSE_STARTED', at: '2026-09-15T09:05:00Z' },
+        {
+          type: 'STATUS_CHANGED',
+          at: '2026-09-15T09:05:00.001Z',
+          toValue: 'INVESTIGATING',
+        },
+        { type: 'UPDATE', at: '2026-09-15T10:00:00Z' },
+        { type: 'SEVERITY_CHANGED', at: '2026-09-15T10:30:00Z', toValue: 'SEV1' },
+        { type: 'RESPONSE_COMPLETED', at: '2026-09-15T11:00:00Z' },
+        { type: 'STATUS_CHANGED', at: '2026-09-15T11:30:00Z', toValue: 'RESOLVED' },
+      ]);
+
+      const body = await activity('2026-09-15', '2026-09-15');
+      const [day] = body.days;
+
+      expect(day.counts).toEqual({
+        declared: 1,
+        responseStarted: 1,
+        update: 1,
+        responseCompleted: 1,
+        resolved: 1,
+        changed: 1,
+      });
+      // Seven entries, six events: the pickup and the status it moved are
+      // one act.
+      expect(day.total).toBe(6);
+      expect(day.level).toBe(3);
+      expect(body.total).toBe(6);
+    });
+
+    it('should name a day’s incidents, identity only, with how much happened to each', async () => {
+      const quiet = await withActivity([
+        { type: 'DECLARED', at: '2026-09-15T12:00:00Z' },
+      ]);
+      const busier = await withActivity([
+        { type: 'DECLARED', at: '2026-09-15T09:00:00Z' },
+        { type: 'UPDATE', at: '2026-09-15T09:30:00Z' },
+        { type: 'UPDATE', at: '2026-09-15T10:00:00Z' },
+      ]);
+
+      const [day] = (await activity('2026-09-15', '2026-09-15')).days;
+
+      expect(day.incidents).toEqual([
+        {
+          id: busier.id,
+          number: busier.number,
+          title: `Incident ${busier.number}`,
+          severity: 'SEV2',
+          status: 'INVESTIGATING',
+          service: { name: 'Payment API', slug: 'payment-api' },
+          events: 3,
+        },
+        {
+          id: quiet.id,
+          number: quiet.number,
+          title: `Incident ${quiet.number}`,
+          severity: 'SEV2',
+          status: 'INVESTIGATING',
+          service: { name: 'Payment API', slug: 'payment-api' },
+          events: 1,
+        },
+      ]);
+      expect(day.moreIncidents).toBe(0);
+    });
+
+    it('should keep each organization to itself', async () => {
+      await withActivity([{ type: 'DECLARED', at: '2026-09-15T09:00:00Z' }]);
+      await withActivity(
+        [
+          { type: 'DECLARED', at: '2026-09-15T09:00:00Z' },
+          { type: 'UPDATE', at: '2026-09-15T10:00:00Z' },
+          { type: 'UPDATE', at: '2026-09-16T10:00:00Z' },
+        ],
+        { organizationId: fx.orgB },
+      );
+
+      const mine = await activity('2026-09-13', '2026-09-19');
+
+      expect(mine.total).toBe(1);
+      expect(busy(mine)).toEqual([['2026-09-15', 1, 1]]);
+
+      const other = await activity('2026-09-13', '2026-09-19', fx.orgB);
+
+      expect(other.total).toBe(3);
+      expect(busy(other)).toEqual([
+        ['2026-09-15', 2, 1],
+        ['2026-09-16', 1, 1],
+      ]);
+    });
+
+    it('should answer a period with nothing in it as quiet days, not as nothing', async () => {
+      const body = await activity('2026-09-13', '2026-09-19');
+
+      expect(body.total).toBe(0);
+      expect(body.activeDays).toBe(0);
+      expect(body.days).toHaveLength(7);
+      expect(body.days.every((day: { level: number }) => day.level === 0)).toBe(
+        true,
+      );
+    });
+
+    it('should cover 26 weeks of days in one answer', async () => {
+      await withActivity([{ type: 'DECLARED', at: '2026-09-19T09:00:00Z' }]);
+
+      // A Sunday-to-Saturday window, as the client draws its weeks.
+      const body = await activity('2026-03-22', '2026-09-19');
+
+      expect(body.days).toHaveLength(26 * 7);
+      expect(body.days[0].date).toBe('2026-03-22');
+      expect(body.days.at(-1).date).toBe('2026-09-19');
+      expect(body.activeDays).toBe(1);
+    });
+  });
+
+  describe('member response activity', () => {
+    /**
+     * A period wide enough to hold whatever "now" is, so a run crossing UTC
+     * midnight cannot split a member's work across the ends of it.
+     */
+    const around = () => {
+      const day = (offset: number) =>
+        new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+
+      return { from: day(-1), to: day(1) };
+    };
+
+    const activityOf = async (
+      organizationId: string,
+      membershipId: string,
+      userId: string,
+      period = around(),
+    ) =>
+      call(
+        'get',
+        `${organizationId}/memberships/${membershipId}/activity?from=${period.from}&to=${period.to}`,
+        userId,
+      );
+
+    /** The whole period's counts, summed — a run may cross midnight. */
+    const counted = (body: {
+      days: {
+        counts: Record<string, number>;
+        incidents: { number: number }[];
+      }[];
+    }) => {
+      const counts = { responseStarted: 0, update: 0, responseCompleted: 0 };
+      const incidents = new Set<number>();
+
+      for (const day of body.days) {
+        counts.responseStarted += day.counts.responseStarted;
+        counts.update += day.counts.update;
+        counts.responseCompleted += day.counts.responseCompleted;
+        for (const incident of day.incidents) incidents.add(incident.number);
+      }
+
+      return { counts, incidents: [...incidents].sort((a, b) => a - b) };
+    };
+
+    const membershipOf = async (organizationId: string, userId: string) =>
+      (
+        await prisma.membership.findFirstOrThrow({
+          where: { organizationId, userId },
+          select: { id: true },
+        })
+      ).id;
+
+    it('should count only the three acts of responding, each to their own author', async () => {
+      for (let number = 1; number <= 3; number += 1) {
+        await declare(fx.orgA, fx.alice, fx.apiA, { title: `Incident ${number}` });
+      }
+
+      // Dave, on Payments, works incident 1 from end to end.
+      expect((await startAs(fx.orgA, fx.dave, 1)).status).toBe(200);
+      await call('post', `${fx.orgA}/incidents/1/updates`, fx.dave, {
+        message: 'Retries are failing at the gateway.',
+      });
+      await call('post', `${fx.orgA}/incidents/1/updates`, fx.dave, {
+        message: 'Pinned traffic to the healthy route.',
+      });
+      expect((await completeAs(fx.orgA, fx.dave, 1)).status).toBe(200);
+
+      // Incident 2 moves to Platform, and Erin works it.
+      await call('patch', `${fx.orgA}/incidents/2`, fx.alice, {
+        teamId: fx.platformA,
+      });
+      expect((await startAs(fx.orgA, fx.erin, 2)).status).toBe(200);
+      await call('post', `${fx.orgA}/incidents/2/updates`, fx.erin, {
+        message: 'Signing keys rotated an hour early.',
+      });
+
+      // Alice declared all three and resolves one — authority, not
+      // participation — and writes one update, which is participation.
+      await call('post', `${fx.orgA}/incidents/3/updates`, fx.alice, {
+        message: 'Holding this one until the vendor replies.',
+      });
+      expect(
+        (
+          await call('patch', `${fx.orgA}/incidents/1`, fx.alice, {
+            status: 'RESOLVED',
+            resolution: 'Failed over to the healthy route.',
+          })
+        ).status,
+      ).toBe(200);
+
+      const dave = await activityOf(fx.orgA, fx.daveInA, fx.erin);
+
+      expect(dave.status).toBe(200);
+      expect(dave.body.thresholds).toEqual([1, 2, 4, 6]);
+      expect(dave.body.total).toBe(4);
+      expect(dave.body.activeDays).toBe(1);
+      expect(counted(dave.body)).toEqual({
+        // A start, two updates, a completion — and not the STATUS_CHANGED to
+        // INVESTIGATING his own start caused.
+        counts: { responseStarted: 1, update: 2, responseCompleted: 1 },
+        // Only the incident he worked: nothing of Erin's, and nothing of
+        // incident 3, which he never touched.
+        incidents: [1],
+      });
+
+      const erin = await activityOf(fx.orgA, fx.erinInA, fx.dave);
+
+      expect(erin.body.total).toBe(2);
+      expect(counted(erin.body)).toEqual({
+        counts: { responseStarted: 1, update: 1, responseCompleted: 0 },
+        incidents: [2],
+      });
+
+      // The Admin: her update counts; her three declarations, her
+      // reassignment and her resolution do not.
+      const alice = await activityOf(
+        fx.orgA,
+        await membershipOf(fx.orgA, fx.alice),
+        fx.dave,
+      );
+
+      expect(alice.body.total).toBe(1);
+      expect(counted(alice.body)).toEqual({
+        counts: { responseStarted: 0, update: 1, responseCompleted: 0 },
+        incidents: [3],
+      });
+    });
+
+    it('should give a member of the responsible team who never acted nothing at all', async () => {
+      await declare(fx.orgA, fx.alice, fx.apiA);
+      expect((await startAs(fx.orgA, fx.dave, 1)).status).toBe(200);
+
+      // Frank is on Payments with Dave, and did none of the work.
+      await aMemberOn(fx.paymentsA, 'Frank');
+
+      const frank = await activityOf(
+        fx.orgA,
+        await prisma.membership
+          .findFirstOrThrow({
+            where: { organizationId: fx.orgA, user: { name: 'Frank' } },
+            select: { id: true },
+          })
+          .then(({ id }) => id),
+        fx.dave,
+      );
+
+      expect(frank.status).toBe(200);
+      expect(frank.body.total).toBe(0);
+      expect(frank.body.activeDays).toBe(0);
+      expect(frank.body.days.length).toBeGreaterThan(0);
+      expect(
+        frank.body.days.every((day: { level: number }) => day.level === 0),
+      ).toBe(true);
+    });
+
+    it('should keep one person’s two organizations apart', async () => {
+      // Carol is ADMIN in A and MEMBER in B: one user, two memberships, and
+      // two separate histories.
+      const carolInA = await membershipOf(fx.orgA, fx.carol);
+
+      const incidentIn = async (organizationId: string) =>
+        prisma.incident.create({
+          data: {
+            organizationId,
+            number: 1,
+            title: 'Card payments failing',
+            serviceId: organizationId === fx.orgA ? fx.apiA : fx.apiB,
+            teamId: organizationId === fx.orgA ? fx.paymentsA : fx.paymentsB,
+            createdById: organizationId === fx.orgA ? fx.alice : fx.bob,
+            severity: 'SEV2',
+            status: 'INVESTIGATING',
+          },
+          select: { id: true },
+        });
+
+      const inA = await incidentIn(fx.orgA);
+      const inB = await incidentIn(fx.orgB);
+      const at = new Date();
+
+      await prisma.incidentActivity.createMany({
+        data: [
+          {
+            organizationId: fx.orgA,
+            incidentId: inA.id,
+            actorId: fx.carol,
+            type: 'UPDATE',
+            createdAt: at,
+          },
+          {
+            organizationId: fx.orgB,
+            incidentId: inB.id,
+            actorId: fx.carol,
+            type: 'UPDATE',
+            createdAt: at,
+          },
+          {
+            organizationId: fx.orgB,
+            incidentId: inB.id,
+            actorId: fx.carol,
+            type: 'RESPONSE_STARTED',
+            createdAt: at,
+          },
+        ],
+      });
+
+      const a = await activityOf(fx.orgA, carolInA, fx.alice);
+
+      expect(a.body.total).toBe(1);
+      expect(counted(a.body).counts).toEqual({
+        responseStarted: 0,
+        update: 1,
+        responseCompleted: 0,
+      });
+
+      const b = await activityOf(fx.orgB, fx.carolInB, fx.bob);
+
+      expect(b.body.total).toBe(2);
+      expect(counted(b.body).counts).toEqual({
+        responseStarted: 1,
+        update: 1,
+        responseCompleted: 0,
+      });
+    });
+
+    it('should answer a foreign or missing membership exactly as a malformed one', async () => {
+      const period = around();
+      const expected = { status: 404, code: 'MEMBERSHIP_NOT_FOUND' };
+
+      // Carol's membership in B, asked for in A.
+      const foreign = await activityOf(
+        fx.orgA,
+        fx.carolInB,
+        fx.alice,
+        period,
+      );
+      // Well formed, and nobody's.
+      const missing = await activityOf(
+        fx.orgA,
+        randomUUID(),
+        fx.alice,
+        period,
+      );
+      // Not an id at all.
+      const malformed = await activityOf(
+        fx.orgA,
+        'not-a-membership',
+        fx.alice,
+        period,
+      );
+
+      for (const response of [foreign, missing, malformed]) {
+        expect({
+          status: response.status,
+          code: response.body.code,
+        }).toEqual(expected);
+      }
+    });
+  });
+
   describe('tenant isolation', () => {
     it('should answer a foreign incident exactly as a nonexistent one, on every route', async () => {
       await declare(fx.orgA, fx.alice, fx.apiA);

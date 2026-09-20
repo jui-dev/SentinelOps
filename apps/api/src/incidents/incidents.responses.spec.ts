@@ -1,9 +1,16 @@
+import { buildActivityCalendar, LEVELS } from './incidents.activity.js';
 import {
   toIncidentActivityResponse,
   toIncidentDetailResponse,
   toIncidentResponse,
   toIncidentSummaryResponse,
+  toMemberActivityResponse,
+  toOperationalActivityResponse,
 } from './incidents.responses.js';
+import {
+  buildMemberActivityCalendar,
+  MEMBER_LEVELS,
+} from './member-activity.js';
 
 const CREATED = new Date('2026-09-18T12:00:00.000Z');
 const UPDATED = new Date('2026-09-18T12:30:00.000Z');
@@ -259,6 +266,193 @@ describe('incident responses', () => {
         activeIncidents: 4,
         worstSeverity: 'SEV2',
       });
+    });
+  });
+});
+
+describe('operational activity responses', () => {
+  // Carries columns a careless mapper might spread: the organization, the
+  // raw foreign keys, and prose a calendar has no business emitting.
+  const incident = {
+    id: 'incident-1',
+    organizationId: 'org-1',
+    number: 42,
+    title: 'Card payments failing',
+    summary: 'Declines since 14:02',
+    resolution: 'Rolled back the 12:40 deploy.',
+    serviceId: 'service-1',
+    severity: 'SEV1' as const,
+    status: 'RESOLVED' as const,
+    service: {
+      id: 'service-1',
+      name: 'Payment API',
+      slug: 'payment-api',
+      criticality: 'CRITICAL' as const,
+    },
+  };
+
+  const period = { from: '2026-09-18', to: '2026-09-19' };
+
+  const activity = toOperationalActivityResponse(
+    buildActivityCalendar(
+      [
+        {
+          type: 'DECLARED' as const,
+          toValue: 'SEV1',
+          createdAt: new Date('2026-09-18T12:00:00.000Z'),
+          incident,
+        },
+        {
+          type: 'UPDATE' as const,
+          toValue: null,
+          createdAt: new Date('2026-09-18T12:30:00.000Z'),
+          incident,
+        },
+      ],
+      period,
+    ),
+    period,
+  );
+
+  it('should name the period and the levels a legend reads', () => {
+    expect(activity.from).toBe('2026-09-18');
+    expect(activity.to).toBe('2026-09-19');
+    expect(activity.total).toBe(2);
+    expect(activity.activeDays).toBe(1);
+    expect(activity.thresholds).toEqual([...LEVELS]);
+  });
+
+  it('should emit every day of the period, quiet ones included', () => {
+    expect(activity.days.map(({ date }) => date)).toEqual([
+      '2026-09-18',
+      '2026-09-19',
+    ]);
+    expect(activity.days[1]).toStrictEqual({
+      date: '2026-09-19',
+      total: 0,
+      level: 0,
+      counts: {
+        declared: 0,
+        responseStarted: 0,
+        update: 0,
+        responseCompleted: 0,
+        resolved: 0,
+        changed: 0,
+      },
+      incidents: [],
+      moreIncidents: 0,
+    });
+  });
+
+  it('should name a day’s incidents by identity alone, never their prose', () => {
+    expect(activity.days[0]).toStrictEqual({
+      date: '2026-09-18',
+      total: 2,
+      level: 1,
+      counts: {
+        declared: 1,
+        responseStarted: 0,
+        update: 1,
+        responseCompleted: 0,
+        resolved: 0,
+        changed: 0,
+      },
+      incidents: [
+        {
+          id: 'incident-1',
+          number: 42,
+          title: 'Card payments failing',
+          severity: 'SEV1',
+          status: 'RESOLVED',
+          service: { name: 'Payment API', slug: 'payment-api' },
+          events: 2,
+        },
+      ],
+      moreIncidents: 0,
+    });
+  });
+});
+
+describe('member activity responses', () => {
+  const incident = {
+    id: 'incident-1',
+    organizationId: 'org-1',
+    number: 42,
+    title: 'Card payments failing',
+    summary: 'Declines since 14:02',
+    resolution: 'Rolled back the 12:40 deploy.',
+    severity: 'SEV1' as const,
+    status: 'RESOLVED' as const,
+    service: { id: 'service-1', name: 'Payment API', slug: 'payment-api' },
+  };
+
+  const period = { from: '2026-09-18', to: '2026-09-19' };
+
+  const activity = toMemberActivityResponse(
+    buildMemberActivityCalendar(
+      [
+        {
+          type: 'RESPONSE_STARTED' as const,
+          createdAt: new Date('2026-09-18T12:00:00.000Z'),
+          incident,
+        },
+        {
+          type: 'UPDATE' as const,
+          createdAt: new Date('2026-09-18T12:30:00.000Z'),
+          incident,
+        },
+        // Theirs, on their own incident, and not an act of responding.
+        {
+          type: 'DECLARED' as const,
+          createdAt: new Date('2026-09-18T11:00:00.000Z'),
+          incident,
+        },
+      ],
+      period,
+    ),
+    period,
+  );
+
+  it('should carry a person’s own levels, never the organization’s', () => {
+    expect(activity.thresholds).toEqual([...MEMBER_LEVELS]);
+    expect(activity.thresholds).not.toEqual([...LEVELS]);
+  });
+
+  it('should emit only the three acts of responding', () => {
+    expect(activity.total).toBe(2);
+    expect(activity.activeDays).toBe(1);
+    expect(activity.days[0]).toStrictEqual({
+      date: '2026-09-18',
+      total: 2,
+      level: 2,
+      counts: { responseStarted: 1, update: 1, responseCompleted: 0 },
+      incidents: [
+        {
+          id: 'incident-1',
+          number: 42,
+          title: 'Card payments failing',
+          severity: 'SEV1',
+          status: 'RESOLVED',
+          service: { name: 'Payment API', slug: 'payment-api' },
+          events: 2,
+        },
+      ],
+      moreIncidents: 0,
+    });
+  });
+
+  it('should emit every day of the period, quiet ones included', () => {
+    expect(activity.days.map(({ date }) => date)).toEqual([
+      '2026-09-18',
+      '2026-09-19',
+    ]);
+    expect(activity.days[1]).toStrictEqual({
+      date: '2026-09-19',
+      total: 0,
+      level: 0,
+      counts: { responseStarted: 0, update: 0, responseCompleted: 0 },
+      incidents: [],
+      moreIncidents: 0,
     });
   });
 });

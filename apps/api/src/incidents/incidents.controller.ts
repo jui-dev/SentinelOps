@@ -20,9 +20,11 @@ import type {
   IncidentDetailResponse,
   IncidentPage,
   IncidentSummaryResponse,
+  OperationalActivityResponse,
 } from './incidents.contract.js';
 import {
   createIncidentSchema,
+  incidentActivityQuerySchema,
   incidentSummaryQuerySchema,
   listIncidentsQuerySchema,
   postIncidentUpdateSchema,
@@ -30,6 +32,7 @@ import {
 } from './incidents.schemas.js';
 import type {
   CreateIncidentRequest,
+  IncidentActivityQuery,
   IncidentSummaryQuery,
   ListIncidentsQuery,
   PostIncidentUpdateRequest,
@@ -79,6 +82,21 @@ export class IncidentsController {
     @Query({ schema: incidentSummaryQuerySchema }) query: IncidentSummaryQuery,
   ): Promise<IncidentSummaryResponse> {
     return this.incidents.summary(membership.organizationId, query);
+  }
+
+  /**
+   * How much happened on each day of a period, across every incident, with
+   * the incidents each day touched. Declared before `:incidentNumber`,
+   * which would otherwise claim the path.
+   */
+  @Get('activity')
+  @RequirePermission(Permission.INCIDENTS_READ)
+  activity(
+    @CurrentMembership() membership: OrganizationContext,
+    @Query({ schema: incidentActivityQuerySchema })
+    query: IncidentActivityQuery,
+  ): Promise<OperationalActivityResponse> {
+    return this.incidents.activity(membership.organizationId, query);
   }
 
   /**

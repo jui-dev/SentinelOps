@@ -329,6 +329,20 @@ describe("incidents", () => {
       expect(within(first).getByText("Critical")).toBeDefined();
     });
 
+    it("offers the way on to Incident history, whatever the caller may do", async () => {
+      api(READ_ONLY);
+
+      inOrganization(<IncidentsView />);
+
+      await screen.findByRole("table", { name: "Active incidents" });
+
+      expect(
+        screen
+          .getByRole("link", { name: /Incident history/ })
+          .getAttribute("href"),
+      ).toBe("/orgs/acme-ops/incidents/history");
+    });
+
     it("offers no declaration without incidents:manage", async () => {
       api(READ_ONLY);
 

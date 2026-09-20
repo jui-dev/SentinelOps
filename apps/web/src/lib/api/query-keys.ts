@@ -33,6 +33,9 @@ import type { IncidentFilters } from "./contracts";
  *   or completing a response stales every member's.
  * - `incidentTimeline`: one incident's timeline, beneath its entry. Posting
  *   an update or changing the incident stales it.
+ * - `incidentActivity`: how much the organization did on each day of one
+ *   period, beneath the prefix. Declaring, responding to, or resolving an
+ *   incident writes a timeline entry, so it stales every period's.
  * - `incidentSummary`: the overview's counts and history for one period,
  *   beneath the prefix — so whatever stales every incident stales them too.
  *   Declaring or changing an incident stales every period's.
@@ -82,6 +85,8 @@ export const queryKeys = {
     ] as const,
   incidentSummary: (organizationId: string, from: string, to: string) =>
     ["organization", organizationId, "incidents", "summary", from, to] as const,
+  incidentActivity: (organizationId: string, from: string, to: string) =>
+    ["organization", organizationId, "incidents", "activity", from, to] as const,
   incidentAttention: (organizationId: string) =>
     ["organization", organizationId, "incidents", "attention"] as const,
   incident: (organizationId: string, number: number) =>

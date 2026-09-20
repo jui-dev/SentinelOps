@@ -186,11 +186,22 @@ export const incidentSummaryQuerySchema = z
     path: ['to'],
   });
 
-/** A summary period as instants: from its first midnight to the one after it. */
+/**
+ * The period an activity calendar covers: the same whole UTC days a summary
+ * takes, and the same limits. A calendar is drawn in weeks, but which day a
+ * week starts on is the client's own presentation choice — it asks for the
+ * days it means to draw, and the API answers in days.
+ */
+export const incidentActivityQuerySchema = incidentSummaryQuerySchema;
+
+/** A period of whole UTC days as instants: its first midnight to the one after it. */
 export const summaryBounds = ({
   from,
   to,
-}: IncidentSummaryQuery): { gte: Date; lt: Date } => ({
+}: {
+  from: string;
+  to: string;
+}): { gte: Date; lt: Date } => ({
   gte: startOfUtcDay(from),
   lt: new Date(startOfUtcDay(to).getTime() + DAY_MS),
 });
@@ -210,6 +221,9 @@ export type PostIncidentUpdateRequest = z.infer<
 >;
 export type ListIncidentsQuery = z.infer<typeof listIncidentsQuerySchema>;
 export type IncidentSummaryQuery = z.infer<typeof incidentSummaryQuerySchema>;
+export type IncidentActivityQuery = z.infer<
+  typeof incidentActivityQuerySchema
+>;
 export type MemberResponsesQuery = z.infer<typeof memberResponsesQuerySchema>;
 
 /** The largest value a Postgres `integer` column holds. */

@@ -1,5 +1,6 @@
 import {
   createIncidentSchema,
+  incidentActivityQuerySchema,
   incidentSummaryQuerySchema,
   listIncidentsQuerySchema,
   parseIncidentNumber,
@@ -327,6 +328,30 @@ describe('incident schemas', () => {
         gte: new Date('2026-09-13T00:00:00.000Z'),
         lt: new Date('2026-09-20T00:00:00.000Z'),
       });
+    });
+  });
+
+  describe('incidentActivityQuerySchema', () => {
+    /**
+     * An activity calendar covers the same whole UTC days a summary does,
+     * under the same limits: a client asking for 26 weeks asks for its days,
+     * and which day its weeks start on is its own presentation choice.
+     */
+    it.each([
+      ['one day', { from: '2026-09-19', to: '2026-09-19' }],
+      ['26 weeks', { from: '2026-03-22', to: '2026-09-19' }],
+      ['366 days', { from: '2025-09-19', to: '2026-09-19' }],
+    ])('should accept %s', (_, query) => {
+      expect(incidentActivityQuerySchema.parse(query)).toEqual(query);
+    });
+
+    it.each([
+      ['a missing end', { from: '2026-09-19' }],
+      ['a missing start', { to: '2026-09-19' }],
+      ['an end before the start', { from: '2026-09-19', to: '2026-09-18' }],
+      ['367 days', { from: '2025-09-18', to: '2026-09-19' }],
+    ])('should refuse %s', (_, query) => {
+      expect(incidentActivityQuerySchema.safeParse(query).success).toBe(false);
     });
   });
 });

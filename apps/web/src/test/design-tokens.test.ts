@@ -20,7 +20,7 @@ type Theme = "light" | "dark";
 const tokens = new Map<string, Record<Theme, string>>();
 
 for (const [, name, light, dark] of css.matchAll(
-  /--color-([a-z-]+):\s*light-dark\((#[0-9a-f]{6}),\s*(#[0-9a-f]{6})\);/g,
+  /--color-([a-z0-9-]+):\s*light-dark\((#[0-9a-f]{6}),\s*(#[0-9a-f]{6})\);/g,
 )) {
   tokens.set(name, { light, dark });
 }
@@ -112,6 +112,19 @@ each(
   UI,
 );
 
+/**
+ * The activity ramps (activity-calendar.tsx). A density scale, not a set of
+ * marks, so the rule is its own: each step must be *told apart* from the
+ * surface it is drawn on and from the step below it, and the busiest steps
+ * must read as marks in their own right. What no step has to do is carry
+ * the meaning alone — the square's size steps with its level too — so the
+ * first, palest step is held to visibility rather than to 1.4.11's 3:1.
+ */
+const RAMPS = ["operational", "personal"] as const;
+const SURFACES = ["surface", "canvas"];
+/** The least contrast each step owes the surface under it. */
+const STEP_MINIMUM = [1.25, 1.9, UI, 4.5];
+
 describe("design tokens", () => {
   it("parses the colour tokens", () => {
     expect(tokens.size).toBeGreaterThan(40);
@@ -125,6 +138,36 @@ describe("design tokens", () => {
         ratio,
         `${fg} ${colour(fg, theme)} on ${bg} ${colour(bg, theme)}`,
       ).toBeGreaterThanOrEqual(minimum);
+    });
+
+    describe.each(RAMPS)("the %s activity ramp", (ramp) => {
+      const step = (level: number) => colour(`activity-${ramp}-${level}`, theme);
+
+      it.each(SURFACES)("separates every step from %s", (surface) => {
+        STEP_MINIMUM.forEach((minimum, index) => {
+          const level = index + 1;
+          const ratio = contrast(step(level), colour(surface, theme));
+
+          expect(ratio, `level ${level} on ${surface}`).toBeGreaterThanOrEqual(
+            minimum,
+          );
+        });
+      });
+
+      it("darkens in light and lightens in dark, one step at a time", () => {
+        const ramped = [
+          colour("activity-empty", theme),
+          ...[1, 2, 3, 4].map(step),
+        ].map(luminance);
+
+        for (let index = 1; index < ramped.length; index += 1) {
+          const rising = ramped[index] > ramped[index - 1];
+
+          expect(rising, `level ${index} against the one below it`).toBe(
+            theme === "dark",
+          );
+        }
+      });
     });
   });
 });

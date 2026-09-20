@@ -8,6 +8,7 @@ import { ChangePasswordForm } from "@/components/auth/change-password-form";
 import { LoginForm } from "@/components/auth/login-form";
 import { RegisterForm } from "@/components/auth/register-form";
 import { IncidentDetail } from "@/components/incidents/incident-detail";
+import { IncidentHistory } from "@/components/history/incident-history";
 import { IncidentsView } from "@/components/incidents/incidents-view";
 import { InvitationAcceptance } from "@/components/invitations/invitation-acceptance";
 import { AddMemberView } from "@/components/organizations/add-member-view";
@@ -221,12 +222,75 @@ const summary = (from: string, to: string) => ({
   },
 });
 
+/**
+ * The Overview's 26 weeks: every day of the window, one of them busy, so the
+ * grid is drawn with something in it rather than as an empty state.
+ */
+const activity = (from: string, to: string) => {
+  const DAY_MS = 86_400_000;
+  const start = Date.parse(`${from}T00:00:00.000Z`);
+  const days = [];
+
+  for (
+    let moment = start;
+    moment <= Date.parse(`${to}T00:00:00.000Z`);
+    moment += DAY_MS
+  ) {
+    const date = new Date(moment).toISOString().slice(0, 10);
+    // The most recent day, so the fixture does not depend on today's date.
+    const busy = date === to;
+
+    days.push({
+      date,
+      total: busy ? 8 : 0,
+      level: busy ? 3 : 0,
+      counts: {
+        declared: busy ? 1 : 0,
+        responseStarted: busy ? 2 : 0,
+        update: busy ? 4 : 0,
+        responseCompleted: 0,
+        resolved: busy ? 1 : 0,
+        changed: 0,
+      },
+      incidents: busy
+        ? [
+            {
+              id: activeIncident.id,
+              number: activeIncident.number,
+              title: activeIncident.title,
+              severity: activeIncident.severity,
+              status: activeIncident.status,
+              service: { name: service.name, slug: service.slug },
+              events: 8,
+            },
+          ]
+        : [],
+      moreIncidents: 0,
+    });
+  }
+
+  return {
+    from,
+    to,
+    days,
+    total: days.reduce((sum, day) => sum + day.total, 0),
+    activeDays: days.filter((day) => day.total > 0).length,
+    thresholds: [1, 3, 6, 11],
+  };
+};
+
 const signedIn = (permissions: string[]) =>
   mockApi((request) => {
     if (route(request).startsWith(`GET ${base}/incidents/summary?`)) {
       const query = new URLSearchParams(request.path.split("?")[1]);
 
       return jsonResponse(200, summary(query.get("from")!, query.get("to")!));
+    }
+
+    if (route(request).startsWith(`GET ${base}/incidents/activity?`)) {
+      const query = new URLSearchParams(request.path.split("?")[1]);
+
+      return jsonResponse(200, activity(query.get("from")!, query.get("to")!));
     }
 
     switch (route(request)) {
@@ -374,13 +438,41 @@ describe("accessibility", () => {
 
       await screen.findByRole("heading", { level: 1, name: "Overview" });
       await screen.findByRole("table", { name: "Active incidents" });
+      await screen.findByRole("grid", { name: /Operational activity/ });
+      await expectNoAxeViolations(container);
+      // A year of days is ~370 squares for axe to walk, which jsdom does far
+      // more slowly than a browser.
+    }, 30_000);
+
+    it("Overview, with a day of activity chosen", async () => {
+      signedIn(ADMIN);
+      const { container } = inWorkspace(<OrganizationOverview />);
+
+      const grid = await screen.findByRole("grid", {
+        name: /Operational activity/,
+      });
+      // The one day with anything on it, wherever its weekday puts it.
+      const busy = grid.querySelector<HTMLButtonElement>('[data-level="3"]');
+
+      await userEvent.click(busy!);
+      await screen.findByLabelText("What happened on this day");
+      await expectNoAxeViolations(container);
+    }, 30_000);
+
+    it("Incident history", async () => {
+      navigation.pathname = `/orgs/${organization.slug}/incidents/history`;
+      signedIn(ADMIN);
+      const { container } = inWorkspace(<IncidentHistory />);
+
+      await screen.findByRole("heading", { level: 1, name: "Incident history" });
       await screen.findByRole("region", { name: "Incidents in this period" });
       await expectNoAxeViolations(container);
     });
 
-    it("Overview, choosing a custom period", async () => {
+    it("Incident history, choosing a custom period", async () => {
+      navigation.pathname = `/orgs/${organization.slug}/incidents/history`;
       signedIn(ADMIN);
-      const { container } = inWorkspace(<OrganizationOverview />);
+      const { container } = inWorkspace(<IncidentHistory />);
 
       await userEvent.click(await screen.findByRole("tab", { name: "Custom" }));
       await screen.findByRole("dialog", { name: "Choose dates (UTC)" });

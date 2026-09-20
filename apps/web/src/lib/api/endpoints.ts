@@ -27,6 +27,7 @@ import type {
   InvitationResponse,
   LoginRequest,
   MembershipResponse,
+  OperationalActivityResponse,
   OrganizationDetailResponse,
   OrganizationMembershipResponse,
   OrganizationResponse,
@@ -277,6 +278,15 @@ export const getIncidentSummary = (
 ) =>
   authenticatedRequest<IncidentSummaryResponse>(
     `${incidentsPath(organizationId)}/summary?${new URLSearchParams({ from, to })}`,
+  );
+
+/** How much happened on each day of `period`, and to which incidents. */
+export const getIncidentActivity = (
+  organizationId: string,
+  { from, to }: IncidentPeriod,
+) =>
+  authenticatedRequest<OperationalActivityResponse>(
+    `${incidentsPath(organizationId)}/activity?${new URLSearchParams({ from, to })}`,
   );
 
 /** The active incidents waiting on the caller now, by what they may do. */

@@ -244,6 +244,124 @@ export interface IncidentAttentionResponse {
 }
 
 /**
+ * What kind of operational event a timeline entry is, for the organization's
+ * activity. See incidents.activity.ts for which entry types each covers, and
+ * for the one kind that is deliberately not counted.
+ */
+export type OperationalActivityCategory =
+  | 'declared'
+  | 'responseStarted'
+  | 'update'
+  | 'responseCompleted'
+  | 'resolved'
+  | 'changed';
+
+/** How busy a day was: 0 is quiet, 4 the busiest band. */
+export type ActivityLevel = 0 | 1 | 2 | 3 | 4;
+
+/**
+ * An incident something happened to on one day: identity, where it stands
+ * now, and how many of that day's events were about it. Deliberately
+ * narrower than `IncidentResponse` — a calendar names incidents so they can
+ * be recognised and opened, and carries none of their prose.
+ *
+ * The service is named, not the responsible team: which service was hit is
+ * what a day's history is read by. `severity` and `status` are current, not
+ * as they were on the day.
+ */
+export interface ActivityIncidentResponse {
+  id: string;
+  number: number;
+  title: string;
+  severity: IncidentSeverity;
+  status: IncidentStatus;
+  service: { name: string; slug: string };
+  events: number;
+}
+
+/**
+ * One day of operational activity. `counts` carries every category, zero
+ * included, so a client never checks whether a key is there. `incidents`
+ * names the busiest few; `moreIncidents` is how many others the day touched.
+ */
+export interface OperationalActivityDayResponse {
+  /** The UTC calendar day, `YYYY-MM-DD`. */
+  date: string;
+  total: number;
+  level: ActivityLevel;
+  counts: Record<OperationalActivityCategory, number>;
+  incidents: ActivityIncidentResponse[];
+  moreIncidents: number;
+}
+
+/**
+ * `GET .../incidents/activity`: when this organization was operationally
+ * active, over a period of whole UTC days, `from` to `to`, both included.
+ *
+ * `days` holds every day of the period, oldest first — a quiet day is a day
+ * whose total is 0, never a missing one — so a calendar is drawn without
+ * filling gaps. `total` counts the period's events and `activeDays` the days
+ * that had any.
+ *
+ * `thresholds` is the lowest total each level above 0 begins at, so a legend
+ * can name its bands without knowing them. They are fixed, not derived from
+ * the period: a level means the same thing whatever was asked for.
+ *
+ * Which UTC day a calendar week starts on is the client's presentation
+ * choice, and nothing here depends on it: these are days, not weeks.
+ */
+export interface OperationalActivityResponse {
+  from: string;
+  to: string;
+  days: OperationalActivityDayResponse[];
+  total: number;
+  activeDays: number;
+  thresholds: [number, number, number, number];
+}
+
+/**
+ * Which of the three acts of responding a member's entry is. See
+ * member-activity.ts for what is deliberately not one.
+ */
+export type MemberActivityCategory =
+  | 'responseStarted'
+  | 'update'
+  | 'responseCompleted';
+
+/** One day of one member's response activity. */
+export interface MemberActivityDayResponse {
+  /** The UTC calendar day, `YYYY-MM-DD`. */
+  date: string;
+  total: number;
+  level: ActivityLevel;
+  counts: Record<MemberActivityCategory, number>;
+  incidents: ActivityIncidentResponse[];
+  moreIncidents: number;
+}
+
+/**
+ * `GET .../memberships/:membershipId/activity`: when this member personally
+ * took part in incident response, over a period of whole UTC days.
+ *
+ * Only what they wrote themselves: responses they started, updates they
+ * posted, responses they completed. Being on a team is not activity, nor is
+ * an incident they could have picked up, nor anything a teammate did.
+ *
+ * Shaped like the organization's activity, and not to be read against it:
+ * `thresholds` are a person's, far lower than an organization's, because one
+ * person writes an order of magnitude less. Descriptive history, not a
+ * measure — nothing here ranks or compares anyone.
+ */
+export interface MemberActivityResponse {
+  from: string;
+  to: string;
+  days: MemberActivityDayResponse[];
+  total: number;
+  activeDays: number;
+  thresholds: [number, number, number, number];
+}
+
+/**
  * One page of a collection. `cursor` is opaque and asks for the page after
  * this one; it is null exactly when `hasMore` is false.
  */

@@ -14,7 +14,9 @@ import {
 import { teamNotFound } from '../teams/teams.errors.js';
 import { organizationNotFound } from '../tenancy/tenancy.errors.js';
 import { isResourceId } from '../tenancy/tenancy.schemas.js';
+import { buildActivityCalendar } from './incidents.activity.js';
 import { classifyAttention } from './incidents.attention.js';
+import { buildMemberActivityCalendar } from './member-activity.js';
 import type {
   IncidentActivityResponse,
   IncidentAttentionResponse,
@@ -22,7 +24,9 @@ import type {
   IncidentPage,
   IncidentSeverity,
   IncidentSummaryResponse,
+  MemberActivityResponse,
   MemberResponsePage,
+  OperationalActivityResponse,
 } from './incidents.contract.js';
 import {
   incidentNotFound,
@@ -41,7 +45,9 @@ import {
   toIncidentDetailResponse,
   toIncidentResponse,
   toIncidentSummaryResponse,
+  toMemberActivityResponse,
   toMemberResponseResponse,
+  toOperationalActivityResponse,
 } from './incidents.responses.js';
 import { mergeHistory } from './incidents.history.js';
 import {
@@ -51,6 +57,7 @@ import {
 } from './incidents.schemas.js';
 import type {
   CreateIncidentRequest,
+  IncidentActivityQuery,
   IncidentSummaryQuery,
   ListIncidentsQuery,
   MemberResponsesQuery,
@@ -186,6 +193,28 @@ const activitySelection = {
   toValue: true,
   createdAt: true,
   actor: { select: { id: true, name: true } },
+} as const;
+
+/**
+ * Columns the activity calendar reads. The entry carries only what decides
+ * whether it counts and when — never its message, and never its actor, which
+ * a calendar of the whole organization has no use for. The incident is
+ * identity enough to recognise and open, with the service it hit.
+ */
+const calendarSelection = {
+  type: true,
+  toValue: true,
+  createdAt: true,
+  incident: {
+    select: {
+      id: true,
+      number: true,
+      title: true,
+      severity: true,
+      status: true,
+      service: { select: { name: true, slug: true } },
+    },
+  },
 } as const;
 
 /**
@@ -565,6 +594,102 @@ export class IncidentsService {
         ),
       },
     });
+  }
+
+  /**
+   * When the organization was operationally active, day by day, over a
+   * period of whole UTC days.
+   *
+   * One read: every timeline entry recorded in the period, across every
+   * incident, served by the (organization_id, created_at) index.
+   * buildActivityCalendar decides what counts — so the entries arrive
+   * unfiltered and the rule lives in one tested place, rather than being
+   * spelt once here as a query and again there as a judgement.
+   *
+   * Not a transaction: it is one statement, and so already one snapshot.
+   * Unpaged, like the timeline and attention: the period is capped at 366
+   * days by the request schema, and what comes back is a count per day.
+   *
+   * The organization's soft deletion is checked through the incident, which
+   * is the only relation an entry has to it.
+   */
+  async activity(
+    organizationId: string,
+    query: IncidentActivityQuery,
+  ): Promise<OperationalActivityResponse> {
+    const rows = await this.prisma.incidentActivity.findMany({
+      where: {
+        organizationId,
+        incident: { organization: { deletedAt: null } },
+        createdAt: summaryBounds(query),
+      },
+      select: calendarSelection,
+      orderBy: { createdAt: 'asc' },
+    });
+
+    return toOperationalActivityResponse(
+      buildActivityCalendar(rows, query),
+      query,
+    );
+  }
+
+  /**
+   * When one member personally took part in incident response, day by day,
+   * over a period of whole UTC days.
+   *
+   * The membership is resolved within the organization first, as
+   * memberResponses does: a malformed, missing, or foreign one is 404
+   * MEMBERSHIP_NOT_FOUND, identically, and resolving it also settles the
+   * organization's soft deletion before anything is read.
+   *
+   * Attribution is by author. A timeline entry names the global User rather
+   * than the membership — attribution outlives the grant — so the membership
+   * is resolved to its user and the entries are read by
+   * (organization, actor, day), served by that index. A user who belongs to
+   * two organizations has two memberships and two separate histories: the
+   * organization is part of the key, so nothing they wrote elsewhere is here.
+   *
+   * What counts is buildMemberActivityCalendar's judgement, not this query's:
+   * the entries arrive unfiltered by type, and only the three acts of
+   * responding are counted. Being on a team writes no entry, so it cannot
+   * appear; neither can anything a teammate wrote.
+   */
+  async memberActivity(
+    organizationId: string,
+    membershipId: string,
+    query: IncidentActivityQuery,
+  ): Promise<MemberActivityResponse> {
+    if (!isResourceId(membershipId)) {
+      throw membershipNotFound();
+    }
+
+    const membership = await this.prisma.membership.findFirst({
+      where: {
+        id: membershipId,
+        organizationId,
+        organization: { deletedAt: null },
+      },
+      select: { userId: true },
+    });
+
+    if (!membership) {
+      throw membershipNotFound();
+    }
+
+    const rows = await this.prisma.incidentActivity.findMany({
+      where: {
+        organizationId,
+        actorId: membership.userId,
+        createdAt: summaryBounds(query),
+      },
+      select: calendarSelection,
+      orderBy: { createdAt: 'asc' },
+    });
+
+    return toMemberActivityResponse(
+      buildMemberActivityCalendar(rows, query),
+      query,
+    );
   }
 
   /**

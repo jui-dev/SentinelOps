@@ -416,6 +416,63 @@ export interface IncidentAttentionResponse {
   } | null;
 }
 
+/**
+ * What kind of operational event a timeline entry is. The status change a
+ * response start causes is not one: it and the start are a single act.
+ */
+export type OperationalActivityCategory =
+  | "declared"
+  | "responseStarted"
+  | "update"
+  | "responseCompleted"
+  | "resolved"
+  | "changed";
+
+/** How busy a day was: 0 is quiet, 4 the busiest band. */
+export type ActivityLevel = 0 | 1 | 2 | 3 | 4;
+
+/**
+ * An incident something happened to on one day: enough to recognise and
+ * open it, and how many of that day's events were about it. Never its prose.
+ */
+export interface ActivityIncidentResponse {
+  id: string;
+  number: number;
+  title: string;
+  severity: IncidentSeverity;
+  status: IncidentStatus;
+  service: { name: string; slug: string };
+  events: number;
+}
+
+/** One day of operational activity, with every category zero-filled. */
+export interface OperationalActivityDayResponse {
+  date: string;
+  total: number;
+  level: ActivityLevel;
+  counts: Record<OperationalActivityCategory, number>;
+  incidents: ActivityIncidentResponse[];
+  moreIncidents: number;
+}
+
+/**
+ * `GET /organizations/:organizationId/incidents/activity`: when the
+ * organization was operationally active, over whole UTC days `from` to `to`.
+ *
+ * `days` holds every day of the period, oldest first — a quiet day has a
+ * total of 0 rather than being missing — so a calendar is drawn without
+ * filling gaps. `thresholds` is the lowest total each level above 0 begins
+ * at, fixed rather than derived from the period.
+ */
+export interface OperationalActivityResponse {
+  from: string;
+  to: string;
+  days: OperationalActivityDayResponse[];
+  total: number;
+  activeDays: number;
+  thresholds: [number, number, number, number];
+}
+
 /** A period of whole UTC days, both included, as `YYYY-MM-DD`. */
 export interface IncidentPeriod {
   from: string;

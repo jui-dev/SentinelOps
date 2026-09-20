@@ -20,7 +20,7 @@ export function OrganizationOverview() {
         title="Overview"
         description={
           canReadIncidents
-            ? "Where incident response stands now, and what happened in a period you choose."
+            ? "Where incident response stands now: what needs you, and every incident still unresolved."
             : undefined
         }
       />

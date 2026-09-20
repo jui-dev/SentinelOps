@@ -19,6 +19,7 @@ import { ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { EmptyNote, EmptyState } from "@/components/ui/empty-state";
 import { Field, TextArea } from "@/components/ui/field";
+import { OnwardLink } from "@/components/ui/onward-link";
 import { PageBody, PageHeader, Section } from "@/components/ui/page";
 import { Select } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
@@ -41,6 +42,7 @@ import {
   useReplaceParams,
 } from "./incident-filters";
 import {
+  incidentHistoryHref,
   incidentHref,
   storeIncident,
   useIncidentList,
@@ -396,6 +398,7 @@ function IncidentList({
  * from the header.
  */
 export function IncidentsView() {
+  const organization = useOrganization();
   const canManage = useCan(Permission.INCIDENTS_MANAGE);
   const [declaring, setDeclaring] = useState(false);
   const searchParams = useSearchParams();
@@ -431,10 +434,17 @@ export function IncidentsView() {
         title="Incidents"
         description="Operational problems affecting this organization's services: who is responsible, how serious each is, and where the response stands."
         actions={
-          canManage &&
-          !declaring && (
-            <Button onClick={() => setDeclaring(true)}>Declare incident</Button>
-          )
+          // A phone wraps the link above the button rather than crowding it.
+          <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
+            <OnwardLink href={incidentHistoryHref(organization.slug)}>
+              Incident history
+            </OnwardLink>
+            {canManage && !declaring && (
+              <Button onClick={() => setDeclaring(true)}>
+                Declare incident
+              </Button>
+            )}
+          </div>
         }
       />
       <PageBody>

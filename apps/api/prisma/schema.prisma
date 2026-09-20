@@ -693,6 +693,16 @@ model IncidentActivity {
   @@index([incidentId, createdAt])
   /// Serves the Restrict check when a user row is physically deleted.
   @@index([actorId])
+  /// Serves the organization's operational activity: every entry recorded in
+  /// a period of days, read as one range rather than gathered from each
+  /// incident's own timeline.
+  @@index([organizationId, createdAt])
+  /// Serves one member's response activity: what one actor wrote in this
+  /// organization over a period of days. The index above cannot, since its
+  /// second column is the date rather than the actor; the actor_id index
+  /// above cannot either, since it knows neither organization nor date, and
+  /// it stays because the Restrict check on a user needs exactly it.
+  @@index([organizationId, actorId, createdAt])
   @@map("incident_activities")
 }
 

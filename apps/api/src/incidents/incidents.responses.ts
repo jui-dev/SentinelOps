@@ -1,7 +1,15 @@
 import type { ServiceCriticality } from '../services/services.contract.js';
+import { LEVELS } from './incidents.activity.js';
+import type { Calendar } from './incidents.calendar.js';
 import type { Attention } from './incidents.attention.js';
+import { MEMBER_LEVELS } from './member-activity.js';
+import type { MemberActivityCategory } from './member-activity.js';
+import type { OperationalActivityCategory } from './incidents.activity.js';
 import type {
   AffectedServiceResponse,
+  ActivityIncidentResponse,
+  MemberActivityResponse,
+  OperationalActivityResponse,
   IncidentActivityResponse,
   IncidentActivityType,
   IncidentAttentionResponse,
@@ -156,6 +164,81 @@ export const toIncidentActivityResponse = (
     name: activity.actor.name,
   },
   createdAt: activity.createdAt.toISOString(),
+});
+
+/** The identity a calendar names an incident by: never its prose. */
+interface ActivityIncidentRow {
+  id: string;
+  number: number;
+  title: string;
+  severity: IncidentSeverity;
+  status: IncidentStatus;
+  service: { name: string; slug: string };
+}
+
+/** An incident a day touched: identity, where it stands, and how much. */
+const toActivityIncidentResponse = ({
+  incident,
+  events,
+}: {
+  incident: ActivityIncidentRow;
+  events: number;
+}): ActivityIncidentResponse => ({
+  id: incident.id,
+  number: incident.number,
+  title: incident.title,
+  severity: incident.severity,
+  status: incident.status,
+  service: { name: incident.service.name, slug: incident.service.slug },
+  events,
+});
+
+/**
+ * A built calendar's days, shaped for the wire. The judgement is already
+ * made — which entries counted, and how busy each day was — so this only
+ * names the period and shapes each day's incidents. Both activity routes
+ * emit the same day shape over their own categories, which is why this is
+ * generic over them; what the categories *mean* is not shared.
+ */
+const toCalendarDays = <Category extends string>(
+  calendar: Calendar<Category, ActivityIncidentRow>,
+) =>
+  calendar.days.map((day) => ({
+    date: day.date,
+    total: day.total,
+    level: day.level,
+    counts: { ...day.counts },
+    incidents: day.incidents.map(toActivityIncidentResponse),
+    moreIncidents: day.moreIncidents,
+  }));
+
+/** The organization's activity over a period (incidents.activity.ts). */
+export const toOperationalActivityResponse = (
+  calendar: Calendar<OperationalActivityCategory, ActivityIncidentRow>,
+  period: { from: string; to: string },
+): OperationalActivityResponse => ({
+  from: period.from,
+  to: period.to,
+  days: toCalendarDays(calendar),
+  total: calendar.total,
+  activeDays: calendar.activeDays,
+  thresholds: [...LEVELS],
+});
+
+/**
+ * One member's response activity over a period (member-activity.ts). Its own
+ * thresholds: a person's bands, never the organization's.
+ */
+export const toMemberActivityResponse = (
+  calendar: Calendar<MemberActivityCategory, ActivityIncidentRow>,
+  period: { from: string; to: string },
+): MemberActivityResponse => ({
+  from: period.from,
+  to: period.to,
+  days: toCalendarDays(calendar),
+  total: calendar.total,
+  activeDays: calendar.activeDays,
+  thresholds: [...MEMBER_LEVELS],
 });
 
 /** Most severe first, as the database enum declares them. */
