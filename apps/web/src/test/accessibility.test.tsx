@@ -292,6 +292,25 @@ const activity = (from: string, to: string) => {
   };
 };
 
+/** One of the occurrence's ranked services: its share is of 25 incidents. */
+const rankedService = (
+  name: string,
+  declared: number,
+  archivedAt: string | null,
+) => {
+  const slug = name.toLowerCase().replace(/\W+/g, "-");
+
+  return {
+    id: `svc-${slug}`,
+    name,
+    slug,
+    criticality: "HIGH" as const,
+    archivedAt,
+    declared,
+    share: declared / 25,
+  };
+};
+
 /**
  * The Overview's last thirty days: sparse, as a real month is — a few days
  * with one to three incidents, the rest quiet — with today not yet over,
@@ -331,7 +350,15 @@ const occurrence = (from: string, to: string) => {
       minimumSample: 5,
       changePercent: 25,
     },
-    services: { top: [], others: { services: 0, declared: 0 } },
+    // Ranked as the API ranks: one archived, and a remainder beneath.
+    services: {
+      top: [
+        rankedService("Payment API", 9, null),
+        rankedService("Authentication", 7, null),
+        rankedService("Fraud Detection", 5, "2026-09-01T09:00:00.000Z"),
+      ],
+      others: { services: 2, declared: 4 },
+    },
   };
 };
 
@@ -504,6 +531,7 @@ describe("accessibility", () => {
       await screen.findByRole("heading", { level: 1, name: "Overview" });
       await screen.findByRole("list", { name: "Active incidents" });
       await screen.findByRole("list", { name: "Incidents declared per day" });
+      await screen.findByRole("list", { name: "Services under pressure" });
       await screen.findByRole("grid", { name: /Operational activity/ });
       await expectNoAxeViolations(container);
       // A year of days is ~370 squares for axe to walk, which jsdom does far

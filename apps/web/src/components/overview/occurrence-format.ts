@@ -1,6 +1,7 @@
 import type {
   IncidentOccurrenceDayResponse,
   IncidentOccurrenceResponse,
+  ServiceOccurrenceResponse,
 } from "@/lib/api/contracts";
 import { startOfUtcDay } from "@/lib/period/period";
 
@@ -173,4 +174,46 @@ export const describeDay = (day: IncidentOccurrenceDayResponse) => {
       : `, 7-day average ${formatAverage(day.rollingAverage)}`;
 
   return `${heading}: ${declaredPhrase(day)}${average}.`;
+};
+
+/**
+ * A service's share of the period's incidents, as the API gave it, to a
+ * whole percent: "44%". A share too small to round to one is "<1%", never
+ * "0%" — the service had incidents. The percentages of a list are not
+ * forced to sum to 100: each is its own share, rounded.
+ */
+export const formatShare = (share: number) => {
+  const percent = Math.round(share * 100);
+
+  return percent === 0 && share > 0 ? "<1%" : `${percent}%`;
+};
+
+/**
+ * One service's figures in words, for anyone who cannot see its bar — its
+ * name is read from the row itself: "7 incidents, 44% of incidents
+ * declared".
+ */
+export const describeServiceShare = ({
+  declared,
+  share,
+}: Pick<ServiceOccurrenceResponse, "declared" | "share">) =>
+  `${plural(declared, "incident")}, ${formatShare(share)} of incidents declared`;
+
+/**
+ * What the ranked services leave out, as a count of services and of their
+ * incidents: shown short — "3 more services · 4 incidents" — and read in
+ * full. A remainder, never a service of its own: the API gives it no
+ * share, and none is worked out here.
+ */
+export const describeOthers = ({
+  services,
+  declared,
+}: IncidentOccurrenceResponse["services"]["others"]) => {
+  const more = plural(services, "more service", "more services");
+  const incidents = plural(declared, "incident");
+
+  return {
+    short: `${more} · ${incidents}`,
+    text: `Not ranked: ${more}, with ${incidents} between them.`,
+  };
 };

@@ -16,6 +16,7 @@ import type {
   IncidentSummaryResponse,
   OperationalActivityDayResponse,
   OperationalActivityResponse,
+  ServiceOccurrenceResponse,
 } from "@/lib/api/contracts";
 import { queryKeys } from "@/lib/api/query-keys";
 import { clearAccessToken } from "@/lib/auth/token-store";
@@ -245,6 +246,41 @@ const LAST_30 = { from: "2026-08-21", to: "2026-09-19" };
  * noon — is not over. `rolling` gives the API's averages; a day it leaves
  * out has none. Days before `trackedFrom` have no history.
  */
+/** One service as the occurrence ranking names it. */
+const ranked = (
+  name: string,
+  declared: number,
+  share: number,
+  overrides: Partial<ServiceOccurrenceResponse> = {},
+): ServiceOccurrenceResponse => ({
+  id: `svc-${name.toLowerCase().replace(/\W+/g, "-")}`,
+  name,
+  slug: name.toLowerCase().replace(/\W+/g, "-"),
+  criticality: "HIGH",
+  archivedAt: null,
+  declared,
+  share,
+  ...overrides,
+});
+
+/**
+ * Where the default fixture's eight incidents were declared: two tied at
+ * one, in the API's order, and one of them against a service since
+ * archived. The names are deliberately out of alphabetical order where the
+ * API tied them, so a client that re-sorted would be caught.
+ */
+const RANKED: IncidentOccurrenceResponse["services"] = {
+  top: [
+    ranked("Payment API", 4, 0.5),
+    ranked("Authentication", 2, 0.25),
+    ranked("Search", 1, 0.125),
+    ranked("Fraud Detection", 1, 0.125, {
+      archivedAt: "2026-09-01T09:00:00.000Z",
+    }),
+  ],
+  others: { services: 0, declared: 0 },
+};
+
 const occurrenceOver = ({
   declared = {
     "2026-08-24": 1,
@@ -269,12 +305,14 @@ const occurrenceOver = ({
     changePercent: 33,
   },
   incidentFreeDays,
+  services,
 }: {
   declared?: Record<string, number>;
   rolling?: Record<string, number>;
   trackedFrom?: string | null;
   previous?: IncidentOccurrenceResponse["previous"];
   incidentFreeDays?: number;
+  services?: IncidentOccurrenceResponse["services"];
 } = {}): IncidentOccurrenceResponse => {
   const days = Array.from({ length: 30 }, (_, index) => {
     const date = new Date(
@@ -293,18 +331,22 @@ const occurrenceOver = ({
     };
   });
   const counted = days.filter((day) => day.complete && day.tracked);
+  const total = days.reduce((sum, day) => sum + day.declared, 0);
 
   return {
     ...LAST_30,
     asOf: "2026-09-19T12:00:00.000Z",
     trackedFrom,
-    declared: days.reduce((sum, day) => sum + day.declared, 0),
+    declared: total,
     incidentFreeDays:
       incidentFreeDays ?? counted.filter((day) => day.declared === 0).length,
     completeDays: counted.length,
     days,
     previous,
-    services: { top: [], others: { services: 0, declared: 0 } },
+    // Nothing declared, nothing ranked: the API's own rule.
+    services:
+      services ??
+      (total > 0 ? RANKED : { top: [], others: { services: 0, declared: 0 } }),
   };
 };
 
@@ -1793,7 +1835,12 @@ describe("the operations overview", () => {
           "5 more than the previous 30 days (3)",
         ),
       ).toBeDefined();
-      expect(recent.textContent).not.toMatch(/%/);
+      // The trend's own words; the services' shares beside it are the API's.
+      const trend = within(recent).getByRole("heading", {
+        name: "Incident trend",
+      }).parentElement!.parentElement!;
+
+      expect(trend.textContent).not.toMatch(/%/);
     });
 
     it("draws each day as the API gave it: bars, quiet days, today so far", async () => {
@@ -2027,6 +2074,231 @@ describe("the operations overview", () => {
       expect(recent.innerHTML).not.toMatch(
         /(signal|danger|warning|success|info|status)-/,
       );
+    });
+
+    describe("services under pressure", () => {
+      const servicesList = async () =>
+        within(await section()).findByRole("list", {
+          name: "Services under pressure",
+        });
+
+      const rows = async () =>
+        within(await servicesList()).getAllByRole("listitem");
+
+      it("ranks the services as the API did, ties in its order", async () => {
+        api(READ);
+        renderOverview();
+
+        const items = await rows();
+
+        expect(items.map((item) => item.textContent)).toEqual([
+          "Payment API: 4 incidents, 50% of incidents declared450%",
+          "Authentication: 2 incidents, 25% of incidents declared225%",
+          "Search: 1 incident, 13% of incidents declared113%",
+          "Fraud Detection(archived): 1 incident, 13% of incidents declared113%",
+        ]);
+        // An ordered list, and no rank drawn that a tie would contradict.
+        expect((await servicesList()).tagName).toBe("OL");
+      });
+
+      it("draws each bar as the service's share of every incident, not of the busiest", async () => {
+        api(READ);
+        const { container } = renderOverview();
+
+        await servicesList();
+        const bars = [
+          ...container.querySelectorAll<HTMLElement>("[data-share-bar]"),
+        ];
+
+        expect(bars.map((bar) => bar.style.width)).toEqual([
+          "50%",
+          "25%",
+          "12.5%",
+          "12.5%",
+        ]);
+        // Decoration: the figures are read in words.
+        for (const bar of bars) {
+          expect(bar.closest('[aria-hidden="true"]')).not.toBeNull();
+        }
+      });
+
+      it("keeps the bars neutral, and leaves criticality out", async () => {
+        api(READ);
+        const { container } = renderOverview();
+
+        await servicesList();
+        const pair = container.querySelector('[data-pair="services"]')!;
+
+        expect(pair.innerHTML).not.toMatch(
+          /(signal|danger|warning|success|info|status|activity)-|bg-accent/,
+        );
+        expect(pair.textContent).not.toMatch(/High|Critical/);
+      });
+
+      it("keeps an archived service where the API ranked it, and says so quietly", async () => {
+        api(READ);
+        renderOverview();
+
+        const items = await rows();
+
+        expect(within(items[3]).getByText("(archived)")).toBeDefined();
+        expect(
+          items.filter((item) => item.textContent?.includes("(archived)")),
+        ).toHaveLength(1);
+      });
+
+      it("lists only the services there are, with nothing standing in for the rest", async () => {
+        api(READ, {
+          occurrence: occurrenceOver({
+            services: {
+              top: [ranked("Payment API", 8, 1)],
+              others: { services: 0, declared: 0 },
+            },
+          }),
+        });
+        const { container } = renderOverview();
+
+        expect(await rows()).toHaveLength(1);
+        expect(
+          container.querySelector<HTMLElement>("[data-share-bar]")!.style.width,
+        ).toBe("100%");
+        expect(
+          container.querySelector('[data-pair="services"]')!.textContent,
+        ).not.toMatch(/Not ranked|more service/);
+      });
+
+      it("sums what the ranking leaves out in a line, never as a service", async () => {
+        api(READ, {
+          occurrence: occurrenceOver({
+            services: {
+              top: [
+                ranked("Payment API", 3, 0.375),
+                ranked("Authentication", 1, 0.125),
+              ],
+              others: { services: 3, declared: 4 },
+            },
+          }),
+        });
+        const { container } = renderOverview();
+
+        expect(await rows()).toHaveLength(2);
+        const recent = await section();
+        const remainder = within(recent).getByText(
+          "3 more services · 4 incidents",
+        );
+
+        expect(
+          within(recent).getByText(
+            "Not ranked: 3 more services, with 4 incidents between them.",
+          ),
+        ).toBeDefined();
+        // Outside the ranking, with no bar and no percentage: the API gave
+        // the remainder no share.
+        expect(remainder.closest("ol")).toBeNull();
+        expect(remainder.textContent).not.toMatch(/%/);
+        expect(container.querySelectorAll("[data-share-bar]")).toHaveLength(2);
+      });
+
+      it("shows a share too small to round as under one percent, never nought", async () => {
+        api(READ, {
+          occurrence: occurrenceOver({
+            services: {
+              top: [ranked("Payment API", 1, 0.004)],
+              others: { services: 40, declared: 249 },
+            },
+          }),
+        });
+        renderOverview();
+
+        const [item] = await rows();
+
+        expect(item.textContent).toContain("<1%");
+        expect(item.textContent).not.toContain(" 0%");
+      });
+
+      it("draws nothing to rank when nothing was declared, leaving the trend the width", async () => {
+        api(READ, { occurrence: occurrenceOver({ declared: {}, rolling: {} }) });
+        const { container } = renderOverview();
+
+        const recent = await section();
+
+        await within(recent).findByText(
+          "No incidents declared in the last 30 days",
+        );
+        expect(within(recent).queryByText("Services under pressure")).toBeNull();
+        expect(container.querySelector('[data-pair="services"]')).toBeNull();
+        expect(recent.innerHTML).not.toMatch(/xl:grid-cols-/);
+      });
+
+      it("draws nothing to rank without history", async () => {
+        api(READ, {
+          occurrence: occurrenceOver({ declared: {}, trackedFrom: null }),
+        });
+        renderOverview();
+
+        const recent = await section();
+
+        await within(recent).findByText("Not enough history yet");
+        expect(within(recent).queryByText("Services under pressure")).toBeNull();
+      });
+
+      it("links each service for a role that can read services", async () => {
+        api(READ);
+        renderOverview();
+
+        expect(
+          within(await servicesList())
+            .getByRole("link", { name: "Payment API" })
+            .getAttribute("href"),
+        ).toBe("/orgs/acme-ops/services/payment-api");
+      });
+
+      it("names each service without linking it for a role that cannot read services", async () => {
+        api(READ.filter((permission) => permission !== "services:read"));
+        renderOverview();
+
+        const list = await servicesList();
+
+        expect(within(list).queryAllByRole("link")).toHaveLength(0);
+        expect(within(list).getByText("Payment API")).toBeDefined();
+      });
+
+      it("sits beside the trend from xl, in a narrow column, and beneath it below", async () => {
+        api(READ);
+        const { container } = renderOverview();
+
+        await servicesList();
+        const pair = container.querySelector<HTMLElement>(
+          '[data-pair="services"]',
+        )!;
+        const grid = pair.parentElement!;
+
+        expect(grid.className).toMatch(/xl:grid-cols-\[minmax\(0,1fr\)_21rem\]/);
+        expect(grid.className.split(/\s+/)).toContain("grid-cols-1");
+        // When before where: the trend first, in the DOM and on the page.
+        expect(
+          grid.firstElementChild?.querySelector("#incident-trend-title"),
+        ).not.toBeNull();
+        expect(grid.lastElementChild).toBe(pair);
+        // A hairline between the two: above when stacked, beside from xl.
+        expect(pair.className).toMatch(/border-t/);
+        expect(pair.className).toMatch(/xl:border-l/);
+      });
+
+      it("has no accessibility violations with a remainder and an archived service", async () => {
+        api(READ, {
+          occurrence: occurrenceOver({
+            services: { ...RANKED, others: { services: 2, declared: 3 } },
+          }),
+        });
+        const { container } = renderOverview();
+
+        await servicesList();
+        await chartDays();
+        await expectNoAxeViolations(
+          container.querySelector<HTMLElement>("#recent-operational-health")!,
+        );
+      });
     });
   });
 

@@ -2,10 +2,12 @@
 
 import { useOrganization } from "@/components/organizations/organization-scope";
 import { ErrorAlert } from "@/components/ui/alert";
+import { cx } from "@/components/ui/cx";
 import { Spinner } from "@/components/ui/spinner";
 
 import { IncidentTrend } from "./incident-trend";
 import { OverviewPanel } from "./overview-panel";
+import { ServicesUnderPressure } from "./services-under-pressure";
 import { useIncidentOccurrence } from "./use-incident-occurrence";
 
 /**
@@ -13,6 +15,13 @@ import { useIncidentOccurrence } from "./use-incident-occurrence";
  * above it and the year beneath. How often incidents have been declared,
  * and — with the services they were declared against — where they have
  * concentrated.
+ *
+ * The two are one answer read two ways — when, and where — so they share a
+ * request and a frame. Side by side from `xl`, a hairline between them:
+ * the trend takes what width there is, and the services a narrow column
+ * of their own, so their bars stay compact however wide the page. Below
+ * that they stack, when before where. With nothing declared there is
+ * nothing to rank, and the trend, which says so, has the width alone.
  *
  * History, not state, so it reads nothing the sections above it read: its
  * own request, which can fail on its own. Its label names the time it
@@ -35,7 +44,27 @@ export function RecentOperationalHealth() {
       </div>
     );
   } else {
-    content = <IncidentTrend occurrence={occurrence.data} />;
+    const { declared, services } = occurrence.data;
+    const ranked = declared > 0 && services.top.length > 0;
+
+    content = (
+      <div
+        className={cx(
+          "grid grid-cols-1 gap-7",
+          ranked && "xl:grid-cols-[minmax(0,1fr)_21rem]",
+        )}
+      >
+        <IncidentTrend occurrence={occurrence.data} />
+        {ranked && (
+          <div
+            data-pair="services"
+            className="border-t border-line-subtle pt-7 xl:border-t-0 xl:border-l xl:pt-0 xl:pl-7"
+          >
+            <ServicesUnderPressure services={services} />
+          </div>
+        )}
+      </div>
+    );
   }
 
   return (

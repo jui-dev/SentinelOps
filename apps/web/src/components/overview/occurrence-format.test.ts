@@ -10,7 +10,10 @@ import {
   declaredPhrase,
   describeComparison,
   describeDay,
+  describeOthers,
+  describeServiceShare,
   formatAverage,
+  formatShare,
 } from "./occurrence-format";
 
 const thirty = Array.from({ length: 30 }, () => ({}));
@@ -142,5 +145,39 @@ describe("a day in words", () => {
     expect(describeDay(day({ tracked: false }))).toBe(
       "Thursday, September 3: before this organization's history.",
     );
+  });
+});
+
+describe("a service's share", () => {
+  it("is the API's share to a whole percent", () => {
+    expect(formatShare(1)).toBe("100%");
+    expect(formatShare(0.4375)).toBe("44%");
+    expect(formatShare(0.125)).toBe("13%");
+  });
+
+  it("is under one percent, never nought, for a service that had incidents", () => {
+    expect(formatShare(0.004)).toBe("<1%");
+    expect(formatShare(0.005)).toBe("1%");
+    expect(formatShare(0)).toBe("0%");
+  });
+
+  it("reads a service's figures in words", () => {
+    expect(describeServiceShare({ declared: 7, share: 0.4375 })).toBe(
+      "7 incidents, 44% of incidents declared",
+    );
+    expect(describeServiceShare({ declared: 1, share: 0.004 })).toBe(
+      "1 incident, <1% of incidents declared",
+    );
+  });
+
+  it("says what the ranking leaves out as a remainder, with no share", () => {
+    expect(describeOthers({ services: 3, declared: 4 })).toEqual({
+      short: "3 more services · 4 incidents",
+      text: "Not ranked: 3 more services, with 4 incidents between them.",
+    });
+    expect(describeOthers({ services: 1, declared: 1 })).toEqual({
+      short: "1 more service · 1 incident",
+      text: "Not ranked: 1 more service, with 1 incident between them.",
+    });
   });
 });
