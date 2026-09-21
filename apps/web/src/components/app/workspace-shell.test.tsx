@@ -303,7 +303,7 @@ describe("WorkspaceShell", () => {
     });
   });
 
-  it("has landmarks, a skip link to the content, and a way to log out", async () => {
+  it("has landmarks and a skip link to the content", async () => {
     at("/orgs/acme-ops", "acme-ops");
     api();
 
@@ -314,9 +314,106 @@ describe("WorkspaceShell", () => {
     expect(skip.getAttribute("href")).toBe("#main");
     expect(screen.getByRole("main").id).toBe("main");
     expect(screen.getByRole("main").textContent).toContain("Page content");
-    expect(
-      await screen.findByRole("button", { name: "Log out" }),
-    ).toBeDefined();
+  });
+
+  describe("the strip's utilities", () => {
+    it("names who is signed in, in what capacity here, and logs out from the account menu", async () => {
+      const user = userEvent.setup();
+
+      at("/orgs/acme-ops", "acme-ops");
+      const { requests } = api();
+
+      const { container } = renderShell();
+
+      const account = await screen.findByRole("button", {
+        name: "Account: Ada Lovelace",
+      });
+
+      expect(account.getAttribute("aria-haspopup")).toBe("menu");
+      // The rail no longer carries the account.
+      expect(within(primaryNav()).queryByText("Ada Lovelace")).toBeNull();
+
+      await user.click(account);
+
+      const menu = screen.getByRole("menu", { name: "Account" });
+
+      expect(menu.textContent).toContain("Ada Lovelace");
+      expect(menu.textContent).toContain("ada@example.com");
+      expect(menu.textContent).toContain("Admin · Acme Operations");
+      await expectNoAxeViolations(container);
+
+      await user.click(within(menu).getByRole("menuitem", { name: "Log out" }));
+
+      expect(screen.queryByRole("menu")).toBeNull();
+      await vi.waitFor(() =>
+        expect(
+          requests.some(
+            (r) => r.method === "POST" && r.path === "/auth/logout",
+          ),
+        ).toBe(true),
+      );
+    });
+
+    it("claims no organization role outside an organization", async () => {
+      const user = userEvent.setup();
+
+      at("/orgs");
+      api();
+
+      renderShell();
+
+      await user.click(
+        await screen.findByRole("button", { name: "Account: Ada Lovelace" }),
+      );
+
+      const menu = screen.getByRole("menu", { name: "Account" });
+
+      expect(menu.textContent).toContain("ada@example.com");
+      expect(menu.textContent).not.toContain("Admin");
+    });
+
+    it("offers notifications as coming later, with no count and nothing to open", async () => {
+      const user = userEvent.setup();
+
+      at("/orgs/acme-ops", "acme-ops");
+      api();
+
+      renderShell();
+
+      const bell = screen.getByRole("button", {
+        name: "Notifications (coming later)",
+      });
+
+      expect(bell.getAttribute("aria-disabled")).toBe("true");
+      expect(bell.hasAttribute("aria-haspopup")).toBe(false);
+      expect(bell.textContent).toBe("Notifications (coming later)");
+
+      await user.click(bell);
+
+      expect(screen.queryByRole("menu")).toBeNull();
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+
+    it("shows the UTC date and time to the minute, with local time on hover", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-09-21T16:19:42.000Z"));
+
+      try {
+        at("/orgs/acme-ops", "acme-ops");
+        api();
+
+        const { container } = renderShell();
+        const clock = container.querySelector("header time")!;
+
+        expect(clock.getAttribute("dateTime")).toBe("2026-09-21T16:19:42.000Z");
+        expect(clock.textContent).toBe("Sep 21, 202616:19 · UTC");
+        expect(clock.getAttribute("title")).toMatch(
+          /^Local time: .+ \(UTC([+-]\d{1,2}(:\d{2})?)?\)$/,
+        );
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   it("opens the navigation as a drawer and closes it again", async () => {

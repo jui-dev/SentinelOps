@@ -1,11 +1,11 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Building, LogOut } from "lucide-react";
+import { Building } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { useParams, usePathname, useRouter } from "next/navigation";
-import { useId, useState } from "react";
+import { useId } from "react";
 
 import {
   attentionCount,
@@ -17,10 +17,9 @@ import {
   organizationQuery,
   useRouteMembership,
 } from "@/components/organizations/organization-scope";
-import { formatRole } from "@/components/organizations/format";
 import { Permission } from "@/lib/api/contracts";
 import type { MembershipResponse } from "@/lib/api/contracts";
-import { useCurrentUser, useSession } from "@/lib/auth/session-provider";
+import { useCurrentUser } from "@/lib/auth/session-provider";
 
 import {
   isCurrentPath,
@@ -182,71 +181,9 @@ function OrganizationSwitcher({
   );
 }
 
-function initialsOf(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-
-  return (
-    (parts[0]?.[0] ?? "") + (parts.length > 1 ? parts.at(-1)![0] : "")
-  ).toUpperCase();
-}
-
-/** Who is signed in, and in what capacity here. */
-function Account({ role }: { role?: string }) {
-  const { logout } = useSession();
-  const me = useCurrentUser();
-  const [signingOut, setSigningOut] = useState(false);
-
-  // RequireSession navigates to /login once the session is gone.
-  const onLogout = async () => {
-    setSigningOut(true);
-
-    try {
-      await logout();
-    } catch {
-      // Local state is already cleared; see SessionProvider.logout.
-    }
-  };
-
-  return (
-    <div className="mt-2 flex items-center gap-2.5 pt-2 pr-3 pb-4 pl-4">
-      {me.data && (
-        <>
-          <span
-            aria-hidden="true"
-            className="grid size-7 shrink-0 place-items-center rounded-md bg-selected text-2xs font-semibold text-accent-text"
-          >
-            {initialsOf(me.data.name)}
-          </span>
-          <div className="flex min-w-0 flex-1 flex-col">
-            <p className="truncate text-sm font-medium text-fg">
-              {me.data.name}
-            </p>
-            <p
-              className="truncate text-xs text-fg-subtle"
-              title={me.data.email}
-            >
-              {role ? formatRole(role) : me.data.email}
-            </p>
-          </div>
-        </>
-      )}
-      <button
-        type="button"
-        onClick={onLogout}
-        disabled={signingOut}
-        title="Log out"
-        className="ml-auto grid size-7 shrink-0 place-items-center rounded-md text-fg-subtle transition-colors duration-(--duration-fast) hover:bg-rail-hover hover:text-fg disabled:text-fg-disabled"
-      >
-        <LogOut aria-hidden="true" className="size-4" />
-        <span className="sr-only">{signingOut ? "Logging out…" : "Log out"}</span>
-      </button>
-    </div>
-  );
-}
-
 /**
- * The persistent navigation rail: the organization, what can be done in it,
- * and who is signed in. Items the caller's permissions do not include are
+ * The persistent navigation rail: the organization and what can be done in
+ * it. Who is signed in is in the situation strip. Items the caller's permissions do not include are
  * not offered; the API authorizes every page behind them regardless.
  */
 export function Rail() {
@@ -318,8 +255,7 @@ export function Rail() {
           </ul>
         )}
       </div>
-      <div className="flex flex-col gap-1 pr-3 pb-2">{sections("footer")}</div>
-      <Account role={membership?.role} />
+      <div className="flex flex-col gap-1 pr-3 pb-4">{sections("footer")}</div>
     </nav>
   );
 }

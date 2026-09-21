@@ -5,10 +5,9 @@ import { createContext, useContext } from "react";
 import type { ReactNode } from "react";
 
 import { cx } from "@/components/ui/cx";
-import { useMinuteClock } from "@/components/ui/timestamp";
 import { useRouteMembership } from "@/components/organizations/organization-scope";
 
-import { ThemeControl } from "./theme-control";
+import { ShellUtilities } from "./shell-utilities";
 import { Wordmark } from "./wordmark";
 
 /**
@@ -17,7 +16,7 @@ import { Wordmark } from "./wordmark";
  *
  * Only `neutral` exists. Incidents are recorded, but the strip does not yet
  * summarise them — that is the operational overview's job — so it claims no
- * state: it shows where you are and the time. When it does, a provider will
+ * state: it shows where you are, the time, and the shell's utilities. When it does, a provider will
  * supply richer levels here (an active SEV1, a degraded service) and the
  * strip renders them; nothing that consumes the context needs to change
  * shape.
@@ -36,26 +35,6 @@ export const useSituation = (): Situation => useContext(SituationContext);
 const LEVEL_STYLES: Record<SituationLevel, string> = {
   neutral: "bg-ink text-ink-fg",
 };
-
-const pad = (value: number) => String(value).padStart(2, "0");
-
-/**
- * The current time in UTC, to the minute — the reference every SentinelOps
- * timestamp will be read against. Ticks on the minute boundary, and is not a
- * live region: nobody needs it announced.
- */
-function UtcClock() {
-  const now = useMinuteClock();
-
-  return (
-    <p className="hidden items-baseline gap-1.5 sm:flex">
-      <span className="data text-ink-muted">UTC</span>
-      <time dateTime={now.toISOString()} className="data text-ink-fg">
-        {pad(now.getUTCHours())}:{pad(now.getUTCMinutes())}
-      </time>
-    </p>
-  );
-}
 
 /** The strip's frame, shared by the workspace and the sign-in pages. */
 export function StripFrame({
@@ -93,7 +72,7 @@ export function StripFrame({
       <div className="flex min-w-0 flex-1 items-center gap-3 px-3 lg:px-4">
         {children}
       </div>
-      <div className="flex shrink-0 items-center gap-4 px-3">{trailing}</div>
+      <div className="flex shrink-0 items-center px-3">{trailing}</div>
     </header>
   );
 }
@@ -121,12 +100,7 @@ export function SituationStrip({
           <span className="sr-only">Open navigation</span>
         </button>
       }
-      trailing={
-        <>
-          <UtcClock />
-          <ThemeControl />
-        </>
-      }
+      trailing={<ShellUtilities />}
     >
       {membership && (
         <p className="flex min-w-0 items-baseline gap-2">

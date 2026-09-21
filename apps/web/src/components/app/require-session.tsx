@@ -9,7 +9,7 @@ import { useCurrentUser, useSession } from "@/lib/auth/session-provider";
 
 import { SessionUnavailable } from "./session-unavailable";
 import { StripFrame } from "./situation";
-import { ThemeControl } from "./theme-control";
+import { AppearanceMenu } from "./shell-utilities";
 
 /**
  * The workspace's chrome before the workspace can render: the same strip, so
@@ -19,7 +19,7 @@ import { ThemeControl } from "./theme-control";
 function SessionFallback({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-dvh flex-col bg-canvas">
-      <StripFrame alignToRail trailing={<ThemeControl />} />
+      <StripFrame alignToRail trailing={<AppearanceMenu />} />
       <main className="flex flex-1 flex-col">{children}</main>
     </div>
   );

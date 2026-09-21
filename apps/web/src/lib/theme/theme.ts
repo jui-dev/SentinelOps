@@ -5,40 +5,41 @@ import { useLayoutEffect, useSyncExternalStore } from "react";
 import { THEME_STORAGE_KEY } from "./theme-script";
 
 /**
- * Light and dark themes.
+ * Dark, light, and system appearances. Dark is SentinelOps' own: it is what
+ * anyone who has never chosen sees.
  *
  * The CSS does the real work: every colour token is `light-dark(…)`, and
- * `color-scheme` on <html> picks the half. With no stored choice nothing is
- * set, so the operating system decides — with or without JavaScript. An
- * explicit choice is a `data-theme` attribute, written before first paint by
- * THEME_INIT_SCRIPT and kept in step by the hooks below.
+ * `color-scheme` on <html> picks the half. The stylesheet's default is dark,
+ * so with no stored choice nothing needs setting — with or without
+ * JavaScript. A choice is a `data-theme` attribute (`system` hands the half
+ * to the operating system), written before first paint by THEME_INIT_SCRIPT
+ * and kept in step by the hooks below.
  *
  * The choice is per device, in localStorage. It is not an account setting and
  * not a cookie: the server never needs it, and reading a cookie in the root
  * layout would opt every page out of static rendering.
  */
 
-export type ThemePreference = "system" | "light" | "dark";
+export type ThemePreference = "dark" | "light" | "system";
 
-const isExplicit = (value: unknown): value is "light" | "dark" =>
-  value === "light" || value === "dark";
+export const DEFAULT_THEME: ThemePreference = "dark";
 
-/** The stored choice. Anything unreadable or unrecognised means "system". */
+const isPreference = (value: unknown): value is ThemePreference =>
+  value === "dark" || value === "light" || value === "system";
+
+/** The stored choice. Anything absent, unreadable or unrecognised is dark. */
 export const readThemePreference = (): ThemePreference => {
   try {
     const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
 
-    return isExplicit(stored) ? stored : "system";
+    return isPreference(stored) ? stored : DEFAULT_THEME;
   } catch {
-    return "system";
+    return DEFAULT_THEME;
   }
 };
 
 const applyThemeAttribute = (preference: ThemePreference) => {
-  const root = document.documentElement;
-
-  if (isExplicit(preference)) root.setAttribute("data-theme", preference);
-  else root.removeAttribute("data-theme");
+  document.documentElement.setAttribute("data-theme", preference);
 };
 
 const listeners = new Set<() => void>();
@@ -66,12 +67,9 @@ const subscribePreference = (onChange: () => void) => {
  * some private modes): the choice then lasts until the page is reloaded.
  */
 export const setThemePreference = (preference: ThemePreference) => {
+  // "system" is stored too: without it, nothing stored means dark.
   try {
-    if (preference === "system") {
-      window.localStorage.removeItem(THEME_STORAGE_KEY);
-    } else {
-      window.localStorage.setItem(THEME_STORAGE_KEY, preference);
-    }
+    window.localStorage.setItem(THEME_STORAGE_KEY, preference);
   } catch {
     // Not persisted; still applied below.
   }
@@ -81,14 +79,15 @@ export const setThemePreference = (preference: ThemePreference) => {
 };
 
 /**
- * The current choice. The server snapshot is "system", so a server-rendered
- * control hydrates without a mismatch and then shows the stored value.
+ * The current choice. The server snapshot is the default, so a
+ * server-rendered control hydrates without a mismatch and then shows the
+ * stored value.
  */
 export const useThemePreference = (): ThemePreference =>
   useSyncExternalStore(
     subscribePreference,
     readThemePreference,
-    () => "system",
+    () => DEFAULT_THEME,
   );
 
 /**
@@ -97,7 +96,7 @@ export const useThemePreference = (): ThemePreference =>
  * remount resets <html> to the attributes React manages and drops the one
  * the script set (see the Next.js guide on preventing flash before
  * hydration). Reads storage directly rather than hydrated state, so it never
- * briefly applies the server's "system".
+ * briefly applies the server's default over a stored choice.
  */
 export function ThemeSync() {
   useLayoutEffect(() => {

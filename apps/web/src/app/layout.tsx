@@ -29,7 +29,8 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  colorScheme: "light dark",
+  // Dark until the stylesheet applies the user's choice (see lib/theme).
+  colorScheme: "dark",
   // The situation strip's ink, so browser chrome continues it.
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#121620" },

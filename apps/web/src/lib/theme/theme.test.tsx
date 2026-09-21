@@ -1,8 +1,8 @@
-import { act, render, renderHook, screen } from "@testing-library/react";
+import { act, render, renderHook, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ThemeControl } from "@/components/app/theme-control";
+import { AppearanceMenu } from "@/components/app/shell-utilities";
 
 import {
   setThemePreference,
@@ -24,7 +24,7 @@ afterEach(() => {
 });
 
 describe("the pre-paint script", () => {
-  it.each(["light", "dark"])("applies a stored %s choice", (theme) => {
+  it.each(["dark", "light", "system"])("applies a stored %s choice", (theme) => {
     localStorage.setItem(THEME_STORAGE_KEY, theme);
 
     runInitScript();
@@ -32,7 +32,7 @@ describe("the pre-paint script", () => {
     expect(root.getAttribute("data-theme")).toBe(theme);
   });
 
-  it("leaves the system in charge without a stored choice", () => {
+  it("leaves the stylesheet's dark default without a stored choice", () => {
     runInitScript();
 
     expect(root.hasAttribute("data-theme")).toBe(false);
@@ -69,12 +69,12 @@ describe("setThemePreference", () => {
     expect(root.getAttribute("data-theme")).toBe("dark");
   });
 
-  it("hands back to the system", () => {
-    setThemePreference("dark");
+  it("stores a choice of the system, which is not the default", () => {
+    setThemePreference("light");
     setThemePreference("system");
 
-    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBeNull();
-    expect(root.hasAttribute("data-theme")).toBe(false);
+    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe("system");
+    expect(root.getAttribute("data-theme")).toBe("system");
   });
 
   it("still applies the choice when storage refuses it", () => {
@@ -89,6 +89,18 @@ describe("setThemePreference", () => {
 });
 
 describe("useThemePreference", () => {
+  it("is dark for someone who has never chosen", () => {
+    const { result } = renderHook(() => useThemePreference());
+
+    expect(result.current).toBe("dark");
+  });
+
+  it("keeps an earlier explicit choice", () => {
+    localStorage.setItem(THEME_STORAGE_KEY, "light");
+
+    expect(renderHook(() => useThemePreference()).result.current).toBe("light");
+  });
+
   it("reads the stored choice and follows changes", () => {
     localStorage.setItem(THEME_STORAGE_KEY, "light");
     const { result } = renderHook(() => useThemePreference());
@@ -128,26 +140,88 @@ describe("ThemeSync", () => {
   });
 });
 
-describe("ThemeControl", () => {
-  it("is a named radio group reflecting and changing the choice", async () => {
+describe("AppearanceMenu", () => {
+  it("names the current appearance and offers the three as a radio menu", async () => {
     const user = userEvent.setup();
 
-    render(<ThemeControl />);
+    render(<AppearanceMenu />);
 
-    const group = screen.getByRole("group", { name: "Theme" });
+    const trigger = screen.getByRole("button", { name: "Appearance: Dark" });
 
-    expect(group).toBeDefined();
-    expect(
-      (screen.getByRole("radio", { name: "System theme" }) as HTMLInputElement)
-        .checked,
-    ).toBe(true);
+    expect(trigger.getAttribute("aria-haspopup")).toBe("menu");
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("menu")).toBeNull();
 
-    await user.click(screen.getByRole("radio", { name: "Dark theme" }));
+    await user.click(trigger);
 
-    expect(root.getAttribute("data-theme")).toBe("dark");
-    expect(
-      (screen.getByRole("radio", { name: "Dark theme" }) as HTMLInputElement)
-        .checked,
-    ).toBe(true);
+    const menu = screen.getByRole("menu", { name: "Appearance" });
+    const radios = within(menu).getAllByRole("menuitemradio");
+
+    expect(radios.map((radio) => radio.textContent)).toEqual([
+      "Dark",
+      "Light",
+      "System",
+    ]);
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    // Focus lands on the current choice.
+    expect(document.activeElement).toBe(
+      within(menu).getByRole("menuitemradio", { name: "Dark", checked: true }),
+    );
+
+    await user.click(within(menu).getByRole("menuitemradio", { name: "Light" }));
+
+    expect(root.getAttribute("data-theme")).toBe("light");
+    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe("light");
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Appearance: Light" }),
+    );
+  });
+
+  it("is worked from the keyboard, and Escape puts focus back", async () => {
+    const user = userEvent.setup();
+
+    render(<AppearanceMenu />);
+
+    screen.getByRole("button", { name: "Appearance: Dark" }).focus();
+    await user.keyboard("{ArrowDown}");
+
+    expect(screen.getByRole("menu", { name: "Appearance" })).toBeDefined();
+
+    await user.keyboard("{ArrowDown}{ArrowDown}");
+
+    expect(document.activeElement?.textContent).toBe("System");
+
+    await user.keyboard("{ArrowDown}");
+
+    expect(document.activeElement?.textContent).toBe("Dark");
+
+    await user.keyboard("{End}{Enter}");
+
+    expect(root.getAttribute("data-theme")).toBe("system");
+
+    await user.keyboard("{Enter}");
+    await user.keyboard("{Escape}");
+
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Appearance: System" }),
+    );
+  });
+
+  it("closes on a press elsewhere", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <>
+        <AppearanceMenu />
+        <p>Elsewhere</p>
+      </>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Appearance: Dark" }));
+    await user.click(screen.getByText("Elsewhere"));
+
+    expect(screen.queryByRole("menu")).toBeNull();
   });
 });

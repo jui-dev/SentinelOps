@@ -8,8 +8,9 @@
  * not exist here, and a test fails on any that reappear in source.
  *
  * Every colour is declared once, with `light-dark(<light>, <dark>)`. Which
- * half applies follows `color-scheme`: the operating system's by default, or
- * the user's explicit choice via `data-theme` on <html> (see lib/theme). Keep
+ * half applies follows `color-scheme`: dark by default, or the user's choice
+ * — light, or the operating system's — via `data-theme` on <html> (see
+ * lib/theme). Keep
  * one declaration per line — the contrast test in src/test reads this file.
  *
  * Colour families, never mixed:
@@ -548,16 +549,17 @@
 }
 
 @layer base {
+  /* Dark unless the user chose otherwise (see lib/theme). */
   :root {
-    color-scheme: light dark;
+    color-scheme: dark;
   }
 
   :root[data-theme="light"] {
     color-scheme: light;
   }
 
-  :root[data-theme="dark"] {
-    color-scheme: dark;
+  :root[data-theme="system"] {
+    color-scheme: light dark;
   }
 
   html {
