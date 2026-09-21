@@ -21,6 +21,9 @@
  *
  * Pure: candidates are given, never looked up, so a membership is only ever
  * one the caller read within the incident's own organization.
+ *
+ * A team placement is simpler, and has its own rule at the end: only the
+ * member placed or removed is told.
  */
 
 import type { IncidentResponderStatus } from '../incidents/incidents.contract.js';
@@ -86,3 +89,14 @@ export const incidentRecipients = (
   [...new Set(RULES[type](candidates))]
     .filter((id) => id !== candidates.actorMembershipId)
     .sort();
+
+/**
+ * Who is told that a member was placed on or taken off a team: that member,
+ * and nobody else — not their teammates, not the Admins. Unless they did it
+ * themselves: whoever acts knows.
+ */
+export const teamMembershipRecipients = (
+  memberMembershipId: string,
+  actorMembershipId: string,
+): string[] =>
+  memberMembershipId === actorMembershipId ? [] : [memberMembershipId];

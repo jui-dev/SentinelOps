@@ -6,6 +6,7 @@ import request from 'supertest';
 import { AppModule } from './../src/app.module.js';
 import { TokenService } from './../src/auth/token.service.js';
 import { PrismaService } from './../src/database/prisma.service.js';
+import { NotificationsWriter } from './../src/notifications/notifications.writer.js';
 import type { Role } from './../src/generated/prisma/enums.js';
 
 /**
@@ -15,7 +16,9 @@ import type { Role } from './../src/generated/prisma/enums.js';
  * but is refused every write with 403 — before the body is validated — and a
  * non-member receives admission's 404. Behaviour against real rows, tenant
  * isolation, and the database invariants are proven in
- * teams.integration-spec.ts and schema.integration-spec.ts.
+ * teams.integration-spec.ts and schema.integration-spec.ts; who a placement
+ * notifies, in team-notifications.integration-spec.ts, so the writer is
+ * stubbed here.
  */
 const USER_ID = '0199a1b2-c3d4-7000-8000-000000000001';
 const ORG_ID = '0199a1b2-c3d4-7000-8000-00000000000a';
@@ -126,6 +129,8 @@ describe('Teams (e2e)', () => {
     })
       .overrideProvider(PrismaService)
       .useValue(prisma)
+      .overrideProvider(NotificationsWriter)
+      .useValue({ teamMembership: vi.fn().mockResolvedValue(1) })
       .compile();
 
     app = moduleFixture.createNestApplication();
@@ -138,6 +143,8 @@ describe('Teams (e2e)', () => {
       work(prisma),
     );
     prisma.membership.findFirst.mockResolvedValue(null);
+    // A removal's lock on the team: the team is there.
+    prisma.$queryRaw.mockResolvedValue([{ id: TEAM_ID }]);
     prisma.organization.findFirst.mockResolvedValue({ id: ORG_ID });
     prisma.team.findMany.mockResolvedValue([teamRow]);
     prisma.team.findFirst.mockResolvedValue(teamRow);

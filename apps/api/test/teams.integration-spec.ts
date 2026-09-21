@@ -611,7 +611,12 @@ describe('teams (integration)', () => {
         () => teams.update(fx.orgA, foreign.id, { name: 'Hijacked' }),
         () => teams.delete(fx.orgA, foreign.id),
         () =>
-          teams.addMember(fx.orgA, foreign.id, { membershipId: fx.daveInA }),
+          teams.addMember(
+            fx.orgA,
+            foreign.id,
+            { membershipId: fx.daveInA },
+            { membershipId: fx.aliceInA },
+          ),
       ]) {
         await expect(attempt()).rejects.toBeInstanceOf(HttpException);
       }

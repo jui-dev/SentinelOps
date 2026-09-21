@@ -5,6 +5,7 @@ import { PrismaService } from '../database/prisma.service.js';
 import { foreignKeyViolationHint } from '../database/foreign-key-violation.js';
 import { uniqueViolationHint } from '../database/unique-violation.js';
 import { Prisma } from '../generated/prisma/client.js';
+import { NotificationsWriter } from '../notifications/notifications.writer.js';
 import { membershipNotFound } from '../organizations/organizations.errors.js';
 import { organizationNotFound } from '../tenancy/tenancy.errors.js';
 import { isResourceId } from '../tenancy/tenancy.schemas.js';
@@ -125,7 +126,10 @@ export const fallbackTeamSlug = (): string => opaqueSlug('team');
 export class TeamsService {
   private readonly logger = new Logger(TeamsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsWriter,
+  ) {}
 
   /** Every team in the organization, by name. */
   async list(organizationId: string): Promise<TeamResponse[]> {
@@ -340,17 +344,23 @@ export class TeamsService {
   }
 
   /**
-   * Puts an organization member on the team.
+   * Puts an organization member on the team, and tells them so — unless the
+   * acting member placed themselves.
    *
    * The team and the membership are each looked up within the organization
    * first, for the right 404. Between those reads and the insert either could
    * be deleted; the composite foreign keys then refuse the insert, and that
    * violation is answered with the same 404 the read would have given.
+   *
+   * The notification is written in the same transaction, at the placement's
+   * own time: both happen or neither does. Placing someone twice is refused
+   * by the unique index, which rolls the second back with its notification.
    */
   async addMember(
     organizationId: string,
     teamId: string,
     input: AddTeamMemberRequest,
+    actor: { membershipId: string },
   ): Promise<TeamMemberResponse> {
     if (!isResourceId(teamId)) {
       throw teamNotFound();
@@ -377,10 +387,24 @@ export class TeamsService {
 
         // Scalar ids, not nested connects: both relations share
         // organizationId, and it is that shared column the foreign keys check.
-        return tx.teamMembership.create({
+        const placed = await tx.teamMembership.create({
           data: { organizationId, teamId, membershipId: membership.id },
           select: teamMemberSelection,
         });
+
+        await this.notifications.teamMembership(tx, {
+          organizationId,
+          teamId,
+          type: 'TEAM_MEMBERSHIP_ADDED',
+          memberMembershipId: placed.membershipId,
+          actor: {
+            userId: await this.resolveActor(tx, organizationId, actor),
+            membershipId: actor.membershipId,
+          },
+          createdAt: placed.createdAt,
+        });
+
+        return placed;
       });
     } catch (error) {
       const unique = uniqueViolationHint(error);
@@ -413,33 +437,63 @@ export class TeamsService {
   }
 
   /**
-   * Takes a member off the team. They remain in the organization.
+   * Takes a member off the team, and tells them so — unless the acting
+   * member took themselves off. They remain in the organization.
    *
-   * One conditional delete. Only when it matches nothing is the team read, to
-   * tell a team that is not in this organization from a membership that is
-   * not on it.
+   * One transaction: the removal and its notification commit together or not
+   * at all. It first holds the team's key (see lockTeam), so it cannot
+   * deadlock with the team being deleted; then one conditional delete, and
+   * the notification only when that delete removed the placement — removing
+   * someone who is not on the team, or twice, tells nobody. Only when nothing
+   * was removed is the team read, to tell a team that is not in this
+   * organization from a membership that is not on it.
    */
   async removeMember(
     organizationId: string,
     teamId: string,
     membershipId: string,
+    actor: { membershipId: string },
   ): Promise<void> {
     if (!isResourceId(teamId)) {
       throw teamNotFound();
     }
 
     if (isResourceId(membershipId)) {
-      const { count } = await this.prisma.teamMembership.deleteMany({
-        where: {
+      const removed = await this.prisma.$transaction(async (tx) => {
+        if (!(await this.lockTeam(tx, organizationId, teamId))) {
+          return false;
+        }
+
+        const { count } = await tx.teamMembership.deleteMany({
+          where: {
+            organizationId,
+            teamId,
+            membershipId,
+            team: { organization: { deletedAt: null } },
+            ...visibleMember,
+          },
+        });
+
+        if (count !== 1) {
+          return false;
+        }
+
+        await this.notifications.teamMembership(tx, {
           organizationId,
           teamId,
-          membershipId,
-          team: { organization: { deletedAt: null } },
-          ...visibleMember,
-        },
+          type: 'TEAM_MEMBERSHIP_REMOVED',
+          memberMembershipId: membershipId,
+          actor: {
+            userId: await this.resolveActor(tx, organizationId, actor),
+            membershipId: actor.membershipId,
+          },
+          createdAt: new Date(),
+        });
+
+        return true;
       });
 
-      if (count === 1) {
+      if (removed) {
         this.logger.log('Team member removed', { teamId, membershipId });
 
         return;
@@ -449,6 +503,62 @@ export class TeamsService {
     await this.requireTeam(this.prisma, organizationId, teamId);
 
     throw teamMemberNotFound();
+  }
+
+  /**
+   * The user behind the acting membership, within this organization: whom a
+   * notification attributes the change to. A grant gone since admission is
+   * answered as admission would now answer it.
+   */
+  private async resolveActor(
+    tx: Prisma.TransactionClient,
+    organizationId: string,
+    actor: { membershipId: string },
+  ): Promise<string> {
+    const membership = await tx.membership.findFirst({
+      where: {
+        id: actor.membershipId,
+        organizationId,
+        user: { deletedAt: null },
+      },
+      select: { userId: true },
+    });
+
+    if (!membership) {
+      throw organizationNotFound();
+    }
+
+    return membership.userId;
+  }
+
+  /**
+   * Holds the team's key until the transaction ends, or answers false when
+   * the organization has no such team.
+   *
+   * A removal deletes the placement and then writes a notification naming
+   * the team, whose foreign key takes this same lock. Taken second, it could
+   * deadlock with the team being deleted — which holds the team and waits to
+   * cascade the placement this transaction holds. Taken first, the deletion
+   * simply waits, then cascades the new notification with the team.
+   *
+   * Raw SQL for one reason: Prisma's query API cannot express a locking read.
+   * `FOR KEY SHARE`, the weakest lock that blocks deleting the row: renaming
+   * the team, or placing others on it, is not held up.
+   */
+  private async lockTeam(
+    tx: Prisma.TransactionClient,
+    organizationId: string,
+    teamId: string,
+  ): Promise<boolean> {
+    const rows = await tx.$queryRaw<{ id: string }[]>`
+      SELECT id
+      FROM teams
+      WHERE organization_id = ${organizationId}::uuid
+        AND id = ${teamId}::uuid
+      FOR KEY SHARE
+    `;
+
+    return rows.length === 1;
   }
 
   /** The team exists in this organization, or 404. */

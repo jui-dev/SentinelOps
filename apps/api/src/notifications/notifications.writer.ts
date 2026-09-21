@@ -6,6 +6,7 @@ import type { Prisma } from '../generated/prisma/client.js';
 import {
   CANDIDATES_NEEDED,
   incidentRecipients,
+  teamMembershipRecipients,
 } from './notifications.recipients.js';
 import type {
   IncidentCandidates,
@@ -35,10 +36,11 @@ const activeMember = { user: { deletedAt: null } } as const;
  * is lost between two commits.
  *
  * Every read names the organization, so a recipient is only ever a
- * membership of the incident's own organization; the composite foreign keys
+ * membership of the change's own organization; the composite foreign keys
  * would refuse anything else in any case. One notification per recipient per
  * entry: the recipient rules collapse a member who qualifies twice, and the
- * (recipient, activity) unique index is the backstop.
+ * (recipient, activity) unique index is the backstop. A team placement has
+ * no entry; the change itself happening once is what makes it one.
  */
 @Injectable()
 export class NotificationsWriter {
@@ -76,6 +78,48 @@ export class NotificationsWriter {
         }),
       ),
     );
+
+    if (rows.length === 0) {
+      return 0;
+    }
+
+    // Scalar ids, not nested connects: every relation shares organizationId.
+    const { count } = await tx.notification.createMany({ data: rows });
+
+    return count;
+  }
+
+  /**
+   * Tells a member they were placed on or taken off a team — unless they
+   * did it themselves. At most one row; returns how many were written.
+   *
+   * There is no timeline entry for a team: the notification names the team,
+   * whose current name it is read with. The actor's user is resolved by the
+   * caller, and only when there is someone to tell.
+   */
+  async teamMembership(
+    tx: Prisma.TransactionClient,
+    change: {
+      organizationId: string;
+      teamId: string;
+      type: 'TEAM_MEMBERSHIP_ADDED' | 'TEAM_MEMBERSHIP_REMOVED';
+      memberMembershipId: string;
+      actor: { userId: string; membershipId: string };
+      /** When the placement changed. */
+      createdAt: Date;
+    },
+  ): Promise<number> {
+    const rows = teamMembershipRecipients(
+      change.memberMembershipId,
+      change.actor.membershipId,
+    ).map((recipientMembershipId) => ({
+      organizationId: change.organizationId,
+      recipientMembershipId,
+      type: change.type,
+      actorId: change.actor.userId,
+      teamId: change.teamId,
+      createdAt: change.createdAt,
+    }));
 
     if (rows.length === 0) {
       return 0;

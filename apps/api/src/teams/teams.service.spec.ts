@@ -1,6 +1,7 @@
 import { HttpException } from '@nestjs/common';
 
 import type { PrismaService } from '../database/prisma.service.js';
+import type { NotificationsWriter } from '../notifications/notifications.writer.js';
 import { Prisma } from '../generated/prisma/client.js';
 import { OrganizationsErrorCode } from '../organizations/organizations.errors.js';
 import { TenancyErrorCode } from '../tenancy/tenancy.errors.js';
@@ -10,6 +11,9 @@ import { fallbackTeamSlug, TeamsService } from './teams.service.js';
 const ORG = '0199a1b2-c3d4-7000-8000-00000000000a';
 const TEAM = '0199a1b2-c3d4-7000-8000-0000000000c1';
 const MEMBERSHIP = '0199a1b2-c3d4-7000-8000-0000000000b1';
+/** The Admin placing or removing someone: another membership. */
+const ACTOR = { membershipId: '0199a1b2-c3d4-7000-8000-0000000000a1' };
+const ACTOR_USER = '0199a1b2-c3d4-7000-8000-000000000001';
 const CREATED = new Date('2026-09-18T12:00:00.000Z');
 
 const teamRow = {
@@ -44,7 +48,9 @@ const serviceWith = () => {
   const prisma = {
     organization: { findFirst: vi.fn().mockResolvedValue({ id: ORG }) },
     membership: {
-      findFirst: vi.fn().mockResolvedValue({ id: MEMBERSHIP }),
+      findFirst: vi
+        .fn()
+        .mockResolvedValue({ id: MEMBERSHIP, userId: ACTOR_USER }),
     },
     team: {
       findMany: vi.fn().mockResolvedValue([teamRow]),
@@ -58,6 +64,8 @@ const serviceWith = () => {
       create: vi.fn().mockResolvedValue(memberRow),
       deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
+    // lockTeam's locking read: the team is there.
+    $queryRaw: vi.fn().mockResolvedValue([{ id: TEAM }]),
     $transaction: vi.fn(),
   };
 
@@ -65,9 +73,14 @@ const serviceWith = () => {
     work(prisma),
   );
 
-  const service = new TeamsService(prisma as unknown as PrismaService);
+  const notifications = { teamMembership: vi.fn().mockResolvedValue(1) };
 
-  return { service, prisma };
+  const service = new TeamsService(
+    prisma as unknown as PrismaService,
+    notifications as unknown as NotificationsWriter,
+  );
+
+  return { service, prisma, notifications };
 };
 
 const expectCode = async (
@@ -348,7 +361,7 @@ describe('TeamsService', () => {
       const { service, prisma } = serviceWith();
 
       await expect(
-        service.addMember(ORG, TEAM, { membershipId: MEMBERSHIP }),
+        service.addMember(ORG, TEAM, { membershipId: MEMBERSHIP }, ACTOR),
       ).resolves.toEqual(expect.objectContaining({ membershipId: MEMBERSHIP }));
 
       expect(prisma.membership.findFirst).toHaveBeenCalledWith({
@@ -375,7 +388,7 @@ describe('TeamsService', () => {
       prisma.team.findFirst.mockResolvedValue(null);
 
       await expectCode(
-        service.addMember(ORG, TEAM, { membershipId: MEMBERSHIP }),
+        service.addMember(ORG, TEAM, { membershipId: MEMBERSHIP }, ACTOR),
         404,
         TeamsErrorCode.TEAM_NOT_FOUND,
       );
@@ -387,7 +400,7 @@ describe('TeamsService', () => {
       prisma.membership.findFirst.mockResolvedValue(null);
 
       await expectCode(
-        service.addMember(ORG, TEAM, { membershipId: MEMBERSHIP }),
+        service.addMember(ORG, TEAM, { membershipId: MEMBERSHIP }, ACTOR),
         404,
         OrganizationsErrorCode.MEMBERSHIP_NOT_FOUND,
       );
@@ -401,7 +414,7 @@ describe('TeamsService', () => {
       );
 
       await expectCode(
-        service.addMember(ORG, TEAM, { membershipId: MEMBERSHIP }),
+        service.addMember(ORG, TEAM, { membershipId: MEMBERSHIP }, ACTOR),
         409,
         TeamsErrorCode.ALREADY_A_TEAM_MEMBER,
       );
@@ -427,12 +440,47 @@ describe('TeamsService', () => {
         );
 
         await expectCode(
-          service.addMember(ORG, TEAM, { membershipId: MEMBERSHIP }),
+          service.addMember(ORG, TEAM, { membershipId: MEMBERSHIP }, ACTOR),
           status,
           code,
         );
       },
     );
+
+    it('should tell the member, in the same transaction, at the placement’s own time', async () => {
+      const { service, prisma, notifications } = serviceWith();
+
+      await service.addMember(ORG, TEAM, { membershipId: MEMBERSHIP }, ACTOR);
+
+      expect(notifications.teamMembership).toHaveBeenCalledExactlyOnceWith(
+        prisma,
+        {
+          organizationId: ORG,
+          teamId: TEAM,
+          type: 'TEAM_MEMBERSHIP_ADDED',
+          memberMembershipId: MEMBERSHIP,
+          actor: { userId: ACTOR_USER, membershipId: ACTOR.membershipId },
+          createdAt: CREATED,
+        },
+      );
+      expect(
+        prisma.teamMembership.create.mock.invocationCallOrder[0],
+      ).toBeLessThan(notifications.teamMembership.mock.invocationCallOrder[0]);
+    });
+
+    it('should tell nobody when the placement is refused', async () => {
+      const { service, prisma, notifications } = serviceWith();
+      prisma.teamMembership.create.mockRejectedValue(
+        knownError('P2002', 'team_memberships_team_id_membership_id_key'),
+      );
+
+      await expectCode(
+        service.addMember(ORG, TEAM, { membershipId: MEMBERSHIP }, ACTOR),
+        409,
+        TeamsErrorCode.ALREADY_A_TEAM_MEMBER,
+      );
+      expect(notifications.teamMembership).not.toHaveBeenCalled();
+    });
 
     it('should rethrow a foreign-key violation it does not recognise', async () => {
       const { service, prisma } = serviceWith();
@@ -440,7 +488,7 @@ describe('TeamsService', () => {
       prisma.teamMembership.create.mockRejectedValue(unknown);
 
       await expect(
-        service.addMember(ORG, TEAM, { membershipId: MEMBERSHIP }),
+        service.addMember(ORG, TEAM, { membershipId: MEMBERSHIP }, ACTOR),
       ).rejects.toBe(unknown);
     });
   });
@@ -479,7 +527,7 @@ describe('TeamsService', () => {
     it('should delete only within the organization and team', async () => {
       const { service, prisma } = serviceWith();
 
-      await service.removeMember(ORG, TEAM, MEMBERSHIP);
+      await service.removeMember(ORG, TEAM, MEMBERSHIP, ACTOR);
 
       expect(prisma.teamMembership.deleteMany).toHaveBeenCalledWith({
         where: {
@@ -498,7 +546,7 @@ describe('TeamsService', () => {
       prisma.teamMembership.deleteMany.mockResolvedValue({ count: 0 });
 
       await expectCode(
-        service.removeMember(ORG, TEAM, MEMBERSHIP),
+        service.removeMember(ORG, TEAM, MEMBERSHIP, ACTOR),
         404,
         TeamsErrorCode.TEAM_MEMBER_NOT_FOUND,
       );
@@ -506,17 +554,73 @@ describe('TeamsService', () => {
       prisma.team.findFirst.mockResolvedValue(null);
 
       await expectCode(
-        service.removeMember(ORG, TEAM, MEMBERSHIP),
+        service.removeMember(ORG, TEAM, MEMBERSHIP, ACTOR),
         404,
         TeamsErrorCode.TEAM_NOT_FOUND,
       );
+    });
+
+    it('should hold the team’s key before removing, and tell the member in the same transaction', async () => {
+      const { service, prisma, notifications } = serviceWith();
+
+      await service.removeMember(ORG, TEAM, MEMBERSHIP, ACTOR);
+
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+
+      const [strings, ...values] = prisma.$queryRaw.mock.calls[0] as [
+        TemplateStringsArray,
+        ...unknown[],
+      ];
+
+      expect(strings.join('?')).toMatch(/FROM teams[\s\S]*FOR KEY SHARE/);
+      expect(values).toEqual([ORG, TEAM]);
+      expect(prisma.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+        prisma.teamMembership.deleteMany.mock.invocationCallOrder[0],
+      );
+      expect(notifications.teamMembership).toHaveBeenCalledExactlyOnceWith(
+        prisma,
+        {
+          organizationId: ORG,
+          teamId: TEAM,
+          type: 'TEAM_MEMBERSHIP_REMOVED',
+          memberMembershipId: MEMBERSHIP,
+          actor: { userId: ACTOR_USER, membershipId: ACTOR.membershipId },
+          createdAt: expect.any(Date),
+        },
+      );
+    });
+
+    it('should tell nobody when nothing was removed', async () => {
+      const { service, prisma, notifications } = serviceWith();
+      prisma.teamMembership.deleteMany.mockResolvedValue({ count: 0 });
+
+      await expectCode(
+        service.removeMember(ORG, TEAM, MEMBERSHIP, ACTOR),
+        404,
+        TeamsErrorCode.TEAM_MEMBER_NOT_FOUND,
+      );
+      expect(notifications.teamMembership).not.toHaveBeenCalled();
+    });
+
+    it('should delete nothing, and answer 404, for a team it cannot lock', async () => {
+      const { service, prisma, notifications } = serviceWith();
+      prisma.$queryRaw.mockResolvedValue([]);
+      prisma.team.findFirst.mockResolvedValue(null);
+
+      await expectCode(
+        service.removeMember(ORG, TEAM, MEMBERSHIP, ACTOR),
+        404,
+        TeamsErrorCode.TEAM_NOT_FOUND,
+      );
+      expect(prisma.teamMembership.deleteMany).not.toHaveBeenCalled();
+      expect(notifications.teamMembership).not.toHaveBeenCalled();
     });
 
     it('should answer a malformed membership id as not on the team, without deleting', async () => {
       const { service, prisma } = serviceWith();
 
       await expectCode(
-        service.removeMember(ORG, TEAM, 'nope'),
+        service.removeMember(ORG, TEAM, 'nope', ACTOR),
         404,
         TeamsErrorCode.TEAM_MEMBER_NOT_FOUND,
       );

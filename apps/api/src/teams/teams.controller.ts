@@ -100,7 +100,10 @@ export class TeamsController {
     return this.teams.listMembers(membership.organizationId, teamId);
   }
 
-  /** Puts an existing organization member, by membership id, on the team. */
+  /**
+   * Puts an existing organization member, by membership id, on the team,
+   * and tells them. The actor is the admitted member.
+   */
   @Post(':teamId/members')
   @RequirePermission(Permission.TEAMS_MANAGE)
   addMember(
@@ -108,10 +111,15 @@ export class TeamsController {
     @Param('teamId') teamId: string,
     @Body({ schema: addTeamMemberSchema }) body: AddTeamMemberRequest,
   ): Promise<TeamMemberResponse> {
-    return this.teams.addMember(membership.organizationId, teamId, body);
+    return this.teams.addMember(membership.organizationId, teamId, body, {
+      membershipId: membership.membershipId,
+    });
   }
 
-  /** Takes a member off the team, addressed by their membership id. */
+  /**
+   * Takes a member off the team, addressed by their membership id, and
+   * tells them. The actor is the admitted member.
+   */
   @Delete(':teamId/members/:membershipId')
   @HttpCode(HttpStatus.NO_CONTENT)
   @RequirePermission(Permission.TEAMS_MANAGE)
@@ -124,6 +132,7 @@ export class TeamsController {
       membership.organizationId,
       teamId,
       membershipId,
+      { membershipId: membership.membershipId },
     );
   }
 }

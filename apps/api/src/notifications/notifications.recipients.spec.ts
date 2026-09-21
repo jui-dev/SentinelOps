@@ -1,4 +1,7 @@
-import { incidentRecipients } from './notifications.recipients.js';
+import {
+  incidentRecipients,
+  teamMembershipRecipients,
+} from './notifications.recipients.js';
 import type {
   IncidentCandidates,
   IncidentNotificationType,
@@ -122,5 +125,15 @@ describe('incidentRecipients', () => {
         candidates({ teamMemberIds: [ALICE] }),
       ),
     ).toEqual([]);
+  });
+});
+
+describe('teamMembershipRecipients', () => {
+  it('should tell only the member placed or removed', () => {
+    expect(teamMembershipRecipients(BEN, ALICE)).toEqual([BEN]);
+  });
+
+  it('should tell nobody when they did it themselves', () => {
+    expect(teamMembershipRecipients(ALICE, ALICE)).toEqual([]);
   });
 });
