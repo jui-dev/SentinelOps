@@ -1,5 +1,5 @@
 import type { IncidentPeriod } from "@/lib/api/contracts";
-import { startOfUtcDay, utcDay } from "@/lib/period/period";
+import { lastUtcDays } from "@/lib/period/period";
 
 /**
  * Incident history's period controls: its presets, the choices its tabs
@@ -26,23 +26,18 @@ const PRESET_DAYS: Record<PeriodPreset, number> = {
   "30d": 30,
 };
 
-const DAY_MS = 86_400_000;
-
-const addDays = (day: string, days: number): string =>
-  utcDay(new Date(startOfUtcDay(day).getTime() + days * DAY_MS));
-
 /** What the page shows when its address names no period. */
 export const DEFAULT_PRESET: PeriodPreset = "7d";
 
-/** A preset's period: its days up to and including today. */
+/**
+ * A preset's period: its days up to and including today. How a run of whole
+ * UTC days is measured is lib/period's, so the Overview's own thirty days
+ * and these presets cannot drift apart.
+ */
 export const presetPeriod = (
   preset: PeriodPreset,
   now: Date,
-): IncidentPeriod => {
-  const to = utcDay(now);
-
-  return { from: addDays(to, 1 - PRESET_DAYS[preset]), to };
-};
+): IncidentPeriod => lastUtcDays(PRESET_DAYS[preset], now);
 
 /**
  * The preset a period *is*, if it is one of them, so a period arrived at by

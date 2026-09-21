@@ -49,11 +49,13 @@ import {
   toMemberResponseResponse,
   toOperationalActivityResponse,
 } from './incidents.responses.js';
+import type { TypicalResolutionRow } from './incidents.responses.js';
 import { mergeHistory } from './incidents.history.js';
 import {
   parseIncidentNumber,
   searchedIncidentNumber,
   summaryBounds,
+  typicalResolutionWindow,
 } from './incidents.schemas.js';
 import type {
   CreateIncidentRequest,
@@ -495,16 +497,24 @@ export class IncidentsService {
    * reads share one repeatable-read snapshot, so the figures and the history
    * agree with each other even while incidents change. Active incidents are
    * grouped by service and severity in one query, which gives the
-   * organization's counts and each affected service's. The history previews
-   * the most recent incidents declared or resolved in the period.
+   * organization's counts and each affected service's. Responses still under
+   * way are read in the same snapshot, so who is investigating cannot
+   * disagree with what is active, and so are the active statuses and the
+   * typical time each severity takes to resolve over the last ninety days —
+   * what an active incident's duration is read against. The history
+   * previews the most recent incidents declared or resolved in the period.
    */
   async summary(
     organizationId: string,
     query: IncidentSummaryQuery,
+    /** The moment "the last ninety days" end at; the clock, unless a test says. */
+    now: Date = new Date(),
   ): Promise<IncidentSummaryResponse> {
     const scope = { organizationId, organization: { deletedAt: null } };
     const unresolved = { status: { not: 'RESOLVED' as const } };
     const period = summaryBounds(query);
+    const typicalWindow = typicalResolutionWindow(now);
+    const typicalBounds = summaryBounds(typicalWindow);
 
     const declaredInPeriod = { ...scope, createdAt: period };
     const resolvedInPeriod = {
@@ -516,6 +526,9 @@ export class IncidentsService {
     const [
       active,
       services,
+      responders,
+      statuses,
+      typical,
       declared,
       resolved,
       stillOpen,
@@ -543,6 +556,45 @@ export class IncidentsService {
             ownerTeam: { select: { id: true, name: true, slug: true } },
           },
         }),
+        // Responses still under way, one row each. The incident's status is
+        // checked as well as the responder's: a resolution is refused while
+        // anyone is still investigating, but that is this service's rule,
+        // not a constraint the database holds us to.
+        this.prisma.incidentResponder.findMany({
+          where: {
+            ...scope,
+            status: 'INVESTIGATING',
+            incident: unresolved,
+          },
+          select: {
+            membershipId: true,
+            incident: { select: { teamId: true } },
+          },
+        }),
+        this.prisma.incident.groupBy({
+          by: ['status'],
+          where: { ...scope, ...unresolved },
+          _count: { _all: true },
+        }),
+        // The median time to resolve, per severity, over the window. Raw,
+        // because a percentile has no query-builder form; the organization
+        // is part of the predicate, as in every other read, and the
+        // (organization_id, resolved_at) index serves the range.
+        this.prisma.$queryRaw<TypicalResolutionRow[]>`
+          SELECT i.severity::text AS severity,
+                 count(*)::int AS resolved,
+                 percentile_cont(0.5) WITHIN GROUP (
+                   ORDER BY extract(epoch FROM (i.resolved_at - i.created_at)) * 1000
+                 )::float8 AS median_ms
+          FROM incidents i
+          JOIN organizations o ON o.id = i.organization_id
+          WHERE i.organization_id = ${organizationId}::uuid
+            AND o.deleted_at IS NULL
+            AND i.status = 'RESOLVED'
+            AND i.resolved_at >= ${typicalBounds.gte}::timestamptz
+            AND i.resolved_at < ${typicalBounds.lt}::timestamptz
+          GROUP BY i.severity
+        `,
         this.prisma.incident.groupBy({
           by: ['severity'],
           where: declaredInPeriod,
@@ -576,6 +628,9 @@ export class IncidentsService {
     return toIncidentSummaryResponse({
       active,
       services,
+      responders,
+      statuses,
+      typical: { rows: typical, window: typicalWindow },
       declared,
       resolved,
       stillOpen,

@@ -156,7 +156,7 @@ function HistoryRow({
           <span aria-hidden="true" className="text-fg-subtle">
             ·
           </span>
-          <StatusMark status={incident.status} className="text-xs" />
+          <StatusMark status={incident.status} />
           <span aria-hidden="true" className="text-fg-subtle">
             ·
           </span>

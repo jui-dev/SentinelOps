@@ -1,6 +1,5 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 
 import {
@@ -24,87 +23,108 @@ import { ErrorAlert } from "@/components/ui/alert";
 import { cx } from "@/components/ui/cx";
 import { EmptyNote } from "@/components/ui/empty-state";
 import { OnwardLink } from "@/components/ui/onward-link";
-import { Section } from "@/components/ui/page";
 import { Spinner } from "@/components/ui/spinner";
+import { stretchedLinkClasses } from "@/components/ui/table";
 import {
-  stretchedLinkClasses,
-  Table,
-  TBody,
-  TD,
-  TH,
-  THead,
-  TR,
-} from "@/components/ui/table";
-import { Duration, useMinuteClock } from "@/components/ui/timestamp";
+  Duration,
+  formatDuration,
+  useMinuteClock,
+} from "@/components/ui/timestamp";
 import { Permission } from "@/lib/api/contracts";
 import type {
+  ActiveStatusCounts,
   AffectedServiceResponse,
   IncidentResponse,
-  IncidentSeverity,
   IncidentSummaryResponse,
   SeverityCounts,
+  TypicalResolutionResponse,
 } from "@/lib/api/contracts";
-import { getIncidentSummary } from "@/lib/api/endpoints";
-import { queryKeys } from "@/lib/api/query-keys";
-import { utcDay } from "@/lib/period/period";
 
 import { OperationalActivity } from "./operational-activity";
 import { OperationalAttention } from "./operational-attention";
 import { OverviewPanel } from "./overview-panel";
+import { OverviewSummary } from "./overview-summary";
+import { useCurrentOperations } from "./use-current-operations";
+import type { CurrentOperationsState } from "./use-current-operations";
 
 /** How many active incidents the overview lists before "View all". */
 const TOP_ACTIVE = 5;
-
-const SEGMENT_COLOURS: Record<IncidentSeverity, string> = {
-  SEV1: "bg-signal-critical",
-  SEV2: "bg-signal-high",
-  SEV3: "bg-signal-caution",
-  SEV4: "bg-signal-advisory",
-};
 
 const plural = (count: number, one: string, many = `${one}s`) =>
   `${count} ${count === 1 ? one : many}`;
 
 /**
- * Counts per severity: each level's mark, word, and count, over a bar whose
- * segments are proportional to them. The counts are the content; the bar is
- * decoration, and an empty track when there is nothing to count.
+ * One group of the counts strip: its label, then its items. On a phone
+ * the label heads its items, which may wrap; from `sm` the two groups'
+ * labels share a column, so the pills and the glyphs start at the same
+ * place; side by side, from `xl`, each label sits against its own items and
+ * a rule keeps the two groups apart.
  */
-function SeverityBreakdown({
-  counts,
-  label,
-}: {
-  counts: SeverityCounts;
-  label: string;
-}) {
-  const total = SEVERITY_LEVELS.reduce((sum, { value }) => sum + counts[value], 0);
+const GROUP = "flex min-w-0 flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3";
+const GROUP_LABEL =
+  "shrink-0 text-xs font-medium text-fg-muted sm:w-[4.75rem] xl:w-auto";
+const GROUP_ITEMS = "flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm";
 
+/** The two active statuses, in the order an incident moves through them. */
+const ACTIVE_STATUSES = ["DECLARED", "INVESTIGATING"] as const;
+
+/**
+ * The active incidents counted by lifecycle status: each status in its own
+ * pill — the lifecycle vocabulary, drawn as it is everywhere — and how many
+ * stand there. From the summary's own aggregate, never counted off the rows
+ * beneath, which are only the first few.
+ */
+function StatusCounts({ counts }: { counts: ActiveStatusCounts }) {
   return (
-    <div className="flex flex-col gap-3">
-      <div
-        aria-hidden="true"
-        className="flex h-1.5 gap-px overflow-hidden rounded-full bg-sunken"
-      >
-        {total > 0 &&
-          SEVERITY_LEVELS.filter(({ value }) => counts[value] > 0).map(
-            ({ value }) => (
-              <span
-                key={value}
-                className={cx("h-full", SEGMENT_COLOURS[value])}
-                style={{ width: `${(counts[value] / total) * 100}%` }}
-              />
-            ),
-          )}
-      </div>
-      <dl aria-label={label} className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-4">
-        {SEVERITY_LEVELS.map(({ value }) => (
-          <div key={value} className="flex items-baseline justify-between gap-3">
-            <dt className="text-sm">
-              <SeverityMark severity={value} label />
+    <div className={GROUP}>
+      {/* The dl's name says the same, for assistive technology. */}
+      <p aria-hidden="true" className={GROUP_LABEL}>
+        By status
+      </p>
+      <dl aria-label="Active incidents by status" className={GROUP_ITEMS}>
+        {ACTIVE_STATUSES.map((status) => (
+          <div key={status} className="flex items-center gap-2">
+            <dt>
+              <StatusMark status={status} />
             </dt>
             <dd
               className={cx(
-                "numeric text-[0.9375rem] font-semibold",
+                "numeric min-w-[1ch] font-semibold",
+                counts[status] > 0 ? "text-fg" : "text-fg-subtle",
+              )}
+            >
+              {counts[status]}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
+/**
+ * The active incidents counted by severity, in one compact line: each
+ * level's glyph and code — the severity vocabulary, never a badge — and its
+ * count, a level with none quietened rather than left out, so the four read
+ * as one scale. How many are active in all is the summary row's figure;
+ * this is what that figure is made of.
+ */
+function SeverityCountsLine({ counts }: { counts: SeverityCounts }) {
+  return (
+    <div className={GROUP}>
+      {/* The dl's name says the same, for assistive technology. */}
+      <p aria-hidden="true" className={GROUP_LABEL}>
+        By severity
+      </p>
+      <dl aria-label="Active incidents by severity" className={GROUP_ITEMS}>
+        {SEVERITY_LEVELS.map(({ value }) => (
+          <div key={value} className="flex items-center gap-2">
+            <dt>
+              <SeverityMark severity={value} emphasis />
+            </dt>
+            <dd
+              className={cx(
+                "numeric min-w-[1ch] font-semibold",
                 counts[value] > 0 ? "text-fg" : "text-fg-subtle",
               )}
             >
@@ -125,16 +145,11 @@ const nominalGlyph = (
 );
 
 /**
- * Where incident response stands: how many are active and the most severe of
- * them, then the split by severity. A SEV1 draws the critical edge the
- * incident list gives its SEV1 rows.
+ * Where incident response stands: the counts by status and by severity,
+ * or — with nothing active — that all is clear.
  */
 function Posture({ current }: { current: IncidentSummaryResponse["current"] }) {
-  const worst = SEVERITY_LEVELS.find(
-    ({ value }) => current.activeBySeverity[value] > 0,
-  );
-
-  if (!worst) {
+  if (current.active === 0) {
     return (
       <div className="flex items-start gap-3">
         <span aria-hidden="true" className="flex h-7 items-center">
@@ -152,41 +167,267 @@ function Posture({ current }: { current: IncidentSummaryResponse["current"] }) {
     );
   }
 
-  const critical = worst.value === "SEV1";
-
+  // Two readings of the same incidents: where their response stands, and
+  // how severe they are. One above the other until there is room for both
+  // on a line — never a wrap that strands the rule at a line's end.
   return (
-    <div
-      className={cx(
-        "relative flex flex-col gap-5",
-        critical &&
-          "pl-4 before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:rounded-full before:bg-signal-critical",
-      )}
-    >
-      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-        <p className="flex items-baseline gap-2.5">
-          <span className="numeric text-[2rem] leading-9 font-semibold tracking-[-0.02em] text-fg">
-            {current.active}
-          </span>
-          <span className="text-[1.0625rem] font-medium text-fg">
-            {current.active === 1 ? "active incident" : "active incidents"}
-          </span>
-        </p>
-        <p className="flex items-center gap-2 text-sm text-fg-muted">
-          Most severe
-          <SeverityMark severity={worst.value} label emphasis />
-        </p>
-      </div>
-      <SeverityBreakdown
-        counts={current.activeBySeverity}
-        label="Active incidents by severity"
+    <div className="flex flex-col gap-2.5 xl:flex-row xl:items-center xl:gap-x-6">
+      <StatusCounts counts={current.activeByStatus} />
+      <span
+        aria-hidden="true"
+        className="hidden h-6 w-px shrink-0 bg-line-strong xl:block"
       />
+      <SeverityCountsLine counts={current.activeBySeverity} />
     </div>
   );
 }
 
-/** The most urgent few active incidents, in the Incidents page's order. */
-function TopActiveIncidents({ active }: { active: number }) {
+/**
+ * The columns one incident is read across, left to right: how severe, which
+ * incident, where its response stands, how long it has been open, and what
+ * it is affecting. One template, shared by the header and every row, so a
+ * value always sits under its heading.
+ *
+ * Only from `xl`. Narrower, five columns leave the title too little room to
+ * be read, so each incident stacks instead — the same parts in the same
+ * order, the service on its own line beneath.
+ */
+const COLUMNS =
+  "xl:grid-cols-[5.5rem_minmax(0,1fr)_8.5rem_5.5rem_minmax(13rem,17rem)]";
+
+/** The panel's own inset, so the rows run edge to edge yet align with it. */
+const INSET = "px-4 sm:px-5";
+
+/**
+ * The header for the columns, drawn where there are columns. Hidden from
+ * assistive technology: a list has no column headers to attach it to, so
+ * each row carries what the header says in words of its own instead —
+ * visible where the header is not, screen-reader-only where it is.
+ */
+function ColumnHeader() {
+  return (
+    <div
+      aria-hidden="true"
+      className={cx(
+        "hidden h-9 items-center gap-x-4 border-b border-line-subtle bg-thead text-xs font-semibold tracking-[0.01em] whitespace-nowrap text-fg-muted xl:grid",
+        INSET,
+        COLUMNS,
+      )}
+    >
+      <span>Severity</span>
+      <span>Incident</span>
+      <span>Status</span>
+      <span>Duration</span>
+      <span>Affected service</span>
+    </div>
+  );
+}
+
+/** The bar's fill: the incident's own lifecycle colour, as a mark. */
+const DURATION_FILL: Record<(typeof ACTIVE_STATUSES)[number], string> = {
+  DECLARED: "bg-status-declared-text",
+  INVESTIGATING: "bg-status-investigating-text",
+};
+
+/**
+ * How long this incident has been open, against how long incidents of its
+ * severity have typically taken to resolve — the median over the last
+ * ninety days, from the summary.
+ *
+ * Not a deadline, and not progress: nothing promises an incident will be
+ * resolved at the typical time. The bar fills as the incident approaches
+ * what is usual for its severity, and stays full past it, where the words
+ * say so. With too few resolutions to call anything typical there is no
+ * bar at all — never one drawn against a guess.
+ *
+ * Its fill is the incident's lifecycle colour, so it reads as part of the
+ * status beside it. The bar is decoration for assistive technology; the
+ * same comparison is spoken.
+ */
+function DurationBar({
+  incident,
+  typical,
+}: {
+  incident: IncidentResponse;
+  typical: TypicalResolutionResponse;
+}) {
+  const now = useMinuteClock();
+  const median = typical.bySeverity[incident.severity]?.medianMs ?? null;
+
+  if (median === null || median <= 0) return null;
+
+  const elapsed = Math.max(0, now.getTime() - Date.parse(incident.createdAt));
+  const share = elapsed / median;
+  const past = share >= 1;
+  const usual = `a typical ${formatDuration(median)} for a ${incident.severity}`;
+  const fill =
+    DURATION_FILL[incident.status as (typeof ACTIVE_STATUSES)[number]] ??
+    "bg-fg-subtle";
+
+  return (
+    // Beside the duration on one line when the row is stacked; beneath it,
+    // in the duration's own column, from `xl`.
+    <span className="flex items-center gap-2 xl:flex-col xl:items-start xl:gap-0.5">
+      <span
+        aria-hidden="true"
+        title={`Typical for a ${incident.severity}: ${formatDuration(median)}`}
+        className="relative hidden h-1.5 w-14 overflow-hidden rounded-full bg-line sm:block xl:w-full xl:max-w-20"
+      >
+        <span
+          className={cx("absolute inset-y-0 left-0 rounded-full", fill)}
+          style={{ width: `${Math.min(share, 1) * 100}%` }}
+        />
+      </span>
+      {past && (
+        <span
+          aria-hidden="true"
+          className="font-sans text-2xs leading-4 font-medium text-fg"
+        >
+          Past typical
+        </span>
+      )}
+      <span className="sr-only">
+        {past ? `, past ${usual}` : `, of ${usual}`}
+      </span>
+    </span>
+  );
+}
+
+/**
+ * One active incident, and the service it is affecting, as one row.
+ *
+ * The incident's link covers the row, as every incident list's does; the
+ * service's own link, where the viewer may read services, sits above it and
+ * goes to the service instead. Only the incident's link draws the row's
+ * focus ring, so tabbing to the service draws that link's own.
+ *
+ * Four vocabularies meet in a row and none borrows another's look: the
+ * severity glyph, the lifecycle pill, the duration in the data face, and the
+ * criticality chip. The service's name and criticality come from the
+ * incident itself; `affected` — the summary's entry for that service — adds
+ * how many active incidents it has, and is left out if the two answers ever
+ * disagree about which services are affected.
+ */
+function OperationRow({
+  incident,
+  affected,
+  typical,
+}: {
+  incident: IncidentResponse;
+  affected: AffectedServiceResponse | undefined;
+  typical: TypicalResolutionResponse;
+}) {
   const organization = useOrganization();
+  const canReadServices = useCan(Permission.SERVICES_READ);
+  const critical = incident.severity === "SEV1";
+  const { service } = incident;
+
+  return (
+    <li
+      className={cx(
+        "group/row relative grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-4 gap-y-1.5 py-3 transition-colors duration-(--duration-fast) hover:bg-hover xl:items-center xl:gap-y-0",
+        INSET,
+        COLUMNS,
+        "has-[[data-row-link]:focus-visible]:outline-2 has-[[data-row-link]:focus-visible]:-outline-offset-2 has-[[data-row-link]:focus-visible]:outline-focus",
+        critical &&
+          "before:absolute before:inset-y-2 before:left-0 before:w-[3px] before:rounded-full before:bg-signal-critical",
+      )}
+    >
+      <div className="row-span-3 text-sm xl:row-span-1">
+        <SeverityMark severity={incident.severity} emphasis />
+      </div>
+
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <Link
+          data-row-link
+          href={incidentHref(organization.slug, incident.number)}
+          className={cx(
+            "flex min-w-0 items-baseline gap-2 underline-offset-2",
+            stretchedLinkClasses,
+          )}
+        >
+          <span className="data shrink-0 text-fg-subtle">
+            {incidentKey(incident.number)}
+          </span>{" "}
+          <span
+            title={incident.title}
+            className="truncate text-base font-medium text-fg group-hover/row:text-accent-text group-hover/row:underline"
+          >
+            {incident.title}
+          </span>
+        </Link>
+        <p className="truncate text-xs text-fg-muted">
+          <span className="text-fg-subtle">Team</span> {incident.team.name}
+        </p>
+      </div>
+
+      {/* One line when stacked; two of the row's columns from `xl`. */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm xl:contents">
+        <div>
+          <StatusMark status={incident.status} />
+        </div>
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 xl:flex-col xl:flex-nowrap xl:items-start xl:gap-1">
+          <span
+            className={cx(
+              "data whitespace-nowrap",
+              critical ? "text-fg" : "text-fg-muted",
+            )}
+          >
+            <span className="font-sans xl:sr-only">Open </span>
+            <Duration from={incident.createdAt} />
+          </span>
+          <DurationBar incident={incident} typical={typical} />
+        </div>
+      </div>
+
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <p className="flex min-w-0 items-center gap-2 text-sm">
+          <span className="shrink-0 text-xs text-fg-subtle xl:sr-only">
+            Affects
+          </span>
+          {canReadServices ? (
+            <Link
+              href={serviceHref(organization.slug, service.slug)}
+              className="relative z-10 min-w-0 truncate font-medium text-fg underline-offset-2 hover:text-accent-text hover:underline"
+            >
+              {service.name}
+            </Link>
+          ) : (
+            <span className="min-w-0 truncate font-medium text-fg">
+              {service.name}
+            </span>
+          )}
+          <CriticalityMark
+            criticality={service.criticality}
+            className="ml-auto shrink-0"
+          />
+        </p>
+        {affected && (
+          <p className="numeric text-xs text-fg-muted">
+            {plural(affected.activeIncidents, "active incident")}
+          </p>
+        )}
+      </div>
+    </li>
+  );
+}
+
+/**
+ * The most urgent few active incidents, in the Incidents page's order — most
+ * severe, then longest-running — each with the service it affects. The rows
+ * run edge to edge of the panel: one ruled table, not a box inside a box.
+ *
+ * Every affected service is still accounted for. The rows show at most
+ * `TOP_ACTIVE` incidents, so a service whose incidents are all further down
+ * would otherwise vanish from the page; those are named beneath instead.
+ */
+function ActiveOperations({
+  current,
+}: {
+  current: IncidentSummaryResponse["current"];
+}) {
+  const organization = useOrganization();
+  const canReadServices = useCan(Permission.SERVICES_READ);
   const list = useIncidentList(organization.id, "active");
 
   if (list.isError) return <ErrorAlert error={list.error} />;
@@ -202,164 +443,79 @@ function TopActiveIncidents({ active }: { active: number }) {
     );
   }
 
+  const affected = new Map(
+    current.affectedServices.map((service) => [service.id, service]),
+  );
+  const shown = new Set(incidents.map(({ service }) => service.id));
+  const elsewhere = current.affectedServices.filter(({ id }) => !shown.has(id));
+  const truncated = current.active > incidents.length;
+
   return (
     <div className="flex flex-col gap-3">
-      <Table label="Active incidents" variant="operational" fixed>
-        <colgroup>
-          <col className="w-21 sm:w-24" />
-          <col />
-          <col className="hidden w-32 sm:table-column" />
-          <col className="w-19 sm:w-20" />
-        </colgroup>
-        <THead>
-          <TR>
-            <TH>Severity</TH>
-            <TH>Incident</TH>
-            <TH className="hidden sm:table-cell">Status</TH>
-            <TH align="end">Duration</TH>
-          </TR>
-        </THead>
-        <TBody>
+      {/* Out to the panel's edges; its padding is the rows' own inset. */}
+      <div className="-mx-4 border-y border-line-subtle sm:-mx-5">
+        <ColumnHeader />
+        <ul
+          aria-label="Active incidents"
+          className="divide-y divide-line-subtle"
+        >
           {incidents.map((incident) => (
-            <ActiveRow key={incident.id} incident={incident} />
+            <OperationRow
+              key={incident.id}
+              incident={incident}
+              affected={affected.get(incident.service.id)}
+              typical={current.typicalResolution}
+            />
           ))}
-        </TBody>
-      </Table>
-      {active > incidents.length && (
-        <div>
-          <OnwardLink href={incidentsHref(organization.slug)}>
-            View all {active} active incidents
-          </OnwardLink>
+        </ul>
+      </div>
+
+      {(truncated || elsewhere.length > 0) && (
+        <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
+          {elsewhere.length > 0 && (
+            <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 text-sm">
+              <h3 id="also-affected-title" className="text-fg-muted">
+                Also affected
+              </h3>
+              <ul
+                aria-labelledby="also-affected-title"
+                className="flex flex-wrap items-baseline gap-x-3 gap-y-1"
+              >
+                {elsewhere.map((service) => (
+                  <li key={service.id} className="flex items-baseline gap-1.5">
+                    {canReadServices ? (
+                      <Link
+                        href={serviceHref(organization.slug, service.slug)}
+                        className="font-medium text-fg underline-offset-2 hover:text-accent-text hover:underline"
+                      >
+                        {service.name}
+                      </Link>
+                    ) : (
+                      <span className="font-medium text-fg">{service.name}</span>
+                    )}
+                    <span className="numeric text-xs text-fg-subtle">
+                      {plural(service.activeIncidents, "active incident")}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {/* Only when the rows are not all of them: then it is the way to
+              the rest, not a standing offer. */}
+          {truncated && (
+            <OnwardLink href={incidentsHref(organization.slug)}>
+              View all {current.active} active incidents
+            </OnwardLink>
+          )}
         </div>
       )}
     </div>
   );
 }
 
-function ActiveRow({ incident }: { incident: IncidentResponse }) {
-  const organization = useOrganization();
-  const critical = incident.severity === "SEV1";
-
-  return (
-    <TR interactive>
-      <TD
-        className={cx(
-          "relative",
-          critical &&
-            "before:absolute before:inset-y-1 before:left-0 before:w-[3px] before:rounded-full before:bg-signal-critical",
-        )}
-      >
-        <SeverityMark severity={incident.severity} emphasis />
-      </TD>
-      <TD>
-        <Link
-          href={incidentHref(organization.slug, incident.number)}
-          className={cx(
-            "group flex min-w-0 items-baseline gap-2 underline-offset-2",
-            stretchedLinkClasses,
-          )}
-        >
-          <span className="data shrink-0 text-fg-subtle">
-            {incidentKey(incident.number)}
-          </span>{" "}
-          <span
-            title={incident.title}
-            className="truncate font-medium text-fg group-hover:text-accent-text group-hover:underline"
-          >
-            {incident.title}
-          </span>
-        </Link>
-        <span className="block truncate text-xs text-fg-muted">
-          {incident.service.name} · {incident.team.name}
-        </span>
-      </TD>
-      <TD className="hidden sm:table-cell">
-        <StatusMark status={incident.status} />
-      </TD>
-      <TD
-        align="end"
-        className={cx(
-          "data whitespace-nowrap",
-          critical ? "text-fg" : "text-fg-muted",
-        )}
-      >
-        <Duration from={incident.createdAt} />
-      </TD>
-    </TR>
-  );
-}
-
-/**
- * Services with active incidents, the worst affected first: the most severe
- * incident, then how critical the service is. Criticality is shown as the
- * classification it is, beside the severity that is the signal.
- */
-function AffectedServices({
-  services,
-}: {
-  services: AffectedServiceResponse[];
-}) {
-  const organization = useOrganization();
-  const canReadServices = useCan(Permission.SERVICES_READ);
-
-  if (services.length === 0) {
-    return (
-      <EmptyNote title="No services affected">
-        No service has an active incident.
-      </EmptyNote>
-    );
-  }
-
-  return (
-    <ul
-      aria-label="Affected services"
-      className="flex flex-col rounded-md border border-line-subtle bg-surface"
-    >
-      {services.map((service) => (
-        <li
-          key={service.id}
-          className="flex flex-col gap-1.5 border-b border-line-subtle px-4 py-3 last:border-b-0"
-        >
-          <div className="flex items-baseline justify-between gap-3">
-            {canReadServices ? (
-              <Link
-                href={serviceHref(organization.slug, service.slug)}
-                className="truncate text-sm font-medium text-fg underline-offset-2 hover:text-accent-text hover:underline"
-              >
-                {service.name}
-              </Link>
-            ) : (
-              <span className="truncate text-sm font-medium text-fg">
-                {service.name}
-              </span>
-            )}
-            <SeverityMark
-              severity={service.worstSeverity}
-              emphasis
-              className="text-sm"
-            />
-          </div>
-          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-fg-muted">
-            <CriticalityMark criticality={service.criticality} />
-            <span>
-              {service.ownerTeam.name} ·{" "}
-              <span className="numeric">
-                {plural(service.activeIncidents, "active incident")}
-              </span>
-            </span>
-          </div>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-/** The state now: posture, the most urgent incidents, the services hit. */
-function CurrentOperations({
-  current: state,
-}: {
-  current: ReturnType<typeof useCurrentOperations>;
-}) {
+/** The state now: the counts by severity, then each incident and what it hits. */
+function CurrentOperations({ current: state }: { current: CurrentOperationsState }) {
   let content;
 
   if (state.isError && !state.data) {
@@ -369,24 +525,13 @@ function CurrentOperations({
   } else {
     const current = state.data;
 
+    // One block, closer than the panel's own rhythm: the counts are the
+    // summary the rows beneath them itemise, not a section of their own.
     content = (
-      <>
+      <div className="flex flex-col gap-4">
         <Posture current={current} />
-        {current.active > 0 && (
-          <div className="grid items-start gap-x-8 gap-y-8 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,24rem)]">
-            <Section title="Active incidents" level={3}>
-              <TopActiveIncidents active={current.active} />
-            </Section>
-            <Section
-              title="Affected services"
-              level={3}
-              meta={current.affectedServices.length}
-            >
-              <AffectedServices services={current.affectedServices} />
-            </Section>
-          </div>
-        )}
-      </>
+        {current.active > 0 && <ActiveOperations current={current} />}
+      </div>
     );
   }
 
@@ -394,64 +539,51 @@ function CurrentOperations({
     <OverviewPanel
       id="current-operations"
       title="Current operations"
+      tone="primary"
       // Which of the two sections this is — not a claim about how fresh
       // the data is.
       label={
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-accent-line bg-accent-subtle px-2 py-0.5 text-xs font-medium text-accent-text">
-          <span aria-hidden="true" className="size-1.5 rounded-full bg-accent-mark" />
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-sunken px-2 py-0.5 text-xs font-medium text-fg-muted">
+          <span aria-hidden="true" className="size-1.5 rounded-full bg-fg-subtle" />
           Now
         </span>
       }
-      description="Every unresolved incident, whenever it was declared."
+      description="Active incidents, and the services they are affecting."
     >
       {content}
     </OverviewPanel>
   );
 }
 
-
 /**
- * The state of incident response now.
+ * The operational overview, one question per section, read from the top:
  *
- * The summary endpoint answers in two halves — the state now, and one
- * period's history — and the Overview reads only the first. It must still
- * name a period, so it names the current UTC day: the smallest there is, and
- * the one the workspace clock already shows. Incident history asks for its
- * own period on its own page, and `select` keeps that half from reaching
- * here at all.
- */
-const useCurrentOperations = (organizationId: string) => {
-  const today = utcDay(useMinuteClock());
-
-  return useQuery({
-    queryKey: queryKeys.incidentSummary(organizationId, today, today),
-    queryFn: () =>
-      getIncidentSummary(organizationId, { from: today, to: today }),
-    select: (summary: IncidentSummaryResponse) => summary.current,
-  });
-};
-
-/**
- * The operational overview, read from the top down: what needs the viewer
- * now, where incident response stands now, and how much the organization has
- * been doing over the last half-year.
+ *   the summary row          what is the state right now?
+ *   waiting on you, work     what needs my attention?
+ *   current operations       what is happening, and what is it affecting?
+ *   operational activity     what has response looked like across the year?
  *
- * Three questions, narrowest first, each its own panel and its own request —
- * so one of them failing leaves the other two standing. Which incidents were
- * declared or resolved in a period is a fourth question, and it has a page:
- * Incident history, within Incidents. Nothing here routes to it as a
- * standing offer — a day chosen on the calendar carries its own date
- * through, which is the only way in that arrives somewhere useful.
+ * The summary row and Current operations are two readings of one request —
+ * the figures above, the detail beneath — so they cannot disagree and only
+ * ask once. Everything else is its own request, so one failing leaves the
+ * rest standing. Which incidents were declared or resolved in a period is a
+ * question this page does not answer; it has a page, Incident history,
+ * reached from a day chosen on the calendar.
+ *
+ * The page's own rhythm is set here rather than by PageBody, whose gap is
+ * the looser one a page of independent sections wants. These are sections
+ * of one dashboard.
  */
 export function OperationsOverview() {
   const organization = useOrganization();
   const current = useCurrentOperations(organization.id);
 
   return (
-    <>
+    <div className="flex flex-col gap-6">
+      <OverviewSummary state={current} />
       <OperationalAttention />
       <CurrentOperations current={current} />
       <OperationalActivity />
-    </>
+    </div>
   );
 }

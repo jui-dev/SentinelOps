@@ -131,6 +131,39 @@ each(
   UI,
 );
 
+// Lifecycle (severity.tsx, StatusMark). As a pill, its word on its own tint;
+// as a glyph — a responder's dot, a work list's circle — a mark on every
+// surface it is drawn on, including the accent tint of a list that asks
+// for a decision.
+const LIFECYCLE = ["declared", "investigating", "resolved"];
+for (const state of LIFECYCLE) {
+  each([`status-${state}-text`], [`status-${state}-subtle`], TEXT);
+  each(
+    [`status-${state}-text`],
+    ["canvas", "surface", "hover", "accent-subtle"],
+    UI,
+  );
+  // As words — "Investigating", "Response complete" — on the plain
+  // surfaces, and prose inside a frame on its own tint.
+  each([`status-${state}-text`], ["canvas", "surface"], TEXT);
+  each(["fg", "fg-muted"], [`status-${state}-subtle`], TEXT);
+}
+
+// A section and a list that wait on the reader's decision: the accent's
+// tint, with body, secondary, and link text on it (overview-panel.tsx,
+// tone="action"; operational-attention.tsx, the pending frame).
+each(["fg", "fg-muted", "accent-text"], ["accent-subtle"], TEXT);
+// The rule along the top of a section waiting on a decision, and the solid
+// count in its header (its rim is what bounds it on the dark surface).
+each(["accent-mark"], ["surface"], UI);
+each(["accent-rim"], ["thead"], UI);
+
+// Criticality (criticality-mark.tsx): neutrals only. The solid Critical
+// chip turns the strongest ink into the ground; the others are text on the
+// surface a row sits on, already held above.
+each(["canvas", "surface"], ["fg"], TEXT);
+each(["fg"], ["sunken"], TEXT);
+
 /**
  * The activity ramps (activity-calendar.tsx). A density scale, not a set of
  * marks, so the rule is its own: each step must be *told apart* from the
@@ -144,9 +177,204 @@ const SURFACES = ["surface", "canvas"];
 /** The least contrast each step owes the surface under it. */
 const STEP_MINIMUM = [1.25, 1.9, UI, 4.5];
 
+/** A colour in OKLab, where distance is how different two colours look. */
+const oklab = (hex: string): [number, number, number] => {
+  const [r, g, b] = [1, 3, 5].map((i) => {
+    const channel = parseInt(hex.slice(i, i + 2), 16) / 255;
+
+    return channel <= 0.04045
+      ? channel / 12.92
+      : ((channel + 0.055) / 1.055) ** 2.4;
+  });
+  const [l, m, s] = [
+    0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b,
+    0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b,
+    0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b,
+  ].map(Math.cbrt);
+
+  return [
+    0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s,
+    1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s,
+    0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s,
+  ];
+};
+
+const apart = (a: string, b: string) => {
+  const [x, y] = [oklab(a), oklab(b)];
+
+  return Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]);
+};
+
+/**
+ * How far apart two vocabularies' colours must look: several times the
+ * smallest difference an eye notices (about 0.02), so a lifecycle pill is
+ * never mistaken for a link, a severity, or a day of activity.
+ */
+const DISTINCT = 0.08;
+
+describe("semantic vocabularies", () => {
+  const LIFECYCLE_TEXT = ["declared", "investigating", "resolved"].map(
+    (state) => `status-${state}-text`,
+  );
+  /** Every other vocabulary's colour a lifecycle colour could be taken for. */
+  const OTHERS = [
+    "accent-text",
+    "accent-mark",
+    "accent",
+    "info-text",
+    "warning-text",
+    "danger-text",
+    "signal-critical",
+    "signal-high",
+    "signal-caution",
+    "signal-advisory",
+    ...[1, 2, 3, 4].flatMap((level) => [
+      `activity-operational-${level}`,
+      `activity-personal-${level}`,
+    ]),
+  ];
+
+  describe.each<Theme>(["light", "dark"])("in %s", (theme) => {
+    it.each(LIFECYCLE_TEXT)("keeps %s apart from every other vocabulary", (state) => {
+      for (const other of OTHERS) {
+        expect(
+          apart(colour(state, theme), colour(other, theme)),
+          `${state} against ${other}`,
+        ).toBeGreaterThanOrEqual(DISTINCT);
+      }
+    });
+
+    it("keeps the three lifecycle states apart from each other", () => {
+      for (const [a, b] of [
+        [LIFECYCLE_TEXT[0], LIFECYCLE_TEXT[1]],
+        [LIFECYCLE_TEXT[1], LIFECYCLE_TEXT[2]],
+        [LIFECYCLE_TEXT[0], LIFECYCLE_TEXT[2]],
+      ]) {
+        expect(apart(colour(a, theme), colour(b, theme)), `${a} against ${b}`)
+          .toBeGreaterThanOrEqual(DISTINCT);
+      }
+    });
+
+    // The one deliberate sharing: resolved and the nominal signal both say
+    // "done, nothing wrong", so they are the same green — one hue, drawn
+    // darker as text and brighter as a mark.
+    it("shares its green's hue with the nominal signal on purpose", () => {
+      const hue = (name: string) => {
+        const [, a, b] = oklab(colour(name, theme));
+
+        return (Math.atan2(b, a) * 180) / Math.PI;
+      };
+
+      expect(
+        Math.abs(hue("status-resolved-text") - hue("signal-nominal")),
+      ).toBeLessThan(10);
+    });
+  });
+});
+
+/** OKLab back to a hex colour, clamped into sRGB. */
+const fromOklab = ([L, a, b]: [number, number, number]): string => {
+  const [l, m, s] = [
+    L + 0.3963377774 * a + 0.2158037573 * b,
+    L - 0.1055613458 * a - 0.0638541728 * b,
+    L - 0.0894841775 * a - 1.291485548 * b,
+  ].map((x) => x ** 3);
+  const linear = [
+    4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+    -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s,
+  ];
+
+  return `#${linear
+    .map((x) => {
+      const clamped = Math.min(1, Math.max(0, x));
+      const encoded =
+        clamped <= 0.0031308
+          ? 12.92 * clamped
+          : 1.055 * clamped ** (1 / 2.4) - 0.055;
+
+      return Math.round(encoded * 255)
+        .toString(16)
+        .padStart(2, "0");
+    })
+    .join("")}`;
+};
+
+/** `color-mix(in oklab, a p%, b)`, as the browser computes it. */
+const mix = (a: string, share: number, b: string): string => {
+  const [x, y] = [oklab(a), oklab(b)];
+
+  return fromOklab([0, 1, 2].map((i) => x[i] * share + y[i] * (1 - share)) as [
+    number,
+    number,
+    number,
+  ]);
+};
+
+/**
+ * The metric cards' tints (`tint-family`, `tint-family-disc`). Their grounds
+ * are mixes no token names, so the parser above never sees them: they are
+ * mixed here with the same percentages, in every family a card can take.
+ */
+describe.each<Theme>(["light", "dark"])("the metric cards in %s", (theme) => {
+  const FAMILIES = [
+    "signal-critical",
+    "signal-high",
+    "signal-caution",
+    "signal-advisory",
+    "signal-nominal",
+    "fg-muted",
+    "status-investigating-text",
+    "status-resolved-text",
+  ];
+  const tint = css.match(
+    /@utility tint-family \{[^}]*var\(--family\) (\d+)%, var\(--color-surface\)/,
+  );
+  const disc = css.match(
+    /@utility tint-family-disc \{[^}]*var\(--family\) (\d+)%, transparent/,
+  );
+
+  it("mixes as the stylesheet says", () => {
+    expect(tint?.[1]).toBeDefined();
+    expect(disc?.[1]).toBeDefined();
+  });
+
+  it.each(FAMILIES)("keeps a %s card's text and icon legible", (family) => {
+    const ground = mix(colour(family, theme), Number(tint![1]) / 100, colour("surface", theme));
+    const disc_ = mix(colour(family, theme), Number(disc![1]) / 100, ground);
+
+    for (const text of ["fg", "fg-muted"]) {
+      expect(
+        contrast(colour(text, theme), ground),
+        `${text} on a ${family} card`,
+      ).toBeGreaterThanOrEqual(TEXT);
+    }
+    expect(
+      contrast(colour(family, theme), disc_),
+      `the ${family} icon on its disc`,
+    ).toBeGreaterThanOrEqual(UI);
+  });
+});
+
 describe("design tokens", () => {
   it("parses the colour tokens", () => {
     expect(tokens.size).toBeGreaterThan(40);
+  });
+
+  /**
+   * The type utilities the README documents and components are written
+   * with. Tailwind emits nothing for a class it does not know, so one
+   * removed by accident fails silently everywhere it is used — `data` once
+   * did, and identifiers and durations fell back to the body face.
+   */
+  it("defines every documented type utility", () => {
+    for (const utility of ["label-caps", "eyebrow", "numeric"]) {
+      expect(css, utility).toMatch(new RegExp(`@utility ${utility} \\{`));
+    }
+    // A component class, so a size utility beside it always wins.
+    expect(css).toMatch(
+      /@layer components \{\s*\.data \{[^}]*font-family: var\(--font-mono\);[^}]*tabular-nums/,
+    );
   });
 
   /**

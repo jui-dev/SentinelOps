@@ -627,8 +627,10 @@ model IncidentResponder {
   /// pages over (started_at, id) — and, by its leading column, the Restrict
   /// check when a membership is deleted.
   @@index([membershipId, startedAt])
-  /// Serves the cascade from organizations.
-  @@index([organizationId])
+  /// Serves the cascade from organizations, and the overview's count of who
+  /// is investigating now, which reads the organization's INVESTIGATING
+  /// rows and nothing else.
+  @@index([organizationId, status])
   @@map("incident_responders")
 }
 

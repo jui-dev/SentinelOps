@@ -1,9 +1,11 @@
-import { act, screen, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { OrganizationOverview } from "@/components/organizations/organization-overview";
 import { OrganizationScope } from "@/components/organizations/organization-scope";
+import { OverviewSummary } from "@/components/overview/overview-summary";
+import type { CurrentOperationsState } from "@/components/overview/use-current-operations";
 import type {
   ActivityIncidentResponse,
   IncidentAttentionResponse,
@@ -126,6 +128,23 @@ const busy = (from: string, to: string): IncidentSummaryResponse => ({
         worstSeverity: "SEV1",
       },
     ],
+    // Two people investigating, on two teams: enough to tell a count of
+    // members from a count of responses.
+    responders: { active: 2, teams: 2 },
+    activeByStatus: { DECLARED: 1, INVESTIGATING: 2 },
+    // A SEV1 has typically taken six hours; nothing else has enough
+    // resolutions to say.
+    typicalResolution: {
+      from: "2026-06-22",
+      to: "2026-09-19",
+      minimumSample: 5,
+      bySeverity: {
+        SEV1: { resolved: 7, medianMs: 6 * 3_600_000 },
+        SEV2: { resolved: 2, medianMs: null },
+        SEV3: { resolved: 0, medianMs: null },
+        SEV4: { resolved: 0, medianMs: null },
+      },
+    },
   },
   period:
     from === to
@@ -180,7 +199,24 @@ const busy = (from: string, to: string): IncidentSummaryResponse => ({
 });
 
 const quiet = (from: string, to: string): IncidentSummaryResponse => ({
-  current: { active: 0, activeBySeverity: none, affectedServices: [] },
+  current: {
+    active: 0,
+    activeBySeverity: none,
+    affectedServices: [],
+    responders: { active: 0, teams: 0 },
+    activeByStatus: { DECLARED: 0, INVESTIGATING: 0 },
+    typicalResolution: {
+      from: "2026-06-22",
+      to: "2026-09-19",
+      minimumSample: 5,
+      bySeverity: {
+        SEV1: { resolved: 0, medianMs: null },
+        SEV2: { resolved: 0, medianMs: null },
+        SEV3: { resolved: 0, medianMs: null },
+        SEV4: { resolved: 0, medianMs: null },
+      },
+    },
+  },
   period: {
     from,
     to,
@@ -342,8 +378,10 @@ const api = (
     activity = activityOver(),
     role = "ADMIN",
   }: {
-    summary?: (from: string, to: string) => IncidentSummaryResponse;
-    active?: IncidentResponse[];
+    summary?:
+      | ((from: string, to: string) => IncidentSummaryResponse)
+      | (() => Response);
+    active?: IncidentResponse[] | (() => Response);
     attention?: IncidentAttentionResponse | (() => Response);
     activity?: OperationalActivityResponse | (() => Response);
     role?: string;
@@ -352,8 +390,9 @@ const api = (
   mockApi((request) => {
     if (route(request).startsWith(`${SUMMARY}?`)) {
       const [from, to] = periodOf(request).split("..");
+      const answer = summary(from, to);
 
-      return jsonResponse(200, summary(from, to));
+      return answer instanceof Response ? answer : jsonResponse(200, answer);
     }
 
     if (route(request).startsWith(`${ACTIVITY}?`)) {
@@ -376,10 +415,12 @@ const api = (
       case `GET ${base}/memberships`:
         return jsonResponse(200, []);
       case `GET ${base}/incidents?state=active`:
-        return jsonResponse(200, {
-          items: active,
-          page: { cursor: null, hasMore: false },
-        });
+        return typeof active === "function"
+          ? active()
+          : jsonResponse(200, {
+              items: active,
+              page: { cursor: null, hasMore: false },
+            });
       default:
         return apiError(404);
     }
@@ -414,16 +455,24 @@ describe("the operations overview", () => {
       name: "Current operations",
     });
 
-    await within(current).findByText("active incidents");
-    expect(within(current).getByText("3")).toBeDefined();
     // The panel says what it covers.
     expect(within(current).getByText("Now")).toBeDefined();
 
-    const bySeverity = within(current).getByLabelText("Active incidents by severity");
+    // The split by severity leads the panel, and is all of the posture: how
+    // many are active is the summary row's figure, and the most severe
+    // level is the first count that is not nought.
+    const bySeverity = await within(current).findByLabelText(
+      "Active incidents by severity",
+    );
     expect(bySeverity.textContent).toMatch(/SEV1\s*Critical\s*1/);
     expect(bySeverity.textContent).toMatch(/SEV3\s*Moderate\s*2/);
+    expect(within(current).queryByText(/Most severe/)).toBeNull();
+    expect(within(current).queryByText("active incidents")).toBeNull();
 
-    const top = await within(current).findByRole("link", {
+    const rows = await within(current).findByRole("list", {
+      name: "Active incidents",
+    });
+    const top = within(rows).getByRole("link", {
       name: /INC-42\s+Card payments failing/,
     });
     expect(top.getAttribute("href")).toBe("/orgs/acme-ops/incidents/42");
@@ -431,14 +480,31 @@ describe("the operations overview", () => {
       within(current).getByRole("link", { name: /View all 3 active incidents/ }).getAttribute("href"),
     ).toBe("/orgs/acme-ops/incidents");
 
-    const affected = within(current).getByRole("list", {
-      name: "Affected services",
-    });
+    // Compact counts, not a bar: every level is there, a level with none
+    // quietened, and nothing drawn in proportion.
+    for (const level of ["SEV1", "SEV2", "SEV3", "SEV4"]) {
+      expect(bySeverity.textContent).toContain(level);
+    }
+    expect(bySeverity.textContent).toMatch(/SEV2\s*Major\s*0/);
+    // The counts strip — by status and by severity — draws nothing in
+    // proportion; the only bars in the panel are each row's duration.
+    const strip = bySeverity.parentElement!.parentElement!;
+    expect(strip.querySelector("[style*='width']")).toBeNull();
+
+    // By status: each active status in its lifecycle pill, from the
+    // summary's aggregate — one declared, two investigating, though only one
+    // row is listed.
+    const byStatus = within(current).getByLabelText("Active incidents by status");
+    expect(byStatus.textContent).toBe("Declared1Investigating2");
     expect(
-      within(affected).getByRole("link", { name: "Payment API" }).getAttribute("href"),
-    ).toBe("/orgs/acme-ops/services/payment-api");
-    expect(affected.textContent).toMatch(/Critical/);
-    expect(affected.textContent).toMatch(/Payments · 3 active incidents/);
+      within(byStatus).getByText("Declared").className,
+    ).toContain("bg-status-declared-subtle");
+
+    // One view: no second list of services to correlate the rows against.
+    expect(
+      within(current).queryByRole("list", { name: "Affected services" }),
+    ).toBeNull();
+    expect(within(current).queryByRole("table")).toBeNull();
 
     // The panel offers no standing way out: the list's own link is the
     // only one, and the record of what came before is reached from a day.
@@ -446,9 +512,645 @@ describe("the operations overview", () => {
       within(current).queryByRole("link", { name: /Incident history/ }),
     ).toBeNull();
 
-    // The Overview reads only the state now, so it asks for the smallest
-    // period there is and never one a person chose.
-    expect(summaries(requests)).toEqual(["2026-09-19..2026-09-19"]);
+    // One request, for the thirty days the resolved figure counts. The
+    // state now does not depend on the period, so both halves of that one
+    // answer are read rather than a second summary being asked for. Never
+    // a period a person chose: the Overview offers no way to choose one.
+    expect(summaries(requests)).toEqual(["2026-08-21..2026-09-19"]);
+  });
+
+  describe("incidents and the services they affect", () => {
+    const TEAMS = {
+      payments: {
+        id: "0199a1b2-c3d4-7000-8000-0000000000c1",
+        name: "Payments",
+        slug: "payments",
+      },
+      risk: {
+        id: "0199a1b2-c3d4-7000-8000-0000000000c2",
+        name: "Risk",
+        slug: "risk",
+      },
+      platform: {
+        id: "0199a1b2-c3d4-7000-8000-0000000000c3",
+        name: "Platform",
+        slug: "platform",
+      },
+    };
+    const SERVICES = {
+      payments: {
+        id: "0199a1b2-c3d4-7000-8000-0000000000e1",
+        name: "Payment API",
+        slug: "payment-api",
+        criticality: "CRITICAL" as const,
+        archivedAt: null,
+      },
+      fraud: {
+        id: "0199a1b2-c3d4-7000-8000-0000000000e2",
+        name: "Fraud Detection",
+        slug: "fraud-detection",
+        criticality: "HIGH" as const,
+        archivedAt: null,
+      },
+      auth: {
+        id: "0199a1b2-c3d4-7000-8000-0000000000e3",
+        name: "Authentication",
+        slug: "authentication",
+        criticality: "NORMAL" as const,
+        archivedAt: null,
+      },
+      search: {
+        id: "0199a1b2-c3d4-7000-8000-0000000000e4",
+        name: "Search",
+        slug: "search",
+        criticality: "LOW" as const,
+        archivedAt: null,
+      },
+    };
+
+    const on = (
+      number: number,
+      title: string,
+      severity: IncidentSeverity,
+      status: "DECLARED" | "INVESTIGATING",
+      service: keyof typeof SERVICES,
+      team: keyof typeof TEAMS,
+      createdAt: string,
+    ) =>
+      incident({
+        id: `0199a1b2-c3d4-7000-8000-0000000001${number}`,
+        number,
+        title,
+        severity,
+        status,
+        service: SERVICES[service],
+        team: TEAMS[team],
+        createdAt,
+      });
+
+    /**
+     * Six active incidents across four services, in the list's own order —
+     * most severe, then longest-running. Two share the Payment API and two
+     * Authentication; the sixth, on Search, is beyond the five shown.
+     */
+    const ACTIVE = [
+      on(74, "Elevated card declines from one acquirer", "SEV2", "INVESTIGATING", "payments", "payments", "2026-09-18T11:00:00.000Z"),
+      on(73, "Webhook retries backing up", "SEV3", "INVESTIGATING", "payments", "payments", "2026-09-18T03:40:00.000Z"),
+      on(75, "Transaction monitoring alerts delayed", "SEV3", "DECLARED", "fraud", "risk", "2026-09-18T16:40:00.000Z"),
+      on(72, "Intermittent slow sign-in", "SEV4", "INVESTIGATING", "auth", "platform", "2026-09-17T05:00:00.000Z"),
+      on(76, "Stale password reset emails", "SEV4", "DECLARED", "auth", "platform", "2026-09-19T11:15:00.000Z"),
+      on(77, "Search results lag", "SEV4", "DECLARED", "search", "platform", "2026-09-19T11:50:00.000Z"),
+    ];
+
+    const affectedService = (
+      service: keyof typeof SERVICES,
+      team: keyof typeof TEAMS,
+      activeIncidents: number,
+      worstSeverity: IncidentSeverity,
+    ) => ({
+      ...SERVICES[service],
+      ownerTeam: TEAMS[team],
+      activeIncidents,
+      worstSeverity,
+    });
+
+    const spread = (from: string, to: string): IncidentSummaryResponse => ({
+      ...quiet(from, to),
+      current: {
+        active: 6,
+        activeBySeverity: { SEV1: 0, SEV2: 1, SEV3: 2, SEV4: 3 },
+        affectedServices: [
+          affectedService("payments", "payments", 2, "SEV2"),
+          affectedService("fraud", "risk", 1, "SEV3"),
+          affectedService("auth", "platform", 2, "SEV4"),
+          affectedService("search", "platform", 1, "SEV4"),
+        ],
+        responders: { active: 3, teams: 2 },
+        activeByStatus: { DECLARED: 3, INVESTIGATING: 3 },
+        typicalResolution: {
+          from: "2026-06-22",
+          to: "2026-09-19",
+          minimumSample: 5,
+          bySeverity: {
+            SEV1: { resolved: 0, medianMs: null },
+            // INC-74, open 1d 1h, is past a typical 12h.
+            SEV2: { resolved: 9, medianMs: 12 * 3_600_000 },
+            // Too few SEV3s to say what is typical: no bar at all.
+            SEV3: { resolved: 3, medianMs: null },
+            // INC-72 is past a typical day; INC-76, at 45m, is not.
+            SEV4: { resolved: 11, medianMs: 24 * 3_600_000 },
+          },
+        },
+      },
+    });
+
+    /** The rows, once they have arrived. */
+    const rows = async () => {
+      const current = await screen.findByRole("region", {
+        name: "Current operations",
+      });
+      const list = await within(current).findByRole("list", {
+        name: "Active incidents",
+      });
+
+      return within(list).getAllByRole("listitem");
+    };
+
+    /** A row's incident link: the first link in it, and the one it stretches. */
+    const incidentOf = (row: HTMLElement) =>
+      within(row).getAllByRole("link")[0];
+
+    it("puts each incident beside the service it affects", async () => {
+      api(READ, { summary: spread, active: ACTIVE });
+      renderOverview();
+
+      const listed = await rows();
+
+      expect(
+        listed.map((row) => {
+          const [incidentLink, serviceLink] = within(row).getAllByRole("link");
+
+          return [
+            incidentLink.getAttribute("href"),
+            serviceLink.textContent,
+            serviceLink.getAttribute("href"),
+          ];
+        }),
+      ).toEqual([
+        ["/orgs/acme-ops/incidents/74", "Payment API", "/orgs/acme-ops/services/payment-api"],
+        ["/orgs/acme-ops/incidents/73", "Payment API", "/orgs/acme-ops/services/payment-api"],
+        ["/orgs/acme-ops/incidents/75", "Fraud Detection", "/orgs/acme-ops/services/fraud-detection"],
+        ["/orgs/acme-ops/incidents/72", "Authentication", "/orgs/acme-ops/services/authentication"],
+        ["/orgs/acme-ops/incidents/76", "Authentication", "/orgs/acme-ops/services/authentication"],
+      ]);
+    });
+
+    it("keeps incidents on one service as rows of their own", async () => {
+      api(READ, { summary: spread, active: ACTIVE });
+      renderOverview();
+
+      const listed = await rows();
+      const onPayments = listed.filter((row) =>
+        within(row).queryByRole("link", { name: "Payment API" }),
+      );
+
+      // Two incidents, two rows — not one service row holding both.
+      expect(onPayments).toHaveLength(2);
+      for (const row of onPayments) {
+        expect(row.textContent).toContain("2 active incidents");
+      }
+
+      // Every service cell is two lines, the count included — one active
+      // incident is still something worth knowing about a service.
+      const fraud = listed[2];
+      expect(fraud.textContent).toContain("Fraud Detection");
+      expect(fraud.textContent).toContain("1 active incident");
+      expect(fraud.textContent).not.toContain("1 active incidents");
+    });
+
+    it("reads severity, status, duration and criticality off each row", async () => {
+      api(READ, { summary: spread, active: ACTIVE });
+      renderOverview();
+
+      const [declines, , monitoring, signIn, resets] = await rows();
+
+      expect(incidentOf(declines).textContent).toMatch(
+        /INC-74\s*Elevated card declines from one acquirer/,
+      );
+      expect(declines.textContent).toMatch(/SEV2\s*Major/);
+      expect(declines.textContent).toContain("Investigating");
+      expect(declines.textContent).toContain("Open 1d 1h");
+      expect(declines.textContent).toContain("Team Payments");
+      expect(declines.textContent).toMatch(/Affects\s*Payment API\s*Critical/);
+
+      expect(monitoring.textContent).toMatch(/SEV3\s*Moderate/);
+      expect(monitoring.textContent).toContain("Declared");
+      expect(monitoring.textContent).toContain("Open 19h 20m");
+      expect(monitoring.textContent).toContain("Team Risk");
+      expect(monitoring.textContent).toMatch(/Fraud Detection\s*High/);
+
+      expect(signIn.textContent).toMatch(/SEV4\s*Minor/);
+      expect(signIn.textContent).toContain("Open 2d 7h");
+      expect(signIn.textContent).toMatch(/Authentication\s*Normal/);
+
+      expect(resets.textContent).toContain("Open 45m");
+    });
+
+    /** A row's duration bar — the track and its fill — if it has one. */
+    const barOf = (row: HTMLElement) => {
+      const fill = row.querySelector<HTMLElement>("[style*='width']");
+
+      return fill
+        ? { fill, track: fill.parentElement as HTMLElement }
+        : undefined;
+    };
+
+    it("reads each duration against its severity's typical time to resolve", async () => {
+      api(READ, { summary: spread, active: ACTIVE });
+      renderOverview();
+
+      const [declines, retries, monitoring, signIn, resets] = await rows();
+
+      // INC-74: a SEV2, open 1d 1h, where a SEV2 has typically taken 12h.
+      // Full, and said to be past it — never more than full.
+      const past = barOf(declines)!;
+      expect(past.fill.style.width).toBe("100%");
+      expect(within(declines).getByText("Past typical")).toBeDefined();
+      expect(declines.textContent).toContain("past a typical 12h for a SEV2");
+
+      // INC-76: a SEV4 open 45m, of a typical day — a thirty-second of it.
+      const early = barOf(resets)!;
+      expect(early.fill.style.width).toBe("3.125%");
+      expect(within(resets).queryByText("Past typical")).toBeNull();
+      expect(resets.textContent).toContain("of a typical 1d for a SEV4");
+
+      // INC-72, a SEV4 open 2d 7h: past its typical day too.
+      expect(barOf(signIn)!.fill.style.width).toBe("100%");
+
+      // SEV3s have too few resolutions to call anything typical: no bar, and
+      // nothing said about a typical time, rather than a bar against a guess.
+      for (const row of [retries, monitoring]) {
+        expect(barOf(row)).toBeUndefined();
+        expect(row.textContent).not.toMatch(/typical/i);
+      }
+    });
+
+    it("fills the bar in the incident's own lifecycle colour", async () => {
+      api(READ, { summary: spread, active: ACTIVE });
+      renderOverview();
+
+      const [declines, , , , resets] = await rows();
+
+      // Investigating blue, declared violet — the pill beside it, as a bar.
+      expect(barOf(declines)!.fill.className).toContain(
+        "bg-status-investigating-text",
+      );
+      expect(barOf(resets)!.fill.className).toContain("bg-status-declared-text");
+      // Never a severity's colour: the bar is about time, not how bad.
+      expect(barOf(declines)!.fill.className).not.toMatch(/signal-/);
+    });
+
+    it("draws the bar as decoration, and says the comparison in words", async () => {
+      api(READ, { summary: spread, active: ACTIVE });
+      renderOverview();
+
+      const [declines] = await rows();
+      const { track } = barOf(declines)!;
+
+      expect(track.getAttribute("aria-hidden")).toBe("true");
+      expect(track.getAttribute("title")).toBe("Typical for a SEV2: 12h");
+      // The words a screen reader hears sit outside anything hidden.
+      const spoken = within(declines).getByText(/past a typical 12h/);
+      expect(spoken.closest("[aria-hidden='true']")).toBeNull();
+    });
+
+    it("counts every active incident by status, not only the rows shown", async () => {
+      api(READ, { summary: spread, active: ACTIVE });
+      renderOverview();
+
+      await rows();
+
+      const byStatus = screen.getByLabelText("Active incidents by status");
+
+      // Six active, five listed: the counts are the summary's own.
+      expect(byStatus.textContent).toBe("Declared3Investigating3");
+      // Lifecycle as a pill, severity as a glyph — the two never trade looks.
+      expect(byStatus.querySelectorAll(".rounded-full")).toHaveLength(2);
+      expect(
+        screen
+          .getByLabelText("Active incidents by severity")
+          .querySelector(".rounded-full"),
+      ).toBeNull();
+    });
+
+    it("names the affected services that have no row", async () => {
+      api(READ, { summary: spread, active: ACTIVE });
+      renderOverview();
+
+      await rows();
+
+      const elsewhere = screen.getByRole("list", { name: "Also affected" });
+      const search = within(elsewhere).getByRole("link", { name: "Search" });
+
+      expect(search.getAttribute("href")).toBe("/orgs/acme-ops/services/search");
+      expect(elsewhere.textContent).toContain("1 active incident");
+      // Services already on a row are not named twice.
+      expect(elsewhere.textContent).not.toMatch(/Payment API|Authentication/);
+      expect(
+        screen.getByRole("link", { name: /View all 6 active incidents/ }),
+      ).toBeDefined();
+    });
+
+    it("names nothing beneath when every affected service has a row", async () => {
+      api(READ);
+      renderOverview();
+
+      await rows();
+
+      expect(screen.queryByRole("list", { name: "Also affected" })).toBeNull();
+    });
+
+    it("names the service without linking it for a role that cannot read services", async () => {
+      api(READ.filter((permission) => permission !== "services:read"), {
+        summary: spread,
+        active: ACTIVE,
+      });
+      renderOverview();
+
+      const [declines] = await rows();
+
+      // The incident is still the row's link; the service is only its name.
+      expect(within(declines).getAllByRole("link")).toHaveLength(1);
+      expect(declines.textContent).toContain("Payment API");
+      expect(
+        screen.queryByRole("link", { name: "Payment API" }),
+      ).toBeNull();
+      expect(
+        within(screen.getByRole("list", { name: "Also affected" })).queryByRole(
+          "link",
+        ),
+      ).toBeNull();
+    });
+
+    it("draws each incident once, whatever the width", async () => {
+      api(READ, { summary: spread, active: ACTIVE });
+      const { container } = renderOverview();
+
+      const listed = await rows();
+
+      // One tree for every width: the stacked rows and the columns are the
+      // same elements, so nothing is read, or tabbed to, twice.
+      expect(screen.getAllByRole("link", { name: /INC-74/ })).toHaveLength(1);
+      for (const row of listed) {
+        expect(within(row).getAllByText("Affects")).toHaveLength(1);
+        expect(within(row).getAllByText("Open", { exact: false })).toHaveLength(1);
+      }
+
+      // The column header is drawn only where there are columns, and is
+      // not read out: each row says the same in its own words.
+      const header = container.querySelector('[aria-hidden="true"].xl\\:grid');
+
+      expect(header?.textContent).toBe(
+        "SeverityIncidentStatusDurationAffected service",
+      );
+      expect(header?.className).toMatch(/(^|\s)hidden(\s|$)/);
+
+      // Only the incident's link draws the row's focus; the service's link
+      // is its own stop, above the stretched one.
+      const [incidentLink, serviceLink] = within(listed[0]).getAllByRole("link");
+
+      expect(incidentLink.hasAttribute("data-row-link")).toBe(true);
+      expect(serviceLink.hasAttribute("data-row-link")).toBe(false);
+      expect(serviceLink.className).toMatch(/relative z-10/);
+    });
+
+    it("draws the critical edge on a SEV1 row only", async () => {
+      api(READ, { active: [incident(), { ...ACTIVE[0] }] });
+      renderOverview();
+
+      const [sev1, sev2] = await rows();
+
+      expect(sev1.className).toMatch(/before:bg-signal-critical/);
+      expect(sev2.className).not.toMatch(/signal-critical/);
+    });
+
+    it("keeps the split by severity when the rows cannot be read", async () => {
+      api(READ, { active: () => apiError(500) });
+      renderOverview();
+
+      const current = await screen.findByRole("region", {
+        name: "Current operations",
+      });
+
+      expect(
+        await within(current).findByRole("alert", {}, { timeout: 4000 }),
+      ).toBeDefined();
+      expect(
+        within(current).getByLabelText("Active incidents by severity"),
+      ).toBeDefined();
+      expect(
+        within(current).queryByRole("list", { name: "Active incidents" }),
+      ).toBeNull();
+    });
+
+    it("says it is loading the rows while the split is already shown", async () => {
+      // The list's answer never comes; the summary's does.
+      api(READ, { active: () => new Promise<Response>(() => {}) as never });
+      renderOverview();
+
+      const current = await screen.findByRole("region", {
+        name: "Current operations",
+      });
+
+      await within(current).findByLabelText("Active incidents by severity");
+      // A status region, by its words: the role takes no name from them.
+      expect(
+        within(current)
+          .getByText("Loading active incidents…")
+          .closest('[role="status"]'),
+      ).not.toBeNull();
+    });
+
+    it("has no accessibility violations", async () => {
+      api(READ, { summary: spread, active: ACTIVE });
+      const { container } = renderOverview();
+
+      await rows();
+      await expectNoAxeViolations(container);
+    }, 30_000);
+  });
+
+  describe("the summary", () => {
+    /** One card's number and the line beneath it. */
+    const figure = async (label: string) => {
+      const row = await screen.findByLabelText("Operational summary");
+      const term = within(row).getByText(label);
+      const card = term.closest("div");
+
+      if (!card) throw new Error(`No card around ${label}`);
+
+      return card.textContent ?? "";
+    };
+
+    it("states the organization's position in four figures", async () => {
+      api(READ);
+      renderOverview();
+
+      // The term first, as a definition list requires; the number is
+      // drawn above it, not read before it.
+      // Three active, the severities that are actually present, in words —
+      // separated by their glyphs, with no dot to strand at a line's start.
+      expect(await figure("Active incidents")).toMatch(
+        /^Active incidents3\s*1 critical\s*2 moderate/,
+      );
+      // One affected service, and it is a critical one.
+      expect(await figure("Services impacted")).toMatch(
+        /^Services impacted11 critical service/,
+      );
+      // Two members investigating, across two teams.
+      expect(await figure("Responders active")).toMatch(
+        /^Responders active2Across 2 teams/,
+      );
+      // The period's resolved count, said as the period it covers — never
+      // as a change against a period nothing asked for.
+      expect(await figure("Resolved incidents")).toMatch(
+        /^Resolved incidents9Last 30 days/,
+      );
+      expect(
+        screen.queryByText(/vs previous|% /, { exact: false }),
+      ).toBeNull();
+      expect(
+        screen.getByLabelText("Operational summary").textContent,
+      ).not.toContain("·");
+    });
+
+    /** Each card's family: the vocabulary of what it counts. */
+    const families = async () => {
+      const row = await screen.findByLabelText("Operational summary");
+
+      return Object.fromEntries(
+        [...row.querySelectorAll("[data-family]")].map((card) => [
+          card.querySelector("dt")?.textContent,
+          card.getAttribute("data-family"),
+        ]),
+      );
+    };
+
+    it("draws each card in the vocabulary of what it counts", async () => {
+      api(READ);
+      renderOverview();
+
+      // A SEV1 is active, so the incidents card is the critical signal's;
+      // services are neutral, as criticality is; responders are the
+      // lifecycle's investigating blue, and resolved its green.
+      expect(await families()).toEqual({
+        "Active incidents": "critical",
+        "Services impacted": "neutral",
+        "Responders active": "investigating",
+        "Resolved incidents": "resolved",
+      });
+
+      const row = screen.getByLabelText("Operational summary");
+      const card = row.querySelector('[data-family="critical"]');
+
+      expect(card?.className).toContain(
+        "[--family:var(--color-signal-critical)]",
+      );
+      expect(card?.className).toContain("tint-family");
+    });
+
+    it("takes the incidents card's colour from the worst severity active", async () => {
+      api(READ, {
+        summary: (from, to) => {
+          const answer = busy(from, to);
+
+          return {
+            ...answer,
+            current: {
+              ...answer.current,
+              activeBySeverity: { SEV1: 0, SEV2: 1, SEV3: 2, SEV4: 0 },
+            },
+          };
+        },
+      });
+      renderOverview();
+
+      // No SEV1, so not red: the card says what is actually worst.
+      expect((await families())["Active incidents"]).toBe("high");
+    });
+
+    it("gives a nought no colour, and nothing active the all-clear", async () => {
+      api(READ, { summary: quiet, active: [] });
+      renderOverview();
+
+      expect(await families()).toEqual({
+        "Active incidents": "nominal",
+        "Services impacted": "neutral",
+        "Responders active": "neutral",
+        "Resolved incidents": "neutral",
+      });
+    });
+
+    it("marks each card's icon as decoration", async () => {
+      api(READ);
+      renderOverview();
+
+      const row = await screen.findByLabelText("Operational summary");
+
+      for (const disc of row.querySelectorAll(".tint-family-disc")) {
+        expect(disc.getAttribute("aria-hidden")).toBe("true");
+      }
+      expect(row.querySelectorAll(".tint-family-disc")).toHaveLength(4);
+    });
+
+    it("says what each figure counts, for a screen reader", async () => {
+      api(READ);
+      renderOverview();
+
+      const row = await screen.findByLabelText("Operational summary");
+
+      expect(row.textContent).toContain(
+        "Members whose own response is still under way, each counted once however many incidents they are on.",
+      );
+    });
+
+    it("speaks plainly when nothing is happening", async () => {
+      api(READ, { summary: quiet, active: [] });
+      renderOverview();
+
+      expect(await figure("Active incidents")).toMatch(
+        /^Active incidents0Nothing needs a response/,
+      );
+      expect(await figure("Services impacted")).toMatch(
+        /^Services impacted0No critical service affected/,
+      );
+      expect(await figure("Responders active")).toMatch(
+        /^Responders active0No response under way/,
+      );
+    });
+
+    /** The query as the row reads it: what it has, and whether it failed. */
+    const asState = (
+      data?: IncidentSummaryResponse["current"] & { resolved: number },
+      isError = false,
+    ) => ({ data, isError }) as CurrentOperationsState;
+
+    it("draws the frames, and no figures, until the summary arrives", () => {
+      const { container } = render(
+        <OverviewSummary state={asState(undefined)} />,
+      );
+      const busyRow = container.querySelector('[aria-busy="true"]');
+
+      // The labels hold the row's height, and nothing stands in for a
+      // count: a dash where a figure goes reads as a figure.
+      expect(busyRow).not.toBeNull();
+      expect(busyRow?.textContent).toContain("Responders active");
+      expect(busyRow?.textContent).not.toMatch(/\d/);
+      expect(screen.queryByLabelText("Operational summary")).toBeNull();
+    });
+
+    it("draws nothing at all when the summary cannot be read", () => {
+      const { container } = render(
+        <OverviewSummary state={asState(undefined, true)} />,
+      );
+
+      expect(container.firstChild).toBeNull();
+    });
+
+    it("leaves the one failure to the section that owns the request", async () => {
+      api(READ, { summary: () => apiError(500) });
+      renderOverview();
+
+      const current = await screen.findByRole("region", {
+        name: "Current operations",
+      });
+
+      // One request failed, so one thing says so — beneath, where the
+      // detail is, and not twice over.
+      await within(current).findByRole("alert", {}, { timeout: 4000 });
+      expect(screen.getAllByRole("alert")).toHaveLength(1);
+      expect(screen.queryByLabelText("Operational summary")).toBeNull();
+    });
   });
 
   it("no longer holds incident history, or anything that chose a period", async () => {
@@ -477,7 +1179,12 @@ describe("the operations overview", () => {
     });
 
     expect(await within(current).findByText("All clear")).toBeDefined();
-    expect(within(current).queryByRole("table")).toBeNull();
+    expect(
+      within(current).queryByRole("list", { name: "Active incidents" }),
+    ).toBeNull();
+    expect(
+      within(current).queryByLabelText("Active incidents by severity"),
+    ).toBeNull();
   });
 
   it("asks nothing about incidents without incidents:read", async () => {
@@ -842,8 +1549,10 @@ describe("the operations overview", () => {
         name: "Current operations",
       });
 
-      expect(within(current).getByText("3")).toBeDefined();
-      await within(current).findByRole("table", { name: "Active incidents" });
+      expect(
+        within(current).getByLabelText("Active incidents by severity"),
+      ).toBeDefined();
+      await within(current).findByRole("list", { name: "Active incidents" });
     });
 
     it("shows a member the same organization history as an admin", async () => {
@@ -965,6 +1674,203 @@ describe("the operations overview", () => {
           completedAt: null,
         },
       ],
+    });
+
+    describe("where it sits, and how its panels share the width", () => {
+      /** The page's sections, by id, in the order they are drawn. */
+      const sectionOrder = (container: HTMLElement) =>
+        [...container.querySelectorAll("section[id]")].map(({ id }) => id);
+
+      /** The element whose children the action panels are — the real one. */
+      const cellsOf = (panel: HTMLElement) => {
+        const grid = panel.parentElement;
+
+        if (!grid) throw new Error("The panel has no parent");
+
+        return { grid, cells: [...grid.children] };
+      };
+
+      const isGrid = (element: Element) =>
+        element.className.split(/\s+/).includes("grid");
+
+      it("reads from the state down to the work, both panels side by side", async () => {
+        api(MANAGE, {
+          attention: {
+            manage: { readyToResolve: [complete] },
+            respond: { needsYourTeam: [unclaimed], yourResponses: [mine] },
+          },
+        });
+        const { container } = renderOverview();
+
+        const waiting = await screen.findByRole("region", {
+          name: "Waiting on you",
+        });
+        const work = screen.getByRole("region", { name: "Your work" });
+        const summary = await screen.findByLabelText("Operational summary");
+        const current = screen.getByRole("region", {
+          name: "Current operations",
+        });
+
+        // State, then what needs the viewer, then what is happening, then
+        // the year.
+        expect(sectionOrder(container)).toEqual([
+          "waiting-on-you",
+          "your-work",
+          "current-operations",
+          "operational-activity",
+        ]);
+        // The four figures come before every section.
+        expect(
+          summary.compareDocumentPosition(waiting) &
+            Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy();
+        expect(
+          waiting.compareDocumentPosition(current) &
+            Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy();
+
+        // The rendered tree, not the component structure: both panels are
+        // direct cells of one grid, and nothing else is.
+        const { grid, cells } = cellsOf(waiting);
+
+        expect(cells).toEqual([waiting, work]);
+        expect(isGrid(grid)).toBe(true);
+        expect(grid.className).toContain("2xl:grid-cols-2");
+      });
+
+      it("frames Waiting on you as a decision only while one is waiting", async () => {
+        api(MANAGE, {
+          attention: {
+            manage: { readyToResolve: [complete] },
+            respond: { needsYourTeam: [unclaimed], yourResponses: [mine] },
+          },
+        });
+        renderOverview();
+
+        const waiting = await screen.findByRole("region", {
+          name: "Waiting on you",
+        });
+        const work = screen.getByRole("region", { name: "Your work" });
+
+        expect(waiting.getAttribute("data-tone")).toBe("action");
+        // The accent is spent where it points at something — an edge, the
+        // count, the row to act on — not across the panel's surface.
+        expect(waiting.className).toContain("border-t-accent-mark");
+        expect(waiting.firstElementChild?.className).not.toMatch(/accent/);
+        const header = waiting.firstElementChild as HTMLElement;
+
+        expect(within(header).getByText("1").className).toContain("bg-accent");
+        // Work under way is not a decision: related, not the same.
+        expect(work.getAttribute("data-tone")).toBe("default");
+        // The page's main operational section holds its place by its edge.
+        expect(
+          screen
+            .getByRole("region", { name: "Current operations" })
+            .getAttribute("data-tone"),
+        ).toBe("primary");
+      });
+
+      it("drops the decision frame when nothing is waiting", async () => {
+        api(MANAGE, {
+          attention: {
+            manage: { readyToResolve: [] },
+            respond: { needsYourTeam: [], yourResponses: [] },
+          },
+        });
+        renderOverview();
+
+        const waiting = await screen.findByRole("region", {
+          name: "Waiting on you",
+        });
+
+        expect(waiting.getAttribute("data-tone")).toBe("default");
+      });
+
+      it("gives an admin's one panel the whole width", async () => {
+        // On no team: the work lists would never fill, so they are not shown.
+        api(MANAGE, {
+          attention: {
+            manage: { readyToResolve: [complete] },
+            respond: { needsYourTeam: [], yourResponses: [] },
+          },
+        });
+        renderOverview();
+
+        const waiting = await screen.findByRole("region", {
+          name: "Waiting on you",
+        });
+        const { grid, cells } = cellsOf(waiting);
+
+        expect(screen.queryByRole("region", { name: "Your work" })).toBeNull();
+        expect(cells).toEqual([waiting]);
+        expect(isGrid(grid)).toBe(true);
+        // One column at every width: no empty half beside it.
+        expect(grid.className).toContain("grid-cols-1");
+        expect(grid.className).not.toContain("grid-cols-2");
+      });
+
+      it.each([
+        ["with work to show", { needsYourTeam: [unclaimed], yourResponses: [] }],
+        ["with nothing yet", { needsYourTeam: [], yourResponses: [] }],
+      ])(
+        "gives a member their work at the whole width, %s",
+        async (_, respond) => {
+          api(RESPOND, {
+            role: "MEMBER",
+            attention: { manage: null, respond },
+          });
+          renderOverview();
+
+          const work = await screen.findByRole("region", { name: "Your work" });
+          const { grid, cells } = cellsOf(work);
+
+          // Nothing of what only an admin decides reaches a member.
+          expect(
+            screen.queryByRole("region", { name: "Waiting on you" }),
+          ).toBeNull();
+          expect(screen.queryByText("Ready to resolve")).toBeNull();
+
+          expect(cells).toEqual([work]);
+          expect(isGrid(grid)).toBe(true);
+          expect(grid.className).toContain("grid-cols-1");
+          expect(grid.className).not.toContain("grid-cols-2");
+        },
+      );
+
+      it("leaves nothing behind when neither panel is the caller's", async () => {
+        api(READ);
+        renderOverview();
+
+        const activity = await screen.findByRole("region", {
+          name: "Operational activity",
+        });
+
+        await waitFor(() =>
+          expect(screen.queryByText("Loading what needs you…")).toBeNull(),
+        );
+
+        expect(
+          screen.queryByRole("region", { name: "Waiting on you" }),
+        ).toBeNull();
+        expect(screen.queryByRole("region", { name: "Your work" })).toBeNull();
+        // Activity is the page's last section, with no empty grid after it.
+        expect(activity.parentElement?.lastElementChild).toBe(activity);
+      });
+
+      it("has no accessibility violations as a whole page", async () => {
+        api(MANAGE, {
+          attention: {
+            manage: { readyToResolve: [complete] },
+            respond: { needsYourTeam: [unclaimed], yourResponses: [mine] },
+          },
+        });
+        const { container } = renderOverview();
+
+        await screen.findByRole("region", { name: "Your work" });
+        await screen.findByRole("list", { name: "Active incidents" });
+        await screen.findByRole("grid", { name: /Operational activity/ });
+        await expectNoAxeViolations(container);
+      }, 30_000);
     });
 
     it("shows the admin what is ready to resolve, and no empty work of their own", async () => {

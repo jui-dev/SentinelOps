@@ -186,6 +186,29 @@ describe('incident responses', () => {
       severity,
       _count: { _all: n },
     });
+    /** One response still under way: the member, and whose incident it is. */
+    const responding = (membershipId: string, teamId: string) => ({
+      membershipId,
+      incident: { teamId },
+    });
+
+    /**
+     * Everything but the responders, for the cases that vary only those.
+     * Nothing active: who is investigating is counted from its own rows,
+     * so the two do not have to be kept consistent here.
+     */
+    const WINDOW = { from: '2026-06-22', to: '2026-09-19' };
+    const bare = {
+      active: [],
+      services: [],
+      statuses: [],
+      typical: { rows: [], window: WINDOW },
+      declared: [],
+      resolved: 0,
+      stillOpen: 0,
+      period: { from: '2026-09-13', to: '2026-09-19' },
+      history: { total: 0, items: [] },
+    };
 
     const summary = toIncidentSummaryResponse({
       active: [
@@ -201,6 +224,24 @@ describe('incident responses', () => {
         service('checkout', 'Checkout', 'CRITICAL'),
         service('status', 'Status', 'LOW'),
       ],
+      responders: [
+        responding('ada', 'payments'),
+        responding('grace', 'payments'),
+        responding('ada', 'risk'),
+      ],
+      statuses: [
+        { status: 'DECLARED', _count: { _all: 3 } },
+        { status: 'INVESTIGATING', _count: { _all: 5 } },
+      ],
+      typical: {
+        rows: [
+          // Enough resolutions for a median, which is rounded to the ms.
+          { severity: 'SEV2', resolved: 7, median_ms: 21_600_000.4 },
+          // Too few: counted, and no median.
+          { severity: 'SEV3', resolved: 4, median_ms: 3_600_000 },
+        ],
+        window: WINDOW,
+      },
       declared: [{ severity: 'SEV1', _count: { _all: 4 } }],
       resolved: 3,
       stillOpen: 1,
@@ -266,6 +307,83 @@ describe('incident responses', () => {
         activeIncidents: 4,
         worstSeverity: 'SEV2',
       });
+    });
+
+    /**
+     * Responders are people and teams, never rows: the fixture holds three
+     * responses, but Ada is on two of them and two of the three are the
+     * same team's.
+     */
+    it('should count a member investigating several incidents once', () => {
+      expect(summary.current.responders).toEqual({ active: 2, teams: 2 });
+    });
+
+    it('should count every member on one incident', () => {
+      const one = toIncidentSummaryResponse({
+        ...bare,
+        responders: [
+          responding('ada', 'payments'),
+          responding('grace', 'payments'),
+          responding('lin', 'payments'),
+        ],
+      });
+
+      expect(one.current.responders).toEqual({ active: 3, teams: 1 });
+    });
+
+    it('should count the active incidents at each active status', () => {
+      expect(summary.current.activeByStatus).toEqual({
+        DECLARED: 3,
+        INVESTIGATING: 5,
+      });
+      // A resolved row is not an active one, and there is no third count.
+      expect(
+        toIncidentSummaryResponse({
+          ...bare,
+          responders: [],
+          statuses: [{ status: 'RESOLVED', _count: { _all: 9 } }],
+        }).current.activeByStatus,
+      ).toEqual({ DECLARED: 0, INVESTIGATING: 0 });
+    });
+
+    it('should give a typical time only where enough were resolved', () => {
+      expect(summary.current.typicalResolution).toEqual({
+        from: '2026-06-22',
+        to: '2026-09-19',
+        minimumSample: 5,
+        bySeverity: {
+          SEV1: { resolved: 0, medianMs: null },
+          SEV2: { resolved: 7, medianMs: 21_600_000 },
+          SEV3: { resolved: 4, medianMs: null },
+          SEV4: { resolved: 0, medianMs: null },
+        },
+      });
+    });
+
+    it('should hold the minimum exactly, and ignore rows naming no severity', () => {
+      const typical = toIncidentSummaryResponse({
+        ...bare,
+        responders: [],
+        typical: {
+          rows: [
+            { severity: 'SEV1', resolved: 5, median_ms: 1_000 },
+            { severity: 'SEV4', resolved: 5, median_ms: null },
+            { severity: 'SEV9', resolved: 50, median_ms: 1 },
+          ],
+          window: WINDOW,
+        },
+      }).current.typicalResolution.bySeverity;
+
+      expect(typical.SEV1).toEqual({ resolved: 5, medianMs: 1_000 });
+      expect(typical.SEV4).toEqual({ resolved: 5, medianMs: null });
+      expect(Object.keys(typical)).toEqual(['SEV1', 'SEV2', 'SEV3', 'SEV4']);
+    });
+
+    it('should report nobody investigating as nought, not as absent', () => {
+      expect(
+        toIncidentSummaryResponse({ ...bare, responders: [] }).current
+          .responders,
+      ).toEqual({ active: 0, teams: 0 });
     });
   });
 });

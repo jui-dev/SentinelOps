@@ -49,7 +49,8 @@ const nameList = (names: readonly string[]) =>
 
 /**
  * A responder's state as a glyph whose shape differs, not only its colour:
- * a filled accent dot while investigating, a check once complete.
+ * a filled dot while investigating, a check once complete — the lifecycle's
+ * blue and green, as a status is drawn everywhere.
  */
 function ResponderMark({
   status,
@@ -66,13 +67,13 @@ function ResponderMark({
         className,
       )}
     >
-      <span className="size-2 rounded-full bg-accent" />
+      <span className="size-2 rounded-full bg-status-investigating-text" />
     </span>
   ) : (
     <CircleCheck
       aria-hidden="true"
       strokeWidth={2}
-      className={cx("size-4 shrink-0 text-signal-nominal", className)}
+      className={cx("size-4 shrink-0 text-status-resolved-text", className)}
     />
   );
 }
@@ -106,7 +107,9 @@ function ResponderRows({
               <span
                 className={cx(
                   "text-sm",
-                  investigating ? "text-accent-text" : "text-success-text",
+                  investigating
+                    ? "text-status-investigating-text"
+                    : "text-status-resolved-text",
                 )}
               >
                 {investigating ? "Investigating" : "Response complete"}
@@ -300,15 +303,17 @@ export function ResponsePanel({
       aria-labelledby={headingId}
       className={cx(
         "overflow-hidden rounded-md border bg-surface",
-        state === "in-progress" && "border-line border-l-[3px] border-l-accent",
-        state === "complete" && "border-success-line border-l-[3px] border-l-success-solid",
+        state === "in-progress" &&
+          "border-line border-l-[3px] border-l-status-investigating-text",
+        state === "complete" &&
+          "border-status-resolved-line border-l-[3px] border-l-status-resolved-text",
         (state === "awaiting" || state === "resolved") && "border-line",
       )}
     >
       <div
         className={cx(
           "flex flex-wrap items-start justify-between gap-x-6 gap-y-3 px-4 py-4 sm:px-5",
-          state === "complete" && "bg-success-subtle",
+          state === "complete" && "bg-status-resolved-subtle",
         )}
       >
         <div className="flex min-w-0 gap-3">
@@ -320,11 +325,9 @@ export function ResponsePanel({
               strokeWidth={2}
               className={cx(
                 "mt-1 size-4 shrink-0",
-                state === "complete"
-                  ? "text-success-text"
-                  : state === "resolved"
-                    ? "text-signal-nominal"
-                    : "text-fg-subtle",
+                state === "complete" || state === "resolved"
+                  ? "text-status-resolved-text"
+                  : "text-fg-subtle",
               )}
             />
           )}
@@ -489,9 +492,10 @@ export function YourResponse({
       aria-labelledby={headingId}
       className={cx(
         "overflow-hidden rounded-md border bg-surface",
-        investigating && "border-line border-l-[3px] border-l-accent",
+        investigating &&
+          "border-line border-l-[3px] border-l-status-investigating-text",
         own?.status === "COMPLETED" &&
-          "border-success-line border-l-[3px] border-l-success-solid",
+          "border-status-resolved-line border-l-[3px] border-l-status-resolved-text",
         !own && "border-accent-line",
       )}
     >

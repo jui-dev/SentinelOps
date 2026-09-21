@@ -5,7 +5,9 @@ import type { Attention } from './incidents.attention.js';
 import { MEMBER_LEVELS } from './member-activity.js';
 import type { MemberActivityCategory } from './member-activity.js';
 import type { OperationalActivityCategory } from './incidents.activity.js';
+import { TYPICAL_RESOLUTION_MINIMUM } from './incidents.schemas.js';
 import type {
+  ActiveStatusCounts,
   AffectedServiceResponse,
   ActivityIncidentResponse,
   MemberActivityResponse,
@@ -21,6 +23,7 @@ import type {
   IncidentSummaryResponse,
   MemberResponseResponse,
   SeverityCounts,
+  TypicalResolutionResponse,
 } from './incidents.contract.js';
 
 /**
@@ -276,6 +279,80 @@ interface AffectedServiceRow {
   ownerTeam: { id: string; name: string; slug: string };
 }
 
+/** Active incidents at one status, as `groupBy` returns them. */
+interface StatusCountRow {
+  status: IncidentStatus;
+  _count: { _all: number };
+}
+
+/**
+ * One severity's resolutions in the typical-resolution window, as the raw
+ * median query returns them. `median_ms` is Postgres's `percentile_cont`.
+ */
+export interface TypicalResolutionRow {
+  severity: string;
+  resolved: number;
+  median_ms: number | null;
+}
+
+/**
+ * The active incidents by status. Only the two active statuses are counts
+ * here: a resolved incident is not active, so a row for one is not counted.
+ */
+const countByStatus = (rows: readonly StatusCountRow[]): ActiveStatusCounts => {
+  const counts: ActiveStatusCounts = { DECLARED: 0, INVESTIGATING: 0 };
+
+  for (const row of rows) {
+    if (row.status === 'DECLARED' || row.status === 'INVESTIGATING') {
+      counts[row.status] += row._count._all;
+    }
+  }
+
+  return counts;
+};
+
+/**
+ * Every severity's typical resolution time, from the median query's rows.
+ * A severity with no row resolved nothing in the window; one with fewer
+ * than the minimum has a count and no median. A row naming no known
+ * severity is not one of these, and is ignored.
+ */
+const toTypicalResolution = (
+  rows: readonly TypicalResolutionRow[],
+  window: { from: string; to: string },
+): TypicalResolutionResponse => {
+  const bySeverity = Object.fromEntries(
+    SEVERITIES.map((severity) => [severity, { resolved: 0, medianMs: null }]),
+  ) as TypicalResolutionResponse['bySeverity'];
+
+  for (const row of rows) {
+    if (!SEVERITIES.includes(row.severity as IncidentSeverity)) continue;
+
+    const resolved = Number(row.resolved);
+
+    bySeverity[row.severity as IncidentSeverity] = {
+      resolved,
+      medianMs:
+        resolved >= TYPICAL_RESOLUTION_MINIMUM && row.median_ms !== null
+          ? Math.round(Number(row.median_ms))
+          : null,
+    };
+  }
+
+  return {
+    from: window.from,
+    to: window.to,
+    minimumSample: TYPICAL_RESOLUTION_MINIMUM,
+    bySeverity,
+  };
+};
+
+/** One response still under way: who is on it, and whose incident it is. */
+interface ActiveResponderRow {
+  membershipId: string;
+  incident: { teamId: string };
+}
+
 /** Every level present, each summed over the rows that carry it. */
 const countBySeverity = (rows: readonly SeverityCountRow[]): SeverityCounts => {
   const counts: SeverityCounts = { SEV1: 0, SEV2: 0, SEV3: 0, SEV4: 0 };
@@ -289,14 +366,34 @@ const total = (counts: SeverityCounts): number =>
   SEVERITIES.reduce((sum, severity) => sum + counts[severity], 0);
 
 /**
+ * How many people are investigating, and across how many teams.
+ *
+ * One row per response, so someone investigating three incidents is three
+ * rows and one person — both figures are counts of distinct things, never
+ * of rows.
+ */
+const countResponders = (
+  rows: readonly ActiveResponderRow[],
+): IncidentSummaryResponse['current']['responders'] => ({
+  active: new Set(rows.map((row) => row.membershipId)).size,
+  teams: new Set(rows.map((row) => row.incident.teamId)).size,
+});
+
+/**
  * The summary, from the rows its queries return. `active` is grouped by
  * service and severity, which gives both the organization's active counts
  * and each affected service's. Services are ordered by their most severe
- * active incident, then by criticality, then by name.
+ * active incident, then by criticality, then by name. `responders` is one
+ * row per response still under way, counted into people and teams here
+ * rather than in SQL, so the distinctness is tested with the rest of the
+ * shaping.
  */
 export const toIncidentSummaryResponse = ({
   active,
   services,
+  responders,
+  statuses,
+  typical,
   declared,
   resolved,
   stillOpen,
@@ -305,6 +402,12 @@ export const toIncidentSummaryResponse = ({
 }: {
   active: readonly ActiveCountRow[];
   services: readonly AffectedServiceRow[];
+  responders: readonly ActiveResponderRow[];
+  statuses: readonly StatusCountRow[];
+  typical: {
+    rows: readonly TypicalResolutionRow[];
+    window: { from: string; to: string };
+  };
   declared: readonly SeverityCountRow[];
   resolved: number;
   stillOpen: number;
@@ -360,6 +463,9 @@ export const toIncidentSummaryResponse = ({
       active: total(activeBySeverity),
       activeBySeverity,
       affectedServices,
+      responders: countResponders(responders),
+      activeByStatus: countByStatus(statuses),
+      typicalResolution: toTypicalResolution(typical.rows, typical.window),
     },
     period: {
       from: period.from,

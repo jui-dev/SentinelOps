@@ -22,6 +22,23 @@ export const utcDay = (date: Date): string => date.toISOString().slice(0, 10);
 export const startOfUtcDay = (day: string): Date =>
   new Date(`${day}T00:00:00.000Z`);
 
+/**
+ * The last `days` whole UTC days up to and including the one `now` falls
+ * on: `lastUtcDays(1, now)` is today alone, `lastUtcDays(30, now)` the
+ * thirty days ending today.
+ *
+ * Both ends included, like every period here, so the count is the number of
+ * days shown rather than a distance between two dates.
+ */
+export const lastUtcDays = (days: number, now: Date): IncidentPeriod => {
+  const to = utcDay(now);
+
+  return {
+    from: utcDay(new Date(startOfUtcDay(to).getTime() - (days - 1) * DAY_MS)),
+    to,
+  };
+};
+
 /** How many days a period covers, both ends included. */
 export const periodDays = ({ from, to }: IncidentPeriod): number =>
   Math.round(

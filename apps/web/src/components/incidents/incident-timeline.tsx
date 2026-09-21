@@ -85,7 +85,11 @@ function describe(entry: IncidentActivityResponse): ReactNode {
       if (entry.toValue === "RESOLVED") {
         return (
           <>
-            <StatusMark status="RESOLVED" className="font-semibold text-fg" />{" "}
+            <StatusMark
+              status="RESOLVED"
+              variant="inline"
+              className="font-semibold text-fg"
+            />{" "}
             the incident
           </>
         );
@@ -97,7 +101,11 @@ function describe(entry: IncidentActivityResponse): ReactNode {
         return (
           <>
             The incident is now{" "}
-            <StatusMark status="INVESTIGATING" className="font-medium text-fg" />
+            <StatusMark
+              status="INVESTIGATING"
+              variant="inline"
+              className="font-medium text-fg"
+            />
           </>
         );
       }
@@ -106,11 +114,15 @@ function describe(entry: IncidentActivityResponse): ReactNode {
       return (
         <>
           Changed status{" "}
-          <StatusMark status={entry.fromValue as RecordedStatus} />
+          <StatusMark
+            status={entry.fromValue as RecordedStatus}
+            variant="inline"
+          />
           <span aria-hidden="true"> → </span>
           <span className="sr-only"> to </span>
           <StatusMark
             status={entry.toValue as RecordedStatus}
+            variant="inline"
             className="font-medium text-fg"
           />
         </>
@@ -134,26 +146,27 @@ const ACTIONS: Partial<Record<IncidentActivityResponse["type"], string>> = {
 /**
  * The rail's marker for a recorded event: an icon per kind, so a start, a
  * completion, and a lifecycle change are told apart at a glance. Colour only
- * where it means what it means elsewhere: the accent for a response under
- * way, nominal green for completion and resolution.
+ * where it means what it means elsewhere — the lifecycle's: violet for the
+ * declaration, blue for a response under way, green for a response complete
+ * and for the resolution.
  */
 const eventMarker = (
   entry: IncidentActivityResponse,
 ): { Icon: LucideIcon; colour: string } => {
   switch (entry.type) {
     case "DECLARED":
-      return { Icon: Flag, colour: "text-fg-muted" };
+      return { Icon: Flag, colour: "text-status-declared-text" };
     case "SEVERITY_CHANGED":
       return { Icon: Gauge, colour: "text-fg-muted" };
     case "TEAM_CHANGED":
       return { Icon: ArrowLeftRight, colour: "text-fg-muted" };
     case "RESPONSE_STARTED":
-      return { Icon: CircleDot, colour: "text-accent-text" };
+      return { Icon: CircleDot, colour: "text-status-investigating-text" };
     case "RESPONSE_COMPLETED":
-      return { Icon: CircleCheck, colour: "text-signal-nominal" };
+      return { Icon: CircleCheck, colour: "text-status-resolved-text" };
     default:
       return entry.toValue === "RESOLVED"
-        ? { Icon: CircleCheck, colour: "text-signal-nominal" }
+        ? { Icon: CircleCheck, colour: "text-status-resolved-text" }
         : { Icon: CircleDashed, colour: "text-fg-muted" };
   }
 };
@@ -227,7 +240,7 @@ function TimelineEntry({ entry }: { entry: IncidentActivityResponse }) {
         </p>
       )}
       {note && (
-        <p className="mt-1.5 max-w-2xl rounded-r-md border-l-2 border-success-line bg-surface px-3.5 py-2.5 text-sm leading-6 whitespace-pre-line text-fg">
+        <p className="mt-1.5 max-w-2xl rounded-r-md border-l-2 border-status-resolved-line bg-surface px-3.5 py-2.5 text-sm leading-6 whitespace-pre-line text-fg">
           {note}
         </p>
       )}

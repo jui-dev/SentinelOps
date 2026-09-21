@@ -12,15 +12,21 @@
  * the user's explicit choice via `data-theme` on <html> (see lib/theme). Keep
  * one declaration per line — the contrast test in src/test reads this file.
  *
- * Four colour families, never mixed:
- *   - neutrals    surfaces, text, lines — structure.
+ * Colour families, never mixed:
+ *   - neutrals    surfaces, text, lines — structure. Service criticality
+ *                 is drawn in these alone: a classification, not a state.
  *   - accent      SentinelOps' ink indigo — interaction only:
  *                 primary actions, links, the current place, focus,
- *                 selection. Never large areas.
+ *                 selection, and a list that asks for a decision. Never
+ *                 large areas, and never a state.
  *   - feedback    danger / warning / success / info — outcomes of what the
  *                 user just did (a failed request, a created invitation).
  *   - signal      operational state of the systems SentinelOps watches —
  *                 incident severity. Named by intensity, never by the brand.
+ *                 The warm band is severity's alone.
+ *   - lifecycle   where an incident or a response stands — declared,
+ *                 investigating, resolved. The cool band.
+ *   - activity    how much happened on a day — a density, never a state.
  * No feedback or signal hue sits near the accent's, which is why info is
  * teal-cyan rather than blue: SEV1 is red whatever the accent is.
  *
@@ -118,6 +124,33 @@
   --color-signal-inactive: light-dark(#6b7485, #7d8799);
 
   /*
+   * Lifecycle — where an incident, or one response to it, stands: declared,
+   * investigating, resolved. The cool band, in the order an incident moves
+   * through it — violet, blue, green — because the warm band is severity's.
+   * A lifecycle colour can therefore never be read as a severity, and
+   * Declared can never be mistaken for SEV3 or for a warning.
+   *
+   * Drawn as a tinted pill (`text` on `subtle`, bounded by `line`), or as a
+   * glyph in `text` where a state is a mark rather than a badge.
+   *
+   * Chosen to stay apart from every other vocabulary, not only to read —
+   * a test holds each at a perceptible distance from the accent, the
+   * activity ramps, and the signals. Blue is saturated where the accent's
+   * indigo is muted and the activity azure steely; violet is a true violet,
+   * clear of the personal activity ramp. Green is the one "done" colour,
+   * shared with the nominal signal on purpose: resolved is nominal.
+   */
+  --color-status-declared-text: light-dark(#9043aa, #d1a6ff);
+  --color-status-declared-subtle: light-dark(#f7effb, #231a3b);
+  --color-status-declared-line: light-dark(#e2c8ee, #4d3679);
+  --color-status-investigating-text: light-dark(#4062cd, #3a9bfd);
+  --color-status-investigating-subtle: light-dark(#eaf1fd, #12233f);
+  --color-status-investigating-line: light-dark(#c3cff4, #214b82);
+  --color-status-resolved-text: light-dark(#146c43, #7bc098);
+  --color-status-resolved-subtle: light-dark(#edf8f2, #10221b);
+  --color-status-resolved-line: light-dark(#b5dec8, #24473a);
+
+  /*
    * Activity — how much operational history a day holds. A density, never a
    * signal: it says how much happened, never how bad. Two families, so an
    * organization's activity and one person's are never mistaken for each
@@ -180,9 +213,12 @@
 
   /*
    * Ink navy: the chosen day's panel, beside the calendar's ink one
-   * (activity-panes.tsx). A step up from ink and bluer, so the two read as
-   * two panels of one instrument rather than one panel with a seam — the
-   * calendar is the ground, and what you picked out of it is raised.
+   * (activity-panes.tsx). A step up from ink, and a deep blue-violet rather
+   * than the calendar's neutral black, so the two read as two panels of one
+   * instrument rather than one panel with a seam — the calendar is the
+   * ground, and what you picked out of it is raised. Kept dark and low in
+   * chroma: a surface, never a colour that competes with the ramp or with
+   * Declared's violet.
    *
    * Prose is read here, where the calendar's panel holds only marks, so it
    * carries a whole set: its own secondary text (brighter than `ink-muted`,
@@ -190,10 +226,10 @@
    * and its own focus ring. The workspace's own roles are rebound to these
    * for anything drawn inside it — see the `ink-region` utility below.
    */
-  --color-ink-navy: light-dark(#202b4a, #172542);
-  --color-ink-navy-line: light-dark(#2f3c63, #2b3a5e);
-  --color-ink-navy-hover: light-dark(#283457, #1b2c4d);
-  --color-ink-navy-muted: light-dark(#9fa8b9, #949daf);
+  --color-ink-navy: light-dark(#2a2652, #1f1c3d);
+  --color-ink-navy-line: light-dark(#403b7a, #342f64);
+  --color-ink-navy-hover: light-dark(#312d5d, #262347);
+  --color-ink-navy-muted: light-dark(#aaabc0, #a8a9be);
   /* A link's colour on ink, which needs more than `ink-accent` at 4.5:1. */
   --color-ink-accent-text: light-dark(#a8b7dc, #a8b7dc);
   --color-ink-focus: light-dark(#7895e3, #7895e3);
@@ -289,6 +325,25 @@
 }
 
 /*
+ * Identifiers, timestamps, durations: the mono face, with aligned figures,
+ * a half-step smaller so it sits level with the body face beside it.
+ *
+ * A component class rather than a utility, on purpose. It sets a size, and
+ * is often written beside one (`data text-xs`); in the components layer it
+ * is only the default, and any size utility on the same element wins —
+ * always, rather than by whichever of the two the build happens to emit
+ * last.
+ */
+@layer components {
+  .data {
+    font-family: var(--font-mono);
+    font-size: 0.78125rem;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+}
+
+/*
  * An ink region: a patch of the workspace drawn on an ink panel instead of
  * a light one (activity-panes.tsx, tone="navy").
  *
@@ -321,6 +376,27 @@
   --color-signal-nominal: var(--color-ink-signal-nominal);
   --color-signal-advisory: var(--color-ink-signal-advisory);
   --color-signal-inactive: var(--color-ink-signal-inactive);
+}
+
+/*
+ * A metric's family, drawn on its card (overview-summary.tsx).
+ *
+ * The family is one existing token, set on the card as `--family` — a
+ * severity signal, a lifecycle colour, or a neutral. The card takes a trace
+ * of it as its ground and a little more as its edge; the icon's disc a
+ * little more again, with the icon in the family itself. No new colour is
+ * introduced here, only how much of one: the percentages are the whole of
+ * it, and the contrast test mixes them exactly as the browser does, in
+ * OKLab, to hold the card's text to 4.5:1 and its icon to 3:1.
+ */
+@utility tint-family {
+  background-color: color-mix(in oklab, var(--family) 6%, var(--color-surface));
+  border-color: color-mix(in oklab, var(--family) 28%, var(--color-line-subtle));
+}
+
+@utility tint-family-disc {
+  background-color: color-mix(in oklab, var(--family) 16%, transparent);
+  color: var(--family);
 }
 
 /*

@@ -135,6 +135,25 @@ const marks: Record<IncidentSeverity, { path: ReactNode; colour: string }> = {
 };
 
 /**
+ * A severity's glyph alone — its shape in its colour — for a count written
+ * beside it in words ("▲ 1 major"), where the word already names the level.
+ * Decoration for assistive technology: the words say it.
+ */
+export function SeverityGlyph({ severity }: { severity: IncidentSeverity }) {
+  const mark = marks[severity];
+
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 10 10"
+      className={cx("inline-block size-2 shrink-0", mark.colour)}
+    >
+      {mark.path}
+    </svg>
+  );
+}
+
+/**
  * A severity as text with its mark: `◆ SEV1`, and with `label`, `◆ SEV1
  * Critical`. Without the visible word, the word is still read out.
  * `emphasis`, for lists scanned under pressure, sets the mark a touch larger
@@ -193,44 +212,105 @@ export function SeverityMark({
 }
 
 /**
- * One outline icon per status. Outlines, where severity marks are filled
- * solids, so the two never read as one scale. Neutral ink for the active
- * statuses — severity is the signal — and the nominal green only once
- * resolved. A retired status has no icon: its word carries it.
+ * The lifecycle vocabulary: one outline icon and one colour per status.
+ *
+ * Outline icons, where severity marks are filled solids, and the cool band
+ * — violet, blue, green, in the order an incident moves — where severity
+ * owns the warm one; so a status is never read as a severity, by shape or
+ * by hue. The same icon and colour wherever a status is drawn, and wherever
+ * the same state is: a responder still investigating is this blue, a
+ * response complete this green.
+ *
+ * A retired status has neither: its word carries it, in neutral ink.
  */
-const statusIcons: Record<IncidentStatus, { Icon: LucideIcon; colour: string }> = {
+const LIFECYCLE: Record<
+  IncidentStatus,
+  { Icon: LucideIcon; mark: string; badge: string }
+> = {
   // Reported; nobody has started on it.
-  DECLARED: { Icon: Circle, colour: "text-fg-muted" },
+  DECLARED: {
+    Icon: Circle,
+    mark: "text-status-declared-text",
+    badge:
+      "border-status-declared-line bg-status-declared-subtle text-status-declared-text",
+  },
   // An open question being worked.
-  INVESTIGATING: { Icon: CircleDashed, colour: "text-fg-muted" },
-  RESOLVED: { Icon: CircleCheck, colour: "text-signal-nominal" },
+  INVESTIGATING: {
+    Icon: CircleDashed,
+    mark: "text-status-investigating-text",
+    badge:
+      "border-status-investigating-line bg-status-investigating-subtle text-status-investigating-text",
+  },
+  RESOLVED: {
+    Icon: CircleCheck,
+    mark: "text-status-resolved-text",
+    badge:
+      "border-status-resolved-line bg-status-resolved-subtle text-status-resolved-text",
+  },
 };
 
-/** A status as its word with its icon: `◌ Investigating`. The word carries it. */
+/** A status's colour as a mark, for a glyph drawn beside its own words. */
+export const lifecycleMark = (status: IncidentStatus) => LIFECYCLE[status].mark;
+
+/**
+ * A status as its icon and word.
+ *
+ * `badge`, the default, is a compact tinted pill — the status standing on
+ * its own, in a row or beside a title. `inline` is the same icon, coloured,
+ * with a plain word, for a status named inside a sentence ("The incident is
+ * now ◌ Investigating"), where a pill would break the line.
+ *
+ * Not a control either way: no hover, no pointer. `className` is for
+ * layout, and for an inline word's weight — a badge sets its own colours.
+ */
 export function StatusMark({
   status,
+  variant = "badge",
   className,
 }: {
   status: IncidentStatus | RetiredIncidentStatus;
+  variant?: "badge" | "inline";
   className?: string;
 }) {
-  const icon = statusIcons[status as IncidentStatus];
+  const lifecycle = LIFECYCLE[status as IncidentStatus];
+  const { label } = statusOf(status);
+
+  if (variant === "inline") {
+    return (
+      <span
+        className={cx(
+          "inline-flex items-center gap-1.5 whitespace-nowrap",
+          className,
+        )}
+      >
+        {lifecycle && (
+          <lifecycle.Icon
+            aria-hidden="true"
+            strokeWidth={2}
+            className={cx("size-3.5 shrink-0", lifecycle.mark)}
+          />
+        )}
+        {label}
+      </span>
+    );
+  }
 
   return (
     <span
       className={cx(
-        "inline-flex items-center gap-1.5 whitespace-nowrap",
+        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs leading-4 font-medium whitespace-nowrap",
+        lifecycle ? lifecycle.badge : "border-line bg-sunken text-fg-muted",
         className,
       )}
     >
-      {icon && (
-        <icon.Icon
+      {lifecycle && (
+        <lifecycle.Icon
           aria-hidden="true"
-          strokeWidth={2}
-          className={cx("size-3.5 shrink-0", icon.colour)}
+          strokeWidth={2.25}
+          className="size-3 shrink-0"
         />
       )}
-      {statusOf(status).label}
+      {label}
     </span>
   );
 }

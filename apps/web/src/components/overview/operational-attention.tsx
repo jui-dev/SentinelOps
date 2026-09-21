@@ -20,7 +20,8 @@ import type { IncidentDetailResponse } from "@/lib/api/contracts";
 import { OverviewPanel } from "./overview-panel";
 
 /**
- * What needs the caller right now, above the organization's operations.
+ * What needs the caller right now: the second thing the Overview answers,
+ * straight after the organization's state — "what requires my action?".
  *
  * Current state, not a feed: each list is the API's answer to "what is
  * waiting on me", polled, and an incident leaves it once the work is done
@@ -30,8 +31,12 @@ import { OverviewPanel } from "./overview-panel";
  *
  * Which parts show follows the caller's permissions, as the API answered
  * them: `manage` gives "Waiting on you", `respond` gives "Your work". Each
- * is a panel of the Overview, framed like the two below it, so the page
- * reads as one stack of sections rather than loose lists above cards.
+ * is a panel of the Overview, framed like the ones above it.
+ *
+ * Side by side on a wide screen when both are shown, as one pair of action
+ * panels; one alone takes the whole width. The grid is drawn here rather
+ * than by the page, because only here is it known how many panels there
+ * are — the page would have to work the permissions out a second time.
  *
  * Drawn in three strengths, so what needs the caller is seen first:
  *
@@ -41,9 +46,10 @@ import { OverviewPanel } from "./overview-panel";
  *            plain surface
  *   empty    one quiet line, no frame
  *
- * The glyphs are the incident page's own — a check for response work
- * complete, an open circle for not started, the accent dot for
- * investigating — so a state reads the same wherever it is drawn.
+ * The glyphs are the lifecycle's own — a green check for response work
+ * complete, a violet open circle for not started, the blue dot for
+ * investigating — so a state reads the same wherever it is drawn. The
+ * accent is left to what asks for a decision: the frame and the cue.
  */
 export function OperationalAttention() {
   const organization = useOrganization();
@@ -64,6 +70,8 @@ export function OperationalAttention() {
 
   if (!manage && !showWork) return null;
 
+  const both = manage !== null && showWork;
+
   const workGroups: GroupProps[] = respond
     ? [
         {
@@ -79,7 +87,7 @@ export function OperationalAttention() {
                 <Circle
                   aria-hidden="true"
                   strokeWidth={2.25}
-                  className="size-3.5 text-accent-text"
+                  className="size-3.5 text-status-declared-text"
                 />
                 {incident.team.name} needs a responder
               </>
@@ -99,7 +107,7 @@ export function OperationalAttention() {
               <>
                 <span
                   aria-hidden="true"
-                  className="size-2 rounded-full bg-accent-mark"
+                  className="size-2 rounded-full bg-status-investigating-text"
                 />
                 You are investigating
               </>
@@ -117,17 +125,25 @@ export function OperationalAttention() {
   );
 
   return (
-    <>
+    // Its children are the panels themselves — no wrapper between — so
+    // each is a cell of this grid. Two columns only when there are two; one
+    // otherwise, sized to the page (`minmax(0, 1fr)`) rather than to its
+    // content, so a long title truncates instead of widening the page.
+    <div className={cx("grid grid-cols-1 gap-6", both && "2xl:grid-cols-2")}>
       {manage && (
         <OverviewPanel
           id="waiting-on-you"
           title="Waiting on you"
+          // The one frame that says "act" — and only while there is
+          // something to act on. Your work stays a plain section: work
+          // under way, not a decision.
+          tone={manage.readyToResolve.length > 0 ? "action" : "default"}
           // How much is waiting, where the other panels say what period
-          // they cover. Nothing waiting is said by the line inside, not by
-          // a nought in the header.
+          // they cover — solid, as the header's one strong cue. Nothing
+          // waiting is said by the line inside, not by a nought here.
           label={
             manage.readyToResolve.length > 0 ? (
-              <span className="numeric inline-flex items-center rounded-full border border-accent-line bg-accent-subtle px-2 py-0.5 text-xs font-medium text-accent-text">
+              <span className="numeric inline-flex min-w-5 items-center justify-center rounded-full border border-accent-rim bg-accent px-1.5 py-0.5 text-xs font-semibold text-on-accent">
                 {manage.readyToResolve.length}
               </span>
             ) : undefined
@@ -147,7 +163,7 @@ export function OperationalAttention() {
                   <CircleCheck
                     aria-hidden="true"
                     strokeWidth={2.25}
-                    className="size-3.5 text-success-text"
+                    className="size-3.5 text-status-resolved-text"
                   />
                   Response work complete — ready to resolve
                 </>
@@ -174,7 +190,7 @@ export function OperationalAttention() {
           </div>
         </OverviewPanel>
       )}
-    </>
+    </div>
   );
 }
 

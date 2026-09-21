@@ -196,6 +196,19 @@ const summary = (from: string, to: string) => ({
         worstSeverity: "SEV1",
       },
     ],
+    responders: { active: 1, teams: 1 },
+    activeByStatus: { DECLARED: 1, INVESTIGATING: 1 },
+    typicalResolution: {
+      from: "2026-06-22",
+      to: "2026-09-19",
+      minimumSample: 5,
+      bySeverity: {
+        SEV1: { resolved: 6, medianMs: 4 * 3_600_000 },
+        SEV2: { resolved: 8, medianMs: 9 * 3_600_000 },
+        SEV3: { resolved: 0, medianMs: null },
+        SEV4: { resolved: 0, medianMs: null },
+      },
+    },
   },
   period: {
     from,
@@ -437,7 +450,7 @@ describe("accessibility", () => {
       const { container } = inWorkspace(<OrganizationOverview />);
 
       await screen.findByRole("heading", { level: 1, name: "Overview" });
-      await screen.findByRole("table", { name: "Active incidents" });
+      await screen.findByRole("list", { name: "Active incidents" });
       await screen.findByRole("grid", { name: /Operational activity/ });
       await expectNoAxeViolations(container);
       // A year of days is ~370 squares for axe to walk, which jsdom does far

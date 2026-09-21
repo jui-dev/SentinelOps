@@ -7,6 +7,8 @@ import {
   postIncidentUpdateSchema,
   searchedIncidentNumber,
   summaryBounds,
+  TYPICAL_RESOLUTION_DAYS,
+  typicalResolutionWindow,
   updateIncidentSchema,
 } from './incidents.schemas.js';
 
@@ -327,6 +329,34 @@ describe('incident schemas', () => {
       expect(summaryBounds({ from: '2026-09-13', to: '2026-09-19' })).toEqual({
         gte: new Date('2026-09-13T00:00:00.000Z'),
         lt: new Date('2026-09-20T00:00:00.000Z'),
+      });
+    });
+  });
+
+  describe('typicalResolutionWindow', () => {
+    it('should be the last ninety whole UTC days, today included', () => {
+      const window = typicalResolutionWindow(new Date('2026-09-19T12:00:00Z'));
+
+      expect(window).toEqual({ from: '2026-06-22', to: '2026-09-19' });
+      const { gte, lt } = summaryBounds(window);
+      expect((lt.getTime() - gte.getTime()) / 86_400_000).toBe(
+        TYPICAL_RESOLUTION_DAYS,
+      );
+    });
+
+    it('should follow the UTC day, not the local one', () => {
+      expect(
+        typicalResolutionWindow(new Date('2026-09-19T23:59:59.999Z')).to,
+      ).toBe('2026-09-19');
+      expect(
+        typicalResolutionWindow(new Date('2026-09-20T00:00:00.000Z')),
+      ).toEqual({ from: '2026-06-23', to: '2026-09-20' });
+    });
+
+    it('should cross a year', () => {
+      expect(typicalResolutionWindow(new Date('2026-01-10T08:00:00Z'))).toEqual({
+        from: '2025-10-13',
+        to: '2026-01-10',
       });
     });
   });

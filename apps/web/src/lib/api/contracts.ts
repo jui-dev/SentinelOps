@@ -370,6 +370,27 @@ export interface IncidentHistoryItemResponse {
   resolvedInPeriod: boolean;
 }
 
+/** How many active incidents stand at each active status. */
+export type ActiveStatusCounts = Record<"DECLARED" | "INVESTIGATING", number>;
+
+/**
+ * How long incidents of each severity have typically taken to resolve: the
+ * median from declaration to resolution, over the incidents at that
+ * severity resolved in the whole UTC days `from` to `to` — the last ninety,
+ * today included. `medianMs` is null while fewer than `minimumSample` were
+ * resolved: a middle value of three describes those three, not what is
+ * typical.
+ */
+export interface TypicalResolutionResponse {
+  from: string;
+  to: string;
+  minimumSample: number;
+  bySeverity: Record<
+    IncidentSeverity,
+    { resolved: number; medianMs: number | null }
+  >;
+}
+
 /**
  * `GET /organizations/:organizationId/incidents/summary`. `current` is every
  * unresolved incident now, whatever the period. `period` covers whole UTC
@@ -384,6 +405,23 @@ export interface IncidentSummaryResponse {
     active: number;
     activeBySeverity: SeverityCounts;
     affectedServices: AffectedServiceResponse[];
+    /**
+     * Who is investigating now. `active` counts the members whose own
+     * response is still under way, each once however many incidents they
+     * are on; `teams` counts the responsible teams of those incidents.
+     *
+     * Only actual participation: a member of a responsible team who has
+     * not started is not a responder, and a completed response is not an
+     * active one.
+     */
+    responders: {
+      active: number;
+      teams: number;
+    };
+    /** The active incidents by lifecycle status: declared, or investigating. */
+    activeByStatus: ActiveStatusCounts;
+    /** What an active incident's duration can honestly be read against. */
+    typicalResolution: TypicalResolutionResponse;
   };
   period: {
     from: string;

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   formatPeriodRange,
+  lastUtcDays,
   periodDays,
   readPeriodParams,
   utcDay,
@@ -17,6 +18,48 @@ describe("periods", () => {
     expect(periodDays({ from: "2026-09-19", to: "2026-09-19" })).toBe(1);
     expect(periodDays({ from: "2024-02-28", to: "2024-03-01" })).toBe(3);
     expect(periodDays({ from: "2025-09-19", to: "2026-09-19" })).toBe(366);
+  });
+
+  describe("the last few days", () => {
+    const now = new Date("2026-09-19T12:00:00.000Z");
+
+    it("ends today and holds exactly the days asked for", () => {
+      expect(lastUtcDays(1, now)).toEqual({
+        from: "2026-09-19",
+        to: "2026-09-19",
+      });
+      expect(lastUtcDays(30, now)).toEqual({
+        from: "2026-08-21",
+        to: "2026-09-19",
+      });
+      // Whatever the length, the count is the days shown, both ends in.
+      for (const days of [1, 7, 30, 90, 366]) {
+        expect(periodDays(lastUtcDays(days, now))).toBe(days);
+      }
+    });
+
+    it("follows the UTC day, not the local one", () => {
+      // A minute before midnight UTC is still that day; a minute after is
+      // the next, and the whole period moves with it.
+      expect(lastUtcDays(30, new Date("2026-09-19T23:59:00.000Z")).to).toBe(
+        "2026-09-19",
+      );
+      expect(lastUtcDays(30, new Date("2026-09-20T00:01:00.000Z"))).toEqual({
+        from: "2026-08-22",
+        to: "2026-09-20",
+      });
+    });
+
+    it("crosses a year and a leap day", () => {
+      expect(lastUtcDays(30, new Date("2026-01-10T08:00:00.000Z"))).toEqual({
+        from: "2025-12-12",
+        to: "2026-01-10",
+      });
+      expect(lastUtcDays(3, new Date("2024-03-01T08:00:00.000Z"))).toEqual({
+        from: "2024-02-28",
+        to: "2024-03-01",
+      });
+    });
   });
 
   describe("a range from a URL", () => {

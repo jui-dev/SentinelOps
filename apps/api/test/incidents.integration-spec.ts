@@ -1175,6 +1175,10 @@ describe('incidents (integration)', () => {
         resolvedAt?: string;
         severity?: 'SEV1' | 'SEV2' | 'SEV3' | 'SEV4';
         organizationId?: string;
+        /** The responsible team, where a test needs more than one. */
+        teamId?: string;
+        /** An active incident nobody has started on. */
+        declared?: boolean;
       } = {},
     ) => {
       const organizationId = extra.organizationId ?? fx.orgA;
@@ -1186,15 +1190,41 @@ describe('incidents (integration)', () => {
           number: next,
           title: `Incident ${next}`,
           serviceId: organizationId === fx.orgA ? fx.apiA : fx.apiB,
-          teamId: organizationId === fx.orgA ? fx.paymentsA : fx.paymentsB,
+          teamId:
+            extra.teamId ??
+            (organizationId === fx.orgA ? fx.paymentsA : fx.paymentsB),
           createdById: organizationId === fx.orgA ? fx.alice : fx.bob,
           severity: extra.severity ?? 'SEV2',
-          status: extra.resolvedAt ? 'RESOLVED' : 'INVESTIGATING',
+          status: extra.resolvedAt
+            ? 'RESOLVED'
+            : extra.declared
+              ? 'DECLARED'
+              : 'INVESTIGATING',
           createdAt: new Date(createdAt),
           resolvedAt: extra.resolvedAt ? new Date(extra.resolvedAt) : null,
         },
       });
     };
+
+    /**
+     * One response written directly, so a test can put the organization in
+     * a state the routes would refuse to reach — a response still under way
+     * on a resolved incident, which is what proves the count checks both.
+     */
+    const responding = (
+      incident: { id: string; organizationId: string },
+      membershipId: string,
+      status: 'INVESTIGATING' | 'COMPLETED' = 'INVESTIGATING',
+    ) =>
+      prisma.incidentResponder.create({
+        data: {
+          organizationId: incident.organizationId,
+          incidentId: incident.id,
+          membershipId,
+          status,
+          completedAt: status === 'COMPLETED' ? new Date() : null,
+        },
+      });
 
     /** The history as [number, declaredInPeriod, resolvedInPeriod] rows. */
     const history = (body: {
@@ -1345,17 +1375,167 @@ describe('incidents (integration)', () => {
       ]);
     });
 
-    it('should keep each organization to itself', async () => {
+    /**
+     * Who is investigating now: people and teams, not rows. Dave is on two
+     * incidents and counts once; Erin's is a second team. A completed
+     * response and one on a resolved incident are not responses under way,
+     * and neither is being on the responsible team without starting.
+     */
+    it('should count the members investigating now, each once, and their teams', async () => {
+      const payments = await at('2026-09-15T08:00:00Z');
+      const alsoPayments = await at('2026-09-15T09:00:00Z');
+      const platform = await at('2026-09-15T10:00:00Z', {
+        teamId: fx.platformA,
+      });
+      const finished = await at('2026-09-15T11:00:00Z');
+      const resolved = await at('2026-09-14T08:00:00Z', {
+        resolvedAt: '2026-09-15T08:00:00Z',
+      });
+
+      // Dave, twice over, on one team.
+      await responding(payments, fx.daveInA);
+      await responding(alsoPayments, fx.daveInA);
+      // Erin, on another.
+      await responding(platform, fx.erinInA);
+      // Neither of these is a response under way.
+      await responding(finished, fx.erinInA, 'COMPLETED');
+      await responding(resolved, fx.daveInA);
+
+      const body = await summary('2026-09-13', '2026-09-19');
+
+      expect(body.current.responders).toEqual({ active: 2, teams: 2 });
+    });
+
+    it('should report nobody investigating as nought', async () => {
       await at('2026-09-15T08:00:00Z');
-      await at('2026-09-15T08:00:00Z', { organizationId: fx.orgB });
+
+      const body = await summary('2026-09-13', '2026-09-19');
+
+      expect(body.current.responders).toEqual({ active: 0, teams: 0 });
+    });
+
+    it('should count the active incidents at each active status', async () => {
+      await at('2026-09-15T08:00:00Z', { declared: true });
+      await at('2026-09-15T09:00:00Z', { declared: true });
+      await at('2026-09-15T10:00:00Z');
+      await at('2026-09-14T08:00:00Z', { resolvedAt: '2026-09-15T08:00:00Z' });
+
+      const body = await summary('2026-09-13', '2026-09-19');
+
+      expect(body.current.activeByStatus).toEqual({
+        DECLARED: 2,
+        INVESTIGATING: 1,
+      });
+    });
+
+    describe('typical resolution', () => {
+      const HOUR = 3_600_000;
+      const DAY = 86_400_000;
+      /** Today's UTC date, as the server takes it from its own clock. */
+      const today = () => new Date().toISOString().slice(0, 10);
+      /** The first instant of the window: midnight UTC, 89 days before today. */
+      const windowStart = () =>
+        new Date(Date.parse(`${today()}T00:00:00.000Z`) - 89 * DAY);
+
+      /** One incident resolved at `resolvedAt`, having taken `took` ms. */
+      const resolvedAfter = (
+        resolvedAt: Date,
+        took: number,
+        extra: {
+          severity?: 'SEV1' | 'SEV2' | 'SEV3' | 'SEV4';
+          organizationId?: string;
+        } = {},
+      ) =>
+        at(new Date(resolvedAt.getTime() - took).toISOString(), {
+          ...extra,
+          resolvedAt: resolvedAt.toISOString(),
+        });
+
+      it('should give each severity its median time to resolve', async () => {
+        const twoDaysAgo = new Date(Date.now() - 2 * DAY);
+
+        // Five SEV2s: the middle one took three hours.
+        for (const hours of [1, 2, 3, 4, 10]) {
+          await resolvedAfter(twoDaysAgo, hours * HOUR, { severity: 'SEV2' });
+        }
+        // Three SEV3s: too few to call anything typical.
+        for (const hours of [1, 1, 1]) {
+          await resolvedAfter(twoDaysAgo, hours * HOUR, { severity: 'SEV3' });
+        }
+        // None of these is a resolution in this organization's window: one
+        // long before it, one still active, one in another organization.
+        await resolvedAfter(new Date(Date.now() - 120 * DAY), 100 * HOUR, {
+          severity: 'SEV2',
+        });
+        await at(new Date(Date.now() - DAY).toISOString(), { severity: 'SEV2' });
+        await resolvedAfter(twoDaysAgo, 100 * HOUR, {
+          severity: 'SEV2',
+          organizationId: fx.orgB,
+        });
+
+        const body = await summary('2026-09-13', '2026-09-19');
+
+        expect(body.current.typicalResolution).toEqual({
+          from: windowStart().toISOString().slice(0, 10),
+          to: today(),
+          minimumSample: 5,
+          bySeverity: {
+            SEV1: { resolved: 0, medianMs: null },
+            SEV2: { resolved: 5, medianMs: 3 * HOUR },
+            SEV3: { resolved: 3, medianMs: null },
+            SEV4: { resolved: 0, medianMs: null },
+          },
+        });
+      });
+
+      it('should take the median between the middle two of an even count', async () => {
+        const yesterday = new Date(Date.now() - DAY);
+
+        for (const hours of [1, 2, 4, 6, 8, 9]) {
+          await resolvedAfter(yesterday, hours * HOUR, { severity: 'SEV1' });
+        }
+
+        const body = await summary('2026-09-13', '2026-09-19');
+
+        expect(body.current.typicalResolution.bySeverity.SEV1).toEqual({
+          resolved: 6,
+          medianMs: 5 * HOUR,
+        });
+      });
+
+      it('should start the window at midnight UTC ninety days back, and not before', async () => {
+        const start = windowStart();
+
+        await resolvedAfter(start, HOUR, { severity: 'SEV4' });
+        await resolvedAfter(new Date(start.getTime() - 1), HOUR, {
+          severity: 'SEV4',
+        });
+
+        const body = await summary('2026-09-13', '2026-09-19');
+
+        expect(body.current.typicalResolution.bySeverity.SEV4.resolved).toBe(1);
+      });
+    });
+
+    it('should keep each organization to itself', async () => {
+      const mine = await at('2026-09-15T08:00:00Z');
+      const theirs = await at('2026-09-15T08:00:00Z', {
+        organizationId: fx.orgB,
+      });
+
+      await responding(mine, fx.daveInA);
+      await responding(theirs, fx.carolInB);
       await at('2026-09-15T08:00:00Z', {
         organizationId: fx.orgB,
         resolvedAt: '2026-09-16T08:00:00Z',
       });
 
+
       const body = await summary('2026-09-13', '2026-09-19');
 
       expect(body.current.active).toBe(1);
+      // Bravo's responder is Bravo's; Acme counts only its own.
+      expect(body.current.responders).toEqual({ active: 1, teams: 1 });
       expect(
         body.current.affectedServices.map((each: { id: string }) => each.id),
       ).toEqual([fx.apiA]);
@@ -1366,6 +1546,7 @@ describe('incidents (integration)', () => {
       const other = await summary('2026-09-13', '2026-09-19', fx.orgB);
 
       expect(other.current.active).toBe(1);
+      expect(other.current.responders).toEqual({ active: 1, teams: 1 });
       expect(other.period).toMatchObject({ declared: 2, resolved: 1 });
       expect(other.period.history.total).toBe(2);
       expect(history(other)).toEqual([

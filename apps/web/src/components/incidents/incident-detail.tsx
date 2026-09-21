@@ -167,10 +167,7 @@ function IncidentHeader({
             <div>
               <dt className="sr-only">Status</dt>
               <dd className="text-sm">
-                <StatusMark
-                  status={incident.status}
-                  className="font-medium text-fg"
-                />
+                <StatusMark status={incident.status} />
               </dd>
             </div>
             <Fact label="Service">
@@ -226,12 +223,12 @@ function Resolution({
   return (
     <section
       aria-labelledby={headingId}
-      className="flex gap-3 rounded-md border border-success-line border-l-[3px] border-l-success-solid bg-success-subtle px-4 py-4 sm:px-5"
+      className="flex gap-3 rounded-md border border-status-resolved-line border-l-[3px] border-l-status-resolved-text bg-status-resolved-subtle px-4 py-4 sm:px-5"
     >
       <CircleCheck
         aria-hidden="true"
         strokeWidth={2}
-        className="mt-1 size-4 shrink-0 text-success-text"
+        className="mt-1 size-4 shrink-0 text-status-resolved-text"
       />
       <div className="flex min-w-0 flex-col gap-1.5">
         <h2 id={headingId} className="text-base font-semibold text-fg">

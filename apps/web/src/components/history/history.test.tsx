@@ -152,6 +152,19 @@ const busy = (from: string, to: string): IncidentSummaryResponse => ({
     active: 3,
     activeBySeverity: { SEV1: 1, SEV2: 0, SEV3: 2, SEV4: 0 },
     affectedServices: [],
+    responders: { active: 0, teams: 0 },
+    activeByStatus: { DECLARED: 0, INVESTIGATING: 0 },
+    typicalResolution: {
+      from: "2026-06-22",
+      to: "2026-09-19",
+      minimumSample: 5,
+      bySeverity: {
+        SEV1: { resolved: 0, medianMs: null },
+        SEV2: { resolved: 0, medianMs: null },
+        SEV3: { resolved: 0, medianMs: null },
+        SEV4: { resolved: 0, medianMs: null },
+      },
+    },
   },
   period:
     from === to
@@ -205,7 +218,24 @@ const busy = (from: string, to: string): IncidentSummaryResponse => ({
 });
 
 const quiet = (from: string, to: string): IncidentSummaryResponse => ({
-  current: { active: 0, activeBySeverity: none, affectedServices: [] },
+  current: {
+    active: 0,
+    activeBySeverity: none,
+    affectedServices: [],
+    responders: { active: 0, teams: 0 },
+    activeByStatus: { DECLARED: 0, INVESTIGATING: 0 },
+    typicalResolution: {
+      from: "2026-06-22",
+      to: "2026-09-19",
+      minimumSample: 5,
+      bySeverity: {
+        SEV1: { resolved: 0, medianMs: null },
+        SEV2: { resolved: 0, medianMs: null },
+        SEV3: { resolved: 0, medianMs: null },
+        SEV4: { resolved: 0, medianMs: null },
+      },
+    },
+  },
   period: {
     from,
     to,

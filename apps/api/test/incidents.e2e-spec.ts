@@ -198,6 +198,9 @@ describe('Incidents (e2e)', () => {
     prisma.incidentResponder.count.mockResolvedValue(0);
     prisma.incidentResponder.create.mockResolvedValue({ id: 'responder-1' });
     prisma.incidentResponder.update.mockResolvedValue({ id: 'responder-1' });
+    // The summary reads the responses still under way; the attention route
+    // reads them too, and sets its own rows where it needs them.
+    prisma.incidentResponder.findMany.mockResolvedValue([]);
   });
 
   afterEach(async () => {
@@ -233,6 +236,27 @@ describe('Incidents (e2e)', () => {
       expect(response.body.period.history).toEqual({
         total: expect.any(Number),
         items: expect.any(Array),
+      });
+      // Who is investigating is part of the state now, and is answered
+      // even when nobody is: a nought, never a missing field.
+      expect(response.body.current.responders).toEqual({
+        active: 0,
+        teams: 0,
+      });
+      // Both active statuses, and every severity's typical time — present,
+      // and empty, when nothing has been resolved to measure it by.
+      expect(response.body.current.activeByStatus).toEqual({
+        DECLARED: 0,
+        INVESTIGATING: 0,
+      });
+      expect(response.body.current.typicalResolution).toMatchObject({
+        minimumSample: 5,
+        bySeverity: {
+          SEV1: { resolved: 0, medianMs: null },
+          SEV2: { resolved: 0, medianMs: null },
+          SEV3: { resolved: 0, medianMs: null },
+          SEV4: { resolved: 0, medianMs: null },
+        },
       });
       expect(prisma.incident.findFirst).not.toHaveBeenCalled();
     });

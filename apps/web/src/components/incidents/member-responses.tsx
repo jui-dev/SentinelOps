@@ -19,15 +19,18 @@ import { incidentKey, SeverityMark, StatusMark } from "./severity";
 
 /**
  * Where their own part stands, in the words and marks the incident page's
- * responder rows use: an accent dot while investigating, a check once
+ * responder rows use: a blue dot while investigating, a green check once
  * complete — with how long, not when, so a list reads as work rather than a
  * log.
  */
 function OwnPart({ response }: { response: MemberResponseResponse }) {
   if (response.status === "INVESTIGATING") {
     return (
-      <span className="inline-flex items-center gap-1.5 text-accent-text">
-        <span aria-hidden="true" className="size-1.5 rounded-full bg-accent-mark" />
+      <span className="inline-flex items-center gap-1.5 text-status-investigating-text">
+        <span
+          aria-hidden="true"
+          className="size-1.5 rounded-full bg-status-investigating-text"
+        />
         Investigating for{" "}
         <span className="data">
           <Duration from={response.startedAt} />
@@ -37,7 +40,7 @@ function OwnPart({ response }: { response: MemberResponseResponse }) {
   }
 
   return (
-    <span className="inline-flex items-center gap-1.5 text-success-text">
+    <span className="inline-flex items-center gap-1.5 text-status-resolved-text">
       <CircleCheck aria-hidden="true" strokeWidth={2} className="size-3.5" />
       Completed after{" "}
       <span className="data">

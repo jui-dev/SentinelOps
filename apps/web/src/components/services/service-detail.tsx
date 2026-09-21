@@ -125,10 +125,7 @@ export function ServiceDetail() {
               </RecordRow>
             )}
             <RecordRow label="Criticality">
-              <CriticalityMark
-                criticality={service.criticality}
-                className="font-medium"
-              />
+              <CriticalityMark criticality={service.criticality} />
               {criticality.definition && (
                 <span className="mt-0.5 block text-sm text-fg-muted">
                   {criticality.definition}

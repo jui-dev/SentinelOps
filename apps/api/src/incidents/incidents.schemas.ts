@@ -206,6 +206,34 @@ export const summaryBounds = ({
   lt: new Date(startOfUtcDay(to).getTime() + DAY_MS),
 });
 
+/** How many whole UTC days a typical resolution time is measured over. */
+export const TYPICAL_RESOLUTION_DAYS = 90;
+
+/**
+ * The fewest resolutions a typical time is given for. Below it, a median
+ * describes the few incidents there were rather than what is usual.
+ */
+export const TYPICAL_RESOLUTION_MINIMUM = 5;
+
+/**
+ * The whole UTC days a typical resolution time covers: the last
+ * `TYPICAL_RESOLUTION_DAYS`, ending with the one `now` falls on — the same
+ * shape as every other period here, so `summaryBounds` turns it into
+ * instants.
+ */
+export const typicalResolutionWindow = (
+  now: Date,
+): { from: string; to: string } => {
+  const to = now.toISOString().slice(0, 10);
+  const from = new Date(
+    startOfUtcDay(to).getTime() - (TYPICAL_RESOLUTION_DAYS - 1) * DAY_MS,
+  )
+    .toISOString()
+    .slice(0, 10);
+
+  return { from, to };
+};
+
 /**
  * A page of a member's responses: only the cursor, which is opaque here and
  * decoded by the service.
