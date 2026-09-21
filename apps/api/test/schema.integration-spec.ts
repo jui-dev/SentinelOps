@@ -1387,6 +1387,581 @@ describe('core domain schema (integration)', () => {
       });
     });
 
+    describe('notifications', () => {
+      /**
+       * Both tenants, the user's membership in each, and in acme an incident
+       * with its DECLARED timeline entry; globex has one of each too.
+       */
+      const notifying = async () => {
+        const tenants = await twoTenants();
+        const { acme, globex, user, acmePayments, globexPayments } = tenants;
+        const grant = (organizationId: string) =>
+          prisma.membership.create({
+            data: { organizationId, userId: user.id },
+          });
+        const declared = async (
+          organizationId: string,
+          serviceId: string,
+          teamId: string,
+        ) => {
+          const incident = await anIncident({
+            organizationId,
+            serviceId,
+            teamId,
+            createdById: user.id,
+          });
+
+          return prisma.incidentActivity.create({
+            data: {
+              organizationId,
+              incidentId: incident.id,
+              type: 'DECLARED',
+              actorId: user.id,
+              toValue: 'SEV1',
+            },
+          });
+        };
+
+        return {
+          ...tenants,
+          acmeMember: await grant(acme.id),
+          globexMember: await grant(globex.id),
+          acmeEntry: await declared(
+            acme.id,
+            tenants.acmeService.id,
+            acmePayments.id,
+          ),
+          globexEntry: await declared(
+            globex.id,
+            tenants.globexService.id,
+            globexPayments.id,
+          ),
+        };
+      };
+
+      /** Raw SQL, so neither Prisma's types nor its relations get a say. */
+      const insertNotification = (row: {
+        organizationId: string;
+        recipientMembershipId: string;
+        type: string;
+        actorId: string;
+        activityId?: string;
+        teamId?: string;
+      }) =>
+        prisma.$executeRawUnsafe(
+          `INSERT INTO notifications (id, organization_id, recipient_membership_id, type, actor_id, activity_id, team_id)
+           VALUES (gen_random_uuid(), $1::uuid, $2::uuid, $3::notification_type, $4::uuid, $5::uuid, $6::uuid)`,
+          row.organizationId,
+          row.recipientMembershipId,
+          row.type,
+          row.actorId,
+          row.activityId ?? null,
+          row.teamId ?? null,
+        );
+
+      it('should record an incident notification unread, with a version 7 id', async () => {
+        const { acme, user, acmeMember, acmeEntry } = await notifying();
+
+        const notification = await prisma.notification.create({
+          data: {
+            organizationId: acme.id,
+            recipientMembershipId: acmeMember.id,
+            type: 'INCIDENT_DECLARED',
+            actorId: user.id,
+            activityId: acmeEntry.id,
+          },
+        });
+
+        expect(notification.id).toMatch(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+        );
+        expect(notification.readAt).toBeNull();
+        expect(notification.createdAt).toBeInstanceOf(Date);
+      });
+
+      it("should reject another organization's membership as recipient, whichever organization the row claims", async () => {
+        const {
+          acme,
+          globex,
+          user,
+          acmeMember,
+          globexMember,
+          acmeEntry,
+          globexEntry,
+        } = await notifying();
+
+        // Each row is otherwise consistent: only the recipient is foreign.
+        for (const row of [
+          {
+            organizationId: acme.id,
+            recipientMembershipId: globexMember.id,
+            activityId: acmeEntry.id,
+          },
+          {
+            organizationId: globex.id,
+            recipientMembershipId: acmeMember.id,
+            activityId: globexEntry.id,
+          },
+        ]) {
+          await expect(
+            insertNotification({
+              ...row,
+              type: 'INCIDENT_DECLARED',
+              actorId: user.id,
+            }),
+          ).rejects.toSatisfy(isForeignKeyViolation);
+        }
+
+        expect(await prisma.notification.count()).toBe(0);
+      });
+
+      it("should reject another organization's timeline entry or team, whichever organization the row claims", async () => {
+        const {
+          acme,
+          globex,
+          user,
+          acmeMember,
+          globexMember,
+          acmeEntry,
+          globexEntry,
+          acmePayments,
+          globexPayments,
+        } = await notifying();
+
+        // Each row's recipient is its own organization's: only the subject
+        // is foreign.
+        for (const row of [
+          {
+            organizationId: acme.id,
+            recipientMembershipId: acmeMember.id,
+            type: 'INCIDENT_DECLARED',
+            activityId: globexEntry.id,
+          },
+          {
+            organizationId: globex.id,
+            recipientMembershipId: globexMember.id,
+            type: 'INCIDENT_DECLARED',
+            activityId: acmeEntry.id,
+          },
+          {
+            organizationId: acme.id,
+            recipientMembershipId: acmeMember.id,
+            type: 'TEAM_MEMBERSHIP_ADDED',
+            teamId: globexPayments.id,
+          },
+          {
+            organizationId: globex.id,
+            recipientMembershipId: globexMember.id,
+            type: 'TEAM_MEMBERSHIP_ADDED',
+            teamId: acmePayments.id,
+          },
+        ]) {
+          await expect(
+            insertNotification({ ...row, actorId: user.id }),
+          ).rejects.toSatisfy(isForeignKeyViolation);
+        }
+
+        expect(await prisma.notification.count()).toBe(0);
+      });
+
+      it('should hold each type to exactly its subject: a timeline entry, or a team', async () => {
+        const { acme, user, acmeMember, acmeEntry, acmePayments } =
+          await notifying();
+        const base = {
+          organizationId: acme.id,
+          recipientMembershipId: acmeMember.id,
+          actorId: user.id,
+        };
+
+        for (const row of [
+          { type: 'INCIDENT_SEVERITY_CHANGED' },
+          { type: 'INCIDENT_SEVERITY_CHANGED', teamId: acmePayments.id },
+          {
+            type: 'INCIDENT_SEVERITY_CHANGED',
+            activityId: acmeEntry.id,
+            teamId: acmePayments.id,
+          },
+          { type: 'TEAM_MEMBERSHIP_REMOVED' },
+          { type: 'TEAM_MEMBERSHIP_REMOVED', activityId: acmeEntry.id },
+          {
+            type: 'TEAM_MEMBERSHIP_REMOVED',
+            activityId: acmeEntry.id,
+            teamId: acmePayments.id,
+          },
+        ]) {
+          await expect(
+            insertNotification({ ...base, ...row }),
+          ).rejects.toSatisfy(isRefusedBy('23514'));
+        }
+
+        // Every incident type with a timeline entry — one entry each, since
+        // a recipient is told of an entry once — and every team type with a
+        // team, is accepted.
+        for (const type of [
+          'INCIDENT_DECLARED',
+          'INCIDENT_REASSIGNED',
+          'INCIDENT_SEVERITY_CHANGED',
+          'INCIDENT_RESOLVED',
+          'INCIDENT_READY_TO_RESOLVE',
+        ]) {
+          const entry = await prisma.incidentActivity.create({
+            data: {
+              organizationId: acme.id,
+              incidentId: acmeEntry.incidentId,
+              type: 'UPDATE',
+              actorId: user.id,
+              message: 'x',
+            },
+          });
+
+          await insertNotification({ ...base, type, activityId: entry.id });
+        }
+
+        for (const type of [
+          'TEAM_MEMBERSHIP_ADDED',
+          'TEAM_MEMBERSHIP_REMOVED',
+        ]) {
+          await insertNotification({ ...base, type, teamId: acmePayments.id });
+        }
+
+        expect(await prisma.notification.count()).toBe(7);
+      });
+
+      it('should refuse a type outside the enum at the database level', async () => {
+        const { acme, user, acmeMember, acmeEntry } = await notifying();
+
+        await expect(
+          insertNotification({
+            organizationId: acme.id,
+            recipientMembershipId: acmeMember.id,
+            type: 'RESPONSE_REQUESTED',
+            actorId: user.id,
+            activityId: acmeEntry.id,
+          }),
+        ).rejects.toSatisfy(isRefusedBy('22P02'));
+      });
+
+      it('should tell a recipient of a timeline entry once, and of each team event separately', async () => {
+        const { acme, user, acmeMember, acmeEntry, acmePayments } =
+          await notifying();
+        const base = {
+          organizationId: acme.id,
+          recipientMembershipId: acmeMember.id,
+          actorId: user.id,
+        };
+
+        await insertNotification({
+          ...base,
+          type: 'INCIDENT_DECLARED',
+          activityId: acmeEntry.id,
+        });
+
+        // Another type changes nothing: it is one change, reported once.
+        await expect(
+          insertNotification({
+            ...base,
+            type: 'INCIDENT_SEVERITY_CHANGED',
+            activityId: acmeEntry.id,
+          }),
+        ).rejects.toSatisfy(isRefusedBy('23505'));
+
+        // Added, removed, added again: each is its own event.
+        for (const type of [
+          'TEAM_MEMBERSHIP_ADDED',
+          'TEAM_MEMBERSHIP_REMOVED',
+          'TEAM_MEMBERSHIP_ADDED',
+        ]) {
+          await insertNotification({ ...base, type, teamId: acmePayments.id });
+        }
+
+        expect(await prisma.notification.count()).toBe(4);
+      });
+
+      it('should let two recipients be told of the same timeline entry', async () => {
+        const { acme, user, acmeMember, acmeEntry } = await notifying();
+        const teammate = await prisma.membership.create({
+          data: {
+            organizationId: acme.id,
+            userId: (await aUser('grace@example.com')).id,
+          },
+        });
+
+        for (const recipientMembershipId of [acmeMember.id, teammate.id]) {
+          await insertNotification({
+            organizationId: acme.id,
+            recipientMembershipId,
+            type: 'INCIDENT_DECLARED',
+            actorId: user.id,
+            activityId: acmeEntry.id,
+          });
+        }
+
+        expect(await prisma.notification.count()).toBe(2);
+      });
+
+      it("should remove a membership's inbox, and only its inbox, when the membership is deleted", async () => {
+        const { acme, user, acmeEntry } = await notifying();
+        const member = async (email: string) =>
+          prisma.membership.create({
+            data: { organizationId: acme.id, userId: (await aUser(email)).id },
+          });
+        const leaving = await member('grace@example.com');
+        const staying = await member('alan@example.com');
+
+        for (const recipientMembershipId of [leaving.id, staying.id]) {
+          await insertNotification({
+            organizationId: acme.id,
+            recipientMembershipId,
+            type: 'INCIDENT_DECLARED',
+            actorId: user.id,
+            activityId: acmeEntry.id,
+          });
+        }
+
+        await prisma.membership.delete({ where: { id: leaving.id } });
+
+        expect(
+          await prisma.notification.findMany({
+            select: { recipientMembershipId: true },
+          }),
+        ).toEqual([{ recipientMembershipId: staying.id }]);
+      });
+
+      it('should remove notifications about a team, and only those, when the team is deleted', async () => {
+        const { acme, user, acmeMember, acmeEntry } = await notifying();
+        // A team nothing else references, so its delete is not refused.
+        const guild = await prisma.team.create({
+          data: { organizationId: acme.id, name: 'Guild', slug: 'guild' },
+        });
+        const base = {
+          organizationId: acme.id,
+          recipientMembershipId: acmeMember.id,
+          actorId: user.id,
+        };
+
+        await insertNotification({
+          ...base,
+          type: 'TEAM_MEMBERSHIP_ADDED',
+          teamId: guild.id,
+        });
+        await insertNotification({
+          ...base,
+          type: 'INCIDENT_DECLARED',
+          activityId: acmeEntry.id,
+        });
+
+        await prisma.team.delete({ where: { id: guild.id } });
+
+        expect(
+          await prisma.notification.findMany({ select: { type: true } }),
+        ).toEqual([{ type: 'INCIDENT_DECLARED' }]);
+      });
+
+      it('should refuse moving a team or membership a notification names to another organization', async () => {
+        const { acme, globex, user } = await notifying();
+        // Neither is referenced by anything else, so only the notification's
+        // keys can refuse the move.
+        const guild = await prisma.team.create({
+          data: { organizationId: acme.id, name: 'Guild', slug: 'guild' },
+        });
+        const grace = await prisma.membership.create({
+          data: {
+            organizationId: acme.id,
+            userId: (await aUser('grace@example.com')).id,
+          },
+        });
+
+        await insertNotification({
+          organizationId: acme.id,
+          recipientMembershipId: grace.id,
+          type: 'TEAM_MEMBERSHIP_ADDED',
+          actorId: user.id,
+          teamId: guild.id,
+        });
+
+        await expect(
+          prisma.$executeRawUnsafe(
+            'UPDATE teams SET organization_id = $1::uuid WHERE id = $2::uuid',
+            globex.id,
+            guild.id,
+          ),
+        ).rejects.toSatisfy(isForeignKeyViolation);
+        await expect(
+          prisma.$executeRawUnsafe(
+            'UPDATE memberships SET organization_id = $1::uuid WHERE id = $2::uuid',
+            globex.id,
+            grace.id,
+          ),
+        ).rejects.toSatisfy(isForeignKeyViolation);
+      });
+
+      it('should keep notifications when their actor is soft deleted, and refuse physically deleting the actor', async () => {
+        const { acme, acmeMember, acmePayments } = await notifying();
+        // An actor this notification references and nothing else does, so
+        // only its key can refuse the delete.
+        const admin = await aUser('grace@example.com');
+
+        await insertNotification({
+          organizationId: acme.id,
+          recipientMembershipId: acmeMember.id,
+          type: 'TEAM_MEMBERSHIP_ADDED',
+          actorId: admin.id,
+          teamId: acmePayments.id,
+        });
+
+        await prisma.user.update({
+          where: { id: admin.id },
+          data: { deletedAt: new Date() },
+        });
+        await expect(
+          prisma.$executeRawUnsafe(
+            'DELETE FROM users WHERE id = $1::uuid',
+            admin.id,
+          ),
+        ).rejects.toSatisfy(isForeignKeyViolation);
+
+        expect(await prisma.notification.count()).toBe(1);
+      });
+
+      // The cascades from organizations, memberships, timeline entries, and
+      // teams all reach notifications in one statement, alongside Restrict
+      // keys into services, teams, and memberships. Postgres must still
+      // complete it.
+      it("should remove an organization's notifications when it is physically deleted, and keep another's", async () => {
+        const {
+          acme,
+          globex,
+          user,
+          acmeMember,
+          globexMember,
+          acmeEntry,
+          globexEntry,
+          acmePayments,
+        } = await notifying();
+
+        await insertNotification({
+          organizationId: acme.id,
+          recipientMembershipId: acmeMember.id,
+          type: 'INCIDENT_DECLARED',
+          actorId: user.id,
+          activityId: acmeEntry.id,
+        });
+        await insertNotification({
+          organizationId: acme.id,
+          recipientMembershipId: acmeMember.id,
+          type: 'TEAM_MEMBERSHIP_ADDED',
+          actorId: user.id,
+          teamId: acmePayments.id,
+        });
+        await insertNotification({
+          organizationId: globex.id,
+          recipientMembershipId: globexMember.id,
+          type: 'INCIDENT_DECLARED',
+          actorId: user.id,
+          activityId: globexEntry.id,
+        });
+
+        await prisma.$executeRawUnsafe(
+          'DELETE FROM organizations WHERE id = $1::uuid',
+          acme.id,
+        );
+
+        expect(
+          await prisma.notification.findMany({
+            select: { organizationId: true },
+          }),
+        ).toEqual([{ organizationId: globex.id }]);
+      });
+
+      it('should keep notifications when an organization is soft deleted', async () => {
+        const { acme, user, acmeMember, acmeEntry } = await notifying();
+
+        await insertNotification({
+          organizationId: acme.id,
+          recipientMembershipId: acmeMember.id,
+          type: 'INCIDENT_DECLARED',
+          actorId: user.id,
+          activityId: acmeEntry.id,
+        });
+        await prisma.organization.update({
+          where: { id: acme.id },
+          data: { deletedAt: new Date() },
+        });
+
+        expect(await prisma.notification.count()).toBe(1);
+      });
+
+      it('should declare every tenant key Cascade on delete and Restrict on update, and the actor Restrict', async () => {
+        const keys = await prisma.$queryRawUnsafe<
+          { conname: string; confdeltype: string; confupdtype: string }[]
+        >(
+          `SELECT conname, confdeltype::text AS confdeltype, confupdtype::text AS confupdtype
+           FROM pg_constraint
+           WHERE conrelid = 'notifications'::regclass AND contype = 'f'
+           ORDER BY conname`,
+        );
+
+        expect(keys).toEqual([
+          {
+            conname: 'notifications_actor_id_fkey',
+            confdeltype: 'r',
+            confupdtype: 'c',
+          },
+          {
+            conname: 'notifications_organization_id_activity_id_fkey',
+            confdeltype: 'c',
+            confupdtype: 'r',
+          },
+          {
+            conname: 'notifications_organization_id_fkey',
+            confdeltype: 'c',
+            confupdtype: 'c',
+          },
+          {
+            conname:
+              'notifications_organization_id_recipient_membership_id_fkey',
+            confdeltype: 'c',
+            confupdtype: 'r',
+          },
+          {
+            conname: 'notifications_organization_id_team_id_fkey',
+            confdeltype: 'c',
+            confupdtype: 'r',
+          },
+        ]);
+      });
+
+      it('should keep an unread index holding unread rows only', async () => {
+        const [index] = await prisma.$queryRaw<{ indexdef: string }[]>`
+          SELECT indexdef FROM pg_indexes
+          WHERE tablename = 'notifications'
+            AND indexname = 'notifications_unread_recipient_membership_id_created_at_idx'`;
+
+        expect(index?.indexdef).toMatch(
+          /\(recipient_membership_id, created_at\) WHERE \(read_at IS NULL\)$/,
+        );
+      });
+
+      it('should know exactly the seven notification types', async () => {
+        const labels = await prisma.$queryRaw<{ label: string }[]>`
+          SELECT e.enumlabel AS label
+          FROM pg_enum e
+          JOIN pg_type t ON t.oid = e.enumtypid
+          WHERE t.typname = 'notification_type'
+          ORDER BY e.enumsortorder`;
+
+        expect(labels.map(({ label }) => label)).toEqual([
+          'INCIDENT_DECLARED',
+          'INCIDENT_REASSIGNED',
+          'INCIDENT_SEVERITY_CHANGED',
+          'INCIDENT_RESOLVED',
+          'INCIDENT_READY_TO_RESOLVE',
+          'TEAM_MEMBERSHIP_ADDED',
+          'TEAM_MEMBERSHIP_REMOVED',
+        ]);
+      });
+    });
+
     it('should keep no incident lead, and record team changes and responses on the timeline', async () => {
       const lead = await prisma.$queryRaw<{ column_name: string }[]>`
         SELECT column_name FROM information_schema.columns
@@ -1479,7 +2054,7 @@ describe('core domain schema (integration)', () => {
            AND column_name IN (
              'created_at', 'updated_at', 'deleted_at', 'expires_at',
              'revoked_at', 'accepted_at', 'archived_at', 'resolved_at',
-             'started_at', 'completed_at'
+             'started_at', 'completed_at', 'read_at'
            )`,
       );
 
@@ -1494,8 +2069,9 @@ describe('core domain schema (integration)', () => {
       // (3); incidents adds created_at, updated_at, and resolved_at (3), and
       // incident_activities only created_at (1): an entry is never edited.
       // incident_responders adds started_at and completed_at (2): a response
-      // starts and completes, and has no other edits.
-      expect(columns).toHaveLength(28);
+      // starts and completes, and has no other edits. notifications adds
+      // created_at and read_at (2): one is read, never otherwise edited.
+      expect(columns).toHaveLength(30);
       for (const column of columns) {
         expect(column.data_type).toBe('timestamp with time zone');
       }

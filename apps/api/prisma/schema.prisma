@@ -100,6 +100,7 @@ model Organization {
   services           Service[]
   incidents          Incident[]
   incidentResponders IncidentResponder[]
+  notifications      Notification[]
 
   @@map("organizations")
 }
@@ -145,11 +146,14 @@ model User {
   updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz(3)
 
-  memberships       Membership[]
-  refreshTokens     RefreshToken[]
-  invitationsSent   Invitation[]       @relation("InvitationsSent")
-  incidentsDeclared Incident[]         @relation("IncidentsDeclared")
-  incidentActivity  IncidentActivity[]
+  memberships         Membership[]
+  refreshTokens       RefreshToken[]
+  invitationsSent     Invitation[]       @relation("InvitationsSent")
+  incidentsDeclared   Incident[]         @relation("IncidentsDeclared")
+  incidentActivity    IncidentActivity[]
+  /// Notifications about something this user did — never the ones they
+  /// receive, which belong to a membership.
+  notificationsCaused Notification[]
 
   @@map("users")
 }
@@ -187,6 +191,9 @@ model Membership {
   /// application deletes a membership today; member removal, when it
   /// arrives, decides what happens to that history.
   incidentResponses IncidentResponder[]
+  /// This member's inbox in this organization. Cascades: revoking the grant
+  /// removes what it was told, along with its access.
+  notifications     Notification[]
 
   /// One capacity per user per organization: nobody is both ADMIN and MEMBER.
   @@unique([organizationId, userId])
@@ -293,10 +300,11 @@ model Team {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  memberships  TeamMembership[]
-  services     Service[]
-  incidents    Incident[]
+  organization  Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  memberships   TeamMembership[]
+  services      Service[]
+  incidents     Incident[]
+  notifications Notification[]
 
   @@unique([organizationId, slug])
   @@unique([organizationId, name])
@@ -688,9 +696,14 @@ model IncidentActivity {
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  incident Incident @relation(fields: [organizationId, incidentId], references: [organizationId, id], onDelete: Cascade, onUpdate: Restrict)
-  actor    User     @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  incident      Incident       @relation(fields: [organizationId, incidentId], references: [organizationId, id], onDelete: Cascade, onUpdate: Restrict)
+  actor         User           @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  notifications Notification[]
 
+  /// Redundant with the primary key; the target of the composite foreign key
+  /// notifications carry, so a notification cannot point at another
+  /// organization's timeline entry.
+  @@unique([organizationId, id])
   /// Serves reading an incident's timeline in order, and the cascade.
   @@index([incidentId, createdAt])
   /// Serves the Restrict check when a user row is physically deleted.
@@ -706,6 +719,104 @@ model IncidentActivity {
   /// it stays because the Restrict check on a user needs exactly it.
   @@index([organizationId, actorId, createdAt])
   @@map("incident_activities")
+}
+
+/// What a notification tells its recipient. Named for what it means to them,
+/// not for the change that caused it: a response completing is, to the
+/// Admin, an incident that is ready to resolve.
+///
+/// The INCIDENT_ types point at the timeline entry of the change they report,
+/// which holds its values, its time, and its actor. The TEAM_ types point at
+/// a team: a placement writes no timeline entry. A CHECK constraint in the
+/// migration holds each type to exactly its subject, and names every type
+/// explicitly, so a value added here is refused until it is given one.
+enum NotificationType {
+  /// Declared against a service the recipient's team owns.
+  INCIDENT_DECLARED
+  /// The responsible team changed: to the recipient's team, or away from
+  /// the team of a response they still have under way.
+  INCIDENT_REASSIGNED
+  INCIDENT_SEVERITY_CHANGED
+  INCIDENT_RESOLVED
+  /// The last response under way completed; the Admin may now resolve it.
+  INCIDENT_READY_TO_RESOLVE
+  TEAM_MEMBERSHIP_ADDED
+  TEAM_MEMBERSHIP_REMOVED
+
+  @@map("notification_type")
+}
+
+/// One recipient's record that something relevant happened: the in-app
+/// inbox behind the notification bell.
+///
+/// What happened, not what is waiting. Operational attention is derived from
+/// the incidents as they stand and is never stored; a notification is
+/// written once, when its event happens, and is not withdrawn when the
+/// situation it described changes. Reading one changes nothing but readAt.
+///
+/// Addressed to a Membership, not a User, so a notification belongs to one
+/// organization by construction. The recipient key is composite on the
+/// shared organization_id, as for team memberships and responders, so a
+/// recipient from another organization is unrepresentable however the row
+/// is written; so are the timeline entry and the team. Rows are created with
+/// scalar ids, not nested `connect`. Every composite key is Restrict on
+/// update, so nothing a notification names can move to another organization
+/// carrying it along.
+///
+/// Structured, never rendered. It carries its type and references; the
+/// incident, its number and title, the values that changed, and the team's
+/// name are read through them, so the wording lives in the client. There is
+/// no incident key: the timeline entry names its incident, and a second copy
+/// would be an invariant nothing enforces.
+///
+/// Deletion follows what it refers to. Revoking a membership removes its
+/// inbox, by cascade: nobody keeps an organization's news after losing the
+/// organization. Deleting a team removes the notifications about being
+/// placed on it. Timeline entries are never deleted by the application, so
+/// their cascade only runs when an organization is physically deleted.
+///
+/// The actor is the global User, for the reason Incident.createdById gives,
+/// and Restrict like it. For incident types it is also the timeline entry's
+/// actor; it is stored because team types have no entry to take it from.
+model Notification {
+  id                    String           @id @default(uuid(7)) @db.Uuid
+  organizationId        String           @map("organization_id") @db.Uuid
+  recipientMembershipId String           @map("recipient_membership_id") @db.Uuid
+  type                  NotificationType
+  actorId               String           @map("actor_id") @db.Uuid
+  /// Set exactly for INCIDENT_ types: the timeline entry of the change.
+  activityId            String?          @map("activity_id") @db.Uuid
+  /// Set exactly for TEAM_ types: the team placed on or taken off.
+  teamId                String?          @map("team_id") @db.Uuid
+  /// Set once, when the recipient reads it; never cleared.
+  readAt                DateTime?        @map("read_at") @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  recipient    Membership        @relation(fields: [organizationId, recipientMembershipId], references: [organizationId, id], onDelete: Cascade, onUpdate: Restrict)
+  actor        User              @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  activity     IncidentActivity? @relation(fields: [organizationId, activityId], references: [organizationId, id], onDelete: Cascade, onUpdate: Restrict)
+  team         Team?             @relation(fields: [organizationId, teamId], references: [organizationId, id], onDelete: Cascade, onUpdate: Restrict)
+
+  /// One notification per recipient per timeline entry: the backstop against
+  /// a change reported twice. Team types have no entry, and Postgres treats
+  /// NULLs as distinct, so they are not constrained by it. Its leading column
+  /// serves the cascade from memberships.
+  @@unique([recipientMembershipId, activityId])
+  /// Serves the inbox: one recipient's notifications, newest first, in keyset
+  /// pages over (created_at, id).
+  @@index([recipientMembershipId, createdAt, id])
+  /// Serves the unread count and marking read up to a point: only unread
+  /// rows are in it, so it stays as small as the unread backlog.
+  @@index([recipientMembershipId, createdAt], map: "notifications_unread_recipient_membership_id_created_at_idx", where: { readAt: null })
+  /// Serve the cascades from timeline entries and teams, and by their
+  /// leading column the cascade from organizations.
+  @@index([organizationId, activityId])
+  @@index([organizationId, teamId])
+  /// Serves the Restrict check when a user row is physically deleted.
+  @@index([actorId])
+  @@map("notifications")
 }
 
 /// One issued refresh token. A row per token rather than per session, because
