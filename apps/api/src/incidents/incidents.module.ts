@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { DatabaseModule } from '../database/database.module.js';
+import { NotificationsModule } from '../notifications/notifications.module.js';
 import { TenancyModule } from '../tenancy/tenancy.module.js';
 import { IncidentsController } from './incidents.controller.js';
 import { IncidentsService } from './incidents.service.js';
@@ -13,10 +14,10 @@ import { MemberResponsesController } from './member-responses.controller.js';
  * admission, `@RequirePermission()` authorization, and IncidentsService
  * isolation. It imports neither ServicesModule nor TeamsModule: a service and
  * a team are checked against their tables, and only their error codes are
- * shared.
+ * shared. NotificationsModule supplies the writer its changes report through.
  */
 @Module({
-  imports: [DatabaseModule, TenancyModule],
+  imports: [DatabaseModule, TenancyModule, NotificationsModule],
   controllers: [
     IncidentsController,
     MemberActivityController,

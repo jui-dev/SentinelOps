@@ -1,6 +1,7 @@
 import { HttpException } from '@nestjs/common';
 
 import type { PrismaService } from '../database/prisma.service.js';
+import type { NotificationsWriter } from '../notifications/notifications.writer.js';
 import { Prisma } from '../generated/prisma/client.js';
 import { ServicesErrorCode } from '../services/services.errors.js';
 import { TeamsErrorCode } from '../teams/teams.errors.js';
@@ -18,6 +19,7 @@ import {
 
 const ORG = '0199a1b2-c3d4-7000-8000-00000000000a';
 const MEMBERSHIP = '0199a1b2-c3d4-7000-8000-0000000000aa';
+const OTHER_MEMBERSHIP = '0199a1b2-c3d4-7000-8000-0000000000ab';
 const USER = '0199a1b2-c3d4-7000-8000-000000000001';
 const TEAM = '0199a1b2-c3d4-7000-8000-0000000000c1';
 const OTHER_TEAM = '0199a1b2-c3d4-7000-8000-0000000000c2';
@@ -104,6 +106,15 @@ const serviceWith = () => {
     incidentActivity: {
       create: vi.fn().mockResolvedValue(activityRow()),
       createMany: vi.fn().mockResolvedValue({ count: 1 }),
+      // Each entry as written, with an id, as the database returns it.
+      createManyAndReturn: vi.fn(
+        ({ data }: { data: { type: string; createdAt: Date }[] }) =>
+          data.map(({ type, createdAt }, index) => ({
+            id: `entry-${index}`,
+            type,
+            createdAt,
+          })),
+      ),
     },
     $queryRaw: vi
       .fn()
@@ -115,9 +126,16 @@ const serviceWith = () => {
     work(prisma),
   );
 
-  const service = new IncidentsService(prisma as unknown as PrismaService);
+  const notifications = {
+    incidentActivities: vi.fn().mockResolvedValue(0),
+  };
 
-  return { service, prisma };
+  const service = new IncidentsService(
+    prisma as unknown as PrismaService,
+    notifications as unknown as NotificationsWriter,
+  );
+
+  return { service, prisma, notifications };
 };
 
 const expectCode = async (
@@ -196,7 +214,7 @@ describe('IncidentsService', () => {
           toValue: 'SEV1',
           createdAt: CREATED,
         },
-        select: { id: true },
+        select: { id: true, createdAt: true },
       });
     });
 
@@ -347,7 +365,7 @@ describe('IncidentsService', () => {
         ACTOR,
       );
 
-      expect(prisma.incidentActivity.createMany).toHaveBeenCalledWith({
+      expect(prisma.incidentActivity.createManyAndReturn).toHaveBeenCalledWith({
         data: [
           {
             organizationId: ORG,
@@ -370,6 +388,7 @@ describe('IncidentsService', () => {
             createdAt: expect.any(Date),
           },
         ],
+        select: { id: true, type: true, createdAt: true },
       });
     });
 
@@ -419,7 +438,7 @@ describe('IncidentsService', () => {
         ACTOR,
       );
 
-      expect(prisma.incidentActivity.createMany).not.toHaveBeenCalled();
+      expect(prisma.incidentActivity.createManyAndReturn).not.toHaveBeenCalled();
       expect(prisma.membership.findFirst).not.toHaveBeenCalled();
     });
 
@@ -472,7 +491,7 @@ describe('IncidentsService', () => {
       );
       expect(prisma.team.findFirst).not.toHaveBeenCalled();
       expect(prisma.incident.update).not.toHaveBeenCalled();
-      expect(prisma.incidentActivity.createMany).not.toHaveBeenCalled();
+      expect(prisma.incidentActivity.createManyAndReturn).not.toHaveBeenCalled();
     });
 
     it('should not count responders for a change that is not a resolution', async () => {
@@ -501,7 +520,7 @@ describe('IncidentsService', () => {
       );
       expect(prisma.team.findFirst).not.toHaveBeenCalled();
       expect(prisma.incident.update).not.toHaveBeenCalled();
-      expect(prisma.incidentActivity.createMany).not.toHaveBeenCalled();
+      expect(prisma.incidentActivity.createManyAndReturn).not.toHaveBeenCalled();
     });
 
     it('should refuse any change to a resolved incident with 409 and write nothing', async () => {
@@ -533,7 +552,7 @@ describe('IncidentsService', () => {
       expect(prisma.incident.update.mock.calls[0][0].data.teamId).toBe(
         OTHER_TEAM,
       );
-      expect(prisma.incidentActivity.createMany).toHaveBeenCalledWith({
+      expect(prisma.incidentActivity.createManyAndReturn).toHaveBeenCalledWith({
         data: [
           {
             organizationId: ORG,
@@ -545,6 +564,7 @@ describe('IncidentsService', () => {
             createdAt: expect.any(Date),
           },
         ],
+        select: { id: true, type: true, createdAt: true },
       });
     });
 
@@ -554,7 +574,7 @@ describe('IncidentsService', () => {
 
       await service.update(ORG, '1', { teamId: TEAM }, ACTOR);
 
-      expect(prisma.incidentActivity.createMany).not.toHaveBeenCalled();
+      expect(prisma.incidentActivity.createManyAndReturn).not.toHaveBeenCalled();
       expect(prisma.membership.findFirst).not.toHaveBeenCalled();
     });
 
@@ -1004,6 +1024,223 @@ describe('IncidentsService', () => {
         IncidentsErrorCode.INCIDENT_RESOLVED,
       );
       expect(prisma.incidentResponder.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('notifications', () => {
+    const responder = (
+      membershipId: string,
+      status: 'INVESTIGATING' | 'COMPLETED',
+    ) => ({
+      status,
+      startedAt: CREATED,
+      completedAt: status === 'COMPLETED' ? CREATED : null,
+      membership: { id: membershipId, user: { name: 'Priya Shah' } },
+    });
+
+    it('should report a declaration once, at its entry and its time, to the responsible team', async () => {
+      const { service, prisma, notifications } = serviceWith();
+      prisma.incidentActivity.create.mockResolvedValue({
+        id: 'declared-1',
+        createdAt: CREATED,
+      });
+
+      await service.create(ORG, ACTOR, declaration);
+
+      expect(notifications.incidentActivities).toHaveBeenCalledExactlyOnceWith(
+        prisma,
+        {
+          organizationId: ORG,
+          incidentId: 'incident-1',
+          teamId: TEAM,
+          actor: { userId: USER, membershipId: MEMBERSHIP },
+          events: [
+            {
+              type: 'INCIDENT_DECLARED',
+              activityId: 'declared-1',
+              createdAt: CREATED,
+            },
+          ],
+        },
+      );
+    });
+
+    it('should report every entry one change records, each as its own event, against the team it now has', async () => {
+      const { service, prisma, notifications } = serviceWith();
+      prisma.incident.update.mockResolvedValue(
+        incidentRow({
+          team: { id: OTHER_TEAM, name: 'Platform', slug: 'platform' },
+        }),
+      );
+
+      await service.update(
+        ORG,
+        '1',
+        { severity: 'SEV2', teamId: OTHER_TEAM, ...RESOLVE },
+        ACTOR,
+      );
+
+      const [[, change]] = notifications.incidentActivities.mock.calls;
+      const [entries] = prisma.incidentActivity.createManyAndReturn.mock.calls;
+      const written = entries[0].data;
+
+      expect(change).toEqual(
+        expect.objectContaining({
+          teamId: OTHER_TEAM,
+          actor: { userId: USER, membershipId: MEMBERSHIP },
+        }),
+      );
+      // Each entry's own id and time, and the type its change is reported as.
+      expect(change.events).toEqual(
+        written.map(
+          (entry: { type: string; createdAt: Date }, index: number) => ({
+            type: {
+              SEVERITY_CHANGED: 'INCIDENT_SEVERITY_CHANGED',
+              STATUS_CHANGED: 'INCIDENT_RESOLVED',
+              TEAM_CHANGED: 'INCIDENT_REASSIGNED',
+            }[entry.type],
+            activityId: `entry-${index}`,
+            createdAt: entry.createdAt,
+          }),
+        ),
+      );
+      expect(change.events).toHaveLength(3);
+    });
+
+    it('should match entries to their events by type, whatever order they come back in', async () => {
+      const { service, prisma, notifications } = serviceWith();
+      prisma.incident.update.mockResolvedValue(
+        incidentRow({
+          team: { id: OTHER_TEAM, name: 'Platform', slug: 'platform' },
+        }),
+      );
+      prisma.incidentActivity.createManyAndReturn.mockImplementation(
+        ({ data }: { data: { type: string; createdAt: Date }[] }) =>
+          data
+            .map(({ type, createdAt }) => ({
+              id: `entry-${type}`,
+              type,
+              createdAt,
+            }))
+            .reverse(),
+      );
+
+      await service.update(
+        ORG,
+        '1',
+        { severity: 'SEV2', teamId: OTHER_TEAM },
+        ACTOR,
+      );
+
+      const [[, change]] = notifications.incidentActivities.mock.calls;
+
+      expect(
+        change.events.map(
+          ({ type, activityId }: { type: string; activityId: string }) => [
+            type,
+            activityId,
+          ],
+        ),
+      ).toEqual(
+        expect.arrayContaining([
+          ['INCIDENT_SEVERITY_CHANGED', 'entry-SEVERITY_CHANGED'],
+          ['INCIDENT_REASSIGNED', 'entry-TEAM_CHANGED'],
+        ]),
+      );
+    });
+
+    it('should report nothing for a change that records nothing', async () => {
+      const { service, notifications } = serviceWith();
+
+      await service.update(ORG, '1', { title: 'Renamed' }, ACTOR);
+      await service.update(ORG, '1', { severity: 'SEV1' }, ACTOR);
+
+      expect(notifications.incidentActivities).not.toHaveBeenCalled();
+    });
+
+    it('should report the last response completing as ready to resolve, at its entry and its time', async () => {
+      const { service, prisma, notifications } = serviceWith();
+      prisma.incidentResponder.findFirst.mockResolvedValue({
+        id: 'responder-1',
+        status: 'INVESTIGATING',
+      });
+      prisma.incidentActivity.create.mockResolvedValue({
+        id: 'completed-1',
+        createdAt: CREATED,
+      });
+      prisma.incident.findFirstOrThrow.mockResolvedValue(
+        incidentRow({ responders: [responder(MEMBERSHIP, 'COMPLETED')] }),
+      );
+
+      await service.completeResponse(ORG, '1', ACTOR);
+
+      expect(notifications.incidentActivities).toHaveBeenCalledExactlyOnceWith(
+        prisma,
+        {
+          organizationId: ORG,
+          incidentId: 'incident-1',
+          teamId: TEAM,
+          actor: { userId: USER, membershipId: MEMBERSHIP },
+          events: [
+            {
+              type: 'INCIDENT_READY_TO_RESOLVE',
+              activityId: 'completed-1',
+              createdAt: CREATED,
+            },
+          ],
+        },
+      );
+    });
+
+    it('should report nothing while another response is still under way', async () => {
+      const { service, prisma, notifications } = serviceWith();
+      prisma.incidentResponder.findFirst.mockResolvedValue({
+        id: 'responder-1',
+        status: 'INVESTIGATING',
+      });
+      prisma.incident.findFirstOrThrow.mockResolvedValue(
+        incidentRow({
+          responders: [
+            responder(MEMBERSHIP, 'COMPLETED'),
+            responder(OTHER_MEMBERSHIP, 'INVESTIGATING'),
+          ],
+        }),
+      );
+
+      await service.completeResponse(ORG, '1', ACTOR);
+
+      expect(notifications.incidentActivities).not.toHaveBeenCalled();
+    });
+
+    it('should report nothing for completing a response already complete', async () => {
+      const { service, prisma, notifications } = serviceWith();
+      prisma.incidentResponder.findFirst.mockResolvedValue({
+        id: 'responder-1',
+        status: 'COMPLETED',
+      });
+      prisma.incident.findFirstOrThrow.mockResolvedValue(
+        incidentRow({ responders: [responder(MEMBERSHIP, 'COMPLETED')] }),
+      );
+
+      await service.completeResponse(ORG, '1', ACTOR);
+
+      expect(notifications.incidentActivities).not.toHaveBeenCalled();
+    });
+
+    it('should report nothing when a response starts or an update is posted', async () => {
+      const { service, prisma, notifications } = serviceWith();
+      prisma.incident.findFirst.mockResolvedValue(incidentRow());
+      prisma.incidentActivity.create.mockResolvedValue(activityRow());
+
+      await service.startResponse(ORG, '1', ACTOR);
+      await service.postUpdate(
+        ORG,
+        '1',
+        { message: 'Rolling back.' },
+        { membershipId: MEMBERSHIP, role: 'ADMIN' },
+      );
+
+      expect(notifications.incidentActivities).not.toHaveBeenCalled();
     });
   });
 

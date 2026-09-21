@@ -70,7 +70,14 @@ const byUrgency = (a: AttentionRow, b: AttentionRow): number =>
   SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity) ||
   a.number - b.number;
 
-const readyToResolve = (incident: AttentionRow): boolean =>
+/**
+ * INVESTIGATING, and no responder is still investigating: the Admin may
+ * resolve it. Exported so the notification that it has become so is judged
+ * by this same rule.
+ */
+export const readyToResolve = (
+  incident: Pick<AttentionRow, 'status' | 'responders'>,
+): boolean =>
   incident.status === 'INVESTIGATING' &&
   incident.responders.length > 0 &&
   incident.responders.every(({ status }) => status !== 'INVESTIGATING');

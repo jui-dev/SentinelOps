@@ -6,6 +6,7 @@ import request from 'supertest';
 import { AppModule } from './../src/app.module.js';
 import { TokenService } from './../src/auth/token.service.js';
 import { PrismaService } from './../src/database/prisma.service.js';
+import { NotificationsWriter } from './../src/notifications/notifications.writer.js';
 import type { Role } from './../src/generated/prisma/enums.js';
 
 /**
@@ -24,7 +25,8 @@ import type { Role } from './../src/generated/prisma/enums.js';
  * responder route, and a non-member
  * receives admission's 404. Behaviour against real rows, tenant isolation, concurrency, and the
  * database invariants are proven in incidents.integration-spec.ts and
- * schema.integration-spec.ts.
+ * schema.integration-spec.ts; who each change notifies, in
+ * incident-notifications.integration-spec.ts, so the writer is stubbed here.
  */
 const USER_ID = '0199a1b2-c3d4-7000-8000-000000000001';
 const ORG_ID = '0199a1b2-c3d4-7000-8000-00000000000a';
@@ -109,6 +111,7 @@ describe('Incidents (e2e)', () => {
     incidentActivity: {
       create: vi.fn(),
       createMany: vi.fn(),
+      createManyAndReturn: vi.fn(),
       findMany: vi.fn(),
     },
     incidentResponder: {
@@ -158,6 +161,8 @@ describe('Incidents (e2e)', () => {
     })
       .overrideProvider(PrismaService)
       .useValue(prisma)
+      .overrideProvider(NotificationsWriter)
+      .useValue({ incidentActivities: vi.fn().mockResolvedValue(0) })
       .compile();
 
     app = moduleFixture.createNestApplication();
@@ -189,6 +194,7 @@ describe('Incidents (e2e)', () => {
     prisma.incident.findFirstOrThrow.mockResolvedValue(incidentRow);
     prisma.incidentActivity.create.mockResolvedValue(activityRow);
     prisma.incidentActivity.createMany.mockResolvedValue({ count: 1 });
+    prisma.incidentActivity.createManyAndReturn.mockResolvedValue([]);
     prisma.incidentActivity.findMany.mockResolvedValue([]);
     // By default the caller is investigating the incident, and nobody else.
     prisma.incidentResponder.findFirst.mockResolvedValue({
@@ -533,7 +539,9 @@ describe('Incidents (e2e)', () => {
       expect(response.status).toBe(409);
       expect(response.body.code).toBe('RESPONDERS_STILL_INVESTIGATING');
       expect(prisma.incident.update).not.toHaveBeenCalled();
-      expect(prisma.incidentActivity.createMany).not.toHaveBeenCalled();
+      expect(
+        prisma.incidentActivity.createManyAndReturn,
+      ).not.toHaveBeenCalled();
     });
 
     it('should refuse resolving a declared incident with 409, writing nothing', async () => {
@@ -542,7 +550,9 @@ describe('Incidents (e2e)', () => {
       expect(response.status).toBe(409);
       expect(response.body.code).toBe('INVALID_STATUS_TRANSITION');
       expect(prisma.incident.update).not.toHaveBeenCalled();
-      expect(prisma.incidentActivity.createMany).not.toHaveBeenCalled();
+      expect(
+        prisma.incidentActivity.createManyAndReturn,
+      ).not.toHaveBeenCalled();
     });
   });
 

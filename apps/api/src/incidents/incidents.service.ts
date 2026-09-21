@@ -6,6 +6,8 @@ import { PrismaService } from '../database/prisma.service.js';
 import { foreignKeyViolationHint } from '../database/foreign-key-violation.js';
 import { Prisma } from '../generated/prisma/client.js';
 import type { Role } from '../generated/prisma/enums.js';
+import { NotificationsWriter } from '../notifications/notifications.writer.js';
+import type { IncidentNotificationType } from '../notifications/notifications.recipients.js';
 import { membershipNotFound } from '../organizations/organizations.errors.js';
 import {
   serviceArchived,
@@ -15,7 +17,7 @@ import { teamNotFound } from '../teams/teams.errors.js';
 import { organizationNotFound } from '../tenancy/tenancy.errors.js';
 import { isResourceId } from '../tenancy/tenancy.schemas.js';
 import { buildActivityCalendar } from './incidents.activity.js';
-import { classifyAttention } from './incidents.attention.js';
+import { classifyAttention, readyToResolve } from './incidents.attention.js';
 import {
   buildOccurrence,
   occurrenceWindows,
@@ -24,6 +26,7 @@ import type { InstantRange } from './incidents.occurrence.js';
 import { buildMemberActivityCalendar } from './member-activity.js';
 import type {
   IncidentActivityResponse,
+  IncidentActivityType,
   IncidentAttentionResponse,
   IncidentDetailResponse,
   IncidentOccurrenceResponse,
@@ -170,6 +173,25 @@ export const declaredPerUtcDay = (
     GROUP BY 1
     ORDER BY 1
   `;
+
+/**
+ * The notification a change's timeline entry is reported as. A change writes
+ * only these three; the only status a change can name is RESOLVED, so its
+ * status entry is the resolution.
+ */
+const notifiedBy = (type: IncidentActivityType): IncidentNotificationType => {
+  switch (type) {
+    case 'SEVERITY_CHANGED':
+      return 'INCIDENT_SEVERITY_CHANGED';
+    case 'STATUS_CHANGED':
+      return 'INCIDENT_RESOLVED';
+    case 'TEAM_CHANGED':
+      return 'INCIDENT_REASSIGNED';
+    default:
+      // Unreachable through update(): a masked 500, and nothing committed.
+      throw new Error(`A change does not record ${type} entries`);
+  }
+};
 
 /** Most severe first — the order the database enum declares them in. */
 const SEVERITIES: readonly IncidentSeverity[] = [
@@ -368,6 +390,12 @@ export const decodeResponseCursor = (cursor: string): ResponseCursor => {
  * The Admin posts to any incident, and resolves one once nobody is still
  * investigating (update).
  *
+ * A declaration, a severity or team change, a resolution, and the last
+ * response completing each notify the members they concern (see
+ * notifications.recipients.ts), in the same transaction as the timeline
+ * entry that records them and at its time: one notification per recipient
+ * per entry, and none for a change that changed nothing.
+ *
  * Titles, summaries, and update messages are free text and may carry
  * customer or system details, so they are never logged. Ids, numbers, and
  * enum values are.
@@ -376,7 +404,10 @@ export const decodeResponseCursor = (cursor: string): ResponseCursor => {
 export class IncidentsService {
   private readonly logger = new Logger(IncidentsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsWriter,
+  ) {}
 
   /**
    * One page of the organization's active or resolved incidents.
@@ -1058,7 +1089,7 @@ export class IncidentsService {
           select: incidentDetailSelection,
         });
 
-        await tx.incidentActivity.create({
+        const declared = await tx.incidentActivity.create({
           data: {
             organizationId,
             incidentId: created.id,
@@ -1067,7 +1098,21 @@ export class IncidentsService {
             toValue: created.severity,
             createdAt: created.createdAt,
           },
-          select: { id: true },
+          select: { id: true, createdAt: true },
+        });
+
+        await this.notifications.incidentActivities(tx, {
+          organizationId,
+          incidentId: created.id,
+          teamId: created.team.id,
+          actor: { userId: declarerId, membershipId: actor.membershipId },
+          events: [
+            {
+              type: 'INCIDENT_DECLARED',
+              activityId: declared.id,
+              createdAt: declared.createdAt,
+            },
+          ],
         });
 
         return created;
@@ -1242,13 +1287,32 @@ export class IncidentsService {
         });
 
         if (actorId !== undefined) {
-          await tx.incidentActivity.createMany({
+          // Returned so each entry's notifications can name it. Matched by
+          // type, which is unique within one change, rather than by the
+          // order the rows come back in.
+          const entries = await tx.incidentActivity.createManyAndReturn({
             data: changes.map((change) => ({
               organizationId,
               incidentId,
               actorId,
               ...change,
               createdAt: now,
+            })),
+            select: { id: true, type: true, createdAt: true },
+          });
+
+          // Every entry is its own event, judged against the incident as
+          // it now stands: a severity and a team changed together are
+          // reported separately, each to its own recipients.
+          await this.notifications.incidentActivities(tx, {
+            organizationId,
+            incidentId,
+            teamId: updated.team.id,
+            actor: { userId: actorId, membershipId: actor.membershipId },
+            events: entries.map((entry) => ({
+              type: notifiedBy(entry.type),
+              activityId: entry.id,
+              createdAt: entry.createdAt,
             })),
           });
         }
@@ -1480,7 +1544,7 @@ export class IncidentsService {
           throw notInvestigating();
         }
 
-        let completed = false;
+        let entry: { id: string; createdAt: Date } | undefined;
 
         if (existing.status === 'INVESTIGATING') {
           const now = new Date();
@@ -1490,7 +1554,7 @@ export class IncidentsService {
             data: { status: 'COMPLETED', completedAt: now },
             select: { id: true },
           });
-          await tx.incidentActivity.create({
+          entry = await tx.incidentActivity.create({
             data: {
               organizationId,
               incidentId,
@@ -1498,19 +1562,36 @@ export class IncidentsService {
               type: 'RESPONSE_COMPLETED',
               createdAt: now,
             },
-            select: { id: true },
+            select: { id: true, createdAt: true },
           });
-
-          completed = true;
         }
 
-        return {
-          incident: await tx.incident.findFirstOrThrow({
-            where: { id: incidentId, organizationId },
-            select: incidentDetailSelection,
-          }),
-          completed,
-        };
+        const incident = await tx.incident.findFirstOrThrow({
+          where: { id: incidentId, organizationId },
+          select: incidentDetailSelection,
+        });
+
+        // This completion was the last response under way: the incident is
+        // now ready to resolve, judged by the rule attention uses, on the
+        // responders read under the row lock every start and completion
+        // takes. Of two completing at once, only the second sees none left.
+        if (entry && readyToResolve(incident)) {
+          await this.notifications.incidentActivities(tx, {
+            organizationId,
+            incidentId,
+            teamId: incident.team.id,
+            actor: { userId: actorId, membershipId: actor.membershipId },
+            events: [
+              {
+                type: 'INCIDENT_READY_TO_RESOLVE',
+                activityId: entry.id,
+                createdAt: entry.createdAt,
+              },
+            ],
+          });
+        }
+
+        return { incident, completed: entry !== undefined };
       },
     );
 

@@ -75,3 +75,13 @@ export const permissionsFor = (role: Role): Permission[] =>
   Object.hasOwn(ROLE_PERMISSIONS, role)
     ? [...ROLE_PERMISSIONS[role]].sort()
     : [];
+
+/**
+ * Every role that holds `permission`, for finding who holds it — the
+ * Admins an incident ready to resolve is reported to — without spelling a
+ * role name. Read from the same table the guard enforces.
+ */
+export const rolesHolding = (permission: Permission): Role[] =>
+  (Object.keys(ROLE_PERMISSIONS) as Role[]).filter((role) =>
+    ROLE_PERMISSIONS[role].has(permission),
+  );
