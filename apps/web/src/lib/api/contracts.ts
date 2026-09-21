@@ -595,6 +595,55 @@ export interface Page<T> {
   page: { cursor: string | null; hasMore: boolean };
 }
 
+/**
+ * What a notification tells its recipient. The API sends the type and the
+ * data; the words are this client's (see describe-notification.ts).
+ */
+export type NotificationType =
+  | "INCIDENT_DECLARED"
+  | "INCIDENT_REASSIGNED"
+  | "INCIDENT_SEVERITY_CHANGED"
+  | "INCIDENT_RESOLVED"
+  | "INCIDENT_READY_TO_RESOLVE"
+  | "TEAM_MEMBERSHIP_ADDED"
+  | "TEAM_MEMBERSHIP_REMOVED";
+
+/**
+ * One of the caller's notifications. Two kinds of state, apart:
+ * `incident` is the incident as it stands now; `change` is what the
+ * notification reports, as it was recorded at the time. Identity only — the
+ * actor is a name — and no resolution note.
+ */
+export interface NotificationResponse {
+  id: string;
+  type: NotificationType;
+  createdAt: string;
+  /** Null while unread. */
+  readAt: string | null;
+  actor: { id: string; name: string };
+  /** Set for INCIDENT_ types; null for TEAM_ types. */
+  incident: {
+    number: number;
+    title: string;
+    severity: IncidentSeverity;
+    status: IncidentStatus;
+    service: { name: string; slug: string };
+  } | null;
+  /**
+   * DECLARED: to the severity it was declared at. SEVERITY_CHANGED: from one
+   * severity to another. REASSIGNED: from one team's name to another's, as
+   * they were then. Null for the others.
+   */
+  change: { from: string | null; to: string | null } | null;
+  /** Set for TEAM_ types only. */
+  team: { id: string; name: string } | null;
+}
+
+/** How many of the caller's notifications are unread. */
+export interface NotificationUnreadCountResponse {
+  count: number;
+}
+
 export type IncidentState = "active" | "resolved";
 
 /**
@@ -668,6 +717,7 @@ export const Permission = {
   INCIDENTS_READ: "incidents:read",
   INCIDENTS_MANAGE: "incidents:manage",
   INCIDENTS_RESPOND: "incidents:respond",
+  NOTIFICATIONS_READ: "notifications:read",
 } as const;
 
 /** Machine-readable error codes this client branches on. */
@@ -708,6 +758,7 @@ export const ApiErrorCode = {
   RESPONSE_ALREADY_COMPLETED: "RESPONSE_ALREADY_COMPLETED",
   NOT_INVESTIGATING: "NOT_INVESTIGATING",
   RESPONDERS_STILL_INVESTIGATING: "RESPONDERS_STILL_INVESTIGATING",
+  NOTIFICATION_NOT_FOUND: "NOTIFICATION_NOT_FOUND",
 } as const;
 
 export interface ValidationErrorDetail {

@@ -23,6 +23,8 @@ import type {
   IncidentResponse,
   IncidentState,
   MemberResponseResponse,
+  NotificationResponse,
+  NotificationUnreadCountResponse,
   IncidentSummaryResponse,
   InvitationLookupResponse,
   InvitationResponse,
@@ -381,6 +383,49 @@ export const postIncidentUpdate = (
   authenticatedRequest<IncidentActivityResponse>(
     `${incidentPath(organizationId, number)}/updates`,
     { method: "POST", body },
+  );
+
+const notificationsPath = (organizationId: string) =>
+  `${organizationPath(organizationId)}/notifications`;
+
+/**
+ * One page of the caller's notifications in the organization, newest first.
+ * Only ever the caller's own: the API takes the recipient from the session.
+ */
+export const listNotifications = (organizationId: string, cursor?: string) =>
+  authenticatedRequest<Page<NotificationResponse>>(
+    `${notificationsPath(organizationId)}${
+      cursor ? `?${new URLSearchParams({ cursor })}` : ""
+    }`,
+  );
+
+export const getUnreadNotificationCount = (organizationId: string) =>
+  authenticatedRequest<NotificationUnreadCountResponse>(
+    `${notificationsPath(organizationId)}/unread-count`,
+  );
+
+/** Acknowledges one notification. Again changes nothing: the first time stands. */
+export const markNotificationRead = (
+  organizationId: string,
+  notificationId: string,
+) =>
+  authenticatedRequest<NotificationResponse>(
+    `${notificationsPath(organizationId)}/${encodeURIComponent(notificationId)}/read`,
+    { method: "POST" },
+  );
+
+/**
+ * Acknowledges every notification up to and including `through`, the newest
+ * the caller has seen; anything newer stays unread. Answers with the unread
+ * count left.
+ */
+export const markNotificationsReadThrough = (
+  organizationId: string,
+  through: string,
+) =>
+  authenticatedRequest<NotificationUnreadCountResponse>(
+    `${notificationsPath(organizationId)}/read`,
+    { method: "POST", body: { through } },
   );
 
 // Invitation tokens always travel in a request body: never in a path or a

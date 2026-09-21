@@ -47,6 +47,15 @@ import type { IncidentFilters } from "./contracts";
  *   the prefix. Declaring, changing, or responding to an incident stales it;
  *   what others do reaches it by polling.
  *
+ * - `notifications`: the prefix of the caller's own notifications in an
+ *   organization. Nothing the caller does elsewhere stales it — they are
+ *   never told of their own actions — so it changes by polling and by
+ *   acknowledging.
+ * - `unreadNotificationCount`: how many are unread, beneath the prefix. The
+ *   bell polls it. Acknowledging sets or refetches it.
+ * - `notificationList`: the pages of notifications, newest first, beneath
+ *   the prefix. Fetched when the panel opens; acknowledging marks rows in it.
+ *
  * The invitation an `/invite` page shows is deliberately not cached here: it
  * is fetched with a token, and lives in that page's own state.
  */
@@ -105,6 +114,12 @@ export const queryKeys = {
       "member-responses",
       membershipId,
     ] as const,
+  notifications: (organizationId: string) =>
+    ["organization", organizationId, "notifications"] as const,
+  unreadNotificationCount: (organizationId: string) =>
+    ["organization", organizationId, "notifications", "unread-count"] as const,
+  notificationList: (organizationId: string) =>
+    ["organization", organizationId, "notifications", "list"] as const,
   incidentTimeline: (organizationId: string, number: number) =>
     [
       "organization",
