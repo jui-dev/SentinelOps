@@ -286,6 +286,59 @@ describe('Incidents (e2e)', () => {
       );
     });
 
+    it("should read the organization's incident occurrence, not mistaking the path for a number", async () => {
+      prisma.organization.findFirst.mockResolvedValue({
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      });
+      prisma.$queryRaw.mockResolvedValue([
+        { day: '2026-09-15', declared: 2 },
+      ]);
+
+      const response = await send(
+        'get',
+        `${base}/occurrence?from=2026-09-13&to=2026-09-19`,
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        from: '2026-09-13',
+        to: '2026-09-19',
+        declared: 2,
+        previous: {
+          from: '2026-09-06',
+          to: '2026-09-12',
+          minimumSample: 5,
+          changePercent: null,
+        },
+        services: { top: [], others: { services: 0, declared: 0 } },
+      });
+      // Every day of the period, quiet ones included.
+      expect(response.body.days).toHaveLength(7);
+      // The organization is the admitted one, never anything the request
+      // names — in its own row, and in every incident and service read.
+      expect(prisma.organization.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: ORG_ID, deletedAt: null },
+        }),
+      );
+      for (const read of [
+        prisma.incident.count,
+        prisma.incident.groupBy,
+        prisma.service.findMany,
+      ]) {
+        expect(read).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: expect.objectContaining({ organizationId: ORG_ID }),
+          }),
+        );
+      }
+      expect(prisma.incident.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ organizationId: ORG_ID }),
+        }),
+      );
+    });
+
     it("should read the caller's attention, not mistaking the path for a number", async () => {
       const response = await send('get', `${base}/attention`);
 
@@ -676,6 +729,21 @@ describe('Incidents (e2e)', () => {
     });
 
     it.each([
+      '',
+      'from=2026-09-13',
+      'to=2026-09-19',
+      'from=2026-09-19&to=2026-09-13',
+      'from=2025-01-01&to=2026-09-19',
+      'from=2026-09-13T00:00:00Z&to=2026-09-19',
+      'from=2026-02-30&to=2026-03-02',
+    ])('should refuse the occurrence period %s with 400', async (query) => {
+      const response = await send('get', `${base}/occurrence?${query}`);
+
+      expect(response.status).toBe(400);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it.each([
       'from=2026-09-13',
       'from=2026-09-19&to=2026-09-13',
       'from=2025-01-01&to=2026-09-19',
@@ -811,6 +879,10 @@ describe('Incidents (e2e)', () => {
       {
         method: 'get' as const,
         path: `${base}/activity?from=2026-09-13&to=2026-09-19`,
+      },
+      {
+        method: 'get' as const,
+        path: `${base}/occurrence?from=2026-09-13&to=2026-09-19`,
       },
       { method: 'get' as const, path: `${base}/attention` },
       { method: 'post' as const, path: base },

@@ -9,6 +9,7 @@ import { TokenService } from './../src/auth/token.service.js';
 import { PrismaService } from './../src/database/prisma.service.js';
 import type { Prisma } from './../src/generated/prisma/client.js';
 import {
+  declaredPerUtcDay,
   HISTORY_PREVIEW_LIMIT,
   INCIDENT_PAGE_SIZE,
   IncidentsService,
@@ -1783,6 +1784,327 @@ describe('incidents (integration)', () => {
     });
   });
 
+  describe('incident occurrence', () => {
+    let next = 0;
+
+    /**
+     * An incident declared at `createdAt`, written directly so a test can
+     * put it on the day it means to, in whatever state it names.
+     */
+    const declaredAt = (
+      createdAt: string,
+      {
+        organizationId = fx.orgA,
+        serviceId,
+        resolvedAt,
+        severity = 'SEV3',
+      }: {
+        organizationId?: string;
+        serviceId?: string;
+        resolvedAt?: string;
+        severity?: 'SEV1' | 'SEV2' | 'SEV3' | 'SEV4';
+      } = {},
+    ) => {
+      const inA = organizationId === fx.orgA;
+
+      next += 1;
+
+      return prisma.incident.create({
+        data: {
+          organizationId,
+          number: next,
+          title: `Incident ${next}`,
+          serviceId: serviceId ?? (inA ? fx.apiA : fx.apiB),
+          teamId: inA ? fx.paymentsA : fx.paymentsB,
+          createdById: inA ? fx.alice : fx.bob,
+          severity,
+          status: resolvedAt ? 'RESOLVED' : 'INVESTIGATING',
+          createdAt: new Date(createdAt),
+          resolvedAt: resolvedAt ? new Date(resolvedAt) : null,
+          resolution: resolvedAt ? 'Rolled back.' : null,
+        },
+      });
+    };
+
+    const occurrence = async (
+      from: string,
+      to: string,
+      organizationId = fx.orgA,
+    ) => {
+      const response = await call(
+        'get',
+        `${organizationId}/incidents/occurrence?from=${from}&to=${to}`,
+        organizationId === fx.orgA ? fx.dave : fx.bob,
+      );
+
+      expect(response.status).toBe(200);
+
+      return response.body;
+    };
+
+    /** The days that had anything, as [date, declared]. */
+    const busy = (body: { days: { date: string; declared: number }[] }) =>
+      body.days
+        .filter((day) => day.declared > 0)
+        .map((day) => [day.date, day.declared]);
+
+    beforeEach(() => {
+      next = 0;
+    });
+
+    it('should count declarations by whole UTC days, both ends included', async () => {
+      // History begins well before, so every day here is tracked.
+      await declaredAt('2026-03-01T08:00:00.000Z');
+      // The last instant before the period: the previous period's.
+      await declaredAt('2026-05-31T23:59:59.999Z');
+      // The period's first instant, and its last.
+      await declaredAt('2026-06-01T00:00:00.000Z');
+      await declaredAt('2026-06-30T23:59:59.999Z');
+      // The first instant after it.
+      await declaredAt('2026-07-01T00:00:00.000Z');
+
+      const body = await occurrence('2026-06-01', '2026-06-30');
+
+      expect(body).toMatchObject({
+        from: '2026-06-01',
+        to: '2026-06-30',
+        // A period that has ended is counted whole.
+        asOf: '2026-07-01T00:00:00.000Z',
+        trackedFrom: '2026-03-01',
+        declared: 2,
+        completeDays: 30,
+        incidentFreeDays: 28,
+      });
+      expect(body.days).toHaveLength(30);
+      expect(busy(body)).toEqual([
+        ['2026-06-01', 1],
+        ['2026-06-30', 1],
+      ]);
+      expect(body.previous).toMatchObject({
+        from: '2026-05-02',
+        to: '2026-05-31',
+        declared: 1,
+        comparable: true,
+        changePercent: null,
+      });
+      // The rolling average reaches back before the period: 31 May and
+      // 1 June, over seven days.
+      expect(body.days[0].rollingAverage).toBe(0.29);
+    });
+
+    it('should bucket by the UTC day whatever time zone the session is in', async () => {
+      // Either side of midnight UTC: two days, wherever the reader is.
+      await declaredAt('2026-06-10T23:30:00.000Z');
+      await declaredAt('2026-06-11T00:30:00.000Z');
+
+      const range = {
+        gte: new Date('2026-06-01T00:00:00.000Z'),
+        lt: new Date('2026-07-01T00:00:00.000Z'),
+      };
+
+      for (const zone of ['UTC', 'Pacific/Kiritimati', 'America/Adak']) {
+        const rows = await prisma.$transaction(async (tx) => {
+          await tx.$executeRawUnsafe(`SET LOCAL TIME ZONE '${zone}'`);
+          // A date's text form follows DateStyle; the query must not.
+          await tx.$executeRawUnsafe(`SET LOCAL DateStyle = 'SQL, DMY'`);
+
+          return declaredPerUtcDay(tx, fx.orgA, range);
+        });
+
+        expect(rows, zone).toEqual([
+          { day: '2026-06-10', declared: 1 },
+          { day: '2026-06-11', declared: 1 },
+        ]);
+      }
+    });
+
+    it('should count a declaration whatever became of it, and compare like with like', async () => {
+      await declaredAt('2026-01-05T08:00:00.000Z');
+      // Five in the previous period, 2–31 May.
+      for (const day of ['05', '09', '14', '20', '27']) {
+        await declaredAt(`2026-05-${day}T10:00:00.000Z`);
+      }
+      // Four in the period: resolved, still open, re-rated — all declared.
+      await declaredAt('2026-06-03T10:00:00.000Z', {
+        resolvedAt: '2026-06-03T12:00:00.000Z',
+      });
+      await declaredAt('2026-06-12T10:00:00.000Z', { severity: 'SEV1' });
+      await declaredAt('2026-06-12T11:00:00.000Z', {
+        resolvedAt: '2026-07-02T09:00:00.000Z',
+      });
+      await declaredAt('2026-06-25T10:00:00.000Z');
+      // Resolved in the period, but declared before it: the previous
+      // period's occurrence, not this one's.
+      await declaredAt('2026-05-30T10:00:00.000Z', {
+        resolvedAt: '2026-06-02T10:00:00.000Z',
+      });
+
+      const body = await occurrence('2026-06-01', '2026-06-30');
+
+      expect(body.declared).toBe(4);
+      expect(busy(body)).toEqual([
+        ['2026-06-03', 1],
+        ['2026-06-12', 2],
+        ['2026-06-25', 1],
+      ]);
+      expect(body.previous).toMatchObject({
+        declared: 6,
+        comparable: true,
+        minimumSample: 5,
+        changePercent: -33,
+      });
+    });
+
+    it('should cut the previous period at the same time of day as now', async () => {
+      await declaredAt('2026-01-05T08:00:00.000Z');
+      // Today, before and after noon.
+      await declaredAt('2026-06-30T09:00:00.000Z');
+      await declaredAt('2026-06-30T13:00:00.000Z');
+      // Thirty days ago, before and after noon.
+      await declaredAt('2026-05-31T11:00:00.000Z');
+      await declaredAt('2026-05-31T13:00:00.000Z');
+
+      const body = await app
+        .get(IncidentsService)
+        .occurrence(
+          fx.orgA,
+          { from: '2026-06-01', to: '2026-06-30' },
+          new Date('2026-06-30T12:00:00.000Z'),
+        );
+
+      expect(body.asOf).toBe('2026-06-30T12:00:00.000Z');
+      expect(body.declared).toBe(1);
+      expect(body.previous.declared).toBe(1);
+      expect(body.days.at(-1)).toEqual({
+        date: '2026-06-30',
+        declared: 1,
+        complete: false,
+        tracked: true,
+        rollingAverage: null,
+      });
+      // Today is not over, so it is not one of the incident-free days.
+      expect(body.completeDays).toBe(29);
+      expect(body.incidentFreeDays).toBe(29);
+    });
+
+    it('should rank the services, archived ones included, with their shares', async () => {
+      const search = await aService(fx.orgA, fx.platformA, 'Search');
+      const legacy = await aService(fx.orgA, fx.platformA, 'Legacy Gateway');
+
+      await prisma.service.update({
+        where: { id: legacy },
+        data: { archivedAt: new Date('2026-06-20T00:00:00.000Z') },
+      });
+
+      await declaredAt('2026-06-02T10:00:00.000Z');
+      await declaredAt('2026-06-05T10:00:00.000Z');
+      await declaredAt('2026-06-07T10:00:00.000Z', { serviceId: search });
+      await declaredAt('2026-06-08T10:00:00.000Z', { serviceId: legacy });
+      // Outside the period: not what ranks it.
+      await declaredAt('2026-05-20T10:00:00.000Z', { serviceId: legacy });
+
+      const body = await occurrence('2026-06-01', '2026-06-30');
+
+      expect(body.declared).toBe(4);
+      expect(body.services).toEqual({
+        top: [
+          {
+            id: fx.apiA,
+            name: 'Payment API',
+            slug: 'payment-api',
+            criticality: 'NORMAL',
+            archivedAt: null,
+            declared: 2,
+            share: 0.5,
+          },
+          // A tie, by name: Legacy Gateway before Search, archived or not.
+          {
+            id: legacy,
+            name: 'Legacy Gateway',
+            slug: 'legacy-gateway',
+            criticality: 'NORMAL',
+            archivedAt: '2026-06-20T00:00:00.000Z',
+            declared: 1,
+            share: 0.25,
+          },
+          {
+            id: search,
+            name: 'Search',
+            slug: 'search',
+            criticality: 'NORMAL',
+            archivedAt: null,
+            declared: 1,
+            share: 0.25,
+          },
+        ],
+        others: { services: 0, declared: 0 },
+      });
+    });
+
+    it('should keep each organization to itself', async () => {
+      await declaredAt('2026-06-03T10:00:00.000Z');
+      await declaredAt('2026-06-03T11:00:00.000Z', { organizationId: fx.orgB });
+      await declaredAt('2026-06-04T11:00:00.000Z', { organizationId: fx.orgB });
+      await declaredAt('2026-05-20T11:00:00.000Z', { organizationId: fx.orgB });
+
+      const mine = await occurrence('2026-06-01', '2026-06-30');
+
+      expect(mine.declared).toBe(1);
+      expect(busy(mine)).toEqual([['2026-06-03', 1]]);
+      expect(mine.previous.declared).toBe(0);
+      // History began with A's own first incident, not B's earlier one.
+      expect(mine.trackedFrom).toBe('2026-06-03');
+      expect(mine.services.top.map(({ id }: { id: string }) => id)).toEqual([
+        fx.apiA,
+      ]);
+
+      const other = await occurrence('2026-06-01', '2026-06-30', fx.orgB);
+
+      expect(other.declared).toBe(2);
+      expect(other.previous.declared).toBe(1);
+      expect(other.trackedFrom).toBe('2026-05-20');
+      expect(other.services.top.map(({ id }: { id: string }) => id)).toEqual([
+        fx.apiB,
+      ]);
+    });
+
+    it('should not call days before any history incident-free', async () => {
+      await prisma.organization.update({
+        where: { id: fx.orgA },
+        data: { createdAt: new Date('2026-06-20T10:00:00.000Z') },
+      });
+
+      const body = await occurrence('2026-06-01', '2026-06-30');
+
+      expect(body).toMatchObject({
+        trackedFrom: '2026-06-20',
+        declared: 0,
+        completeDays: 11,
+        incidentFreeDays: 11,
+        previous: { comparable: false, changePercent: null },
+        services: { top: [], others: { services: 0, declared: 0 } },
+      });
+      expect(
+        body.days.filter((day: { tracked: boolean }) => !day.tracked),
+      ).toHaveLength(19);
+    });
+
+    it('should refuse a soft-deleted organization in the service itself', async () => {
+      await prisma.organization.update({
+        where: { id: fx.orgA },
+        data: { deletedAt: new Date() },
+      });
+
+      const caught = await app
+        .get(IncidentsService)
+        .occurrence(fx.orgA, { from: '2026-06-01', to: '2026-06-30' })
+        .catch((error: unknown) => error);
+
+      expect(caught).toBeInstanceOf(HttpException);
+      expect((caught as HttpException).getStatus()).toBe(404);
+    });
+  });
+
   describe('member response activity', () => {
     /**
      * A period wide enough to hold whatever "now" is, so a run crossing UTC
@@ -2144,6 +2466,11 @@ describe('incidents (integration)', () => {
       for (const response of [
         await call('get', `${fx.orgA}/incidents?state=active`, fx.alice),
         await call('get', `${fx.orgA}/incidents/1`, fx.alice),
+        await call(
+          'get',
+          `${fx.orgA}/incidents/occurrence?from=2026-06-01&to=2026-06-30`,
+          fx.alice,
+        ),
         await declare(fx.orgA, fx.alice, fx.apiA),
         await call('patch', `${fx.orgA}/incidents/1`, fx.alice, {
           status: 'RESOLVED',

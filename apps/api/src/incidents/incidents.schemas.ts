@@ -194,6 +194,13 @@ export const incidentSummaryQuerySchema = z
  */
 export const incidentActivityQuerySchema = incidentSummaryQuerySchema;
 
+/**
+ * The period an occurrence covers: the same whole UTC days a summary takes,
+ * and the same limits. The previous period it is compared with is derived
+ * from it, never asked for.
+ */
+export const incidentOccurrenceQuerySchema = incidentSummaryQuerySchema;
+
 /** A period of whole UTC days as instants: its first midnight to the one after it. */
 export const summaryBounds = ({
   from,
@@ -251,6 +258,9 @@ export type ListIncidentsQuery = z.infer<typeof listIncidentsQuerySchema>;
 export type IncidentSummaryQuery = z.infer<typeof incidentSummaryQuerySchema>;
 export type IncidentActivityQuery = z.infer<
   typeof incidentActivityQuerySchema
+>;
+export type IncidentOccurrenceQuery = z.infer<
+  typeof incidentOccurrenceQuerySchema
 >;
 export type MemberResponsesQuery = z.infer<typeof memberResponsesQuerySchema>;
 

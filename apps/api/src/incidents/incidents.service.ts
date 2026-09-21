@@ -16,11 +16,17 @@ import { organizationNotFound } from '../tenancy/tenancy.errors.js';
 import { isResourceId } from '../tenancy/tenancy.schemas.js';
 import { buildActivityCalendar } from './incidents.activity.js';
 import { classifyAttention } from './incidents.attention.js';
+import {
+  buildOccurrence,
+  occurrenceWindows,
+} from './incidents.occurrence.js';
+import type { InstantRange } from './incidents.occurrence.js';
 import { buildMemberActivityCalendar } from './member-activity.js';
 import type {
   IncidentActivityResponse,
   IncidentAttentionResponse,
   IncidentDetailResponse,
+  IncidentOccurrenceResponse,
   IncidentPage,
   IncidentSeverity,
   IncidentSummaryResponse,
@@ -43,6 +49,7 @@ import {
   toIncidentActivityResponse,
   toIncidentAttentionResponse,
   toIncidentDetailResponse,
+  toIncidentOccurrenceResponse,
   toIncidentResponse,
   toIncidentSummaryResponse,
   toMemberActivityResponse,
@@ -60,6 +67,7 @@ import {
 import type {
   CreateIncidentRequest,
   IncidentActivityQuery,
+  IncidentOccurrenceQuery,
   IncidentSummaryQuery,
   ListIncidentsQuery,
   MemberResponsesQuery,
@@ -120,6 +128,48 @@ const listFilters = (
     }),
   };
 };
+
+/** How many incidents were declared on one UTC day, as the raw count returns it. */
+export interface DeclaredDayRow {
+  day: string;
+  declared: number;
+}
+
+/**
+ * Declarations per UTC calendar day, over a range of instants, for one
+ * organization: only the days that had any.
+ *
+ * Raw, because the query builder cannot group by a day. The day is taken in
+ * UTC explicitly — `AT TIME ZONE 'UTC'` turns the instant into a UTC
+ * wall-clock `timestamp`, with no zone left in it — so the connection's
+ * TimeZone setting cannot move an incident to a neighbouring day. That
+ * timestamp is formatted directly: casting it to a `date` first would send
+ * it back through the session's zone on its way into `to_char`, which has no
+ * form for dates, and casting to text would follow DateStyle. The
+ * organization is part of the predicate, as in every read, and its soft
+ * deletion is checked; the (organization_id, created_at) index serves the
+ * range.
+ *
+ * A function of the client, so it can join a batch transaction — and so a
+ * test can run it under a session time zone of its choosing.
+ */
+export const declaredPerUtcDay = (
+  client: Pick<PrismaService, '$queryRaw'>,
+  organizationId: string,
+  range: InstantRange,
+) =>
+  client.$queryRaw<DeclaredDayRow[]>`
+    SELECT to_char(i.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day,
+           count(*)::int AS declared
+    FROM incidents i
+    JOIN organizations o ON o.id = i.organization_id
+    WHERE i.organization_id = ${organizationId}::uuid
+      AND o.deleted_at IS NULL
+      AND i.created_at >= ${range.gte}::timestamptz
+      AND i.created_at < ${range.lt}::timestamptz
+    GROUP BY 1
+    ORDER BY 1
+  `;
 
 /** Most severe first — the order the database enum declares them in. */
 const SEVERITIES: readonly IncidentSeverity[] = [
@@ -685,6 +735,107 @@ export class IncidentsService {
     return toOperationalActivityResponse(
       buildActivityCalendar(rows, query),
       query,
+    );
+  }
+
+  /**
+   * How often incidents were declared over a period of whole UTC days, and
+   * against which services, compared with the same elapsed time before it.
+   * See incidents.occurrence.ts for every rule; this only reads.
+   *
+   * Five reads in one repeatable-read snapshot, so the days, the previous
+   * total, the services, and where history begins agree with each other
+   * even while incidents are declared:
+   *
+   *   - the organization's creation, which also settles its soft deletion
+   *   - its earliest incident, the other end history can begin at
+   *   - declarations per UTC day, from six days before the period to `asOf`
+   *   - declarations in the previous period, cut at the same distance
+   *   - declarations per service in the period, and those services
+   *
+   * Every read names the organization, and every one but its own row also
+   * requires it not to be soft-deleted. Each is a range on the
+   * (organization_id, created_at) index, or a lookup by primary key. The
+   * services are found through their incidents in the period rather than by
+   * the ids the count returns, so both are read in the same snapshot.
+   *
+   * Occurrence is declaration alone: status, severity, and resolution are
+   * never read, and an archived service is counted like any other.
+   */
+  async occurrence(
+    organizationId: string,
+    query: IncidentOccurrenceQuery,
+    /** The moment counting stops at; the clock, unless a test says. */
+    now: Date = new Date(),
+  ): Promise<IncidentOccurrenceResponse> {
+    const scope = { organizationId, organization: { deletedAt: null } };
+    const windows = occurrenceWindows(query, now);
+    const inPeriod = { ...scope, createdAt: windows.current };
+
+    const [organization, earliest, daily, previous, perService, services] =
+      await this.prisma.$transaction(
+        [
+          this.prisma.organization.findFirst({
+            where: { id: organizationId, deletedAt: null },
+            select: { createdAt: true },
+          }),
+          this.prisma.incident.findFirst({
+            where: scope,
+            select: { createdAt: true },
+            orderBy: { createdAt: 'asc' },
+          }),
+          declaredPerUtcDay(this.prisma, organizationId, windows.series),
+          this.prisma.incident.count({
+            where: {
+              ...scope,
+              createdAt: { gte: windows.previous.gte, lt: windows.previous.lt },
+            },
+          }),
+          this.prisma.incident.groupBy({
+            by: ['serviceId'],
+            where: inPeriod,
+            _count: { _all: true },
+          }),
+          this.prisma.service.findMany({
+            where: { ...scope, incidents: { some: inPeriod } },
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              criticality: true,
+              archivedAt: true,
+            },
+          }),
+        ],
+        { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+      );
+
+    // Admission already refuses a soft-deleted organization; this is the
+    // service's own check, for a caller that reaches it another way.
+    if (!organization) {
+      throw organizationNotFound();
+    }
+
+    const counts = new Map(
+      perService.map((row) => [row.serviceId, row._count._all]),
+    );
+    const trackedSince =
+      earliest && earliest.createdAt < organization.createdAt
+        ? earliest.createdAt
+        : organization.createdAt;
+
+    return toIncidentOccurrenceResponse(
+      buildOccurrence({
+        period: query,
+        windows,
+        trackedSince,
+        daily,
+        previousDeclared: previous,
+        services: services.map((service) => ({
+          service,
+          declared: counts.get(service.id) ?? 0,
+        })),
+      }),
     );
   }
 

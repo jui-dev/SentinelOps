@@ -1,7 +1,12 @@
 import { buildActivityCalendar, LEVELS } from './incidents.activity.js';
 import {
+  buildOccurrence,
+  occurrenceWindows,
+} from './incidents.occurrence.js';
+import {
   toIncidentActivityResponse,
   toIncidentDetailResponse,
+  toIncidentOccurrenceResponse,
   toIncidentResponse,
   toIncidentSummaryResponse,
   toMemberActivityResponse,
@@ -571,6 +576,106 @@ describe('member activity responses', () => {
       counts: { responseStarted: 0, update: 0, responseCompleted: 0 },
       incidents: [],
       moreIncidents: 0,
+    });
+  });
+});
+
+describe('incident occurrence responses', () => {
+  const period = { from: '2026-09-20', to: '2026-09-21' };
+  const now = new Date('2026-09-21T12:00:00.000Z');
+
+  // Carries columns a careless mapper might spread: the organization, the
+  // owning team, and prose an occurrence has no business emitting.
+  const service = (id: string, archivedAt: Date | null) => ({
+    id,
+    organizationId: 'org-1',
+    ownerTeamId: 'team-1',
+    description: 'Takes card payments.',
+    name: id === 'service-1' ? 'Payment API' : 'Legacy Gateway',
+    slug: id === 'service-1' ? 'payment-api' : 'legacy-gateway',
+    criticality: 'CRITICAL' as const,
+    archivedAt,
+  });
+
+  const occurrence = toIncidentOccurrenceResponse(
+    buildOccurrence({
+      period,
+      windows: occurrenceWindows(period, now),
+      trackedSince: new Date('2026-09-01T08:00:00.000Z'),
+      daily: [{ day: '2026-09-20', declared: 3 }],
+      previousDeclared: 4,
+      services: [
+        { service: service('service-1', null), declared: 2 },
+        {
+          service: service(
+            'service-2',
+            new Date('2026-09-10T09:30:00.000Z'),
+          ),
+          declared: 1,
+        },
+      ],
+    }),
+  );
+
+  it('should give instants as ISO strings, and days as dates', () => {
+    expect(occurrence).toMatchObject({
+      from: '2026-09-20',
+      to: '2026-09-21',
+      asOf: '2026-09-21T12:00:00.000Z',
+      trackedFrom: '2026-09-01',
+      declared: 3,
+      incidentFreeDays: 0,
+      completeDays: 1,
+      previous: {
+        from: '2026-09-18',
+        to: '2026-09-19',
+        declared: 4,
+        comparable: true,
+        minimumSample: 5,
+        changePercent: null,
+      },
+    });
+    expect(occurrence.days).toEqual([
+      {
+        date: '2026-09-20',
+        declared: 3,
+        complete: true,
+        tracked: true,
+        rollingAverage: 0.43,
+      },
+      {
+        date: '2026-09-21',
+        declared: 0,
+        complete: false,
+        tracked: true,
+        rollingAverage: null,
+      },
+    ]);
+  });
+
+  it('should name each service by identity alone, archived ones with when', () => {
+    expect(occurrence.services).toEqual({
+      top: [
+        {
+          id: 'service-1',
+          name: 'Payment API',
+          slug: 'payment-api',
+          criticality: 'CRITICAL',
+          archivedAt: null,
+          declared: 2,
+          share: 2 / 3,
+        },
+        {
+          id: 'service-2',
+          name: 'Legacy Gateway',
+          slug: 'legacy-gateway',
+          criticality: 'CRITICAL',
+          archivedAt: '2026-09-10T09:30:00.000Z',
+          declared: 1,
+          share: 1 / 3,
+        },
+      ],
+      others: { services: 0, declared: 0 },
     });
   });
 });

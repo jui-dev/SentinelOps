@@ -2,6 +2,7 @@ import type { ServiceCriticality } from '../services/services.contract.js';
 import { LEVELS } from './incidents.activity.js';
 import type { Calendar } from './incidents.calendar.js';
 import type { Attention } from './incidents.attention.js';
+import type { Occurrence } from './incidents.occurrence.js';
 import { MEMBER_LEVELS } from './member-activity.js';
 import type { MemberActivityCategory } from './member-activity.js';
 import type { OperationalActivityCategory } from './incidents.activity.js';
@@ -16,6 +17,7 @@ import type {
   IncidentActivityType,
   IncidentAttentionResponse,
   IncidentDetailResponse,
+  IncidentOccurrenceResponse,
   IncidentResponderStatus,
   IncidentResponse,
   IncidentSeverity,
@@ -226,6 +228,62 @@ export const toOperationalActivityResponse = (
   total: calendar.total,
   activeDays: calendar.activeDays,
   thresholds: [...LEVELS],
+});
+
+/** A service as the occurrence reads it: identity, and its archival. */
+interface OccurrenceServiceRow {
+  id: string;
+  name: string;
+  slug: string;
+  criticality: ServiceCriticality;
+  archivedAt: Date | null;
+}
+
+/**
+ * The organization's incident occurrence over a period
+ * (incidents.occurrence.ts). Every field named, as everywhere here; the
+ * instants become ISO strings.
+ */
+export const toIncidentOccurrenceResponse = (
+  occurrence: Occurrence<OccurrenceServiceRow>,
+): IncidentOccurrenceResponse => ({
+  from: occurrence.from,
+  to: occurrence.to,
+  asOf: occurrence.asOf.toISOString(),
+  trackedFrom: occurrence.trackedFrom,
+  declared: occurrence.declared,
+  incidentFreeDays: occurrence.incidentFreeDays,
+  completeDays: occurrence.completeDays,
+  days: occurrence.days.map((day) => ({
+    date: day.date,
+    declared: day.declared,
+    complete: day.complete,
+    tracked: day.tracked,
+    rollingAverage: day.rollingAverage,
+  })),
+  previous: {
+    from: occurrence.previous.from,
+    to: occurrence.previous.to,
+    declared: occurrence.previous.declared,
+    comparable: occurrence.previous.comparable,
+    minimumSample: occurrence.previous.minimumSample,
+    changePercent: occurrence.previous.changePercent,
+  },
+  services: {
+    top: occurrence.services.top.map((service) => ({
+      id: service.id,
+      name: service.name,
+      slug: service.slug,
+      criticality: service.criticality,
+      archivedAt: service.archivedAt?.toISOString() ?? null,
+      declared: service.declared,
+      share: service.share,
+    })),
+    others: {
+      services: occurrence.services.others.services,
+      declared: occurrence.services.others.declared,
+    },
+  },
 });
 
 /**

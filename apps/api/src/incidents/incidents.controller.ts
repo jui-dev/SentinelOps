@@ -18,6 +18,7 @@ import type {
   IncidentActivityResponse,
   IncidentAttentionResponse,
   IncidentDetailResponse,
+  IncidentOccurrenceResponse,
   IncidentPage,
   IncidentSummaryResponse,
   OperationalActivityResponse,
@@ -25,6 +26,7 @@ import type {
 import {
   createIncidentSchema,
   incidentActivityQuerySchema,
+  incidentOccurrenceQuerySchema,
   incidentSummaryQuerySchema,
   listIncidentsQuerySchema,
   postIncidentUpdateSchema,
@@ -33,6 +35,7 @@ import {
 import type {
   CreateIncidentRequest,
   IncidentActivityQuery,
+  IncidentOccurrenceQuery,
   IncidentSummaryQuery,
   ListIncidentsQuery,
   PostIncidentUpdateRequest,
@@ -97,6 +100,21 @@ export class IncidentsController {
     query: IncidentActivityQuery,
   ): Promise<OperationalActivityResponse> {
     return this.incidents.activity(membership.organizationId, query);
+  }
+
+  /**
+   * How often incidents were declared over a period, day by day and by
+   * service, against the same elapsed time before it. Declared before
+   * `:incidentNumber`, which would otherwise claim the path.
+   */
+  @Get('occurrence')
+  @RequirePermission(Permission.INCIDENTS_READ)
+  occurrence(
+    @CurrentMembership() membership: OrganizationContext,
+    @Query({ schema: incidentOccurrenceQuerySchema })
+    query: IncidentOccurrenceQuery,
+  ): Promise<IncidentOccurrenceResponse> {
+    return this.incidents.occurrence(membership.organizationId, query);
   }
 
   /**
