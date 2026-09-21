@@ -296,6 +296,8 @@ export function OperationalActivity() {
               days={activity.data.days}
               label={`Operational activity in ${year}`}
               variant="operational"
+              // The instrument panel it is placed on (activity-panes.tsx).
+              tone="ink"
               selected={day?.date ?? null}
               onSelect={setSelected}
               today={activity.data.to}

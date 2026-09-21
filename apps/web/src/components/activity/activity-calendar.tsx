@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 
+import type { ActivityTone } from "@/components/activity/activity-panes";
 import { cx } from "@/components/ui/cx";
 import type { ActivityDay, CalendarCell } from "@/lib/activity/calendar";
 import {
@@ -45,28 +46,106 @@ export type ActivityVariant = "operational" | "personal";
  * a fifth of a stop of lightness, which was enough while the two were also
  * different sizes and is not enough now. The edge is what carries it.
  */
-const QUIET = "border border-line bg-activity-empty";
+/**
+ * The materials the calendar itself is drawn on. The panes know a third —
+ * the navy one a chosen day is written on — but the grid is never on it:
+ * the ground is one surface, and what is picked out of it is the other.
+ */
+type CalendarTone = Extract<ActivityTone, "surface" | "ink">;
+
+const QUIET: Record<CalendarTone, string> = {
+  surface: "border border-line bg-activity-empty",
+  ink: "border border-ink-line bg-activity-ink-empty",
+};
 
 /**
- * How each day is filled, by level: the quiet slot, then the four steps of
- * the variant's ramp. Nothing here changes size — a busier day is a
- * stronger blue and never a bigger mark.
+ * How each day is filled, by the material under it and then by level: the
+ * quiet slot, then the four steps of the variant's ramp. Nothing here
+ * changes size — a busier day is a stronger blue and never a bigger mark.
+ *
+ * Two ramps per variant because the panel has two materials. The workspace
+ * ramp darkens in light and lightens in dark; the ink one lightens in both,
+ * because the ink panel is dark in both.
  */
-const FILLS: Record<ActivityVariant, readonly string[]> = {
-  operational: [
-    QUIET,
-    "bg-activity-operational-1",
-    "bg-activity-operational-2",
-    "bg-activity-operational-3",
-    "bg-activity-operational-4",
-  ],
-  personal: [
-    QUIET,
-    "bg-activity-personal-1",
-    "bg-activity-personal-2",
-    "bg-activity-personal-3",
-    "bg-activity-personal-4",
-  ],
+const FILLS: Record<CalendarTone, Record<ActivityVariant, readonly string[]>> =
+  {
+    surface: {
+      operational: [
+        QUIET.surface,
+        "bg-activity-operational-1",
+        "bg-activity-operational-2",
+        "bg-activity-operational-3",
+        "bg-activity-operational-4",
+      ],
+      personal: [
+        QUIET.surface,
+        "bg-activity-personal-1",
+        "bg-activity-personal-2",
+        "bg-activity-personal-3",
+        "bg-activity-personal-4",
+      ],
+    },
+    ink: {
+      operational: [
+        QUIET.ink,
+        "bg-activity-ink-operational-1",
+        "bg-activity-ink-operational-2",
+        "bg-activity-ink-operational-3",
+        "bg-activity-ink-operational-4",
+      ],
+      personal: [
+        QUIET.ink,
+        "bg-activity-ink-personal-1",
+        "bg-activity-ink-personal-2",
+        "bg-activity-ink-personal-3",
+        "bg-activity-ink-personal-4",
+      ],
+    },
+  };
+
+/**
+ * Everything drawn around the squares, by the material under it. The ink
+ * panel cannot borrow the workspace's own lines and marks: `fg` and
+ * `accent-mark` are near-black in the light theme and would vanish on it,
+ * so the ink column names its own.
+ */
+const MARKS: Record<
+  CalendarTone,
+  {
+    /** The weekday and month names, and the rules beside them. */
+    label: string;
+    current: string;
+    rule: string;
+    /** A day of the year still to come. */
+    future: string;
+    /** The hint that a square can be chosen. */
+    hint: string;
+    today: string;
+    selected: string;
+    /** Empty where the workspace's own focus ring already reads. */
+    focus: string;
+  }
+> = {
+  surface: {
+    label: "text-fg-subtle",
+    current: "text-fg-muted",
+    rule: "border-line-subtle",
+    future: "border-line-subtle",
+    hint: "hover:before:border-line-strong",
+    today: "after:border-accent-mark",
+    selected: "after:border-fg",
+    focus: "",
+  },
+  ink: {
+    label: "text-ink-muted",
+    current: "text-ink-fg",
+    rule: "border-ink-line",
+    future: "border-ink-line",
+    hint: "hover:before:border-ink-hover",
+    today: "after:border-ink-accent",
+    selected: "after:border-ink-fg",
+    focus: "focus-visible:outline-ink-accent",
+  },
 };
 
 /**
@@ -126,12 +205,18 @@ export interface ActivityCalendarProps {
    * the span of `days`.
    */
   range?: { from: string; to: string };
+  /**
+   * The material the calendar is drawn on, which has to match the surface
+   * it is placed in (activity-panes.tsx). Ink is the instrument panel.
+   */
+  tone?: CalendarTone;
 }
 
 /** One square: a real day, or a gap where no day belongs. */
 function Cell({
   cell,
   variant,
+  tone,
   selected,
   focused,
   describeDay,
@@ -141,6 +226,7 @@ function Cell({
 }: {
   cell: CalendarCell;
   variant: ActivityVariant;
+  tone: CalendarTone;
   selected: boolean;
   focused: boolean;
   describeDay: (day: ActivityDay) => string;
@@ -160,7 +246,10 @@ function Cell({
           <span
             aria-hidden="true"
             data-future="true"
-            className="block size-full rounded-xs border border-dashed border-line-subtle opacity-70"
+            className={cx(
+              "block size-full rounded-xs border border-dashed opacity-70",
+              MARKS[tone].future,
+            )}
           />
         )}
       </div>
@@ -190,29 +279,41 @@ function Cell({
         onClick={() => onSelect(cell.date)}
         className={cx(
           "relative block size-full rounded-xs",
+          // The workspace's own focus ring is too dark to read on ink, so
+          // the ink panel names a ring of its own.
+          MARKS[tone].focus,
           // Hover is a hint that a square can be chosen, and nothing more.
           // Its own edge, so it never competes with the two below for the
           // one `after` each cell has.
           !selected &&
             !cell.today &&
-            "hover:before:absolute hover:before:-inset-px hover:before:rounded-sm hover:before:border hover:before:border-line-strong hover:before:content-['']",
+            cx(
+              "hover:before:absolute hover:before:-inset-px hover:before:rounded-sm hover:before:border hover:before:content-['']",
+              MARKS[tone].hint,
+            ),
           // Today: the accent's quiet edge, the same mark the rail puts on
           // the current place. Weaker than a selection, and always there.
           cell.today &&
             !selected &&
-            "after:absolute after:-inset-[2px] after:rounded-sm after:border after:border-accent-mark after:content-['']",
+            cx(
+              "after:absolute after:-inset-[2px] after:rounded-sm after:border after:content-['']",
+              MARKS[tone].today,
+            ),
           // Selection is an edge drawn around the square, so it reads
           // beside the focus outline — which sits further out, in the
-          // workspace's own focus colour — rather than instead of it.
+          // panel's own focus colour — rather than instead of it.
           selected &&
-            "after:absolute after:-inset-[2px] after:rounded-sm after:border-[1.5px] after:border-fg after:content-[''] forced-colors:after:border-[Highlight]",
+            cx(
+              "after:absolute after:-inset-[2px] after:rounded-sm after:border-[1.5px] after:content-[''] forced-colors:after:border-[Highlight]",
+              MARKS[tone].selected,
+            ),
         )}
       >
         <span
           aria-hidden="true"
           className={cx(
             "block size-full rounded-xs",
-            FILLS[variant][day.level],
+            FILLS[tone][variant][day.level],
             // The ramp collapses to one colour in a forced-colours theme,
             // where an outline is all that is left to tell a day apart.
             "forced-color-adjust-none",
@@ -230,15 +331,21 @@ function Cell({
  * What the colours mean, said once, quiet to busy. The only place the scale
  * is spelled out — the grid itself carries no numbers.
  */
-function Legend({ variant }: { variant: ActivityVariant }) {
+function Legend({
+  variant,
+  tone,
+}: {
+  variant: ActivityVariant;
+  tone: CalendarTone;
+}) {
   return (
-    <p className="flex items-center gap-2 text-xs text-fg-subtle">
+    <p className={cx("flex items-center gap-2 text-xs", MARKS[tone].label)}>
       <span>Quiet</span>
       <span aria-hidden="true" className="flex items-center gap-[2px]">
         {[0, 1, 2, 3, 4].map((level) => (
           <span
             key={level}
-            className={cx(CELL, "block rounded-xs", FILLS[variant][level])}
+            className={cx(CELL, "block rounded-xs", FILLS[tone][variant][level])}
           />
         ))}
       </span>
@@ -256,6 +363,7 @@ export function ActivityCalendar({
   describeDay = describeActivity,
   today,
   range,
+  tone = "surface",
 }: ActivityCalendarProps) {
   const weeks = toWeeks(days, { today, range });
   const months = monthLabels(weeks);
@@ -339,7 +447,12 @@ export function ActivityCalendar({
   if (weeks.length === 0) return null;
 
   return (
-    <div className="flex flex-col gap-3">
+    // Centred in its surface rather than pinned to one edge: the block is
+    // as wide as the year it draws, up to the width it has, so a year that
+    // fits sits in the middle of the panel and one that does not fills it
+    // and scrolls. `w-fit` and not `justify-center`, which clips the near
+    // edge of content that overflows a scroller.
+    <div className="mx-auto flex w-fit max-w-full flex-col gap-3">
       <div className="flex gap-2">
         {/*
           The weekday column stays put while the grid scrolls, so the rows
@@ -350,8 +463,15 @@ export function ActivityCalendar({
         <div
           aria-hidden="true"
           // A column of its own width, so the names sit inside it rather
-          // than spilling into the surface's padding.
-          className="flex w-9 shrink-0 flex-col gap-[2px] border-r border-line-subtle pt-[18px] pr-2 text-[10px] leading-none font-medium text-fg-subtle"
+          // than spilling into the surface's padding. Small spaced
+          // capitals: a row's name is a mark on the instrument, not a word
+          // to be read, and at this size the capitals hold their shape
+          // where lowercase does not.
+          className={cx(
+            "flex w-9 shrink-0 flex-col gap-[2px] border-r pt-[18px] pr-2 text-[10px] leading-none font-semibold tracking-[0.08em] uppercase",
+            MARKS[tone].rule,
+            MARKS[tone].label,
+          )}
         >
           {WEEKDAYS.map((weekday) => (
             <span
@@ -373,7 +493,7 @@ export function ActivityCalendar({
             {/* Roughly where you are in time, without labelling a square. */}
             <div
               aria-hidden="true"
-              className="relative mb-[2px] h-[15px] text-2xs"
+              className="relative mb-[2px] h-[15px] text-2xs font-semibold tracking-[0.07em] uppercase"
             >
               {months.map(({ week, label: name, month }) => (
                 <span
@@ -381,10 +501,13 @@ export function ActivityCalendar({
                   // A hairline at each month's first column: where one month
                   // gives way to the next, without ruling the grid itself.
                   className={cx(
-                    "absolute top-0 border-l border-line-subtle pl-1 leading-[15px] whitespace-nowrap",
+                    "absolute top-0 border-l pl-1 leading-[15px] whitespace-nowrap",
+                    MARKS[tone].rule,
+                    // Every label is set the same now, so where you are in
+                    // the year is said by colour alone.
                     month === currentMonth
-                      ? "font-semibold text-fg-muted"
-                      : "text-fg-subtle",
+                      ? MARKS[tone].current
+                      : MARKS[tone].label,
                   )}
                   style={{ left: `${week * COLUMN_PX}px` }}
                 >
@@ -417,6 +540,7 @@ export function ActivityCalendar({
                       key={week[row].date}
                       cell={week[row]}
                       variant={variant}
+                      tone={tone}
                       selected={week[row].date === selected}
                       focused={week[row].date === roving}
                       describeDay={describeDay}
@@ -434,7 +558,7 @@ export function ActivityCalendar({
           </div>
         </div>
       </div>
-      <Legend variant={variant} />
+      <Legend variant={variant} tone={tone} />
     </div>
   );
 }

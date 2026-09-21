@@ -3,7 +3,9 @@ import type { ReactNode } from "react";
 /**
  * One of the Overview's sections, framed the same way: a header band naming
  * it, with a label saying what it covers, then its content. The label — Now
- * — is what tells a section apart from the pages that hold the past.
+ * — is what tells a section apart from the pages that hold the past; a
+ * section that covers no period of its own, such as what is waiting on the
+ * viewer, simply leaves it off.
  */
 export function OverviewPanel({
   id,
@@ -15,8 +17,8 @@ export function OverviewPanel({
 }: {
   id: string;
   title: string;
-  /** What this section covers: a context, not a state. */
-  label: ReactNode;
+  /** What this section covers: a context, not a state. Optional. */
+  label?: ReactNode;
   description: string;
   actions?: ReactNode;
   children: ReactNode;

@@ -147,8 +147,28 @@
   --color-activity-personal-4: light-dark(#57459e, #9e91e6);
 
   /*
-   * The situation strip: an ink band in both themes, the darkest layer. Its
-   * colours come from its level (see situation.tsx); only `neutral` exists.
+   * The same two ramps, as drawn on the ink calendar (activity-panes.tsx,
+   * tone="ink"). That panel is ink in both themes, so its steps do not
+   * change with the theme — the dark ramp, fixed, because the light one is
+   * pale blues that would glow on it. Only `empty` tracks the theme, since
+   * `ink` itself does.
+   */
+  --color-activity-ink-empty: light-dark(#2a3040, #212633);
+  --color-activity-ink-operational-1: light-dark(#1e3d5c, #1e3d5c);
+  --color-activity-ink-operational-2: light-dark(#2d608c, #2d608c);
+  --color-activity-ink-operational-3: light-dark(#3f89c0, #3f89c0);
+  --color-activity-ink-operational-4: light-dark(#63ade0, #63ade0);
+  --color-activity-ink-personal-1: light-dark(#2f2a60, #2f2a60);
+  --color-activity-ink-personal-2: light-dark(#4c4196, #4c4196);
+  --color-activity-ink-personal-3: light-dark(#7163c4, #7163c4);
+  --color-activity-ink-personal-4: light-dark(#9e91e6, #9e91e6);
+
+  /*
+   * Ink: a band of the darkest layer, in both themes. Two places wear it —
+   * the situation strip, whose colours come from its level (see
+   * situation.tsx; only `neutral` exists), and the activity calendar's
+   * instrument panel (activity-panes.tsx), which draws the ink ramps above
+   * on it.
    */
   --color-ink: light-dark(#151924, #0a0c11);
   --color-ink-line: light-dark(#262c38, #1a202b);
@@ -157,6 +177,39 @@
   --color-ink-fg: light-dark(#e8ebf1, #e1e5ec);
   --color-ink-muted: light-dark(#98a1b2, #8a93a4);
   --color-ink-accent: light-dark(#6280da, #6280da);
+
+  /*
+   * Ink navy: the chosen day's panel, beside the calendar's ink one
+   * (activity-panes.tsx). A step up from ink and bluer, so the two read as
+   * two panels of one instrument rather than one panel with a seam — the
+   * calendar is the ground, and what you picked out of it is raised.
+   *
+   * Prose is read here, where the calendar's panel holds only marks, so it
+   * carries a whole set: its own secondary text (brighter than `ink-muted`,
+   * which is tuned for the darker ink), its own rule, its own row hover,
+   * and its own focus ring. The workspace's own roles are rebound to these
+   * for anything drawn inside it — see the `ink-region` utility below.
+   */
+  --color-ink-navy: light-dark(#202b4a, #172542);
+  --color-ink-navy-line: light-dark(#2f3c63, #2b3a5e);
+  --color-ink-navy-hover: light-dark(#283457, #1b2c4d);
+  --color-ink-navy-muted: light-dark(#9fa8b9, #949daf);
+  /* A link's colour on ink, which needs more than `ink-accent` at 4.5:1. */
+  --color-ink-accent-text: light-dark(#a8b7dc, #a8b7dc);
+  --color-ink-focus: light-dark(#7895e3, #7895e3);
+
+  /*
+   * Severity on ink. The signal family is tuned for the workspace's light
+   * surfaces, where it is dark ink on near-white; on an ink panel those
+   * same colours all but disappear. These are the family's dark-theme
+   * values, fixed in both themes, exactly as the ink activity ramps are.
+   */
+  --color-ink-signal-critical: light-dark(#f0564b, #f0564b);
+  --color-ink-signal-high: light-dark(#f28a3c, #f28a3c);
+  --color-ink-signal-caution: light-dark(#e8b04a, #e8b04a);
+  --color-ink-signal-nominal: light-dark(#46c486, #46c486);
+  --color-ink-signal-advisory: light-dark(#4cc0da, #4cc0da);
+  --color-ink-signal-inactive: light-dark(#7d8799, #7d8799);
 
   /* Behind a modal drawer. */
   --color-scrim: light-dark(rgb(14 18 25 / 0.45), rgb(0 0 0 / 0.6));
@@ -233,6 +286,41 @@
 /* Counts and quantities: aligned figures in the body face, not mono. */
 @utility numeric {
   font-variant-numeric: tabular-nums;
+}
+
+/*
+ * An ink region: a patch of the workspace drawn on an ink panel instead of
+ * a light one (activity-panes.tsx, tone="navy").
+ *
+ * Rather than every component inside learning a second set of classes, the
+ * region rebinds the semantic roles themselves for its subtree. `text-fg`,
+ * `text-signal-critical` and the rest all resolve through `var(--color-*)`,
+ * so a component drawn here keeps the class that says what a thing *is* and
+ * gets the colour that suits where it is. That is what lets the severity
+ * vocabulary (severity.tsx) and a chosen day's prose sit on ink unchanged.
+ *
+ * Only the roles that prose and marks actually use are rebound, and each to
+ * a token proven against this surface by the contrast test. A role left out
+ * keeps its workspace value on purpose: `surface`, for one, because nothing
+ * should paint a light card inside an ink region — it should use the ink
+ * palette or not be here.
+ */
+@utility ink-region {
+  --color-fg: var(--color-ink-fg);
+  --color-fg-muted: var(--color-ink-navy-muted);
+  /* Two weights of text, not three: a third would not clear 4.5:1 here. */
+  --color-fg-subtle: var(--color-ink-navy-muted);
+  --color-line-subtle: var(--color-ink-navy-line);
+  --color-line: var(--color-ink-navy-line);
+  --color-hover: var(--color-ink-navy-hover);
+  --color-accent-text: var(--color-ink-accent-text);
+  --color-focus: var(--color-ink-focus);
+  --color-signal-critical: var(--color-ink-signal-critical);
+  --color-signal-high: var(--color-ink-signal-high);
+  --color-signal-caution: var(--color-ink-signal-caution);
+  --color-signal-nominal: var(--color-ink-signal-nominal);
+  --color-signal-advisory: var(--color-ink-signal-advisory);
+  --color-signal-inactive: var(--color-ink-signal-inactive);
 }
 
 /*

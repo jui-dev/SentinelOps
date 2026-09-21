@@ -406,7 +406,7 @@ describe("the operations overview", () => {
     vi.useRealTimers();
   });
 
-  it("shows where response stands now, and the way on to what came before", async () => {
+  it("shows where response stands now", async () => {
     const { requests } = api(READ);
     renderOverview();
 
@@ -440,12 +440,11 @@ describe("the operations overview", () => {
     expect(affected.textContent).toMatch(/Critical/);
     expect(affected.textContent).toMatch(/Payments · 3 active incidents/);
 
-    // The way to the record of what came before, without a rail item.
+    // The panel offers no standing way out: the list's own link is the
+    // only one, and the record of what came before is reached from a day.
     expect(
-      within(current)
-        .getByRole("link", { name: /Incident history/ })
-        .getAttribute("href"),
-    ).toBe("/orgs/acme-ops/incidents/history");
+      within(current).queryByRole("link", { name: /Incident history/ }),
+    ).toBeNull();
 
     // The Overview reads only the state now, so it asks for the smallest
     // period there is and never one a person chose.

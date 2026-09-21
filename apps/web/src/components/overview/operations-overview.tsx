@@ -4,7 +4,6 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 
 import {
-  incidentHistoryHref,
   incidentHref,
   incidentsHref,
   useIncidentList,
@@ -361,8 +360,6 @@ function CurrentOperations({
 }: {
   current: ReturnType<typeof useCurrentOperations>;
 }) {
-  const organization = useOrganization();
-
   let content;
 
   if (state.isError && !state.data) {
@@ -406,17 +403,6 @@ function CurrentOperations({
         </span>
       }
       description="Every unresolved incident, whenever it was declared."
-      actions={
-        // Out to the whole list, and back to what came before it.
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
-          <OnwardLink href={incidentsHref(organization.slug)}>
-            All incidents
-          </OnwardLink>
-          <OnwardLink href={incidentHistoryHref(organization.slug)}>
-            Incident history
-          </OnwardLink>
-        </div>
-      }
     >
       {content}
     </OverviewPanel>
@@ -453,7 +439,9 @@ const useCurrentOperations = (organizationId: string) => {
  * Three questions, narrowest first, each its own panel and its own request —
  * so one of them failing leaves the other two standing. Which incidents were
  * declared or resolved in a period is a fourth question, and it has a page:
- * Incident history, within Incidents, reached from either panel's header.
+ * Incident history, within Incidents. Nothing here routes to it as a
+ * standing offer — a day chosen on the calendar carries its own date
+ * through, which is the only way in that arrives somewhere useful.
  */
 export function OperationsOverview() {
   const organization = useOrganization();

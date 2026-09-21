@@ -12,6 +12,13 @@ import { cx } from "@/components/ui/cx";
  * it today; one member's response activity will use it next, with its own
  * calendar and its own detail inside the same geometry.
  *
+ * Both are ink in both themes, and not the same ink. The calendar is the
+ * ground — a year of squares, read at a glance, where the ramp is the only
+ * colour — and sits on the darker one. The day you pick out of it is
+ * raised: a navy panel beside it, carrying prose, which rebinds the
+ * workspace's text, line and signal roles to their ink values so what is
+ * drawn there needs no ink classes of its own (`ink-region`, globals.css).
+ *
  * The height is fixed and equal on purpose. A day with a dozen incidents
  * must not push the page down where a quiet one did not, so the surfaces
  * keep their size and the busy content scrolls inside its own pane. It is
@@ -22,23 +29,40 @@ import { cx } from "@/components/ui/cx";
 /** Tall enough for the calendar, and for a useful amount of detail. */
 const PANE = "lg:h-[19rem]";
 
+/** Which material a surface is made of. */
+export type ActivityTone = "surface" | "ink" | "navy";
+
+/** The surface itself, and the edge that bounds it. */
+const TONES: Record<ActivityTone, string> = {
+  // A layer within the section, not another card: one subtle edge, the
+  // workspace's own radius, no shadow.
+  surface: "border-line-subtle bg-surface",
+  // The instrument panel: ink in both themes, the darkest layer the
+  // workspace has, bounded by its own line rather than the workspace's.
+  ink: "border-ink-line bg-ink",
+  // Raised from it, and bluer, for what a chosen day says in words. The
+  // rebind rides along, so everything inside reads on it.
+  navy: "ink-region border-ink-navy-line bg-ink-navy",
+};
+
 /**
- * One inner surface: the quiet bordered panel the calendar and the chosen
- * day each sit on, a layer inside the section's own panel.
+ * One inner surface: the bordered panel the calendar and the chosen day
+ * each sit on, a layer inside the section's own panel.
  */
 export function ActivitySurface({
   children,
   className,
+  tone = "surface",
 }: {
   children: ReactNode;
   className?: string;
+  tone?: ActivityTone;
 }) {
   return (
     <div
       className={cx(
-        // A layer within the section, not another card: one subtle edge, the
-        // workspace's own radius, no shadow.
-        "min-w-0 overflow-hidden rounded-md border border-line-subtle bg-surface p-4",
+        "min-w-0 overflow-hidden rounded-md border p-4",
+        TONES[tone],
         PANE,
         className,
       )}
@@ -80,10 +104,10 @@ export function ActivityPanes({
     <div className={cx("grid gap-4", detail ? SPLIT : undefined)}>
       {/* Centred in its surface: the grid is shorter than the pane, and the
           space reads as deliberate rather than as a gap at the bottom. */}
-      <ActivitySurface className="flex flex-col justify-center">
+      <ActivitySurface tone="ink" className="flex flex-col justify-center">
         {calendar}
       </ActivitySurface>
-      {detail && <ActivitySurface>{detail}</ActivitySurface>}
+      {detail && <ActivitySurface tone="navy">{detail}</ActivitySurface>}
     </div>
   );
 }

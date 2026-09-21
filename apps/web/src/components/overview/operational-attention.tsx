@@ -17,6 +17,8 @@ import { stretchedLinkClasses } from "@/components/ui/table";
 import { Duration } from "@/components/ui/timestamp";
 import type { IncidentDetailResponse } from "@/lib/api/contracts";
 
+import { OverviewPanel } from "./overview-panel";
+
 /**
  * What needs the caller right now, above the organization's operations.
  *
@@ -27,7 +29,9 @@ import type { IncidentDetailResponse } from "@/lib/api/contracts";
  * live.
  *
  * Which parts show follows the caller's permissions, as the API answered
- * them: `manage` gives "Waiting on you", `respond` gives "Your work".
+ * them: `manage` gives "Waiting on you", `respond` gives "Your work". Each
+ * is a panel of the Overview, framed like the two below it, so the page
+ * reads as one stack of sections rather than loose lists above cards.
  *
  * Drawn in three strengths, so what needs the caller is seen first:
  *
@@ -113,11 +117,21 @@ export function OperationalAttention() {
   );
 
   return (
-    <div className="flex flex-col gap-8">
+    <>
       {manage && (
-        <AttentionSection
+        <OverviewPanel
           id="waiting-on-you"
           title="Waiting on you"
+          // How much is waiting, where the other panels say what period
+          // they cover. Nothing waiting is said by the line inside, not by
+          // a nought in the header.
+          label={
+            manage.readyToResolve.length > 0 ? (
+              <span className="numeric inline-flex items-center rounded-full border border-accent-line bg-accent-subtle px-2 py-0.5 text-xs font-medium text-accent-text">
+                {manage.readyToResolve.length}
+              </span>
+            ) : undefined
+          }
           description="Incidents that need your decision to move forward."
         >
           <AttentionGroup
@@ -141,50 +155,26 @@ export function OperationalAttention() {
               detail: <ResponseComplete incident={incident} />,
             })}
           />
-        </AttentionSection>
+        </OverviewPanel>
       )}
       {showWork && (
-        <AttentionSection
+        <OverviewPanel
           id="your-work"
           title="Your work"
+          // No label: each group already carries its own count, and two
+          // numbers in one header would say nothing the lists do not.
           description="What your teams need picked up, and what you are working on."
         >
+          {/* Closer than the panel's own rhythm: these are two halves of
+              one question, not two sections. */}
           <div className="flex flex-col gap-5">
             {workGroups.map((group) => (
               <AttentionGroup key={group.id} {...group} />
             ))}
           </div>
-        </AttentionSection>
+        </OverviewPanel>
       )}
-    </div>
-  );
-}
-
-/** A named part: its heading and what it holds, then its lists. */
-function AttentionSection({
-  id,
-  title,
-  description,
-  children,
-}: {
-  id: string;
-  title: string;
-  description: string;
-  children: ReactNode;
-}) {
-  return (
-    <section aria-labelledby={`${id}-title`} className="flex flex-col gap-4">
-      <div className="flex flex-col gap-0.5">
-        <h2
-          id={`${id}-title`}
-          className="text-[0.9375rem] leading-6 font-semibold text-fg"
-        >
-          {title}
-        </h2>
-        <p className="text-sm text-fg-muted">{description}</p>
-      </div>
-      {children}
-    </section>
+    </>
   );
 }
 

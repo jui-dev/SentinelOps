@@ -90,6 +90,25 @@ for (const tone of ["danger", "warning", "success", "info"]) {
 // The situation strip.
 each(["ink-fg", "ink-muted"], ["ink", "ink-raised", "ink-hover"], TEXT);
 each(["ink-accent"], ["ink", "ink-raised"], UI);
+// The chosen day's navy panel (activity-panes.tsx, tone="navy"), and the
+// hovered row inside it. Everything drawn there reads through the roles the
+// `ink-region` utility rebinds, so what is checked is what it binds them to.
+const NAVY = ["ink-navy", "ink-navy-hover"];
+each(["ink-fg", "ink-navy-muted", "ink-accent-text"], NAVY, TEXT);
+each(["ink-focus"], NAVY, UI);
+// Severity on ink: the marks must still read as marks there.
+each(
+  [
+    "ink-signal-critical",
+    "ink-signal-high",
+    "ink-signal-caution",
+    "ink-signal-nominal",
+    "ink-signal-advisory",
+    "ink-signal-inactive",
+  ],
+  NAVY,
+  UI,
+);
 // Control boundaries, focus, and state marks.
 each(["line-control"], ["field", "canvas", "surface", "sunken"], UI);
 each(["focus"], [...WORKSPACE, ...RAIL, "selected"], UI);
@@ -130,6 +149,26 @@ describe("design tokens", () => {
     expect(tokens.size).toBeGreaterThan(40);
   });
 
+  /**
+   * The two ink panels sit side by side inside one section panel, and the
+   * navy one is the raised of the two. None of these is a text or a mark
+   * pair, so none owes 3:1 — what they owe is being told apart, which the
+   * system elsewhere leaves to a border alone.
+   */
+  describe.each<Theme>(["light", "dark"])("the ink panels in %s", (theme) => {
+    const step = (a: string, b: string) =>
+      contrast(colour(a, theme), colour(b, theme));
+
+    it("raises navy off the calendar's ink", () => {
+      expect(step("ink-navy", "ink")).toBeGreaterThanOrEqual(1.2);
+    });
+
+    it("bounds and hovers navy with lines of its own", () => {
+      expect(step("ink-navy-line", "ink-navy")).toBeGreaterThanOrEqual(1.25);
+      expect(step("ink-navy-hover", "ink-navy")).toBeGreaterThanOrEqual(1.09);
+    });
+  });
+
   describe.each<Theme>(["light", "dark"])("%s theme", (theme) => {
     it.each(pairs)("%s on %s ≥ %d:1", (fg, bg, minimum) => {
       const ratio = contrast(colour(fg, theme), colour(bg, theme));
@@ -167,6 +206,46 @@ describe("design tokens", () => {
             theme === "dark",
           );
         }
+      });
+    });
+
+    describe.each(RAMPS)("the %s activity ramp on ink", (ramp) => {
+      const step = (level: number) =>
+        colour(`activity-ink-${ramp}-${level}`, theme);
+
+      it("separates every step from ink", () => {
+        STEP_MINIMUM.forEach((minimum, index) => {
+          const level = index + 1;
+          const ratio = contrast(step(level), colour("ink", theme));
+
+          expect(ratio, `level ${level} on ink`).toBeGreaterThanOrEqual(
+            minimum,
+          );
+        });
+      });
+
+      // The ink panel is dark in both themes, so this ramp lightens in
+      // both — the one place the rule above does not hold.
+      it("lightens in both themes, one step at a time", () => {
+        const ramped = [
+          colour("activity-ink-empty", theme),
+          ...[1, 2, 3, 4].map(step),
+        ].map(luminance);
+
+        for (let index = 1; index < ramped.length; index += 1) {
+          expect(
+            ramped[index] > ramped[index - 1],
+            `level ${index} against the one below it`,
+          ).toBe(true);
+        }
+      });
+
+      // A day nothing happened on is a slot, not a mark: the hairline is
+      // what carries it, so it is held only to being visible at all.
+      it("keeps the empty slot off the panel", () => {
+        expect(
+          contrast(colour("activity-ink-empty", theme), colour("ink", theme)),
+        ).toBeGreaterThanOrEqual(1.25);
       });
     });
   });
