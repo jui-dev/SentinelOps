@@ -1,10 +1,9 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { X } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useId, useRef, useState } from "react";
-import type { FormEvent, KeyboardEvent, MouseEvent } from "react";
+import { useState } from "react";
+import type { FormEvent } from "react";
 
 import {
   useCan,
@@ -13,6 +12,7 @@ import {
 import { teamHref, teamsHref, useTeams } from "@/components/teams/team-scope";
 import { ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { DialogActions, FormDialog } from "@/components/ui/dialog";
 import { EmptyNote, EmptyState } from "@/components/ui/empty-state";
 import { Field } from "@/components/ui/field";
 import { PageBody, PageHeader, Section } from "@/components/ui/page";
@@ -216,94 +216,15 @@ function CreateServiceForm({ onClose }: { onClose: () => void }) {
         onChange={setCriticality}
         error={fields.criticality}
       />
-      <div className="flex flex-wrap items-center justify-end gap-2 border-t border-line-subtle pt-4">
+      <DialogActions>
         <Button variant="secondary" onClick={onClose}>
           Cancel
         </Button>
         <Button type="submit" disabled={create.isPending}>
           {create.isPending ? "Creating…" : "Create service"}
         </Button>
-      </div>
+      </DialogActions>
     </form>
-  );
-}
-
-/**
- * Creating a service, in a dialog over the list. Creating closes it, and the
- * new service is already in the list beneath.
- *
- * A native <dialog> opened with showModal(), as the manage-incident drawer
- * and the date-range dialog are: the page is inert behind it and focus stays
- * inside. Escape, a click on the backdrop, Close, and Cancel dismiss it, and
- * focus returns to what opened it. Mounted only while open, so each opening
- * starts from an empty form.
- */
-function CreateServiceDialog({ onClose }: { onClose: () => void }) {
-  const ref = useRef<HTMLDialogElement>(null);
-  const headingId = useId();
-  const descriptionId = useId();
-
-  useEffect(() => {
-    const dialog = ref.current;
-    const opener = document.activeElement;
-
-    if (!dialog) return;
-    if (typeof dialog.showModal === "function") dialog.showModal();
-    else dialog.setAttribute("open", "");
-
-    return () => {
-      if (dialog.open && typeof dialog.close === "function") dialog.close();
-      if (opener instanceof HTMLElement) opener.focus();
-    };
-  }, []);
-
-  const onKeyDown = (event: KeyboardEvent<HTMLDialogElement>) => {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      onClose();
-    }
-  };
-
-  // A click on the backdrop lands on the dialog element itself.
-  const onClick = (event: MouseEvent<HTMLDialogElement>) => {
-    if (event.target === event.currentTarget) onClose();
-  };
-
-  return (
-    <dialog
-      ref={ref}
-      aria-labelledby={headingId}
-      aria-describedby={descriptionId}
-      onKeyDown={onKeyDown}
-      onCancel={(event) => {
-        event.preventDefault();
-        onClose();
-      }}
-      onClick={onClick}
-      className="m-auto max-h-[calc(100dvh-2rem)] w-[min(32rem,calc(100vw-2rem))] max-w-none overflow-y-auto rounded-lg border border-line bg-surface p-0 text-fg shadow-overlay backdrop:bg-scrim/40"
-    >
-      <div className="flex items-start justify-between gap-4 border-b border-line-subtle px-5 py-4">
-        <div className="min-w-0">
-          <h2 id={headingId} className="text-[0.9375rem] font-semibold text-fg">
-            New service
-          </h2>
-          <p id={descriptionId} className="mt-0.5 text-sm text-fg-muted">
-            A system this organization runs, owned by one of its teams.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="grid size-8 shrink-0 place-items-center rounded-md text-fg-subtle hover:bg-hover hover:text-fg"
-        >
-          <X aria-hidden="true" className="size-4" />
-          <span className="sr-only">Close</span>
-        </button>
-      </div>
-      <div className="px-5 py-5">
-        <CreateServiceForm onClose={onClose} />
-      </div>
-    </dialog>
   );
 }
 
@@ -431,7 +352,8 @@ function ServiceTable({
 /**
  * The Services page: every service, its owner and criticality, and — for
  * those the API says may manage services — a dialog to create one, opened
- * from the header. A dialog rather than a `/services/new` route, which would
+ * from the header. Creating closes it, and the new service is already in the
+ * list beneath. A dialog rather than a `/services/new` route, which would
  * shadow a service whose derived slug is `new`.
  */
 export function ServicesView() {
@@ -459,7 +381,13 @@ export function ServicesView() {
         />
       </PageBody>
       {canManage && creating && (
-        <CreateServiceDialog onClose={() => setCreating(false)} />
+        <FormDialog
+          title="New service"
+          description="A system this organization runs, owned by one of its teams."
+          onClose={() => setCreating(false)}
+        >
+          <CreateServiceForm onClose={() => setCreating(false)} />
+        </FormDialog>
       )}
     </>
   );

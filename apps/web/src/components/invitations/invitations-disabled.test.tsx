@@ -70,7 +70,7 @@ describe("invitations, switched off", () => {
     );
 
     expect(
-      await screen.findByRole("link", { name: "Add member" }),
+      await screen.findByRole("button", { name: "Add member" }),
     ).toBeDefined();
     expect(screen.queryByRole("heading", { name: "Invitations" })).toBeNull();
     expect(screen.queryByRole("heading", { name: "Invite a member" })).toBeNull();

@@ -1,13 +1,15 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 
 import {
   useCan,
   useOrganization,
 } from "@/components/organizations/organization-scope";
 import { ErrorAlert } from "@/components/ui/alert";
-import { buttonClasses } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
+import { FormDialog } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageBody, PageHeader } from "@/components/ui/page";
 import { Spinner } from "@/components/ui/spinner";
@@ -15,9 +17,11 @@ import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { quietLinkClasses } from "@/components/ui/link";
 import { Permission } from "@/lib/api/contracts";
 
-import { newTeamHref, teamHref, useTeams } from "./team-scope";
+import { CreateTeamForm } from "./create-team-form";
+import { teamHref, useTeams } from "./team-scope";
 
-function TeamList({ canCreate }: { canCreate: boolean }) {
+/** `onCreate` is absent for those who may not manage teams. */
+function TeamList({ onCreate }: { onCreate?: () => void }) {
   const organization = useOrganization();
   const teams = useTeams(organization.id);
 
@@ -29,19 +33,16 @@ function TeamList({ canCreate }: { canCreate: boolean }) {
       <EmptyState
         title="No teams yet"
         action={
-          canCreate && (
-            <Link
-              href={newTeamHref(organization.slug)}
-              className={buttonClasses({ variant: "secondary" })}
-            >
+          onCreate && (
+            <Button variant="secondary" onClick={onCreate}>
               New team
-            </Link>
+            </Button>
           )
         }
       >
         <p>
           Teams group the members of this organization who work together.
-          {canCreate ? "" : " An owner or admin can create one."}
+          {onCreate ? "" : " An owner or admin can create one."}
         </p>
       </EmptyState>
     );
@@ -88,12 +89,16 @@ function TeamList({ canCreate }: { canCreate: boolean }) {
 
 /**
  * The Teams page: every team, and — for those the API says may manage teams —
- * a way to create one, on a page of its own reached from the header.
+ * a dialog to create one, opened from the header. Creating closes it, and the
+ * new team is already in the list beneath.
  */
 export function TeamsView() {
   const organization = useOrganization();
   const teams = useTeams(organization.id);
   const canManage = useCan(Permission.TEAMS_MANAGE);
+  const [creating, setCreating] = useState(false);
+  const openCreate = () => setCreating(true);
+  const close = () => setCreating(false);
 
   return (
     <>
@@ -103,19 +108,21 @@ export function TeamsView() {
         meta={teams.data?.length}
         description="Groups of this organization's members. Belonging to a team grants no extra access."
         actions={
-          canManage && (
-            <Link
-              href={newTeamHref(organization.slug)}
-              className={buttonClasses()}
-            >
-              New team
-            </Link>
-          )
+          canManage && <Button onClick={openCreate}>New team</Button>
         }
       />
       <PageBody width="list">
-        <TeamList canCreate={canManage} />
+        <TeamList onCreate={canManage ? openCreate : undefined} />
       </PageBody>
+      {canManage && creating && (
+        <FormDialog
+          title="New team"
+          description="Group members who work together. Belonging to a team grants no extra access."
+          onClose={close}
+        >
+          <CreateTeamForm onClose={close} />
+        </FormDialog>
+      )}
     </>
   );
 }

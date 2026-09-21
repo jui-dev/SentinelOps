@@ -11,7 +11,6 @@ import { IncidentDetail } from "@/components/incidents/incident-detail";
 import { IncidentHistory } from "@/components/history/incident-history";
 import { IncidentsView } from "@/components/incidents/incidents-view";
 import { InvitationAcceptance } from "@/components/invitations/invitation-acceptance";
-import { AddMemberView } from "@/components/organizations/add-member-view";
 import { MemberDetail } from "@/components/organizations/member-detail";
 import { MembersView } from "@/components/organizations/members-view";
 import { OrganizationOverview } from "@/components/organizations/organization-overview";
@@ -22,10 +21,10 @@ import { ServiceDetail } from "@/components/services/service-detail";
 import { ServiceScope } from "@/components/services/service-scope";
 import { ServiceSettings } from "@/components/services/service-settings";
 import { ServicesView } from "@/components/services/services-view";
-import { NewTeamView } from "@/components/teams/new-team-view";
 import { TeamDetail } from "@/components/teams/team-detail";
 import { TeamScope } from "@/components/teams/team-scope";
 import { TeamSettings } from "@/components/teams/team-settings";
+import { TeamsView } from "@/components/teams/teams-view";
 import { clearAccessToken } from "@/lib/auth/token-store";
 
 import {
@@ -592,16 +591,16 @@ describe("accessibility", () => {
       const { container } = inWorkspace(<MembersView />);
 
       await screen.findByRole("table", { name: "Members" });
-      await screen.findByRole("link", { name: "Add member" });
+      await screen.findByRole("button", { name: "Add member" });
       await expectNoAxeViolations(container);
     });
 
     it("Add member, choosing teams", async () => {
       signedIn(ADMIN);
-      navigation.pathname = `/orgs/${organization.slug}/members/new`;
-      const { container } = inWorkspace(<AddMemberView />);
+      const { container } = inWorkspace(<MembersView />);
 
-      await screen.findByRole("heading", { level: 1, name: "Add member" });
+      (await screen.findByRole("button", { name: "Add member" })).click();
+      await screen.findByRole("dialog", { name: "Add member" });
       await screen.findByRole("checkbox", { name: team.name });
       await expectNoAxeViolations(container);
     });
@@ -632,16 +631,6 @@ describe("accessibility", () => {
       await expectNoAxeViolations(container);
     });
 
-    it("Add member, as a member", async () => {
-      signedIn(MEMBER);
-      const { container } = inWorkspace(<AddMemberView />);
-
-      await screen.findByText(
-        "Only the Admin can add members to this organization.",
-      );
-      await expectNoAxeViolations(container);
-    });
-
     it("Members, as a member", async () => {
       signedIn(MEMBER);
       const { container } = inWorkspace(<MembersView />);
@@ -668,8 +657,10 @@ describe("accessibility", () => {
 
     it("New team, as an owner", async () => {
       signedIn(ADMIN);
-      const { container } = inWorkspace(<NewTeamView />);
+      const { container } = inWorkspace(<TeamsView />);
 
+      (await screen.findAllByRole("button", { name: "New team" }))[0].click();
+      await screen.findByRole("dialog", { name: "New team" });
       await screen.findByLabelText("Name");
       await expectNoAxeViolations(container);
     });

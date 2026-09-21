@@ -4,8 +4,5 @@ import { organizationPath } from "@/components/app/navigation";
 export const membersHref = (orgSlug: string) =>
   `${organizationPath(orgSlug)}/members`;
 
-export const addMemberHref = (orgSlug: string) =>
-  `${membersHref(orgSlug)}/new`;
-
 export const memberHref = (orgSlug: string, membershipId: string) =>
   `${membersHref(orgSlug)}/${encodeURIComponent(membershipId)}`;

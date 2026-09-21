@@ -7,21 +7,21 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 
 import { Alert, ErrorAlert } from "@/components/ui/alert";
-import { Button, buttonClasses } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { CopyField } from "@/components/ui/copy-field";
+import { DialogActions, FormDialog } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
 import { linkClasses } from "@/components/ui/link";
 import { Spinner } from "@/components/ui/spinner";
 import { teamsHref, useTeams } from "@/components/teams/team-scope";
-import { ApiErrorCode, Permission } from "@/lib/api/contracts";
+import { ApiErrorCode } from "@/lib/api/contracts";
 import type { CreateMemberRequest } from "@/lib/api/contracts";
 import { createMember } from "@/lib/api/endpoints";
 import { fieldErrorsOf, isApiError } from "@/lib/api/errors";
 import { queryKeys } from "@/lib/api/query-keys";
 
 import { formatRole } from "./format";
-import { membersHref } from "./member-paths";
-import { useCan, useOrganization } from "./organization-scope";
+import { useOrganization } from "./organization-scope";
 
 /**
  * 32 characters, so a random byte masked to five bits picks one without bias.
@@ -163,18 +163,18 @@ function TeamChoices({ disabled }: { disabled: boolean }) {
 }
 
 /**
- * The sign-in details to hand over, shown once. The password lives in this
- * component's state and nowhere else, and is gone on "Add another" or on
- * leaving the page.
+ * The sign-in details to hand over, shown once, in place of the form. The
+ * password lives in the dialog's state and nowhere else, and is gone on "Add
+ * another" or on closing the dialog.
  */
 function AddedMember({
   added,
+  onAnother,
   onDone,
-  backHref,
 }: {
   added: Added;
+  onAnother: () => void;
   onDone: () => void;
-  backHref: string;
 }) {
   return (
     <Alert
@@ -209,35 +209,32 @@ function AddedMember({
           this password is shown.
         </p>
         <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" size="sm" onClick={onDone}>
+          <Button size="sm" onClick={onDone}>
+            Done
+          </Button>
+          <Button variant="secondary" size="sm" onClick={onAnother}>
             Add another
           </Button>
-          <Link
-            href={backHref}
-            className={buttonClasses({ variant: "quiet", size: "sm" })}
-          >
-            Back to members
-          </Link>
         </div>
       </div>
     </Alert>
   );
 }
 
-export function AddMemberForm() {
+function AddMemberForm({
+  onAdded,
+  onCancel,
+}: {
+  onAdded: (added: Added) => void;
+  onCancel: () => void;
+}) {
   const organization = useOrganization();
-  const organizationId = organization.id;
-  const canManage = useCan(Permission.MEMBERS_MANAGE);
-  const create = useCreateMember(organizationId);
+  const create = useCreateMember(organization.id);
   const [password, setPassword] = useState("");
-  const [added, setAdded] = useState<Added | null>(null);
-
-  if (!canManage) return null;
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const form = event.currentTarget;
-    const data = new FormData(form);
+    const data = new FormData(event.currentTarget);
     const body: CreateMemberRequest = {
       name: String(data.get("name") ?? ""),
       email: String(data.get("email") ?? ""),
@@ -245,41 +242,24 @@ export function AddMemberForm() {
       teamIds: data.getAll("teamIds").map(String),
     };
 
-    setAdded(null);
     create.mutate(body, {
-      onSuccess: (membership) => {
-        setAdded({
+      onSuccess: (membership) =>
+        onAdded({
           name: membership.user.name,
           email: membership.user.email,
           role: membership.role,
           password: body.temporaryPassword,
           teams: membership.teams.map(({ name }) => name),
-        });
-        create.reset();
-        form.reset();
-        setPassword("");
-      },
+        }),
     });
   };
 
   const fields = fieldErrorsOf(create.error);
-  const backHref = membersHref(organization.slug);
 
   return (
-    <form
-      onSubmit={onSubmit}
-      noValidate
-      className="flex max-w-2xl flex-col gap-4"
-    >
+    <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
       {create.isError && (
         <ErrorAlert error={create.error} message={messageFor(create.error)} />
-      )}
-      {added && (
-        <AddedMember
-          added={added}
-          onDone={() => setAdded(null)}
-          backHref={backHref}
-        />
       )}
       <div className="grid gap-3 sm:grid-cols-2">
         <Field
@@ -326,17 +306,48 @@ export function AddMemberForm() {
         </Button>
       </div>
       <TeamChoices disabled={create.isPending} />
-      <div className="flex flex-wrap items-center gap-2">
+      <DialogActions>
+        <Button variant="secondary" onClick={onCancel}>
+          Cancel
+        </Button>
         <Button type="submit" disabled={create.isPending}>
           {create.isPending ? "Adding…" : "Add member"}
         </Button>
-        <Link
-          href={backHref}
-          className={buttonClasses({ variant: "quiet" })}
-        >
-          Cancel
-        </Link>
-      </div>
+      </DialogActions>
     </form>
+  );
+}
+
+/**
+ * Adding a member, in a dialog over Members: identity, a one-time password,
+ * and optionally their teams. Once added, their sign-in details replace the
+ * form; a stray click on the backdrop then does not close it, since the
+ * password is shown only this once.
+ */
+export function AddMemberDialog({ onClose }: { onClose: () => void }) {
+  const [added, setAdded] = useState<Added | null>(null);
+  // Remounted on "Add another", so the form starts empty.
+  const [round, setRound] = useState(0);
+
+  return (
+    <FormDialog
+      title="Add member"
+      description="Create their account as a Member, with a one-time password to hand them. They choose their own when they first sign in."
+      onClose={onClose}
+      closeOnBackdrop={!added}
+    >
+      {added ? (
+        <AddedMember
+          added={added}
+          onDone={onClose}
+          onAnother={() => {
+            setAdded(null);
+            setRound((current) => current + 1);
+          }}
+        />
+      ) : (
+        <AddMemberForm key={round} onAdded={setAdded} onCancel={onClose} />
+      )}
+    </FormDialog>
   );
 }

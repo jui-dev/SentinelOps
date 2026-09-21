@@ -1,32 +1,25 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
 import type { FormEvent } from "react";
 
-import {
-  useCan,
-  useOrganization,
-} from "@/components/organizations/organization-scope";
-import { Alert, ErrorAlert } from "@/components/ui/alert";
-import { Button, buttonClasses } from "@/components/ui/button";
+import { useOrganization } from "@/components/organizations/organization-scope";
+import { ErrorAlert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { DialogActions } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
-import { PageBody, PageHeader } from "@/components/ui/page";
-import { ApiErrorCode, Permission } from "@/lib/api/contracts";
+import { ApiErrorCode } from "@/lib/api/contracts";
 import type { CreateTeamRequest, TeamResponse } from "@/lib/api/contracts";
 import { createTeam } from "@/lib/api/endpoints";
 import { fieldErrorsOf, isApiError } from "@/lib/api/errors";
 import { queryKeys } from "@/lib/api/query-keys";
 
-import { teamsHref } from "./team-scope";
-
 export const NAME_TAKEN_MESSAGE =
   "A team with this name, or a very similar one, already exists.";
 
 /**
- * Creates a team. The new team is put into the cached list before navigating
- * back to it, so the list shows the team without waiting for a refetch.
+ * Creates a team. The new team is put into the cached list, so the list
+ * behind the dialog shows it without waiting for a refetch.
  */
 const useCreateTeam = (organizationId: string) => {
   const queryClient = useQueryClient();
@@ -46,11 +39,10 @@ const useCreateTeam = (organizationId: string) => {
   });
 };
 
-function CreateTeamForm() {
+/** Creating a team, in the Teams page's dialog. Creating closes it. */
+export function CreateTeamForm({ onClose }: { onClose: () => void }) {
   const organization = useOrganization();
-  const router = useRouter();
   const create = useCreateTeam(organization.id);
-  const backHref = teamsHref(organization.slug);
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -61,7 +53,7 @@ function CreateTeamForm() {
         name: String(data.get("name") ?? ""),
         description: String(data.get("description") ?? ""),
       },
-      { onSuccess: () => router.push(backHref) },
+      { onSuccess: onClose },
     );
   };
 
@@ -92,52 +84,14 @@ function CreateTeamForm() {
         hint="What the team is responsible for."
         error={fields.description}
       />
-      <div className="flex flex-wrap items-center gap-2">
+      <DialogActions>
+        <Button variant="secondary" onClick={onClose}>
+          Cancel
+        </Button>
         <Button type="submit" disabled={create.isPending}>
           {create.isPending ? "Creating…" : "Create team"}
         </Button>
-        <Link href={backHref} className={buttonClasses({ variant: "quiet" })}>
-          Cancel
-        </Link>
-      </div>
+      </DialogActions>
     </form>
-  );
-}
-
-/**
- * Creating a team, on a page of its own. The way back to Teams is the eyebrow
- * above the title, and Cancel beside the form's action; creating returns
- * there too.
- */
-export function NewTeamView() {
-  const organization = useOrganization();
-  // Advice only: the API refuses anyone without teams:manage regardless.
-  const canManage = useCan(Permission.TEAMS_MANAGE);
-
-  return (
-    <>
-      <PageHeader
-        width="form"
-        eyebrow={
-          <Link
-            href={teamsHref(organization.slug)}
-            className="rounded-sm hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-          >
-            ← Teams
-          </Link>
-        }
-        title="New team"
-        description="Group members who work together. Belonging to a team grants no extra access."
-      />
-      <PageBody width="form">
-        {canManage ? (
-          <CreateTeamForm />
-        ) : (
-          <Alert tone="info">
-            Only an owner or admin can create teams in this organization.
-          </Alert>
-        )}
-      </PageBody>
-    </>
   );
 }

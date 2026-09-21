@@ -20,7 +20,6 @@ import { renderWithSession } from "@/test/render";
 import { TeamDetail } from "./team-detail";
 import { TeamScope } from "./team-scope";
 import { TeamSettings } from "./team-settings";
-import { NewTeamView } from "./new-team-view";
 import { TeamsView } from "./teams-view";
 
 const navigation = vi.hoisted(() => ({
@@ -172,36 +171,34 @@ describe("teams", () => {
 
       expect(await screen.findByText("No teams yet")).toBeDefined();
       expect(screen.getByText(/An owner or admin can create one/)).toBeDefined();
-      expect(screen.queryByRole("link", { name: "New team" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "New team" })).toBeNull();
     });
 
-    it("offers New team as a link to its own page, and no form here", async () => {
-      api(MANAGE, { teams: [] });
+    it("offers New team from the header and the empty list, and closes on Cancel without creating", async () => {
+      const user = userEvent.setup();
+      const { requests } = api(MANAGE, { teams: [] });
 
       inOrganization(<TeamsView />);
 
       expect(await screen.findByText("No teams yet")).toBeDefined();
-      const links = screen.getAllByRole("link", { name: "New team" });
+      expect(screen.queryByText(/An owner or admin can create one/)).toBeNull();
+      const buttons = screen.getAllByRole("button", { name: "New team" });
 
-      expect(links.map((l) => l.getAttribute("href"))).toEqual([
-        "/orgs/acme-ops/teams/new",
-        "/orgs/acme-ops/teams/new",
-      ]);
-      expect(screen.queryByLabelText("Name")).toBeNull();
+      expect(buttons).toHaveLength(2);
+      expect(screen.queryByRole("dialog")).toBeNull();
+
+      await user.click(buttons[0]);
+
+      const dialog = screen.getByRole("dialog", { name: "New team" });
+
+      await user.type(within(dialog).getByLabelText("Name"), "Payments");
+      await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+      expect(screen.queryByRole("dialog", { name: "New team" })).toBeNull();
+      expect(requests.some((r) => route(r) === `POST ${base}/teams`)).toBe(false);
     });
 
-    it("refuses the new team page without teams:manage", async () => {
-      api(READ);
-
-      inOrganization(<NewTeamView />);
-
-      expect(
-        await screen.findByText(/Only an owner or admin can create teams/),
-      ).toBeDefined();
-      expect(screen.queryByRole("button", { name: "Create team" })).toBeNull();
-    });
-
-    it("creates a team from a name and description only, then returns to Teams", async () => {
+    it("creates a team from a name and description only, in a dialog that closes on the list", async () => {
       const user = userEvent.setup();
       const created = { ...platform, id: "new-id", name: "Payments", slug: "payments" };
       const { requests } = api(MANAGE, {
@@ -211,20 +208,24 @@ describe("teams", () => {
             : undefined,
       });
 
-      inOrganization(<NewTeamView />);
+      inOrganization(<TeamsView />);
 
-      expect(
-        await screen.findByRole("heading", { level: 1, name: "New team" }),
-      ).toBeDefined();
-      expect(screen.queryByLabelText(/slug/i)).toBeNull();
+      await user.click(
+        (await screen.findAllByRole("button", { name: "New team" }))[0],
+      );
 
-      await user.type(await screen.findByLabelText("Name"), "Payments");
-      await user.type(screen.getByLabelText(/Description/), "Card processing.");
-      await user.click(screen.getByRole("button", { name: "Create team" }));
+      const dialog = screen.getByRole("dialog", { name: "New team" });
+
+      expect(within(dialog).queryByLabelText(/slug/i)).toBeNull();
+
+      await user.type(within(dialog).getByLabelText("Name"), "Payments");
+      await user.type(within(dialog).getByLabelText(/Description/), "Card processing.");
+      await user.click(within(dialog).getByRole("button", { name: "Create team" }));
 
       await waitFor(() =>
-        expect(navigation.push).toHaveBeenCalledWith("/orgs/acme-ops/teams"),
+        expect(screen.queryByRole("dialog", { name: "New team" })).toBeNull(),
       );
+      expect(navigation.push).not.toHaveBeenCalled();
       expect(
         requests.find((r) => route(r) === `POST ${base}/teams`)?.body,
       ).toEqual({ name: "Payments", description: "Card processing." });
@@ -239,8 +240,11 @@ describe("teams", () => {
             : undefined,
       });
 
-      inOrganization(<NewTeamView />);
+      inOrganization(<TeamsView />);
 
+      await user.click(
+        (await screen.findAllByRole("button", { name: "New team" }))[0],
+      );
       await user.type(await screen.findByLabelText("Name"), "platform!");
       await user.click(screen.getByRole("button", { name: "Create team" }));
 

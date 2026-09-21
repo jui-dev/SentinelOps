@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -17,7 +17,6 @@ import type { SentRequest } from "@/test/api";
 import { renderWithSession } from "@/test/render";
 
 import { generateOneTimePassword } from "./add-member-form";
-import { AddMemberView } from "./add-member-view";
 import { MembersView } from "./members-view";
 import { OrganizationScope } from "./organization-scope";
 
@@ -109,12 +108,18 @@ const renderMembers = () =>
     </OrganizationScope>,
   );
 
-const renderAddMember = () =>
-  renderWithSession(
-    <OrganizationScope>
-      <AddMemberView />
-    </OrganizationScope>,
-  );
+/** The Members page with the Add member dialog opened from its header. */
+const renderAddMember = async () => {
+  renderMembers();
+  await userEvent
+    .setup()
+    .click(await screen.findByRole("button", { name: "Add member" }));
+
+  return screen.getByRole("dialog", { name: "Add member" });
+};
+
+const submit = (dialog: HTMLElement) =>
+  within(dialog).getByRole("button", { name: "Add member" });
 
 describe("the members overview", () => {
   beforeEach(() => {
@@ -128,14 +133,14 @@ describe("the members overview", () => {
       slug: name.toLowerCase(),
     }));
 
-  it("offers the Admin an Add member action that leads to its own page, and no form here", async () => {
+  it("offers the Admin an Add member action that opens a dialog, and no form until then", async () => {
     api(MANAGE);
 
     renderMembers();
 
-    const add = await screen.findByRole("link", { name: "Add member" });
+    await screen.findByRole("button", { name: "Add member" });
 
-    expect(add.getAttribute("href")).toBe("/orgs/acme-ops/members/new");
+    expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.queryByLabelText("One-time password")).toBeNull();
     expect(screen.queryByRole("heading", { name: "Invitations" })).toBeNull();
   });
@@ -146,7 +151,7 @@ describe("the members overview", () => {
     renderMembers();
 
     expect(await screen.findByText("Ada Lovelace")).toBeDefined();
-    expect(screen.queryByRole("link", { name: "Add member" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Add member" })).toBeNull();
   });
 
   it("shows each person's role, teams, and whether they have signed in yet", async () => {
@@ -198,44 +203,33 @@ describe("adding a member", () => {
     clearAccessToken();
   });
 
-  it("tells a Member only the Admin adds people, and offers no form", async () => {
-    api(READ_ONLY);
+  it("asks for no role, and closes on Cancel without adding anyone", async () => {
+    const { requests } = api(MANAGE);
+    const user = userEvent.setup();
 
-    renderAddMember();
+    const dialog = await renderAddMember();
 
+    await within(dialog).findByLabelText("Name");
+    expect(within(dialog).queryByLabelText("Role")).toBeNull();
+
+    await user.type(within(dialog).getByLabelText("Name"), "Grace Hopper");
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+    expect(screen.queryByRole("dialog", { name: "Add member" })).toBeNull();
     expect(
-      await screen.findByText(
-        "Only the Admin can add members to this organization.",
-      ),
-    ).toBeDefined();
-    expect(screen.queryByLabelText("One-time password")).toBeNull();
-  });
-
-  it("is a page of its own, with a way back to Members and no role to choose", async () => {
-    api(MANAGE);
-
-    renderAddMember();
-
-    expect(
-      await screen.findByRole("heading", { level: 1, name: "Add member" }),
-    ).toBeDefined();
-    await screen.findByLabelText("Name");
-    expect(screen.queryByLabelText("Role")).toBeNull();
-    expect(
-      screen.getByRole("link", { name: "← Members" }).getAttribute("href"),
-    ).toBe("/orgs/acme-ops/members");
-    expect(
-      screen.getByRole("link", { name: "Cancel" }).getAttribute("href"),
-    ).toBe("/orgs/acme-ops/members");
+      requests.some((r) => route(r) === `POST ${base}/memberships`),
+    ).toBe(false);
   });
 
   it("fills in a generated one-time password", async () => {
     api(MANAGE);
 
-    renderAddMember();
+    const dialog = await renderAddMember();
 
-    const field = await screen.findByLabelText("One-time password");
-    await userEvent.setup().click(screen.getByRole("button", { name: "Generate" }));
+    const field = await within(dialog).findByLabelText("One-time password");
+    await userEvent
+      .setup()
+      .click(within(dialog).getByRole("button", { name: "Generate" }));
 
     expect((field as HTMLInputElement).value).toMatch(
       /^[a-z2-9]{4}-[a-z2-9]{4}-[a-z2-9]{4}-[a-z2-9]{4}$/,
@@ -256,17 +250,17 @@ describe("adding a member", () => {
     });
     const user = userEvent.setup();
 
-    renderAddMember();
+    const dialog = await renderAddMember();
 
-    await user.type(await screen.findByLabelText("Name"), "Grace Hopper");
-    await user.type(screen.getByLabelText("Email"), "grace@example.com");
+    await user.type(await within(dialog).findByLabelText("Name"), "Grace Hopper");
+    await user.type(within(dialog).getByLabelText("Email"), "grace@example.com");
     await user.type(
-      screen.getByLabelText("One-time password"),
+      within(dialog).getByLabelText("One-time password"),
       "one-time-password-123",
     );
-    await user.click(screen.getByRole("button", { name: "Add member" }));
+    await user.click(submit(dialog));
 
-    const panel = await screen.findByRole("status");
+    const panel = await within(dialog).findByRole("status");
     expect(panel.textContent).toContain("Grace Hopper was added as a Member.");
     expect(
       (within(panel).getByLabelText("Sign-in email") as HTMLInputElement).value,
@@ -285,20 +279,50 @@ describe("adding a member", () => {
       teamIds: [],
     });
     expect(panel.textContent).toContain("Not on any team yet.");
-    expect(
-      within(panel)
-        .getByRole("link", { name: "Back to members" })
-        .getAttribute("href"),
-    ).toBe("/orgs/acme-ops/members");
+    // The details replace the form.
+    expect(within(dialog).queryByLabelText("One-time password")).toBeNull();
 
-    // Add another forgets the password.
+    // Add another forgets the password, and starts from an empty form.
     await user.click(within(panel).getByRole("button", { name: "Add another" }));
     await waitFor(() =>
       expect(screen.queryByLabelText("Sign-in password")).toBeNull(),
     );
     expect(
-      (screen.getByLabelText("One-time password") as HTMLInputElement).value,
+      (within(dialog).getByLabelText("One-time password") as HTMLInputElement)
+        .value,
     ).toBe("");
+    expect(
+      (within(dialog).getByLabelText("Name") as HTMLInputElement).value,
+    ).toBe("");
+  });
+
+  it("keeps the sign-in details through a stray backdrop click, and closes on Done", async () => {
+    api(MANAGE, [ada], (request) =>
+      route(request) === `POST ${base}/memberships`
+        ? jsonResponse(201, grace)
+        : undefined,
+    );
+    const user = userEvent.setup();
+
+    const dialog = await renderAddMember();
+
+    await user.type(await within(dialog).findByLabelText("Name"), "Grace Hopper");
+    await user.type(within(dialog).getByLabelText("Email"), "grace@example.com");
+    await user.type(
+      within(dialog).getByLabelText("One-time password"),
+      "one-time-password-123",
+    );
+    await user.click(submit(dialog));
+
+    const panel = await within(dialog).findByRole("status");
+
+    // A click on the backdrop lands on the dialog element itself.
+    fireEvent.click(dialog);
+    expect(screen.getByRole("dialog", { name: "Add member" })).toBeDefined();
+
+    await user.click(within(panel).getByRole("button", { name: "Done" }));
+
+    expect(screen.queryByRole("dialog", { name: "Add member" })).toBeNull();
   });
 
   it("explains an email that already has an account", async () => {
@@ -309,15 +333,15 @@ describe("adding a member", () => {
     );
     const user = userEvent.setup();
 
-    renderAddMember();
+    const dialog = await renderAddMember();
 
-    await user.type(await screen.findByLabelText("Name"), "Ada");
-    await user.type(screen.getByLabelText("Email"), "ada@example.com");
+    await user.type(await within(dialog).findByLabelText("Name"), "Ada");
+    await user.type(within(dialog).getByLabelText("Email"), "ada@example.com");
     await user.type(
-      screen.getByLabelText("One-time password"),
+      within(dialog).getByLabelText("One-time password"),
       "one-time-password-123",
     );
-    await user.click(screen.getByRole("button", { name: "Add member" }));
+    await user.click(submit(dialog));
 
     expect(
       await screen.findByText("An account with this email already exists."),
@@ -342,9 +366,9 @@ describe("choosing teams when adding a member", () => {
   it("offers every team as an optional choice, none chosen", async () => {
     api(MANAGE);
 
-    renderAddMember();
+    const dialog = await renderAddMember();
 
-    const teams = await screen.findByRole("group", { name: /Teams/ });
+    const teams = await within(dialog).findByRole("group", { name: /Teams/ });
     const boxes = await within(teams).findAllByRole("checkbox");
 
     expect(boxes.map((box) => box.closest("label")?.textContent)).toEqual([
@@ -369,19 +393,20 @@ describe("choosing teams when adding a member", () => {
     );
     const user = userEvent.setup();
 
-    renderAddMember();
+    const dialog = await renderAddMember();
     await fillIn(user);
     await user.click(await screen.findByRole("checkbox", { name: "Platform" }));
     await user.click(screen.getByRole("checkbox", { name: "Payments" }));
-    await user.click(screen.getByRole("button", { name: "Add member" }));
+    await user.click(submit(dialog));
 
-    const panel = await screen.findByRole("status");
+    const panel = await within(dialog).findByRole("status");
 
     expect(panel.textContent).toContain("On Payments, Platform.");
     expect(
       requests.find((r) => route(r) === `POST ${base}/memberships`)?.body,
     ).toMatchObject({ teamIds: [PAYMENTS.id, PLATFORM.id] });
     // The form is clear for the next person.
+    await user.click(within(panel).getByRole("button", { name: "Add another" }));
     expect(
       (screen.getByRole("checkbox", { name: "Payments" }) as HTMLInputElement)
         .checked,
@@ -396,10 +421,10 @@ describe("choosing teams when adding a member", () => {
     );
     const user = userEvent.setup();
 
-    renderAddMember();
+    const dialog = await renderAddMember();
     await fillIn(user);
     await user.click(await screen.findByRole("checkbox", { name: "Payments" }));
-    await user.click(screen.getByRole("button", { name: "Add member" }));
+    await user.click(submit(dialog));
 
     expect(
       await screen.findByText(/One of the chosen teams no longer exists/),
@@ -425,7 +450,7 @@ describe("choosing teams when adding a member", () => {
       }
     });
 
-    renderAddMember();
+    await renderAddMember();
 
     expect(await screen.findByText(/There are no teams yet/)).toBeDefined();
     expect(screen.getByRole("link", { name: "Create one" })).toBeDefined();

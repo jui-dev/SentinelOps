@@ -20,8 +20,6 @@ import { queryKeys } from "@/lib/api/query-keys";
 export const teamsHref = (orgSlug: string) =>
   `${organizationPath(orgSlug)}/teams`;
 
-export const newTeamHref = (orgSlug: string) => `${teamsHref(orgSlug)}/new`;
-
 export const teamHref = (orgSlug: string, teamId: string) =>
   `${teamsHref(orgSlug)}/${encodeURIComponent(teamId)}`;
 

@@ -24,7 +24,7 @@ import { fieldErrorsOf, isApiError } from "@/lib/api/errors";
 import { queryKeys } from "@/lib/api/query-keys";
 
 import { teamHref, teamsHref, useTeam } from "./team-scope";
-import { NAME_TAKEN_MESSAGE } from "./new-team-view";
+import { NAME_TAKEN_MESSAGE } from "./create-team-form";
 
 const ownsServicesError = (error: unknown) =>
   isApiError(error, 409) && error.code === ApiErrorCode.TEAM_OWNS_SERVICES;

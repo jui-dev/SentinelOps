@@ -580,7 +580,7 @@ describe("incidents", () => {
 
       await user.click(await screen.findByRole("button", { name: "Declare incident" }));
 
-      const form = screen.getByRole("region", { name: "Declare an incident" });
+      const form = screen.getByRole("dialog", { name: "Declare an incident" });
       const service = await within(form).findByLabelText("Affected service");
 
       expect(within(service).queryByRole("option", { name: "Legacy Portal" })).toBeNull();
@@ -612,6 +612,23 @@ describe("incidents", () => {
       });
     });
 
+    it("declares in a dialog that Cancel closes without declaring anything", async () => {
+      const user = userEvent.setup();
+      const { requests } = api(ADMIN);
+
+      inOrganization(<IncidentsView />);
+
+      await user.click(await screen.findByRole("button", { name: "Declare incident" }));
+
+      const form = screen.getByRole("dialog", { name: "Declare an incident" });
+
+      await user.type(await within(form).findByLabelText("Title"), "Slow checkout");
+      await user.click(within(form).getByRole("button", { name: "Cancel" }));
+
+      expect(screen.queryByRole("dialog", { name: "Declare an incident" })).toBeNull();
+      expect(requests.some((r) => route(r) === `POST ${base}/incidents`)).toBe(false);
+    });
+
     it("explains a service archived meanwhile, and refreshes the services", async () => {
       const user = userEvent.setup();
       const { requests } = api(ADMIN, {
@@ -626,7 +643,7 @@ describe("incidents", () => {
       await user.click(await screen.findByRole("button", { name: "Declare incident" }));
       await user.selectOptions(await screen.findByLabelText("Affected service"), paymentApi.id);
       await user.click(
-        within(screen.getByRole("region", { name: "Declare an incident" })).getByRole("button", {
+        within(screen.getByRole("dialog", { name: "Declare an incident" })).getByRole("button", {
           name: "Declare incident",
         }),
       );

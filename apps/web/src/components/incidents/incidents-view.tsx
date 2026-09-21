@@ -17,6 +17,7 @@ import {
 } from "@/components/services/service-scope";
 import { ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { DialogActions, FormDialog } from "@/components/ui/dialog";
 import { EmptyNote, EmptyState } from "@/components/ui/empty-state";
 import { Field, TextArea } from "@/components/ui/field";
 import { OnwardLink } from "@/components/ui/onward-link";
@@ -156,14 +157,11 @@ function DeclareIncidentForm({ onCancel }: { onCancel: () => void }) {
       declare.error.code === ApiErrorCode.SERVICE_ARCHIVED);
   const fields = fieldErrorsOf(declare.error);
 
-  let body;
+  if (services.isError) return <ErrorAlert error={services.error} />;
+  if (!available) return <Spinner label="Loading services…" />;
 
-  if (services.isError) {
-    body = <ErrorAlert error={services.error} />;
-  } else if (!available) {
-    body = <Spinner label="Loading services…" />;
-  } else if (available.length === 0) {
-    body = (
+  if (available.length === 0) {
+    return (
       <EmptyState
         title="Add a service first"
         action={
@@ -189,90 +187,76 @@ function DeclareIncidentForm({ onCancel }: { onCancel: () => void }) {
         </p>
       </EmptyState>
     );
-  } else {
-    body = (
-      <form
-        onSubmit={onSubmit}
-        noValidate
-        className="flex max-w-xl flex-col gap-4"
-      >
-        {declare.isError &&
-          !serviceUnavailable &&
-          Object.keys(fields).length === 0 && (
-            <ErrorAlert error={declare.error} />
-          )}
-        <Field
-          label="Title"
-          name="title"
-          required
-          maxLength={200}
-          autoComplete="off"
-          hint="What is happening, in a few words."
-          error={fields.title}
-        />
-        <div className="flex flex-col gap-1.5">
-          <Select
-            label="Affected service"
-            name="serviceId"
-            value={serviceId}
-            onChange={(event) => setServiceId(event.target.value)}
-            error={
-              serviceUnavailable
-                ? SERVICE_UNAVAILABLE_MESSAGE
-                : fields.serviceId
-            }
-          >
-            <option value="" disabled>
-              Choose a service
-            </option>
-            {available.map((service) => (
-              <option key={service.id} value={service.id}>
-                {service.name}
-              </option>
-            ))}
-          </Select>
-          {chosen && (
-            <p className="text-xs text-fg-muted" aria-live="polite">
-              {chosen.ownerTeam.name} will be responsible: they own{" "}
-              {chosen.name}, whose criticality is{" "}
-              {criticalityOf(chosen.criticality).label.toLowerCase()}.
-            </p>
-          )}
-        </div>
-        <SeveritySelect
-          value={severity}
-          onChange={setSeverity}
-          error={fields.severity}
-          placeholder="Choose a severity"
-        />
-        <TextArea
-          label="Summary"
-          name="summary"
-          optional
-          maxLength={2000}
-          hint="What is known so far: who is affected and how."
-          error={fields.summary}
-        />
-        <div className="flex gap-2">
-          <Button type="submit" disabled={declare.isPending}>
-            {declare.isPending ? "Declaring…" : "Declare incident"}
-          </Button>
-          <Button variant="secondary" onClick={onCancel}>
-            Cancel
-          </Button>
-        </div>
-      </form>
-    );
   }
 
   return (
-    <Section
-      id="declare-incident"
-      title="Declare an incident"
-      description="An operational problem affecting one of this organization's services. It starts as Declared."
-    >
-      {body}
-    </Section>
+    <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
+      {declare.isError &&
+        !serviceUnavailable &&
+        Object.keys(fields).length === 0 && (
+          <ErrorAlert error={declare.error} />
+        )}
+      <Field
+        label="Title"
+        name="title"
+        required
+        maxLength={200}
+        autoComplete="off"
+        hint="What is happening, in a few words."
+        error={fields.title}
+      />
+      <div className="flex flex-col gap-1.5">
+        <Select
+          label="Affected service"
+          name="serviceId"
+          value={serviceId}
+          onChange={(event) => setServiceId(event.target.value)}
+          error={
+            serviceUnavailable
+              ? SERVICE_UNAVAILABLE_MESSAGE
+              : fields.serviceId
+          }
+        >
+          <option value="" disabled>
+            Choose a service
+          </option>
+          {available.map((service) => (
+            <option key={service.id} value={service.id}>
+              {service.name}
+            </option>
+          ))}
+        </Select>
+        {chosen && (
+          <p className="text-xs text-fg-muted" aria-live="polite">
+            {chosen.ownerTeam.name} will be responsible: they own{" "}
+            {chosen.name}, whose criticality is{" "}
+            {criticalityOf(chosen.criticality).label.toLowerCase()}.
+          </p>
+        )}
+      </div>
+      <SeveritySelect
+        value={severity}
+        onChange={setSeverity}
+        error={fields.severity}
+        placeholder="Choose a severity"
+      />
+      <TextArea
+        label="Summary"
+        name="summary"
+        optional
+        maxLength={2000}
+        hint="What is known so far: who is affected and how."
+        error={fields.summary}
+      />
+      <DialogActions>
+        <Button variant="secondary" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button type="submit" disabled={declare.isPending}>
+          {declare.isPending ? "Declaring…" : "Declare incident"}
+        </Button>
+      </DialogActions>
+    </form>
   );
 }
 
@@ -394,8 +378,8 @@ function IncidentList({
 
 /**
  * The Incidents page: what is happening now, what has been resolved, and —
- * for those the API says may respond — a form to declare an incident, opened
- * from the header.
+ * for those the API says may respond — a dialog to declare an incident,
+ * opened from the header. Declaring opens the new incident.
  */
 export function IncidentsView() {
   const organization = useOrganization();
@@ -439,7 +423,7 @@ export function IncidentsView() {
             <OnwardLink href={incidentHistoryHref(organization.slug)}>
               Incident history
             </OnwardLink>
-            {canManage && !declaring && (
+            {canManage && (
               <Button onClick={() => setDeclaring(true)}>
                 Declare incident
               </Button>
@@ -448,9 +432,6 @@ export function IncidentsView() {
         }
       />
       <PageBody>
-        {canManage && declaring && (
-          <DeclareIncidentForm onCancel={() => setDeclaring(false)} />
-        )}
         {period && (
           <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-fg-muted">
             <span className="data text-fg">{formatPeriodRange(period)}</span>
@@ -472,6 +453,15 @@ export function IncidentsView() {
         <IncidentList state="active" period={period} filters={filters} />
         <IncidentList state="resolved" period={period} filters={filters} />
       </PageBody>
+      {canManage && declaring && (
+        <FormDialog
+          title="Declare an incident"
+          description="An operational problem affecting one of this organization's services. It starts as Declared."
+          onClose={() => setDeclaring(false)}
+        >
+          <DeclareIncidentForm onCancel={() => setDeclaring(false)} />
+        </FormDialog>
+      )}
     </>
   );
 }
