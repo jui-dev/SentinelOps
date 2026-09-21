@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Bell,
   ChevronDown,
   LogOut,
   Monitor,
@@ -11,7 +10,8 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-import { cx } from "@/components/ui/cx";
+import { stripIconButtonClasses } from "@/components/app/strip-button";
+import { NotificationsBell } from "@/components/notifications/notifications-bell";
 import {
   Menu,
   MenuHeading,
@@ -32,9 +32,7 @@ import type { ThemePreference } from "@/lib/theme/theme";
  * appearance, notifications, and the account. Drawn for the ink strip.
  */
 
-/** A utility in the strip: an icon, named for assistive technology. */
-const iconButtonClasses =
-  "grid size-7 shrink-0 place-items-center rounded-md text-ink-muted transition-colors duration-(--duration-fast) hover:bg-ink-hover hover:text-ink-fg focus-visible:outline-ink-focus aria-expanded:bg-ink-hover aria-expanded:text-ink-fg";
+const iconButtonClasses = stripIconButtonClasses;
 
 const pad = (value: number) => String(value).padStart(2, "0");
 
@@ -133,25 +131,6 @@ export function AppearanceMenu() {
   );
 }
 
-/**
- * Where notifications will arrive. None exist yet, so it opens nothing and
- * counts nothing; it says so to anyone who asks. Disabled by ARIA rather than
- * the attribute, so it can still be focused and its title read.
- */
-export function NotificationsButton() {
-  return (
-    <button
-      type="button"
-      aria-disabled="true"
-      title="Notifications — coming later"
-      className={cx(iconButtonClasses, "cursor-default")}
-    >
-      <Bell aria-hidden="true" strokeWidth={1.75} className="size-4" />
-      <span className="sr-only">Notifications (coming later)</span>
-    </button>
-  );
-}
-
 function initialsOf(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
 
@@ -241,7 +220,7 @@ export function ShellUtilities() {
       <span aria-hidden="true" className="hidden h-5 w-px bg-ink-line sm:block" />
       <div className="flex items-center gap-0.5">
         <AppearanceMenu />
-        <NotificationsButton />
+        <NotificationsBell />
         <AccountMenu />
       </div>
     </div>
