@@ -39,6 +39,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, ReadonlySet<Permission>>> =
       Permission.INCIDENTS_READ,
       Permission.INCIDENTS_MANAGE,
       Permission.INCIDENTS_RESPOND,
+      Permission.NOTIFICATIONS_READ,
     ]),
     MEMBER: new Set([
       Permission.ORGANIZATION_READ,
@@ -47,6 +48,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, ReadonlySet<Permission>>> =
       Permission.SERVICES_READ,
       Permission.INCIDENTS_READ,
       Permission.INCIDENTS_RESPOND,
+      Permission.NOTIFICATIONS_READ,
     ]),
   };
 

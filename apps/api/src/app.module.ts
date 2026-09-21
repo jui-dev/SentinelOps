@@ -12,6 +12,7 @@ import { HealthModule } from './health/health.module.js';
 import { IncidentsModule } from './incidents/incidents.module.js';
 import { InvitationsModule } from './invitations/invitations.module.js';
 import { LoggerModule } from './logger/logger.module.js';
+import { NotificationsModule } from './notifications/notifications.module.js';
 import { OrganizationsModule } from './organizations/organizations.module.js';
 import { ServicesModule } from './services/services.module.js';
 import { TeamsModule } from './teams/teams.module.js';
@@ -51,6 +52,7 @@ import { TeamsModule } from './teams/teams.module.js';
     TeamsModule,
     ServicesModule,
     IncidentsModule,
+    NotificationsModule,
     // TEMPORARY: ensures a known login in development only. Remove with
     // src/dev/ — see src/dev/dev-account.ts.
     DevModule,

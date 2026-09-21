@@ -36,6 +36,14 @@ export const Permission = {
    * the incident.
    */
   INCIDENTS_RESPOND: 'incidents:respond',
+  /**
+   * Read one's own notifications, and acknowledge them. Only ever the
+   * caller's own: NotificationsService scopes every query to the admitted
+   * membership, so this grants nothing about anyone else's. Acknowledging
+   * changes nothing another member can see, so it needs no permission of its
+   * own.
+   */
+  NOTIFICATIONS_READ: 'notifications:read',
 } as const;
 
 export type Permission = (typeof Permission)[keyof typeof Permission];

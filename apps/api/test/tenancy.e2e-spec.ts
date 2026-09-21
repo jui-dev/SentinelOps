@@ -253,6 +253,7 @@ describe('Tenancy (e2e)', () => {
             'incidents:read',
             'incidents:respond',
             'memberships:read',
+            'notifications:read',
             'organization:read',
             'services:read',
             'teams:read',

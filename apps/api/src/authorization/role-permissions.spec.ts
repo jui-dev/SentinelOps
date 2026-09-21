@@ -28,6 +28,7 @@ const EXPECTED: Record<Role, Record<Permission, boolean>> = {
     'incidents:read': true,
     'incidents:manage': true,
     'incidents:respond': true,
+    'notifications:read': true,
   },
   MEMBER: {
     'organization:read': true,
@@ -43,6 +44,7 @@ const EXPECTED: Record<Role, Record<Permission, boolean>> = {
     'incidents:read': true,
     'incidents:manage': false,
     'incidents:respond': true,
+    'notifications:read': true,
   },
 };
 
@@ -105,6 +107,24 @@ describe('role permissions', () => {
     // Declaring, changing, assigning people, and resolving.
     expect(hasPermission('ADMIN', Permission.INCIDENTS_MANAGE)).toBe(true);
     expect(hasPermission('MEMBER', Permission.INCIDENTS_MANAGE)).toBe(false);
+  });
+
+  it('should let every role read and acknowledge its own notifications', () => {
+    for (const role of ROLES) {
+      expect(hasPermission(role, Permission.NOTIFICATIONS_READ)).toBe(true);
+    }
+  });
+
+  it('should let a notification reveal only what its reader may already read', () => {
+    // A notification embeds an incident's title and state and a team's
+    // name. A role that could read notifications but not incidents or teams
+    // would read them through its inbox.
+    for (const role of ROLES) {
+      if (hasPermission(role, Permission.NOTIFICATIONS_READ)) {
+        expect(hasPermission(role, Permission.INCIDENTS_READ)).toBe(true);
+        expect(hasPermission(role, Permission.TEAMS_READ)).toBe(true);
+      }
+    }
   });
 
   it('should let every role read the organization and its memberships', () => {

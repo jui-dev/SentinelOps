@@ -64,6 +64,7 @@ const FULL_PERMISSIONS: readonly string[] = [
   'invitations:read',
   'members:manage',
   'memberships:read',
+  'notifications:read',
   'organization:read',
   'organization:update',
   'services:manage',
@@ -71,11 +72,12 @@ const FULL_PERMISSIONS: readonly string[] = [
   'teams:manage',
   'teams:read',
 ];
-/** What a MEMBER holds: every read, and incident response. */
+/** What a MEMBER holds: every read, incident response, and its own notifications. */
 const MEMBER_PERMISSIONS: readonly string[] = [
   'incidents:read',
   'incidents:respond',
   'memberships:read',
+  'notifications:read',
   'organization:read',
   'services:read',
   'teams:read',

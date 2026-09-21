@@ -128,6 +128,7 @@ describe('OrganizationsService', () => {
             'invitations:read',
             'members:manage',
             'memberships:read',
+            'notifications:read',
             'organization:read',
             'organization:update',
             'services:manage',

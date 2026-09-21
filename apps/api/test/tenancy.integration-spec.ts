@@ -201,6 +201,7 @@ describe('tenancy (integration)', () => {
             'invitations:read',
             'members:manage',
             'memberships:read',
+            'notifications:read',
             'organization:read',
             'organization:update',
             'services:manage',
