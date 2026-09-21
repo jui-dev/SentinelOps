@@ -10,6 +10,7 @@ import type {
   ActivityIncidentResponse,
   IncidentAttentionResponse,
   IncidentDetailResponse,
+  IncidentOccurrenceResponse,
   IncidentResponse,
   IncidentSeverity,
   IncidentSummaryResponse,
@@ -230,8 +231,82 @@ const quiet = (from: string, to: string): IncidentSummaryResponse => ({
 
 const SUMMARY = `GET ${base}/incidents/summary`;
 const ACTIVITY = `GET ${base}/incidents/activity`;
+const OCCURRENCE = `GET ${base}/incidents/occurrence`;
 
 const DAY_MS = 86_400_000;
+
+/** The thirty whole UTC days ending on the 19th: the Overview's last thirty. */
+const LAST_30 = { from: "2026-08-21", to: "2026-09-19" };
+
+/**
+ * An occurrence over the last thirty days, shaped like a real sparse month:
+ * most days quiet, a few with one to three incidents. `declared` names the
+ * busy days; every other tracked day is quiet. The 19th — today, read at
+ * noon — is not over. `rolling` gives the API's averages; a day it leaves
+ * out has none. Days before `trackedFrom` have no history.
+ */
+const occurrenceOver = ({
+  declared = {
+    "2026-08-24": 1,
+    "2026-09-03": 2,
+    "2026-09-10": 1,
+    "2026-09-17": 3,
+    "2026-09-19": 1,
+  },
+  rolling = {
+    "2026-08-21": 0.14,
+    "2026-09-03": 0.43,
+    "2026-09-17": 0.57,
+    "2026-09-18": 0.57,
+  },
+  trackedFrom = "2026-03-24",
+  previous = {
+    from: "2026-07-22",
+    to: "2026-08-20",
+    declared: 6,
+    comparable: true,
+    minimumSample: 5,
+    changePercent: 33,
+  },
+  incidentFreeDays,
+}: {
+  declared?: Record<string, number>;
+  rolling?: Record<string, number>;
+  trackedFrom?: string | null;
+  previous?: IncidentOccurrenceResponse["previous"];
+  incidentFreeDays?: number;
+} = {}): IncidentOccurrenceResponse => {
+  const days = Array.from({ length: 30 }, (_, index) => {
+    const date = new Date(
+      Date.parse(`${LAST_30.from}T00:00:00.000Z`) + index * DAY_MS,
+    )
+      .toISOString()
+      .slice(0, 10);
+    const tracked = trackedFrom !== null && date >= trackedFrom;
+
+    return {
+      date,
+      declared: declared[date] ?? 0,
+      complete: date !== LAST_30.to,
+      tracked,
+      rollingAverage: rolling[date] ?? null,
+    };
+  });
+  const counted = days.filter((day) => day.complete && day.tracked);
+
+  return {
+    ...LAST_30,
+    asOf: "2026-09-19T12:00:00.000Z",
+    trackedFrom,
+    declared: days.reduce((sum, day) => sum + day.declared, 0),
+    incidentFreeDays:
+      incidentFreeDays ?? counted.filter((day) => day.declared === 0).length,
+    completeDays: counted.length,
+    days,
+    previous,
+    services: { top: [], others: { services: 0, declared: 0 } },
+  };
+};
 
 /**
  * The year so far, which is what the Overview asks for, read on 19
@@ -376,6 +451,7 @@ const api = (
     active = [incident()],
     attention = NO_ATTENTION,
     activity = activityOver(),
+    occurrence = occurrenceOver(),
     role = "ADMIN",
   }: {
     summary?:
@@ -384,10 +460,17 @@ const api = (
     active?: IncidentResponse[] | (() => Response);
     attention?: IncidentAttentionResponse | (() => Response);
     activity?: OperationalActivityResponse | (() => Response);
+    occurrence?: IncidentOccurrenceResponse | (() => Response | Promise<Response>);
     role?: string;
   } = {},
 ) =>
   mockApi((request) => {
+    if (route(request).startsWith(`${OCCURRENCE}?`)) {
+      return typeof occurrence === "function"
+        ? occurrence()
+        : jsonResponse(200, occurrence);
+    }
+
     if (route(request).startsWith(`${SUMMARY}?`)) {
       const [from, to] = periodOf(request).split("..");
       const answer = summary(from, to);
@@ -996,8 +1079,12 @@ describe("the operations overview", () => {
       expect(await figure("Resolved incidents")).toMatch(
         /^Resolved incidents9Last 30 days/,
       );
+      // The comparison with a previous period is Incident trend's, below.
       expect(
-        screen.queryByText(/vs previous|% /, { exact: false }),
+        within(screen.getByLabelText("Operational summary")).queryByText(
+          /vs previous|% /,
+          { exact: false },
+        ),
       ).toBeNull();
       expect(
         screen.getByLabelText("Operational summary").textContent,
@@ -1609,6 +1696,340 @@ describe("the operations overview", () => {
     }, 30_000);
   });
 
+  describe("recent operational health", () => {
+    const occurrences = (requests: SentRequest[]) =>
+      requests
+        .filter((request) => route(request).startsWith(`${OCCURRENCE}?`))
+        .map(periodOf);
+
+    const section = () =>
+      screen.findByRole("region", { name: "Recent operational health" });
+
+    /** The chart's days, once it is drawn. */
+    const chartDays = async () =>
+      within(await section()).findByRole("list", {
+        name: "Incidents declared per day",
+      });
+
+    const dayColumn = (days: HTMLElement, date: string) =>
+      days.querySelector<HTMLLIElement>(`[data-date="${date}"]`)!;
+
+    it("sits between the state now and the year, labelled with the time it covers", async () => {
+      const { requests } = api(READ);
+      const { container } = renderOverview();
+
+      const recent = await section();
+
+      expect(within(recent).getByText("Last 30 days")).toBeDefined();
+      expect(
+        within(recent).getByText(
+          "How often incidents were declared, and where they concentrated. Days are UTC.",
+        ),
+      ).toBeDefined();
+      expect(
+        [...container.querySelectorAll("section[id]")].map(({ id }) => id),
+      ).toEqual([
+        "current-operations",
+        "recent-operational-health",
+        "operational-activity",
+      ]);
+
+      // Its own request, for the same thirty days the summary counts —
+      // one "last 30 days" on the page — and asked for once.
+      await chartDays();
+      expect(occurrences(requests)).toEqual(["2026-08-21..2026-09-19"]);
+      expect(summaries(requests)).toEqual(["2026-08-21..2026-09-19"]);
+    });
+
+    it("gives the chart's two figures, in the API's own terms", async () => {
+      api(READ);
+      renderOverview();
+
+      const recent = await section();
+      const figures = await within(recent).findByText("Incidents declared");
+      const list = figures.closest("dl")!;
+
+      expect(list.textContent).toContain("Incidents declared8");
+      // Shown short beside its glyph; read whole.
+      const shown = within(list).getByText("33% vs previous 30 days");
+      expect(shown.getAttribute("aria-hidden")).toBe("true");
+      expect(shown.previousElementSibling?.textContent).toBe("↑");
+      expect(
+        within(list).getByText("33% more than the previous 30 days").className,
+      ).toContain("sr-only");
+      // Incident-free days, of the complete days the API counted them over.
+      expect(list.textContent).toContain(
+        "Incident-free days25 of 29 complete days",
+      );
+      // The figures sit in the chart's header, beside its name.
+      expect(
+        within(recent).getByRole("heading", { name: "Incident trend" })
+          .parentElement,
+      ).toBe(list.parentElement);
+      // Chart statistics, not another row of cards.
+      expect(within(recent).queryByRole("term", { name: /card/ })).toBeNull();
+      expect(list.className).not.toContain("grid");
+    });
+
+    it("never manufactures a percentage the API did not give", async () => {
+      api(READ, {
+        occurrence: occurrenceOver({
+          previous: {
+            from: "2026-07-22",
+            to: "2026-08-20",
+            declared: 3,
+            comparable: true,
+            minimumSample: 5,
+            changePercent: null,
+          },
+        }),
+      });
+      renderOverview();
+
+      const recent = await section();
+
+      expect(
+        await within(recent).findByText(
+          "5 more than the previous 30 days (3)",
+        ),
+      ).toBeDefined();
+      expect(recent.textContent).not.toMatch(/%/);
+    });
+
+    it("draws each day as the API gave it: bars, quiet days, today so far", async () => {
+      api(READ);
+      renderOverview();
+
+      const days = await chartDays();
+
+      expect(within(days).getAllByRole("listitem")).toHaveLength(30);
+
+      // A busy day: its bar, in proportion to the top of the scale (3).
+      const busy = dayColumn(days, "2026-09-17");
+      expect(busy.textContent).toBe(
+        "Thursday, September 17: 3 incidents declared, 7-day average 0.6.",
+      );
+      expect(busy.querySelector<HTMLElement>("[style]")!.style.height).toBe(
+        "100%",
+      );
+      expect(
+        dayColumn(days, "2026-09-03").querySelector<HTMLElement>("[style]")!
+          .style.height,
+      ).toMatch(/^66\.66/);
+
+      // A quiet day: counted, so on the baseline, with a stub and no bar.
+      const quiet = dayColumn(days, "2026-09-05");
+      expect(quiet.textContent).toBe(
+        "Saturday, September 5: No incidents declared.",
+      );
+      expect(quiet.className).toContain("border-b");
+      expect(quiet.querySelector("[style]")).toBeNull();
+      expect(quiet.querySelector(".bg-line-strong")).not.toBeNull();
+
+      // Today: counted so far, hollow, with no average.
+      const today = dayColumn(days, "2026-09-19");
+      expect(today.textContent).toBe(
+        "Today, Saturday, September 19: 1 incident declared so far.",
+      );
+      expect(
+        today.querySelector<HTMLElement>("[style]")!.className,
+      ).toContain("bg-activity-operational-3/30");
+
+      // The key names today's hollow bar, and the axis names today.
+      const recent = await section();
+      expect(within(recent).getByText("Today, so far")).toBeDefined();
+      expect(within(recent).getByText("Today")).toBeDefined();
+    });
+
+    it("draws the average only where the API gave one, never bridging a gap", async () => {
+      api(READ);
+      const { container } = renderOverview();
+
+      await chartDays();
+      const recent = container.querySelector("#recent-operational-health")!;
+      const lines = [...recent.querySelectorAll("svg path")].map((path) =>
+        path.getAttribute("d"),
+      );
+
+      // The ring and the line trace the same path: three runs of points,
+      // each its own move — 21 August alone, 3 September alone, then the
+      // 17th and 18th joined.
+      expect(new Set(lines).size).toBe(1);
+      expect(lines[0]!.match(/M/g)).toHaveLength(3);
+      expect(lines[0]!.match(/L/g)).toHaveLength(1);
+    });
+
+    it("keeps a day before history apart from a quiet one", async () => {
+      api(READ, {
+        occurrence: occurrenceOver({
+          trackedFrom: "2026-09-01",
+          previous: {
+            from: "2026-07-22",
+            to: "2026-08-20",
+            declared: 0,
+            comparable: false,
+            minimumSample: 5,
+            changePercent: null,
+          },
+        }),
+      });
+      renderOverview();
+
+      const days = await chartDays();
+      const before = dayColumn(days, "2026-08-28");
+
+      expect(before.textContent).toBe(
+        "Friday, August 28: before this organization's history.",
+      );
+      // No baseline and no mark: nothing was counted, so nothing is drawn.
+      expect(before.className).not.toContain("border-b");
+      expect(before.querySelector("span:not(.sr-only)")).toBeNull();
+
+      const recent = await section();
+      expect(
+        within(recent).getByText(
+          "History begins Sep 1. Earlier days have no record.",
+        ),
+      ).toBeDefined();
+      expect(
+        within(recent).getByText(
+          "No comparison yet: history does not cover the previous 30 days",
+        ),
+      ).toBeDefined();
+    });
+
+    it("tells a day's figures on hover and on focus, and moves between days by key", async () => {
+      const user = userEvent.setup();
+      api(READ);
+      const { container } = renderOverview();
+
+      const days = await chartDays();
+      const tooltip = () =>
+        container.querySelector<HTMLElement>(
+          "#recent-operational-health [aria-hidden='true'].shadow-overlay",
+        );
+
+      await user.hover(dayColumn(days, "2026-09-03"));
+      expect(tooltip()!.textContent).toBe(
+        "Thu, Sep 32 incidents declared7-day average 0.4",
+      );
+      await user.unhover(dayColumn(days, "2026-09-03"));
+      expect(tooltip()).toBeNull();
+
+      // One Tab stop, entered at today.
+      const columns = within(days).getAllByRole("listitem");
+      expect(columns.filter((column) => column.tabIndex === 0)).toEqual([
+        dayColumn(days, "2026-09-19"),
+      ]);
+
+      dayColumn(days, "2026-09-19").focus();
+      await waitFor(() =>
+        expect(tooltip()!.textContent).toContain("today"),
+      );
+      expect(tooltip()!.textContent).toContain("1 incident declared so far");
+
+      await user.keyboard("{ArrowLeft}");
+      expect(document.activeElement).toBe(dayColumn(days, "2026-09-18"));
+      expect(tooltip()!.textContent).toContain("7-day average 0.6");
+
+      await user.keyboard("{Home}");
+      expect(document.activeElement).toBe(dayColumn(days, "2026-08-21"));
+      await user.keyboard("{End}");
+      expect(document.activeElement).toBe(dayColumn(days, "2026-09-19"));
+      expect(
+        columns.filter((column) => column.tabIndex === 0),
+      ).toEqual([dayColumn(days, "2026-09-19")]);
+    });
+
+    it("says so when nothing was declared, rather than drawing an empty chart", async () => {
+      api(READ, {
+        occurrence: occurrenceOver({
+          declared: {},
+          rolling: {},
+          previous: {
+            from: "2026-07-22",
+            to: "2026-08-20",
+            declared: 4,
+            comparable: true,
+            minimumSample: 5,
+            changePercent: null,
+          },
+        }),
+      });
+      renderOverview();
+
+      const recent = await section();
+
+      expect(
+        await within(recent).findByText(
+          "No incidents declared in the last 30 days",
+        ),
+      ).toBeDefined();
+      expect(
+        within(recent).getByText("4 fewer than the previous 30 days (4)."),
+      ).toBeDefined();
+      expect(
+        within(recent).queryByRole("list", {
+          name: "Incidents declared per day",
+        }),
+      ).toBeNull();
+    });
+
+    it("says there is not enough history, when there is none", async () => {
+      api(READ, { occurrence: occurrenceOver({ declared: {}, trackedFrom: null }) });
+      renderOverview();
+
+      const recent = await section();
+
+      expect(
+        await within(recent).findByText("Not enough history yet"),
+      ).toBeDefined();
+    });
+
+    it("holds its place while loading, and fails on its own", async () => {
+      let respond!: (response: Response) => void;
+      let asked = 0;
+      api(READ, {
+        // The first answer waits; a server error is retried once, and the
+        // retry fails at once.
+        occurrence: () =>
+          (asked += 1) === 1
+            ? new Promise<Response>((resolve) => (respond = resolve))
+            : apiError(500),
+      });
+      renderOverview();
+
+      const recent = await section();
+
+      expect(
+        within(recent).getByText("Loading recent operational health…"),
+      ).toBeDefined();
+
+      await waitFor(() => expect(respond).toBeDefined());
+      respond(apiError(500));
+
+      await within(recent).findByRole("alert", {}, { timeout: 4000 });
+      // The rest of the page stands: one failure, said once, where it is.
+      expect(screen.getAllByRole("alert")).toHaveLength(1);
+      expect(await screen.findByLabelText("Operational summary")).toBeDefined();
+      expect(
+        await screen.findByRole("list", { name: "Active incidents" }),
+      ).toBeDefined();
+    });
+
+    it("takes no severity, feedback, or lifecycle colour", async () => {
+      api(READ);
+      const { container } = renderOverview();
+
+      await chartDays();
+      const recent = container.querySelector("#recent-operational-health")!;
+
+      expect(recent.innerHTML).not.toMatch(
+        /(signal|danger|warning|success|info|status)-/,
+      );
+    });
+  });
+
   describe("what needs you", () => {
     const MANAGE = [...READ, "incidents:manage", "incidents:respond"];
     const RESPOND = [...READ, "incidents:respond"];
@@ -1712,11 +2133,12 @@ describe("the operations overview", () => {
         });
 
         // State, then what needs the viewer, then what is happening, then
-        // the year.
+        // the last thirty days, then the year.
         expect(sectionOrder(container)).toEqual([
           "waiting-on-you",
           "your-work",
           "current-operations",
+          "recent-operational-health",
           "operational-activity",
         ]);
         // The four figures come before every section.

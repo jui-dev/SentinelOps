@@ -292,8 +292,60 @@ const activity = (from: string, to: string) => {
   };
 };
 
+/**
+ * The Overview's last thirty days: sparse, as a real month is — a few days
+ * with one to three incidents, the rest quiet — with today not yet over,
+ * and the average given for the days the API would give it.
+ */
+const occurrence = (from: string, to: string) => {
+  const DAY_MS = 86_400_000;
+  const start = Date.parse(`${from}T00:00:00.000Z`);
+  const days = Array.from({ length: 30 }, (_, index) => {
+    const date = new Date(start + index * DAY_MS).toISOString().slice(0, 10);
+    const declared = [0, 1, 0, 0, 2, 0, 3][index % 7];
+
+    return {
+      date,
+      declared,
+      complete: date !== to,
+      tracked: true,
+      rollingAverage: date === to ? null : 0.86,
+    };
+  });
+
+  return {
+    from,
+    to,
+    asOf: `${to}T12:00:00.000Z`,
+    trackedFrom: "2026-01-01",
+    declared: days.reduce((sum, day) => sum + day.declared, 0),
+    incidentFreeDays: days.filter((day) => day.complete && day.declared === 0)
+      .length,
+    completeDays: 29,
+    days,
+    previous: {
+      from: "2026-07-01",
+      to: "2026-07-30",
+      declared: 20,
+      comparable: true,
+      minimumSample: 5,
+      changePercent: 25,
+    },
+    services: { top: [], others: { services: 0, declared: 0 } },
+  };
+};
+
 const signedIn = (permissions: string[]) =>
   mockApi((request) => {
+    if (route(request).startsWith(`GET ${base}/incidents/occurrence?`)) {
+      const query = new URLSearchParams(request.path.split("?")[1]);
+
+      return jsonResponse(
+        200,
+        occurrence(query.get("from")!, query.get("to")!),
+      );
+    }
+
     if (route(request).startsWith(`GET ${base}/incidents/summary?`)) {
       const query = new URLSearchParams(request.path.split("?")[1]);
 
@@ -451,10 +503,25 @@ describe("accessibility", () => {
 
       await screen.findByRole("heading", { level: 1, name: "Overview" });
       await screen.findByRole("list", { name: "Active incidents" });
+      await screen.findByRole("list", { name: "Incidents declared per day" });
       await screen.findByRole("grid", { name: /Operational activity/ });
       await expectNoAxeViolations(container);
       // A year of days is ~370 squares for axe to walk, which jsdom does far
       // more slowly than a browser.
+    }, 30_000);
+
+    it("Overview, with a day of the incident trend focused", async () => {
+      signedIn(ADMIN);
+      const { container } = inWorkspace(<OrganizationOverview />);
+
+      const days = await screen.findByRole("list", {
+        name: "Incidents declared per day",
+      });
+      const today = days.querySelector<HTMLElement>('[tabindex="0"]')!;
+
+      today.focus();
+      await userEvent.keyboard("{ArrowLeft}");
+      await expectNoAxeViolations(container);
     }, 30_000);
 
     it("Overview, with a day of activity chosen", async () => {

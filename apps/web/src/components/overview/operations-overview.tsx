@@ -44,6 +44,7 @@ import { OperationalActivity } from "./operational-activity";
 import { OperationalAttention } from "./operational-attention";
 import { OverviewPanel } from "./overview-panel";
 import { OverviewSummary } from "./overview-summary";
+import { RecentOperationalHealth } from "./recent-operational-health";
 import { useCurrentOperations } from "./use-current-operations";
 import type { CurrentOperationsState } from "./use-current-operations";
 
@@ -561,6 +562,7 @@ function CurrentOperations({ current: state }: { current: CurrentOperationsState
  *   the summary row          what is the state right now?
  *   waiting on you, work     what needs my attention?
  *   current operations       what is happening, and what is it affecting?
+ *   recent health            are incidents becoming more or less frequent?
  *   operational activity     what has response looked like across the year?
  *
  * The summary row and Current operations are two readings of one request —
@@ -583,6 +585,7 @@ export function OperationsOverview() {
       <OverviewSummary state={current} />
       <OperationalAttention />
       <CurrentOperations current={current} />
+      <RecentOperationalHealth />
       <OperationalActivity />
     </div>
   );
