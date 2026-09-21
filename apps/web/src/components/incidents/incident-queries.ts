@@ -156,7 +156,8 @@ export const attentionCount = ({
  * After an incident is declared or changed: its own entry holds the API's
  * answer, and both lists refetch — its status, severity, or team may have
  * moved it between them or within one — as do the overview's counts, and its
- * activity, since each of these writes a timeline entry. Its
+ * activity, since each of these writes a timeline entry, and how often
+ * incidents occur, which a declaration changes. Its
  * timeline refetches too: the change may have been recorded there. So does
  * the caller's attention: declaring, reassigning, resolving, starting, or
  * completing each moves an incident into or out of someone's lists. And
@@ -180,6 +181,9 @@ export const storeIncident = (
   });
   void queryClient.invalidateQueries({
     queryKey: [...queryKeys.incidents(organizationId), "activity"],
+  });
+  void queryClient.invalidateQueries({
+    queryKey: [...queryKeys.incidents(organizationId), "occurrence"],
   });
   void queryClient.invalidateQueries({
     queryKey: queryKeys.incidentTimeline(organizationId, incident.number),

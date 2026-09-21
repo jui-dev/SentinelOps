@@ -511,6 +511,78 @@ export interface OperationalActivityResponse {
   thresholds: [number, number, number, number];
 }
 
+/**
+ * One day of incident occurrence: how many incidents were declared on it.
+ *
+ * `complete` is false for a day not yet over — today — which is counted but
+ * never incident-free and has no average. `tracked` is false before the
+ * organization had any history: such a day is not quiet, it is unknown.
+ * `rollingAverage` is the mean of the day and the six before it, to two
+ * decimal places, and null where the API could not honestly give one.
+ */
+export interface IncidentOccurrenceDayResponse {
+  date: string;
+  declared: number;
+  complete: boolean;
+  tracked: boolean;
+  rollingAverage: number | null;
+}
+
+/**
+ * A service incidents were declared against in the period. Each incident
+ * has exactly one service, so `share` — of the period's incidents, 0 to 1 —
+ * sums to 1 across all of them. Archived services are included: history.
+ */
+export interface ServiceOccurrenceResponse {
+  id: string;
+  name: string;
+  slug: string;
+  criticality: ServiceCriticality;
+  archivedAt: string | null;
+  declared: number;
+  share: number;
+}
+
+/**
+ * `GET /organizations/:organizationId/incidents/occurrence`: how often
+ * incidents were declared over whole UTC days `from` to `to`, and against
+ * which services, compared with the same elapsed time just before.
+ *
+ * The API decides every figure; a client reads them and never recomputes
+ * them. Counting stops at `asOf`. `incidentFreeDays` is of `completeDays`
+ * — complete, tracked days — and `trackedFrom` is where history begins.
+ *
+ * `previous.changePercent` is a whole-number change, or null when it cannot
+ * honestly be given: the previous period was not wholly tracked
+ * (`comparable` false) or held fewer than `minimumSample` incidents. The
+ * counts are always there, to say the difference in words instead.
+ *
+ * `services.top` names the busiest few, ties by name; `services.others`
+ * sums the rest, so the two together are the whole period.
+ */
+export interface IncidentOccurrenceResponse {
+  from: string;
+  to: string;
+  asOf: string;
+  trackedFrom: string | null;
+  declared: number;
+  incidentFreeDays: number;
+  completeDays: number;
+  days: IncidentOccurrenceDayResponse[];
+  previous: {
+    from: string;
+    to: string;
+    declared: number;
+    comparable: boolean;
+    minimumSample: number;
+    changePercent: number | null;
+  };
+  services: {
+    top: ServiceOccurrenceResponse[];
+    others: { services: number; declared: number };
+  };
+}
+
 /** A period of whole UTC days, both included, as `YYYY-MM-DD`. */
 export interface IncidentPeriod {
   from: string;

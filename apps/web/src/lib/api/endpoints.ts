@@ -18,6 +18,7 @@ import type {
   IncidentAttentionResponse,
   IncidentDetailResponse,
   IncidentFilters,
+  IncidentOccurrenceResponse,
   IncidentPeriod,
   IncidentResponse,
   IncidentState,
@@ -287,6 +288,18 @@ export const getIncidentActivity = (
 ) =>
   authenticatedRequest<OperationalActivityResponse>(
     `${incidentsPath(organizationId)}/activity?${new URLSearchParams({ from, to })}`,
+  );
+
+/**
+ * How often incidents were declared in `period`, day by day and by service,
+ * against the same elapsed time before it.
+ */
+export const getIncidentOccurrence = (
+  organizationId: string,
+  { from, to }: IncidentPeriod,
+) =>
+  authenticatedRequest<IncidentOccurrenceResponse>(
+    `${incidentsPath(organizationId)}/occurrence?${new URLSearchParams({ from, to })}`,
   );
 
 /** The active incidents waiting on the caller now, by what they may do. */

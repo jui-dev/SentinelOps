@@ -39,6 +39,10 @@ import type { IncidentFilters } from "./contracts";
  * - `incidentSummary`: the overview's counts and history for one period,
  *   beneath the prefix — so whatever stales every incident stales them too.
  *   Declaring or changing an incident stales every period's.
+ * - `incidentOccurrence`: how often incidents were declared in one period,
+ *   and against which services, beneath the prefix — so a service rename or
+ *   archival, which it names, stales it too. Declaring or changing an
+ *   incident stales every period's.
  * - `incidentAttention`: the active incidents waiting on the caller, beneath
  *   the prefix. Declaring, changing, or responding to an incident stales it;
  *   what others do reaches it by polling.
@@ -87,6 +91,8 @@ export const queryKeys = {
     ["organization", organizationId, "incidents", "summary", from, to] as const,
   incidentActivity: (organizationId: string, from: string, to: string) =>
     ["organization", organizationId, "incidents", "activity", from, to] as const,
+  incidentOccurrence: (organizationId: string, from: string, to: string) =>
+    ["organization", organizationId, "incidents", "occurrence", from, to] as const,
   incidentAttention: (organizationId: string) =>
     ["organization", organizationId, "incidents", "attention"] as const,
   incident: (organizationId: string, number: number) =>
