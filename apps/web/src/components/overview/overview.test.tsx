@@ -1555,10 +1555,10 @@ describe("the operations overview", () => {
 
       const activity = await section();
       const grid = within(activity).getByRole("grid", { name: /Operational/ });
-      const calendarPane = grid.closest(".rounded-md");
+      const calendarPane = grid.closest("[data-pane]");
       const detail = within(activity)
         .getByLabelText("What happened on this day")
-        .closest(".rounded-md");
+        .closest("[data-pane]");
 
       // Two surfaces, neither inside the other, sharing one fixed height.
       expect(calendarPane).not.toBeNull();
@@ -1566,6 +1566,12 @@ describe("the operations overview", () => {
       expect(calendarPane?.contains(detail!)).toBe(false);
       expect(calendarPane?.className).toMatch(/lg:h-\[19rem\]/);
       expect(detail?.className).toMatch(/lg:h-\[19rem\]/);
+      // The same ink as the calendar; what the day says on navy insets
+      // within it, with no rule between them.
+      expect(detail?.className).toContain("bg-ink");
+      const insets = detail!.querySelectorAll(".bg-ink-inset");
+      expect(insets.length).toBeGreaterThanOrEqual(2);
+      expect(detail!.innerHTML).not.toMatch(/border-b|divide-y/);
 
       const panes = calendarPane?.parentElement?.className ?? "";
 
@@ -1823,11 +1829,22 @@ describe("the operations overview", () => {
       expect(list.textContent).toContain(
         "Incident-free days25 of 29 complete days",
       );
-      // The figures sit in the chart's header, beside its name.
+      // Two badges in the view's header, on its name's line and off the
+      // chart's ink panel; the key is the panel's caption, beneath it.
+      const header = within(recent)
+        .getByRole("heading", { name: "Incident trend" })
+        .closest<HTMLElement>("[data-view-header]")!;
+      expect(header.contains(list)).toBe(true);
+      expect(list.closest(".ink-region")).toBeNull();
+      expect(list.querySelectorAll(":scope > div.rounded-md.border")).toHaveLength(2);
+      const panel = header.nextElementSibling!;
+      expect(panel.className).toContain("ink-region");
+      expect(panel.querySelector("[data-date]")).not.toBeNull();
+      expect(within(header).queryByText("7-day average")).toBeNull();
       expect(
-        within(recent).getByRole("heading", { name: "Incident trend" })
-          .parentElement,
-      ).toBe(list.parentElement);
+        within(panel.nextElementSibling as HTMLElement).getByText("7-day average"),
+      ).toBeDefined();
+      expect(header.textContent).toContain("Incidents declared per UTC day");
       // Chart statistics, not another row of cards.
       expect(within(recent).queryByRole("term", { name: /card/ })).toBeNull();
       expect(list.className).not.toContain("grid");
@@ -1900,7 +1917,7 @@ describe("the operations overview", () => {
       );
       expect(
         today.querySelector<HTMLElement>("[style]")!.className,
-      ).toContain("bg-activity-operational-3/30");
+      ).toContain("bg-trend-bar/30");
 
       // The key names today's hollow bar, and the axis names today.
       const recent = await section();
@@ -1914,7 +1931,7 @@ describe("the operations overview", () => {
 
       await chartDays();
       const recent = container.querySelector("#recent-operational-health")!;
-      const lines = [...recent.querySelectorAll("svg path")].map((path) =>
+      const lines = [...recent.querySelectorAll("svg:not(.lucide) path")].map((path) =>
         path.getAttribute("d"),
       );
 
@@ -2112,10 +2129,10 @@ describe("the operations overview", () => {
         const items = await rows();
 
         expect(items.map((item) => item.textContent)).toEqual([
-          "Payment API: 4 incidents, 50% of incidents declared450%",
-          "Authentication: 2 incidents, 25% of incidents declared225%",
-          "Search: 1 incident, 13% of incidents declared113%",
-          "Fraud Detection(archived): 1 incident, 13% of incidents declared113%",
+          "Payment API: 4 incidents, 50% of incidents declared4 incidents50%",
+          "Authentication: 2 incidents, 25% of incidents declared2 incidents25%",
+          "Search: 1 incident, 13% of incidents declared1 incident13%",
+          "Fraud Detection(archived): 1 incident, 13% of incidents declared1 incident13%",
         ]);
         // An ordered list, and no rank drawn that a tie would contradict.
         expect((await servicesList()).tagName).toBe("OL");
@@ -2142,12 +2159,24 @@ describe("the operations overview", () => {
         }
       });
 
-      it("keeps the bars neutral, and leaves criticality out", async () => {
+      it("keeps the bars in their own colour, and leaves criticality out", async () => {
         api(READ);
         const { container } = renderOverview();
 
         await servicesList();
         const pair = container.querySelector('[data-pair="services"]')!;
+
+        // The view's own silver-aqua, never a state's nor the calendar's.
+        for (const bar of pair.querySelectorAll("[data-share-bar]")) {
+          expect(bar.className).toContain("bg-pressure-bar");
+        }
+        // Said what it counts — its definition is its key.
+        expect(pair.textContent).toContain(
+          "Share of the last 30 days' incidents, by service",
+        );
+        for (const bar of pair.querySelectorAll("[data-share-bar]")) {
+          expect(bar.parentElement!.className).toContain("bg-pressure-track");
+        }
 
         expect(pair.innerHTML).not.toMatch(
           /(signal|danger|warning|success|info|status|activity)-|bg-accent/,
@@ -2300,9 +2329,21 @@ describe("the operations overview", () => {
           grid.firstElementChild?.querySelector("#incident-trend-title"),
         ).not.toBeNull();
         expect(grid.lastElementChild).toBe(pair);
-        // A hairline between the two: above when stacked, beside from xl.
-        expect(pair.className).toMatch(/border-t/);
-        expect(pair.className).toMatch(/xl:border-l/);
+        // Each view in a frame of its own, which is what parts them: no
+        // rule between, beside or stacked. From xl the two share the
+        // section's rows, so their headers and their panels are level.
+        expect(pair.className).not.toMatch(/border/);
+        expect(grid.className).toContain("xl:grid-rows-[auto_1fr_auto]");
+        const frames = grid.querySelectorAll(".bg-view");
+        expect(frames).toHaveLength(2);
+        for (const frame of frames) {
+          expect(frame.className).toContain("xl:grid-rows-subgrid");
+        }
+        // Each view's content on its ink panel, as the calendar's is.
+        const panels = grid.querySelectorAll(".ink-region.bg-ink");
+        expect(panels).toHaveLength(2);
+        expect(panels[0].querySelector("[data-date]")).not.toBeNull();
+        expect(panels[1].querySelector("[data-share-bar]")).not.toBeNull();
       });
 
       it("has no accessibility violations with a remainder and an archived service", async () => {
@@ -2467,13 +2508,21 @@ describe("the operations overview", () => {
         const work = screen.getByRole("region", { name: "Your work" });
 
         expect(waiting.getAttribute("data-tone")).toBe("action");
-        // The accent is spent where it points at something — an edge, the
-        // count, the row to act on — not across the panel's surface.
-        expect(waiting.className).toContain("border-t-accent-mark");
+        // The accent is spent where it points at something — the count, the
+        // row to act on — not on the panel's frame nor across its surface.
+        expect(waiting.className).not.toMatch(/accent/);
         expect(waiting.firstElementChild?.className).not.toMatch(/accent/);
         const header = waiting.firstElementChild as HTMLElement;
 
-        expect(within(header).getByText("1").className).toContain("bg-accent");
+        // Ready to resolve is the resolved teal's, badge and list alike.
+        expect(within(header).getByText("1").className).toContain(
+          "bg-status-resolved-solid",
+        );
+        const list = within(waiting).getByRole("list", {
+          name: "Ready to resolve",
+        });
+        expect(list.className).toContain("bg-status-resolved-subtle");
+        expect(list.className).not.toMatch(/accent/);
         // Work under way is not a decision: related, not the same.
         expect(work.getAttribute("data-tone")).toBe("default");
         // The page's main operational section holds its place by its edge.

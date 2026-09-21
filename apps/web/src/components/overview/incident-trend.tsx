@@ -1,5 +1,6 @@
 "use client";
 
+import { ChartColumn } from "lucide-react";
 import { useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 
@@ -10,6 +11,7 @@ import type {
   IncidentOccurrenceResponse,
 } from "@/lib/api/contracts";
 
+import { INSTRUMENT, VIEW, ViewHeader } from "./analytical-view-header";
 import {
   chartTop,
   declaredPhrase,
@@ -28,10 +30,10 @@ import {
  * the API gave for each. Both are drawn exactly as they arrived — a day
  * with no average has no point on the line, and none is interpolated.
  *
- * Drawn in the organization's activity azure — the vocabulary of "how much
- * happened", never a state — the bars in its middle step and the average
- * in its strongest, so the two read apart without a second hue. Nothing
- * turns red or green: more incidents is information, not an alarm.
+ * Drawn in the trend's own analytical colours — pale icy-aqua bars under a
+ * steel-blue average, on an ink panel — never the activity calendar's ramp
+ * nor a state, so the view reads as its own instrument. Nothing turns red or green: more
+ * incidents is information, not an alarm.
  *
  * Built for sparse history: most days of a real month have nothing on
  * them. A quiet day is a small neutral stub on the baseline, so it reads as
@@ -41,16 +43,18 @@ import {
  */
 
 /**
- * One statistic: the number, large, beside what it counts and a line of
- * context. The number leads the eye and the words qualify it; the markup
- * still reads term before value.
+ * One statistic as a badge: the number beside what it counts and a line of
+ * context, in a compact bordered chip of its own. The number leads the eye
+ * and the words qualify it; the markup still reads term before value. Two
+ * chips side by side in the view's header, each a reading of the same
+ * thirty days.
  */
 const figure =
-  "grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2.5 gap-y-0";
+  "grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 gap-y-0 rounded-md border border-line-subtle bg-surface py-1 pr-3 pl-2.5";
 const figureValue =
-  "numeric order-first row-span-2 text-2xl leading-8 font-semibold tracking-[-0.02em] text-fg";
-const figureLabel = "self-end text-sm leading-5 font-medium text-fg";
-const figureContext = "self-start text-xs leading-4 text-fg-muted";
+  "numeric order-first row-span-2 text-xl leading-7 font-semibold tracking-[-0.02em] text-fg";
+const figureLabel = "self-end text-xs leading-4 font-medium text-fg";
+const figureContext = "self-start text-2xs leading-4 text-fg-muted";
 
 /** The glyph beside a change. Neutral, like the words. */
 const DIRECTION_GLYPH = { up: "↑", down: "↓" } as const;
@@ -58,7 +62,7 @@ const DIRECTION_GLYPH = { up: "↑", down: "↓" } as const;
 /**
  * The two figures the chart is read with: how many were declared, against
  * the period before, and how many days had none. Statistics of the chart,
- * set in its header — not a second row of cards.
+ * set as two badges in the view's header, beside its name.
  *
  * Where the API gave a percentage the comparison is shown short — "↑ 33% vs
  * previous 30 days", the glyph saying which way — and read in full by
@@ -77,7 +81,7 @@ function TrendFigures({
       : null;
 
   return (
-    <dl className="flex flex-wrap items-center gap-x-8 gap-y-3">
+    <dl className="flex flex-wrap items-center gap-2">
       <div className={figure}>
         <dt className={figureLabel}>Incidents declared</dt>
         <dd className={figureValue}>{occurrence.declared}</dd>
@@ -115,24 +119,28 @@ function TrendFigures({
   );
 }
 
-/** The chart's key: one mark per series, and today's hollow bar when shown. */
+/**
+ * The chart's key: one mark per series, and today's hollow bar when shown.
+ * Notation, not information — set small and quiet beneath the chart's ink
+ * panel, as a caption to what is drawn on it.
+ */
 function Legend({ partialToday }: { partialToday: boolean }) {
   return (
     <ul
       aria-hidden="true"
-      className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-fg-muted"
+      className="flex flex-wrap items-center gap-x-3.5 gap-y-1 text-2xs text-fg-subtle"
     >
       <li className="flex items-center gap-1.5">
-        <span className="h-2.5 w-2 rounded-t-xs bg-activity-operational-3" />
+        <span className="h-2 w-1.5 rounded-t-xs bg-trend-bar" />
         Declared per day
       </li>
       <li className="flex items-center gap-1.5">
-        <span className="h-[2.5px] w-4 rounded-full bg-activity-operational-4" />
+        <span className="h-0.5 w-3.5 rounded-full bg-trend-line" />
         7-day average
       </li>
       {partialToday && (
         <li className="flex items-center gap-1.5">
-          <span className="h-2.5 w-2 rounded-t-xs border border-activity-operational-3 bg-activity-operational-3/30" />
+          <span className="h-2 w-1.5 rounded-t-xs border border-trend-bar bg-trend-bar/30" />
           Today, so far
         </li>
       )}
@@ -195,8 +203,8 @@ function DayMark({
         width,
         "rounded-t-xs",
         day.complete
-          ? "bg-activity-operational-3"
-          : "border border-b-0 border-activity-operational-3 bg-activity-operational-3/30",
+          ? "bg-trend-bar"
+          : "border border-b-0 border-trend-bar bg-trend-bar/30",
       )}
       style={{ height: `${(day.declared / top) * 100}%` }}
     />
@@ -228,7 +236,7 @@ function DayTooltip({
   return (
     <div
       aria-hidden="true"
-      className="pointer-events-none absolute bottom-[calc(100%+0.5rem)] z-10 flex w-max max-w-56 flex-col gap-0.5 rounded-md border border-line bg-surface px-2.5 py-1.5 text-xs shadow-overlay"
+      className="pointer-events-none absolute bottom-[calc(100%+0.5rem)] z-10 flex w-max max-w-56 flex-col gap-0.5 rounded-md border border-line bg-ink-inset px-2.5 py-1.5 text-xs shadow-overlay"
       style={placement}
     >
       <p className="font-medium text-fg">
@@ -378,7 +386,7 @@ function TrendChart({ days }: { days: readonly IncidentOccurrenceDayResponse[] }
               preserveAspectRatio="none"
               className="pointer-events-none absolute inset-0 size-full overflow-visible"
             >
-              {/* A ring of the surface first, so the line stays whole
+              {/* A ring of the ink panel first, so the line stays whole
                   where it crosses a bar. */}
               <path
                 d={path}
@@ -387,7 +395,7 @@ function TrendChart({ days }: { days: readonly IncidentOccurrenceDayResponse[] }
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 vectorEffect="non-scaling-stroke"
-                className="stroke-surface"
+                className="stroke-ink"
               />
               <path
                 d={path}
@@ -396,7 +404,7 @@ function TrendChart({ days }: { days: readonly IncidentOccurrenceDayResponse[] }
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 vectorEffect="non-scaling-stroke"
-                className="stroke-activity-operational-4"
+                className="stroke-trend-line"
               />
             </svg>
           )}
@@ -441,17 +449,19 @@ export function IncidentTrend({
   } else {
     content = (
       <>
-        <div className="flex flex-col gap-2.5">
+        {/* The chart on its ink panel, level with the services' beside it. */}
+        <div className={cx(INSTRUMENT, "px-3 pt-4 pb-2.5")}>
           <TrendChart days={days} />
-          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1.5">
-            <Legend partialToday={partialToday} />
-            {untracked > 0 && (
-              <p className="text-xs text-fg-subtle">
-                History begins {shortDay(trackedFrom)}. Earlier days have no
-                record.
-              </p>
-            )}
-          </div>
+        </div>
+        {/* Its caption: the key, and where the record begins. */}
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1.5">
+          <Legend partialToday={partialToday} />
+          {untracked > 0 && (
+            <p className="text-xs text-fg-subtle">
+              History begins {shortDay(trackedFrom)}. Earlier days have no
+              record.
+            </p>
+          )}
         </div>
       </>
     );
@@ -460,17 +470,15 @@ export function IncidentTrend({
   const drawn = trackedFrom !== null && tracked.length > 0 && declared > 0;
 
   return (
-    <div className="flex min-w-0 flex-col gap-4">
-      {/* The chart's header: its name, and the two figures it is read by. */}
-      <div className="flex flex-wrap items-center justify-between gap-x-8 gap-y-3">
-        <h3
-          id="incident-trend-title"
-          className="text-base font-semibold text-fg"
-        >
-          Incident trend
-        </h3>
-        {drawn && <TrendFigures occurrence={occurrence} />}
-      </div>
+    <div className={VIEW}>
+      <ViewHeader
+        id="incident-trend-title"
+        title="Incident trend"
+        definition="Incidents declared per UTC day"
+        Icon={ChartColumn}
+        family="[--family:var(--color-trend-bar)]"
+        aside={drawn && <TrendFigures occurrence={occurrence} />}
+      />
       {content}
     </div>
   );

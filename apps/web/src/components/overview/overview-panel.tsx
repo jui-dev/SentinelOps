@@ -8,23 +8,19 @@ import { cx } from "@/components/ui/cx";
  *   default  a section of the page
  *   primary  the page's main operational section — a firmer edge, so it
  *            holds its place among the others without any colour
- *   action   a section that is waiting on the reader's decision — a thin
- *            accent rule along its top, and nothing more: the frame says
- *            "act" at its edge, while the count in its header and the rows
- *            that need acting on carry the rest. The surface itself stays
- *            the page's, so a panel with one item waiting never outweighs
- *            the operational sections around it. Only while there is
- *            something to act on.
+ *   action   a section that is waiting on the reader's decision — framed
+ *            as any other section: the count in its header and the rows
+ *            that need acting on carry the accent, not the frame. The
+ *            surface stays the page's, so a panel with one item waiting
+ *            never outweighs the operational sections around it. Only
+ *            while there is something to act on.
  */
 export type OverviewPanelTone = "default" | "primary" | "action";
 
 const FRAMES: Record<OverviewPanelTone, { section: string; header: string }> = {
   default: { section: "border-line", header: "border-line bg-thead" },
   primary: { section: "border-line-strong", header: "border-line bg-thead" },
-  action: {
-    section: "border-line border-t-2 border-t-accent-mark",
-    header: "border-line bg-thead",
-  },
+  action: { section: "border-line", header: "border-line bg-thead" },
 };
 
 /**

@@ -1,5 +1,6 @@
 "use client";
 
+import { Layers } from "lucide-react";
 import Link from "next/link";
 
 import {
@@ -14,6 +15,7 @@ import type {
   ServiceOccurrenceResponse,
 } from "@/lib/api/contracts";
 
+import { INSTRUMENT, VIEW, ViewHeader } from "./analytical-view-header";
 import {
   describeOthers,
   describeServiceShare,
@@ -35,19 +37,25 @@ import {
  * incidents spread thinly across many services look spread, not
  * concentrated.
  *
- * Neutral, deliberately. The bars are an analytical reading, not a state:
- * no severity, lifecycle, feedback, accent, or activity colour, and no
- * criticality — this answers concentration only. An archived service is
- * ranked where the API put it and says so quietly; its incidents are
- * history. What the ranking leaves out is one line beneath it, a
- * remainder, never drawn as though it were a service.
+ * Its own colour, deliberately: denim share bars on an ink panel, so the
+ * view reads apart from the trend's icy aqua beside it and from the
+ * activity calendar below. No severity, lifecycle, feedback, accent, or activity
+ * colour, and no criticality — this answers concentration only. An
+ * archived service is ranked where the API put it and says so quietly; its
+ * incidents are history. What the ranking leaves out is one line beneath
+ * it, a remainder, never drawn as though it were a service.
+ *
+ * Each service reads in one path: its name, the strongest thing in the
+ * row; then its figures, small and aligned; then, beneath, a thin bar the
+ * row's full width, long enough that shares can be compared by eye before
+ * a figure is read.
  *
  * Drawn only when there is something to rank. With nothing declared, the
  * trend's own note already says so.
  */
 
-/** The fill: a steel neutral, quieter than the trend's azure beside it. */
-const BAR_FILL = "bg-fg-subtle";
+const plural = (count: number, one: string, many = `${one}s`) =>
+  `${count} ${count === 1 ? one : many}`;
 
 function ServiceRow({ service }: { service: ServiceOccurrenceResponse }) {
   const organization = useOrganization();
@@ -78,30 +86,30 @@ function ServiceRow({ service }: { service: ServiceOccurrenceResponse }) {
           )}
           <span className="sr-only">: {describeServiceShare(service)}</span>
         </p>
-        {/* The same figures, aligned in columns for the eye. */}
+        {/* The same figures, aligned for the eye; the sentence above is
+            what is read out. */}
         <span
           aria-hidden="true"
-          className="numeric w-8 shrink-0 text-right font-semibold text-fg"
+          className="numeric shrink-0 text-right text-xs text-fg-muted"
         >
-          {service.declared}
+          {plural(service.declared, "incident")}
         </span>
         <span
           aria-hidden="true"
-          className="numeric w-9 shrink-0 text-right text-xs text-fg-muted"
+          className="numeric w-9 shrink-0 text-right text-xs font-medium text-fg-muted"
         >
           {formatShare(service.share)}
         </span>
       </div>
+      {/* The share, drawn: of every incident in the period, not of the
+          busiest service's. */}
       <span
         aria-hidden="true"
-        className="relative h-1.5 overflow-hidden rounded-full bg-line-subtle forced-colors:border forced-colors:border-[CanvasText]"
+        className="relative h-1 overflow-hidden rounded-full bg-pressure-track forced-colors:border forced-colors:border-[CanvasText]"
       >
         <span
           data-share-bar
-          className={cx(
-            "absolute inset-y-0 left-0 min-w-0.5 rounded-full forced-colors:bg-[CanvasText]",
-            BAR_FILL,
-          )}
+          className="absolute inset-y-0 left-0 min-w-0.5 rounded-full bg-pressure-bar forced-colors:bg-[CanvasText]"
           style={{ width: `${service.share * 100}%` }}
         />
       </span>
@@ -118,27 +126,29 @@ export function ServicesUnderPressure({
   const remainder = describeOthers(others);
 
   return (
-    // Held to a readable measure when stacked beneath the trend, so a name
-    // stays near its figures and the bars never span the page.
-    <div className="flex max-w-xl min-w-0 flex-col gap-4">
-      {/* Set as the trend's heading is, so the two read as a pair — and,
-          beside it, as tall as the trend's header, so both sit on one line. */}
-      <h3
+    <div className={VIEW}>
+      <ViewHeader
         id="services-under-pressure-title"
-        className="flex items-center text-base font-semibold text-fg xl:min-h-9"
-      >
-        Services under pressure
-      </h3>
-      <ol
-        aria-labelledby="services-under-pressure-title"
-        className="flex flex-col gap-3"
-      >
-        {top.map((service) => (
-          <ServiceRow key={service.id} service={service} />
-        ))}
-      </ol>
+        title="Services under pressure"
+        definition="Share of the last 30 days' incidents, by service"
+        Icon={Layers}
+        family="[--family:var(--color-pressure-bar)]"
+      />
+      <div className={cx(INSTRUMENT, "p-4")}>
+        {/* Held to a readable measure when stacked beneath the trend, so a
+            name stays near its figures and the bars never span the page. */}
+        <ol
+          aria-labelledby="services-under-pressure-title"
+          className="flex max-w-xl flex-col gap-3.5 xl:max-w-none"
+        >
+          {top.map((service) => (
+            <ServiceRow key={service.id} service={service} />
+          ))}
+        </ol>
+      </div>
+      {/* Its caption, beneath the panel as the trend's key is. */}
       {others.services > 0 && (
-        <p className="numeric border-t border-line-subtle pt-3 text-xs text-fg-muted">
+        <p className="numeric text-xs text-fg-muted">
           <span aria-hidden="true">{remainder.short}</span>
           <span className="sr-only">{remainder.text}</span>
         </p>

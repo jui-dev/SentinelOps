@@ -39,6 +39,7 @@ import type {
   TypicalResolutionResponse,
 } from "@/lib/api/contracts";
 
+import { INSTRUMENT } from "./analytical-view-header";
 import { OperationalActivity } from "./operational-activity";
 import { OperationalAttention } from "./operational-attention";
 import { OverviewPanel } from "./overview-panel";
@@ -54,15 +55,15 @@ const plural = (count: number, one: string, many = `${one}s`) =>
   `${count} ${count === 1 ? one : many}`;
 
 /**
- * One section of the posture instrument: the dimension it counts, named
- * above, then its items. The two sections share one ground and are parted
- * by a single hairline — beside each other from `sm`, one above the other
- * on a phone — so they read as two readings of one instrument, not as two
- * cards.
+ * One reading of the posture: the dimension it counts, named above, then
+ * its items, on an ink panel of its own — the same darkest ground the
+ * analytical views and the activity calendar are drawn on. The two panels
+ * sit side by side from `sm`, one above the other on a phone, each as wide
+ * as what it holds.
  */
-const GROUP = "flex min-w-0 flex-col gap-2 px-4 py-3 sm:px-5";
-const GROUP_LABEL = "text-xs font-medium text-fg-muted";
-const GROUP_ITEMS = "flex flex-wrap items-center gap-x-5 gap-y-2 text-sm";
+const GROUP = cx(INSTRUMENT, "flex min-w-0 flex-col gap-2.5 px-4 py-3.5 sm:px-5");
+const GROUP_LABEL = "text-xs font-semibold text-fg";
+const GROUP_ITEMS = "flex flex-wrap items-center gap-x-6 gap-y-2 text-sm";
 
 /** The two active statuses, in the order an incident moves through them. */
 const ACTIVE_STATUSES = ["DECLARED", "INVESTIGATING"] as const;
@@ -78,7 +79,7 @@ function StatusCounts({ counts }: { counts: ActiveStatusCounts }) {
     <div className={GROUP}>
       {/* The dl's name says the same, for assistive technology. */}
       <p aria-hidden="true" className={GROUP_LABEL}>
-        Status
+        By status
       </p>
       <dl aria-label="Active incidents by status" className={GROUP_ITEMS}>
         {ACTIVE_STATUSES.map((status) => (
@@ -113,7 +114,7 @@ function SeverityCountsLine({ counts }: { counts: SeverityCounts }) {
     <div className={GROUP}>
       {/* The dl's name says the same, for assistive technology. */}
       <p aria-hidden="true" className={GROUP_LABEL}>
-        Severity
+        By severity
       </p>
       <dl aria-label="Active incidents by severity" className={GROUP_ITEMS}>
         {SEVERITY_LEVELS.map(({ value }) => (
@@ -167,12 +168,10 @@ function Posture({ current }: { current: IncidentSummaryResponse["current"] }) {
   }
 
   // Two readings of the same incidents — where their response stands, and
-  // how severe they are — on one darker ground: the summary the rows
-  // beneath it itemise. The hairline between them is the section's own,
-  // across on a phone and down from `sm`, where the instrument is only as
-  // wide as what it holds rather than spread across the panel.
+  // how severe they are — each on its own ink panel: the summary the rows
+  // beneath it itemise. Parted by the gap between them, not a rule.
   return (
-    <div className="grid max-w-full grid-cols-1 divide-y divide-line-subtle rounded-md border border-line-subtle bg-summary sm:w-fit sm:grid-cols-[auto_auto] sm:divide-x sm:divide-y-0">
+    <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-stretch">
       <StatusCounts counts={current.activeByStatus} />
       <SeverityCountsLine counts={current.activeBySeverity} />
     </div>
@@ -190,9 +189,9 @@ function Posture({ current }: { current: IncidentSummaryResponse["current"] }) {
  * order, the service on its own line beneath.
  */
 const COLUMNS =
-  "xl:grid-cols-[5.5rem_minmax(0,1fr)_8.5rem_5.5rem_minmax(13rem,17rem)]";
+  "xl:grid-cols-[5.5rem_minmax(0,1fr)_8.5rem_5.5rem_12rem]";
 
-/** The panel's own inset, so the rows run edge to edge yet align with it. */
+/** The rows' inset inside the table's frame. */
 const INSET = "px-4 sm:px-5";
 
 /**
@@ -401,8 +400,10 @@ function OperationRow({
 
 /**
  * The most urgent few active incidents, in the Incidents page's order — most
- * severe, then longest-running — each with the service it affects. The rows
- * run edge to edge of the panel: one ruled table, not a box inside a box.
+ * severe, then longest-running — each with the service it affects. The
+ * table has a frame of its own inside the section, recessed a step below
+ * its surface, so it reads as the section's one instrument beneath the
+ * posture above it.
  *
  * Every affected service is still accounted for. The rows show at most
  * `TOP_ACTIVE` incidents, so a service whose incidents are all further down
@@ -439,8 +440,8 @@ function ActiveOperations({
 
   return (
     <div className="flex flex-col gap-3">
-      {/* Out to the panel's edges; its padding is the rows' own inset. */}
-      <div className="-mx-4 border-y border-line-subtle sm:-mx-5">
+      {/* The table's own frame, inside the section. */}
+      <div className="overflow-hidden rounded-lg border border-line-subtle bg-well">
         <ColumnHeader />
         <ul
           aria-label="Active incidents"

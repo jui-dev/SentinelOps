@@ -70,6 +70,12 @@ const DAY = new Intl.DateTimeFormat(undefined, {
 const plural = (count: number, one: string, many = `${one}s`) =>
   `${count} ${count === 1 ? one : many}`;
 
+/**
+ * One of the chosen day's insets: a deep navy surface within its ink pane,
+ * so the day's parts are told apart by their grounds rather than a rule.
+ */
+const INSET = "rounded-md bg-ink-inset p-3";
+
 /** One incident a day touched: what it is, and how much of the day it was. */
 function DayIncident({
   incident,
@@ -79,7 +85,7 @@ function DayIncident({
   const organization = useOrganization();
 
   return (
-    <li className="relative flex items-baseline gap-2.5 px-3 py-2 hover:bg-hover">
+    <li className="relative flex items-baseline gap-2.5 rounded-md px-2 py-1.5 hover:bg-hover">
       <span className="shrink-0 text-sm">
         <SeverityMark severity={incident.severity} emphasis />
       </span>
@@ -125,13 +131,24 @@ function SelectedDay({ day }: { day: OperationalActivityDayResponse }) {
   const counted = CATEGORIES.filter(({ key }) => day.counts[key] > 0);
   const heading = DAY.format(startOfUtcDay(day.date));
 
+  const dateLine = (
+    <div className="flex shrink-0 flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+      <h3 className="text-sm font-semibold text-fg">
+        {heading} <span className="font-normal text-fg-subtle">UTC</span>
+      </h3>
+      {day.total > 0 && (
+        <p className="numeric text-sm text-fg-muted">
+          {plural(day.total, "event")}
+        </p>
+      )}
+    </div>
+  );
+
   if (day.total === 0) {
     return (
-      <div className="flex h-full flex-col gap-1">
-        <h3 className="text-sm font-semibold text-fg">
-          {heading} <span className="font-normal text-fg-subtle">UTC</span>
-        </h3>
-        <p className="text-sm text-fg-muted">
+      <div className="flex h-full flex-col gap-2">
+        {dateLine}
+        <p className={cx(INSET, "text-sm text-fg-muted")}>
           Nothing was recorded on this day.
         </p>
       </div>
@@ -139,15 +156,9 @@ function SelectedDay({ day }: { day: OperationalActivityDayResponse }) {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <h3 className="text-sm font-semibold text-fg">
-          {heading} <span className="font-normal text-fg-subtle">UTC</span>
-        </h3>
-        <p className="numeric text-sm text-fg-muted">
-          {plural(day.total, "event")}
-        </p>
-      </div>
+    <div className="flex h-full min-h-0 flex-col gap-2">
+      {/* Each part named on the ink, then held on its own inset beneath. */}
+      {dateLine}
 
       {/*
         Only what happened: a category with none is not a row of zeroes. Two
@@ -157,7 +168,7 @@ function SelectedDay({ day }: { day: OperationalActivityDayResponse }) {
       */}
       <dl
         aria-label="What happened on this day"
-        className="grid shrink-0 grid-cols-2 gap-x-4 gap-y-1 border-b border-line-subtle pb-3"
+        className={cx(INSET, "grid shrink-0 grid-cols-2 gap-x-4 gap-y-1")}
       >
         {counted.map(({ key, label }) => (
           <div
@@ -173,23 +184,25 @@ function SelectedDay({ day }: { day: OperationalActivityDayResponse }) {
       {day.incidents.length > 0 && (
         // The one part that gives: a long day scrolls here rather than
         // making the section taller than a quiet day's.
-        <div className="flex min-h-0 flex-1 flex-col gap-2">
-          <h4 className="shrink-0 text-xs font-medium text-fg-muted">
+        <>
+          <h4 className="mt-1 shrink-0 text-xs font-medium text-fg-muted">
             {day.incidents.length === 1
               ? "The incident involved"
               : "The incidents involved"}
           </h4>
-          <ul
-            aria-label="Incidents involved on this day"
-            // The same quiet scrollbar the calendar's weeks use, so the two
-            // surfaces scroll alike.
-            className="scrollbar-thin min-h-0 flex-1 divide-y divide-line-subtle overflow-y-auto overscroll-contain rounded-md border border-line-subtle max-lg:max-h-64"
-          >
-            {day.incidents.map((incident) => (
-              <DayIncident key={incident.id} incident={incident} />
-            ))}
-          </ul>
-        </div>
+          <div className={cx(INSET, "flex min-h-0 flex-1 flex-col")}>
+            <ul
+              aria-label="Incidents involved on this day"
+              // The same quiet scrollbar the calendar's weeks use, so the two
+              // surfaces scroll alike.
+              className="scrollbar-thin -mx-1 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overscroll-contain max-lg:max-h-64"
+            >
+              {day.incidents.map((incident) => (
+                <DayIncident key={incident.id} incident={incident} />
+              ))}
+            </ul>
+          </div>
+        </>
       )}
 
       <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1">

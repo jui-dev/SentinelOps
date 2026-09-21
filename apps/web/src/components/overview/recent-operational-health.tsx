@@ -17,11 +17,14 @@ import { useIncidentOccurrence } from "./use-incident-occurrence";
  * concentrated.
  *
  * The two are one answer read two ways — when, and where — so they share a
- * request and a frame. Side by side from `xl`, a hairline between them:
- * the trend takes what width there is, and the services a narrow column
- * of their own, so their bars stay compact however wide the page. Below
- * that they stack, when before where. With nothing declared there is
- * nothing to rank, and the trend, which says so, has the width alone.
+ * request and a section. Each has a frame of its own, which is what parts
+ * them — no rule between. Side by side from `xl`, the trend takes what
+ * width there is and the services a narrow column of their own, so their
+ * bars stay compact however wide the page; their headers, their ink panels
+ * and their captions each share a row, so the panels are level. Below that they
+ * stack, when before where.
+ * With nothing declared there is nothing to rank, and the trend, which
+ * says so, has the width alone.
  *
  * History, not state, so it reads nothing the sections above it read: its
  * own request, which can fail on its own. Its label names the time it
@@ -50,15 +53,15 @@ export function RecentOperationalHealth() {
     content = (
       <div
         className={cx(
-          "grid grid-cols-1 gap-7",
-          ranked && "xl:grid-cols-[minmax(0,1fr)_21rem]",
+          "grid grid-cols-1 gap-4",
+          ranked && "xl:grid-cols-[minmax(0,1fr)_21rem] xl:grid-rows-[auto_1fr_auto]",
         )}
       >
         <IncidentTrend occurrence={occurrence.data} />
         {ranked && (
           <div
             data-pair="services"
-            className="border-t border-line-subtle pt-7 xl:border-t-0 xl:border-l xl:pt-0 xl:pl-7"
+            className="grid min-w-0 xl:row-span-3 xl:grid-rows-subgrid"
           >
             <ServicesUnderPressure services={services} />
           </div>

@@ -143,7 +143,7 @@ export function OperationalAttention() {
           // waiting is said by the line inside, not by a nought here.
           label={
             manage.readyToResolve.length > 0 ? (
-              <span className="numeric inline-flex min-w-5 items-center justify-center rounded-full border border-accent-rim bg-accent px-1.5 py-0.5 text-xs font-semibold text-on-accent">
+              <span className="numeric inline-flex min-w-5 items-center justify-center rounded-full border border-status-resolved-text bg-status-resolved-solid px-1.5 py-0.5 text-xs font-semibold text-on-accent">
                 {manage.readyToResolve.length}
               </span>
             ) : undefined
@@ -153,7 +153,7 @@ export function OperationalAttention() {
           <AttentionGroup
             id="ready-to-resolve"
             title="Ready to resolve"
-            strength="pending"
+            strength="resolve"
             incidents={manage.readyToResolve}
             empty="Nothing is waiting for your action."
             cue="Review"
@@ -194,15 +194,35 @@ export function OperationalAttention() {
   );
 }
 
-type Strength = "pending" | "current";
+type Strength = "resolve" | "pending" | "current";
 
 /** The list's frame, by how much it asks of the caller. */
 const FRAMES: Record<Strength, string> = {
+  // Ready to resolve: the resolved teal's surface, with no border — the
+  // tint alone says which decision it waits on: the one that closes an
+  // incident.
+  resolve: "bg-status-resolved-subtle divide-status-resolved-line",
   // Someone needs to act: the accent surface, and its edge.
   pending:
     "border-accent-line border-l-accent-mark bg-accent-subtle divide-accent-line",
   // Under way: the edge alone, on the plain surface.
   current: "border-line border-l-accent-mark bg-surface divide-line-subtle",
+};
+
+/** The frame's own colour, for its count, its cue and a hovered title. */
+const CUES: Record<Strength, { text: string; hover: string }> = {
+  resolve: {
+    text: "text-status-resolved-text",
+    hover: "group-hover/row:text-status-resolved-text",
+  },
+  pending: {
+    text: "text-accent-text",
+    hover: "group-hover/row:text-accent-text",
+  },
+  current: {
+    text: "text-accent-text",
+    hover: "group-hover/row:text-accent-text",
+  },
 };
 
 interface GroupProps {
@@ -251,14 +271,15 @@ function AttentionGroup({
         <h3 id={`${id}-title`} className="text-sm font-semibold text-fg">
           {title}
         </h3>
-        <span className="numeric text-sm font-semibold text-accent-text">
+        <span className={cx("numeric text-sm font-semibold", CUES[strength].text)}>
           {incidents.length}
         </span>
       </div>
       <ul
         aria-labelledby={`${id}-title`}
         className={cx(
-          "divide-y overflow-hidden rounded-md border border-l-[3px]",
+          "divide-y overflow-hidden rounded-md",
+          strength !== "resolve" && "border border-l-[3px]",
           FRAMES[strength],
         )}
       >
@@ -301,7 +322,7 @@ function AttentionRow({
     <li
       className={cx(
         "group/row relative flex items-center gap-4 px-4 py-3.5 transition-colors duration-(--duration-fast) has-[a:focus-visible]:outline-2 has-[a:focus-visible]:-outline-offset-2 has-[a:focus-visible]:outline-focus",
-        strength === "pending" ? "hover:bg-surface" : "hover:bg-hover",
+        strength === "current" ? "hover:bg-hover" : "hover:bg-surface",
       )}
     >
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
@@ -326,7 +347,10 @@ function AttentionRow({
             </span>{" "}
             <span
               title={incident.title}
-              className="truncate text-[0.9375rem] font-medium text-fg group-hover/row:text-accent-text group-hover/row:underline"
+              className={cx(
+                "truncate text-[0.9375rem] font-medium text-fg group-hover/row:underline",
+                CUES[strength].hover,
+              )}
             >
               {incident.title}
             </span>
@@ -338,7 +362,10 @@ function AttentionRow({
       </div>
       <span
         aria-hidden="true"
-        className="hidden shrink-0 items-center gap-1 text-sm font-medium text-accent-text sm:inline-flex"
+        className={cx(
+          "hidden shrink-0 items-center gap-1 text-sm font-medium sm:inline-flex",
+          CUES[strength].text,
+        )}
       >
         {cue}
         <ArrowRight className="size-3.5" />

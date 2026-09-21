@@ -149,6 +149,16 @@ for (const state of LIFECYCLE) {
   each(["fg", "fg-muted"], [`status-${state}-subtle`], TEXT);
 }
 
+// A list of incidents ready to resolve (operational-attention.tsx, the
+// resolve frame): its count as a solid badge, and each row's severity mark
+// and hovered title on the resolved tint.
+each(["on-accent"], ["status-resolved-solid"], TEXT);
+each(
+  ["signal-critical", "signal-high", "signal-caution", "signal-advisory"],
+  ["status-resolved-subtle"],
+  UI,
+);
+
 // A section and a list that wait on the reader's decision: the accent's
 // tint, with body, secondary, and link text on it (overview-panel.tsx,
 // tone="action"; operational-attention.tsx, the pending frame).
@@ -162,10 +172,14 @@ each(["accent-rim"], ["thead"], UI);
 // services-under-pressure.tsx): each mark reads on the surface it is drawn
 // on, and the share bar on its track too.
 each(["trend-bar", "trend-line", "pressure-bar"], ["surface"], UI);
-each(["pressure-bar"], ["line-subtle"], UI);
-// The operational posture strip: its words, and the status and severity
-// marks it counts.
-each(["fg", "fg-muted", "fg-subtle"], ["summary"], TEXT);
+each(["pressure-bar"], ["pressure-track"], UI);
+// The same marks as drawn on their ink panels, and the words beside them.
+each(["ink-trend-bar", "ink-trend-line", "ink-pressure-bar"], ["ink"], UI);
+each(["ink-pressure-bar"], ["ink-pressure-track"], UI);
+each(["ink-fg", "ink-inset-muted", "ink-accent-text"], ["ink"], TEXT);
+// The active-incidents table's frame: every word, link, mark and state a
+// row draws, and the row's hover.
+each(["fg", "fg-muted", "fg-subtle", "accent-text"], ["well"], TEXT);
 each(
   [
     "signal-critical",
@@ -174,7 +188,24 @@ each(
     "signal-advisory",
     ...LIFECYCLE.map((state) => `status-${state}-text`),
   ],
-  ["summary"],
+  ["well"],
+  UI,
+);
+
+// An analytical view's frame: its name, definition and key.
+each(["fg", "fg-muted", "fg-subtle"], ["view"], TEXT);
+each(["trend-bar", "trend-line"], ["view"], UI);
+
+// The operational posture's two ink panels: the severity marks drawn on
+// ink. Each status pill carries its own tint and word, already held above.
+each(
+  [
+    "ink-signal-critical",
+    "ink-signal-high",
+    "ink-signal-caution",
+    "ink-signal-advisory",
+  ],
+  ["ink"],
   UI,
 );
 
@@ -376,6 +407,9 @@ describe.each<Theme>(["light", "dark"])("the metric cards in %s", (theme) => {
     "status-investigating-text",
     "status-resolved-text",
     "service-mark",
+    // The two analytical views' header tiles.
+    "trend-bar",
+    "pressure-bar",
   ];
   const tint = css.match(
     /@utility tint-family \{[^}]*var\(--family\) (\d+)%, var\(--color-surface\)/,

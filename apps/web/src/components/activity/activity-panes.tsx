@@ -12,12 +12,13 @@ import { cx } from "@/components/ui/cx";
  * it today; one member's response activity will use it next, with its own
  * calendar and its own detail inside the same geometry.
  *
- * Both are ink in both themes, and not the same ink. The calendar is the
- * ground — a year of squares, read at a glance, where the ramp is the only
- * colour — and sits on the darker one. The day you pick out of it is
- * raised: a navy panel beside it, carrying prose, which rebinds the
- * workspace's text, line and signal roles to their ink values so what is
- * drawn there needs no ink classes of its own (`ink-region`, globals.css).
+ * Both are the same ink, in both themes, so the calendar and the day you
+ * pick out of it read as one instrument. What the day says is held on
+ * insets within its pane — a deep navy, a step up from the ink — so its
+ * parts are told apart by their surfaces, never by a rule. The day's pane
+ * rebinds the workspace's text, line and signal roles to their ink values,
+ * so what is drawn there needs no ink classes of its own (`ink-region`,
+ * globals.css).
  *
  * The height is fixed and equal on purpose. A day with a dozen incidents
  * must not push the page down where a quiet one did not, so the surfaces
@@ -40,9 +41,9 @@ const TONES: Record<ActivityTone, string> = {
   // The instrument panel: ink in both themes, the darkest layer the
   // workspace has, bounded by its own line rather than the workspace's.
   ink: "border-ink-line bg-ink",
-  // Raised from it, and bluer, for what a chosen day says in words. The
-  // rebind rides along, so everything inside reads on it.
-  navy: "ink-region border-ink-inset-line bg-ink-inset",
+  // The chosen day: the same ink as the calendar, with the rebind, so
+  // everything inside reads on it — and on the insets it holds.
+  navy: "ink-region border-ink-line bg-ink",
 };
 
 /**
@@ -60,6 +61,7 @@ export function ActivitySurface({
 }) {
   return (
     <div
+      data-pane
       className={cx(
         "min-w-0 overflow-hidden rounded-md border p-4",
         TONES[tone],

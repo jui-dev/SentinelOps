@@ -116,7 +116,7 @@
   --color-success-subtle: light-dark(#edf8f2, #0e2419);
   --color-success-line: light-dark(#b5dec8, #1e4d35);
   --color-success-solid: light-dark(#1a8a55, #3fb57c);
-  --color-info-text: light-dark(#0b6a83, #5cc8e0);
+  --color-info-text: light-dark(#11769a, #5cc8e0);
   --color-info-subtle: light-dark(#eaf6f9, #0b2229);
   --color-info-line: light-dark(#b5dde7, #1b4a56);
   --color-info-solid: light-dark(#0e7f9c, #3fb0cb);
@@ -131,7 +131,7 @@
   --color-signal-critical: light-dark(#c8322a, #f0564b);
   --color-signal-high: light-dark(#c2560c, #f28a3c);
   --color-signal-caution: light-dark(#a86a00, #e8b04a);
-  --color-signal-nominal: light-dark(#0e5558, #44a49e);
+  --color-signal-nominal: light-dark(#15616d, #2a96a2);
   --color-signal-advisory: light-dark(#0e7f9c, #4cc0da);
   --color-signal-inactive: light-dark(#6b7485, #7d8799);
 
@@ -154,9 +154,11 @@
    * and, more loosely, from the analytical and activity colours, which
    * never share its ground or its form. Investigating is the #457b9d blue
    * turned a little bluer in dark, where its own lighter shade would be the
-   * trend's denim. Resolved is #15616d, deepened in light to stay clear of
-   * the info teal and lightened in dark to read at all; the nominal signal
-   * shares it on purpose — resolved is nominal.
+   * trend's denim. Resolved is #15616d wherever it is drawn: exactly, in
+   * light; in dark as the pill's edge and the solid fill a count sits on,
+   * with its words and marks a lighter shade of it, since #15616d itself
+   * would all but vanish on the dark workspace. The nominal signal shares
+   * it on purpose — resolved is nominal.
    */
   --color-status-declared-text: light-dark(#941b3d, #cd717d);
   --color-status-declared-subtle: light-dark(#fff4f5, #2c171a);
@@ -164,37 +166,58 @@
   --color-status-investigating-text: light-dark(#244b84, #89a1c9);
   --color-status-investigating-subtle: light-dark(#f2f7ff, #131f2e);
   --color-status-investigating-line: light-dark(#c1d6f2, #2b405f);
-  --color-status-resolved-text: light-dark(#0e5558, #44a49e);
-  --color-status-resolved-subtle: light-dark(#eef9fa, #062322);
-  --color-status-resolved-line: light-dark(#b3dedf, #0a4a47);
+  --color-status-resolved-text: light-dark(#15616d, #2a96a2);
+  --color-status-resolved-subtle: light-dark(#eef9fa, #0d2127);
+  --color-status-resolved-line: light-dark(#b3dedf, #15616d);
+  /* A count of incidents ready to resolve, as a solid badge. */
+  --color-status-resolved-solid: light-dark(#15616d, #15616d);
 
   /*
    * Analysis — the last thirty days, read two ways. Each view has its own
    * character, so the two never read as one chart, nor as the activity
    * calendar below them:
    *
-   *   trend      denim bars (#669bbc) under a pale frost average (#bee9e8);
-   *              in light the line turns navy, to stay above the bars.
-   *   pressure   silver-aqua share bars, from #e0fbfc: drawn at 70% into
-   *              the dark surface, since the raw colour is almost white and
-   *              would outweigh the text beside it; darkened in light,
-   *              where the raw colour would not show at all.
+   *   trend      pale icy-aqua bars, from #e0fbfc — its own hue, a touch
+   *              stronger and a step down in lightness, so it stays that ice
+   *              rather than white — under a steel-blue average (#457b9d)
+   *   pressure   denim share bars (#669bbc) on a deep blue track
+   *
+   * Both are drawn on an ink panel, as the activity calendar is, so what
+   * each view shows sits on the darkest ground in both themes. The `ink-`
+   * values below are what they are drawn in there, fixed in both themes;
+   * the `ink-region` utility rebinds these roles to them. The workspace
+   * values here are for what stays on the section's own surface — the
+   * chart's key, and each view's header tile — darkened in light, where
+   * the ink values would not show on white.
    *
    * The service family — the Services impacted card's icon — is a quiet
    * sky-steel blue in dark, #1b4965 in light: blue enough to be told from
    * a neutral, and no brighter than the responders' and resolved icons
    * beside it.
    */
-  --color-trend-bar: light-dark(#669bbc, #669bbc);
-  --color-trend-line: light-dark(#1d3557, #bee9e8);
-  --color-pressure-bar: light-dark(#5f7778, #9eb1b6);
+  --color-trend-bar: light-dark(#2f7a82, #d0f1f2);
+  --color-trend-line: light-dark(#1d3557, #457b9d);
+  --color-pressure-bar: light-dark(#41759a, #669bbc);
+  --color-pressure-track: light-dark(#dfeeef, #1b263b);
+  --color-ink-trend-bar: light-dark(#d0f1f2, #d0f1f2);
+  --color-ink-trend-line: light-dark(#457b9d, #457b9d);
+  --color-ink-pressure-bar: light-dark(#669bbc, #669bbc);
+  --color-ink-pressure-track: light-dark(#1b263b, #1b263b);
   --color-service-mark: light-dark(#1b4965, #88b8da);
 
   /*
-   * The operational posture strip (Current operations): the darkest ground
-   * in the workspace, a blue-black under the counts by status and severity.
+   * One analytical view's frame (Recent operational health): a step raised
+   * from the section's surface, holding the view's header and its ink
+   * panel, so the two views are parted by their frames rather than a rule.
    */
-  --color-summary: light-dark(#eef3f7, #0d1b2a);
+  --color-view: light-dark(#f5f7fa, #1f2430);
+
+  /*
+   * The active-incidents table's frame (Current operations): recessed rather
+   * than raised — a blue-black (#0d1b2a) below the section's surface in dark,
+   * so a table of rows reads as a well in it, not a pale block on it.
+   */
+  --color-well: light-dark(#f5f7fa, #0d1b2a);
 
   /*
    * Activity — how much operational history a day holds. A density, never a
@@ -223,7 +246,7 @@
   --color-activity-operational-3: light-dark(#4184bc, #3f89c0);
   --color-activity-operational-4: light-dark(#1b5c94, #63ade0);
   --color-activity-personal-1: light-dark(#c2dada, #283c3d);
-  --color-activity-personal-2: light-dark(#99b0b1, #485d5d);
+  --color-activity-personal-2: light-dark(#99b0b1, #4e5e5f);
   --color-activity-personal-3: light-dark(#617677, #819798);
   --color-activity-personal-4: light-dark(#2e4142, #b9d0d1);
 
@@ -240,7 +263,7 @@
   --color-activity-ink-operational-3: light-dark(#3f89c0, #3f89c0);
   --color-activity-ink-operational-4: light-dark(#63ade0, #63ade0);
   --color-activity-ink-personal-1: light-dark(#283c3d, #283c3d);
-  --color-activity-ink-personal-2: light-dark(#485d5d, #485d5d);
+  --color-activity-ink-personal-2: light-dark(#4e5e5f, #4e5e5f);
   --color-activity-ink-personal-3: light-dark(#819798, #819798);
   --color-activity-ink-personal-4: light-dark(#b9d0d1, #b9d0d1);
 
@@ -261,7 +284,7 @@
 
   /*
    * Ink inset: the chosen day's surface, beside the calendar's ink one
-   * (activity-panes.tsx). A step up from ink, and a deep navy (#1b263b)
+   * (activity-panes.tsx). A step up from ink, and a deep petrol blue (from #003049)
    * rather than the calendar's neutral black, so what you picked out of the
    * calendar reads as raised from it. Kept dark and low in chroma: a
    * surface, never a colour that competes with the ramp.
@@ -272,9 +295,9 @@
    * and its own focus ring. The workspace's own roles are rebound to these
    * for anything drawn inside it — see the `ink-region` utility below.
    */
-  --color-ink-inset: light-dark(#232e42, #1b263b);
-  --color-ink-inset-line: light-dark(#36425b, #2e3a52);
-  --color-ink-inset-hover: light-dark(#2a374e, #222e45);
+  --color-ink-inset: light-dark(#002c45, #03273c);
+  --color-ink-inset-line: light-dark(#20445b, #203e52);
+  --color-ink-inset-hover: light-dark(#0a354f, #0d3046);
   --color-ink-inset-muted: light-dark(#9fb0c3, #9fb0c3);
   /* A link's colour on ink, at 4.5:1. */
   --color-ink-accent-text: light-dark(#9cc2ea, #9cc2ea);
@@ -289,7 +312,7 @@
   --color-ink-signal-critical: light-dark(#f0564b, #f0564b);
   --color-ink-signal-high: light-dark(#f28a3c, #f28a3c);
   --color-ink-signal-caution: light-dark(#e8b04a, #e8b04a);
-  --color-ink-signal-nominal: light-dark(#44a49e, #44a49e);
+  --color-ink-signal-nominal: light-dark(#2a96a2, #2a96a2);
   --color-ink-signal-advisory: light-dark(#4cc0da, #4cc0da);
   --color-ink-signal-inactive: light-dark(#7d8799, #7d8799);
 
@@ -391,7 +414,8 @@
 
 /*
  * An ink region: a patch of the workspace drawn on an ink panel instead of
- * a light one (activity-panes.tsx, tone="navy").
+ * a light one: the chosen day's inset (activity-panes.tsx, tone="navy"),
+ * and the last thirty days' two instruments (analytical-view-header.tsx).
  *
  * Rather than every component inside learning a second set of classes, the
  * region rebinds the semantic roles themselves for its subtree. `text-fg`,
@@ -422,6 +446,12 @@
   --color-signal-nominal: var(--color-ink-signal-nominal);
   --color-signal-advisory: var(--color-ink-signal-advisory);
   --color-signal-inactive: var(--color-ink-signal-inactive);
+  /* The analytical views' marks, and a quiet day's stub, on ink. */
+  --color-line-strong: var(--color-ink-inset-line);
+  --color-trend-bar: var(--color-ink-trend-bar);
+  --color-trend-line: var(--color-ink-trend-line);
+  --color-pressure-bar: var(--color-ink-pressure-bar);
+  --color-pressure-track: var(--color-ink-pressure-track);
 }
 
 /*
