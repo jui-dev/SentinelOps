@@ -163,8 +163,6 @@ each(["accent-rim"], ["thead"], UI);
 // on, and the share bar on its track too.
 each(["trend-bar", "trend-line", "pressure-bar"], ["surface"], UI);
 each(["pressure-bar"], ["line-subtle"], UI);
-// The Services impacted card's icon on its own disc.
-each(["service-mark"], ["service-disc"], UI);
 // The operational posture strip: its words, and the status and severity
 // marks it counts.
 each(["fg", "fg-muted", "fg-subtle"], ["summary"], TEXT);
@@ -363,7 +361,7 @@ const mix = (a: string, share: number, b: string): string => {
 };
 
 /**
- * The metric cards' tints (`tint-family`, `tint-family-disc`). Their grounds
+ * The metric cards' tints (`tint-family`, `tint-family-tile`). Their grounds
  * are mixes no token names, so the parser above never sees them: they are
  * mixed here with the same percentages, in every family a card can take.
  */
@@ -377,12 +375,13 @@ describe.each<Theme>(["light", "dark"])("the metric cards in %s", (theme) => {
     "fg-muted",
     "status-investigating-text",
     "status-resolved-text",
+    "service-mark",
   ];
   const tint = css.match(
     /@utility tint-family \{[^}]*var\(--family\) (\d+)%, var\(--color-surface\)/,
   );
   const disc = css.match(
-    /@utility tint-family-disc \{[^}]*var\(--family\) (\d+)%, transparent/,
+    /@utility tint-family-tile \{[^}]*var\(--family\) (\d+)%, transparent/,
   );
 
   it("mixes as the stylesheet says", () => {
@@ -402,7 +401,7 @@ describe.each<Theme>(["light", "dark"])("the metric cards in %s", (theme) => {
     }
     expect(
       contrast(colour(family, theme), disc_),
-      `the ${family} icon on its disc`,
+      `the ${family} icon on its tile`,
     ).toBeGreaterThanOrEqual(UI);
   });
 });

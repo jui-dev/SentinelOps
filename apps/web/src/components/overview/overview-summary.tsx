@@ -31,12 +31,18 @@ import { SUMMARY_DAYS } from "./use-current-operations";
  *
  *   active incidents   the worst active severity's signal; the nominal
  *                      signal when nothing is active
- *   services impacted  neutral, as service criticality always is
+ *   services impacted  the service blue
  *   responders active  the lifecycle's investigating blue
- *   resolved           the lifecycle's resolved green
+ *   resolved           the lifecycle's resolved teal
+ *
+ * The colour lives in the icon's tile; the cards themselves are neutral, so
+ * the row reads as one calm summary. Only the incidents card, while
+ * anything is active, carries a faint trace of its severity in its frame —
+ * the one card that counts something wrong.
  *
  * A figure of nought takes no colour: there is nothing for it to signal.
- * The one exception is nothing active, which is itself a state — all clear.
+ * The one exception is nothing active, which is itself a state — all clear,
+ * in the icon alone.
  *
  * Whole class strings, so the stylesheet finds every one of them.
  */
@@ -48,6 +54,7 @@ const FAMILIES = {
   nominal: "[--family:var(--color-signal-nominal)]",
   investigating: "[--family:var(--color-status-investigating-text)]",
   resolved: "[--family:var(--color-status-resolved-text)]",
+  service: "[--family:var(--color-service-mark)]",
   neutral: "[--family:var(--color-fg-muted)]",
 } as const;
 
@@ -92,9 +99,16 @@ function SeverityMix({
   );
 }
 
-/** The card's frame: a trace of its family, and room for the icon's disc. */
+/** The card's frame: neutral, with room for the icon's tile. */
 const CARD =
-  "relative flex min-h-[5.75rem] flex-col justify-center gap-0.5 rounded-lg border py-3.5 pr-4 pl-[4.25rem]";
+  "relative flex min-h-[5.75rem] flex-col justify-center gap-0.5 rounded-lg border py-3.5 pr-4 pl-16";
+
+/** The frame of a card that carries no trace of its family. */
+const NEUTRAL_FRAME = "border-line-subtle bg-surface";
+
+/** The icon's tile: a compact square marker in the card's family. */
+const TILE =
+  "tint-family-tile absolute top-1/2 left-4 grid size-9 -translate-y-1/2 place-items-center rounded-md";
 
 /**
  * One figure: its icon, the number, what it counts, and one line of what
@@ -110,6 +124,7 @@ function Figure({
   context,
   description,
   family,
+  trace = false,
   Icon,
 }: {
   label: string;
@@ -119,15 +134,22 @@ function Figure({
   /** What exactly is counted, for screen readers. */
   description: string;
   family: Family;
+  /** A faint trace of the family in the card's own frame. */
+  trace?: boolean;
   Icon: LucideIcon;
 }) {
   return (
-    <div data-family={family} className={cx(CARD, "tint-family", FAMILIES[family])}>
+    <div
+      data-family={family}
+      data-trace={trace || undefined}
+      className={cx(
+        CARD,
+        trace ? "tint-family" : NEUTRAL_FRAME,
+        FAMILIES[family],
+      )}
+    >
       <dt className="text-sm font-medium text-fg">
-        <span
-          aria-hidden="true"
-          className="tint-family-disc absolute top-1/2 left-4 grid size-10 -translate-y-1/2 place-items-center rounded-full"
-        >
+        <span aria-hidden="true" className={TILE}>
           <Icon strokeWidth={2} className="size-[1.125rem]" />
         </span>
         {label}
@@ -173,12 +195,9 @@ export function OverviewSummary({ state }: { state: CurrentOperationsState }) {
         {LOADING.map(({ label, Icon }) => (
           <div
             key={label}
-            className={cx(CARD, "tint-family", FAMILIES.neutral)}
+            className={cx(CARD, NEUTRAL_FRAME, FAMILIES.neutral)}
           >
-            <span
-              aria-hidden="true"
-              className="tint-family-disc absolute top-1/2 left-4 grid size-10 -translate-y-1/2 place-items-center rounded-full"
-            >
+            <span aria-hidden="true" className={TILE}>
               <Icon strokeWidth={2} className="size-[1.125rem]" />
             </span>
             <p className="h-9" />
@@ -203,6 +222,8 @@ export function OverviewSummary({ state }: { state: CurrentOperationsState }) {
         label="Active incidents"
         value={active}
         family={worst ? SEVERITY_FAMILY[worst.value] : "nominal"}
+        // The one card that counts something wrong, and only while it does.
+        trace={active > 0}
         Icon={Siren}
         context={
           active === 0 ? (
@@ -216,7 +237,7 @@ export function OverviewSummary({ state }: { state: CurrentOperationsState }) {
       <Figure
         label="Services impacted"
         value={affectedServices.length}
-        family="neutral"
+        family={affectedServices.length > 0 ? "service" : "neutral"}
         Icon={Layers}
         context={
           criticalServices > 0

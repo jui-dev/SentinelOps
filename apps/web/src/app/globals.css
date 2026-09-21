@@ -180,14 +180,15 @@
    *              would outweigh the text beside it; darkened in light,
    *              where the raw colour would not show at all.
    *
-   * The service family — the Services impacted card's icon on its disc —
-   * is the pressure view's aqua on a deep #1b4965 ground.
+   * The service family — the Services impacted card's icon — is a quiet
+   * sky-steel blue in dark, #1b4965 in light: blue enough to be told from
+   * a neutral, and no brighter than the responders' and resolved icons
+   * beside it.
    */
   --color-trend-bar: light-dark(#669bbc, #669bbc);
   --color-trend-line: light-dark(#1d3557, #bee9e8);
   --color-pressure-bar: light-dark(#5f7778, #9eb1b6);
-  --color-service-mark: light-dark(#1b4965, #e0fbfc);
-  --color-service-disc: light-dark(#d6e7f4, #1b4965);
+  --color-service-mark: light-dark(#1b4965, #88b8da);
 
   /*
    * The operational posture strip (Current operations): the darkest ground
@@ -427,20 +428,24 @@
  * A metric's family, drawn on its card (overview-summary.tsx).
  *
  * The family is one existing token, set on the card as `--family` — a
- * severity signal, a lifecycle colour, or a neutral. The card takes a trace
- * of it as its ground and a little more as its edge; the icon's disc a
- * little more again, with the icon in the family itself. No new colour is
- * introduced here, only how much of one: the percentages are the whole of
- * it, and the contrast test mixes them exactly as the browser does, in
- * OKLab, to hold the card's text to 4.5:1 and its icon to 3:1.
+ * severity signal, a lifecycle colour, the service blue, or a neutral. The
+ * icon's tile takes a little of it, with the icon in the family itself;
+ * that is where a card's colour lives. Only a card counting something
+ * wrong — active incidents — also carries a faint trace of it in its
+ * ground and edge, so the row reads neutral from a distance.
+ *
+ * No new colour is introduced here, only how much of one: the percentages
+ * are the whole of it, and the contrast test mixes them exactly as the
+ * browser does, in OKLab, to hold the card's text to 4.5:1 and its icon to
+ * 3:1.
  */
 @utility tint-family {
-  background-color: color-mix(in oklab, var(--family) 6%, var(--color-surface));
-  border-color: color-mix(in oklab, var(--family) 28%, var(--color-line-subtle));
+  background-color: color-mix(in oklab, var(--family) 3%, var(--color-surface));
+  border-color: color-mix(in oklab, var(--family) 14%, var(--color-line-subtle));
 }
 
-@utility tint-family-disc {
-  background-color: color-mix(in oklab, var(--family) 16%, transparent);
+@utility tint-family-tile {
+  background-color: color-mix(in oklab, var(--family) 12%, transparent);
   color: var(--family);
 }
 

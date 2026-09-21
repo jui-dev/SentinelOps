@@ -1157,11 +1157,11 @@ describe("the operations overview", () => {
       renderOverview();
 
       // A SEV1 is active, so the incidents card is the critical signal's;
-      // services are neutral, as criticality is; responders are the
-      // lifecycle's investigating blue, and resolved its green.
+      // services are the service blue; responders are the lifecycle's
+      // investigating blue, and resolved its teal.
       expect(await families()).toEqual({
         "Active incidents": "critical",
-        "Services impacted": "neutral",
+        "Services impacted": "service",
         "Responders active": "investigating",
         "Resolved incidents": "resolved",
       });
@@ -1172,7 +1172,16 @@ describe("the operations overview", () => {
       expect(card?.className).toContain(
         "[--family:var(--color-signal-critical)]",
       );
-      expect(card?.className).toContain("tint-family");
+      // Only the incidents card carries its family in its frame; the rest
+      // are neutral cards, their colour in the icon's tile alone.
+      expect(card?.getAttribute("data-trace")).toBe("true");
+      expect(card?.className).toMatch(/(?:^|\s)tint-family(?:\s|$)/);
+      const traced = row.querySelectorAll("[data-trace]");
+      expect(traced).toHaveLength(1);
+      for (const other of row.querySelectorAll("[data-family]:not([data-trace])")) {
+        expect(other.className).not.toMatch(/(?:^|\s)tint-family(?:\s|$)/);
+        expect(other.className).toContain("border-line-subtle");
+      }
     });
 
     it("takes the incidents card's colour from the worst severity active", async () => {
@@ -1205,6 +1214,10 @@ describe("the operations overview", () => {
         "Responders active": "neutral",
         "Resolved incidents": "neutral",
       });
+      // All clear is said by the icon alone: no card carries a trace.
+      expect(
+        screen.getByLabelText("Operational summary").querySelectorAll("[data-trace]"),
+      ).toHaveLength(0);
     });
 
     it("marks each card's icon as decoration", async () => {
@@ -1213,10 +1226,10 @@ describe("the operations overview", () => {
 
       const row = await screen.findByLabelText("Operational summary");
 
-      for (const disc of row.querySelectorAll(".tint-family-disc")) {
-        expect(disc.getAttribute("aria-hidden")).toBe("true");
+      for (const tile of row.querySelectorAll(".tint-family-tile")) {
+        expect(tile.getAttribute("aria-hidden")).toBe("true");
       }
-      expect(row.querySelectorAll(".tint-family-disc")).toHaveLength(4);
+      expect(row.querySelectorAll(".tint-family-tile")).toHaveLength(4);
     });
 
     it("says what each figure counts, for a screen reader", async () => {
