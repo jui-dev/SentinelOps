@@ -252,7 +252,7 @@ describe("services", () => {
         (await screen.findAllByRole("button", { name: "New service" }))[0],
       );
 
-      const form = screen.getByRole("region", { name: "New service" });
+      const form = screen.getByRole("dialog", { name: "New service" });
 
       expect(await within(form).findByText("Create a team first")).toBeDefined();
       expect(
@@ -261,7 +261,28 @@ describe("services", () => {
       expect(within(form).queryByLabelText("Name")).toBeNull();
     });
 
-    it("creates a service from name, description, owner, and criticality, then opens it", async () => {
+    it("closes the dialog on Cancel without creating anything", async () => {
+      const user = userEvent.setup();
+      const { requests } = api(MANAGE);
+
+      inOrganization(<ServicesView />);
+
+      await user.click(
+        (await screen.findAllByRole("button", { name: "New service" }))[0],
+      );
+
+      const form = screen.getByRole("dialog", { name: "New service" });
+
+      await user.type(await within(form).findByLabelText("Name"), "Ledger");
+      await user.click(within(form).getByRole("button", { name: "Cancel" }));
+
+      expect(screen.queryByRole("dialog", { name: "New service" })).toBeNull();
+      expect(requests.some((r) => route(r) === `POST ${base}/services`)).toBe(
+        false,
+      );
+    });
+
+    it("creates a service from name, description, owner, and criticality in a dialog, then closes it on the list", async () => {
       const user = userEvent.setup();
       const created = {
         ...paymentApi,
@@ -284,7 +305,7 @@ describe("services", () => {
         (await screen.findAllByRole("button", { name: "New service" }))[0],
       );
 
-      const form = screen.getByRole("region", { name: "New service" });
+      const form = screen.getByRole("dialog", { name: "New service" });
 
       expect(within(form).queryByLabelText(/slug/i)).toBeNull();
 
@@ -303,10 +324,9 @@ describe("services", () => {
       );
 
       await waitFor(() =>
-        expect(navigation.push).toHaveBeenCalledWith(
-          "/orgs/acme-ops/services/storefront",
-        ),
+        expect(screen.queryByRole("dialog", { name: "New service" })).toBeNull(),
       );
+      expect(navigation.push).not.toHaveBeenCalled();
       expect(
         requests.find((r) => route(r) === `POST ${base}/services`)?.body,
       ).toEqual({

@@ -1,10 +1,10 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { X } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
-import type { FormEvent } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import type { FormEvent, KeyboardEvent, MouseEvent } from "react";
 
 import {
   useCan,
@@ -76,9 +76,9 @@ export function CriticalitySelect({
 }
 
 /**
- * Creates a service. The new service is put into the cached list before
- * navigating to it, so its page resolves the slug without waiting for a
- * refetch. The owning team's service count changes, so teams stale too.
+ * Creates a service. The new service is put into the cached list, so the
+ * list behind the dialog shows it without waiting for a refetch. The owning
+ * team's service count changes, so teams stale too.
  */
 const useCreateService = (organizationId: string) => {
   const queryClient = useQueryClient();
@@ -112,9 +112,8 @@ const useCreateService = (organizationId: string) => {
   });
 };
 
-function CreateServiceForm({ onCancel }: { onCancel: () => void }) {
+function CreateServiceForm({ onClose }: { onClose: () => void }) {
   const organization = useOrganization();
-  const router = useRouter();
   const teams = useTeams(organization.id);
   const canManageTeams = useCan(Permission.TEAMS_MANAGE);
   const create = useCreateService(organization.id);
@@ -132,10 +131,7 @@ function CreateServiceForm({ onCancel }: { onCancel: () => void }) {
         ownerTeamId: String(data.get("ownerTeamId") ?? ""),
         criticality,
       },
-      {
-        onSuccess: (created) =>
-          router.push(serviceHref(organization.slug, created.slug)),
-      },
+      { onSuccess: onClose },
     );
   };
 
@@ -147,14 +143,11 @@ function CreateServiceForm({ onCancel }: { onCancel: () => void }) {
     create.error.code === ApiErrorCode.TEAM_NOT_FOUND;
   const fields = fieldErrorsOf(create.error);
 
-  let body;
+  if (teams.isError) return <ErrorAlert error={teams.error} />;
+  if (!teams.data) return <Spinner label="Loading teams…" />;
 
-  if (teams.isError) {
-    body = <ErrorAlert error={teams.error} />;
-  } else if (!teams.data) {
-    body = <Spinner label="Loading teams…" />;
-  } else if (teams.data.length === 0) {
-    body = (
+  if (teams.data.length === 0) {
+    return (
       <EmptyState
         title="Create a team first"
         action={
@@ -167,7 +160,7 @@ function CreateServiceForm({ onCancel }: { onCancel: () => void }) {
                 Go to Teams
               </Link>
             )}
-            <Button variant="secondary" size="sm" onClick={onCancel}>
+            <Button variant="secondary" size="sm" onClick={onClose}>
               Cancel
             </Button>
           </div>
@@ -179,78 +172,143 @@ function CreateServiceForm({ onCancel }: { onCancel: () => void }) {
         </p>
       </EmptyState>
     );
-  } else {
-    body = (
-      <form
-        onSubmit={onSubmit}
-        noValidate
-        className="flex max-w-xl flex-col gap-4"
-      >
-        {create.isError &&
-          !nameTaken &&
-          !ownerGone &&
-          Object.keys(fields).length === 0 && (
-            <ErrorAlert error={create.error} />
-          )}
-        <Field
-          label="Name"
-          name="name"
-          required
-          maxLength={100}
-          autoComplete="off"
-          error={nameTaken ? SERVICE_NAME_TAKEN_MESSAGE : fields.name}
-        />
-        <Field
-          label="Description"
-          name="description"
-          optional
-          maxLength={500}
-          autoComplete="off"
-          hint="What the service does."
-          error={fields.description}
-        />
-        <Select
-          label="Owner team"
-          name="ownerTeamId"
-          hint="The team responsible for this service."
-          error={ownerGone ? OWNER_TEAM_GONE_MESSAGE : fields.ownerTeamId}
-        >
-          {teams.data.map((team) => (
-            <option key={team.id} value={team.id}>
-              {team.name}
-            </option>
-          ))}
-        </Select>
-        <CriticalitySelect
-          value={criticality}
-          onChange={setCriticality}
-          error={fields.criticality}
-        />
-        <div className="flex gap-2">
-          <Button type="submit" disabled={create.isPending}>
-            {create.isPending ? "Creating…" : "Create service"}
-          </Button>
-          <Button variant="secondary" onClick={onCancel}>
-            Cancel
-          </Button>
-        </div>
-      </form>
-    );
   }
 
   return (
-    <Section
-      id="new-service"
-      title="New service"
-      description="A system this organization runs, owned by one of its teams."
-    >
-      {body}
-    </Section>
+    <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
+      {create.isError &&
+        !nameTaken &&
+        !ownerGone &&
+        Object.keys(fields).length === 0 && (
+          <ErrorAlert error={create.error} />
+        )}
+      <Field
+        label="Name"
+        name="name"
+        required
+        maxLength={100}
+        autoComplete="off"
+        error={nameTaken ? SERVICE_NAME_TAKEN_MESSAGE : fields.name}
+      />
+      <Field
+        label="Description"
+        name="description"
+        optional
+        maxLength={500}
+        autoComplete="off"
+        hint="What the service does."
+        error={fields.description}
+      />
+      <Select
+        label="Owner team"
+        name="ownerTeamId"
+        hint="The team responsible for this service."
+        error={ownerGone ? OWNER_TEAM_GONE_MESSAGE : fields.ownerTeamId}
+      >
+        {teams.data.map((team) => (
+          <option key={team.id} value={team.id}>
+            {team.name}
+          </option>
+        ))}
+      </Select>
+      <CriticalitySelect
+        value={criticality}
+        onChange={setCriticality}
+        error={fields.criticality}
+      />
+      <div className="flex flex-wrap items-center justify-end gap-2 border-t border-line-subtle pt-4">
+        <Button variant="secondary" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button type="submit" disabled={create.isPending}>
+          {create.isPending ? "Creating…" : "Create service"}
+        </Button>
+      </div>
+    </form>
   );
 }
 
 /**
- * `onCreate` is absent while the create form is already open; `canManage`
+ * Creating a service, in a dialog over the list. Creating closes it, and the
+ * new service is already in the list beneath.
+ *
+ * A native <dialog> opened with showModal(), as the manage-incident drawer
+ * and the date-range dialog are: the page is inert behind it and focus stays
+ * inside. Escape, a click on the backdrop, Close, and Cancel dismiss it, and
+ * focus returns to what opened it. Mounted only while open, so each opening
+ * starts from an empty form.
+ */
+function CreateServiceDialog({ onClose }: { onClose: () => void }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  const headingId = useId();
+  const descriptionId = useId();
+
+  useEffect(() => {
+    const dialog = ref.current;
+    const opener = document.activeElement;
+
+    if (!dialog) return;
+    if (typeof dialog.showModal === "function") dialog.showModal();
+    else dialog.setAttribute("open", "");
+
+    return () => {
+      if (dialog.open && typeof dialog.close === "function") dialog.close();
+      if (opener instanceof HTMLElement) opener.focus();
+    };
+  }, []);
+
+  const onKeyDown = (event: KeyboardEvent<HTMLDialogElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onClose();
+    }
+  };
+
+  // A click on the backdrop lands on the dialog element itself.
+  const onClick = (event: MouseEvent<HTMLDialogElement>) => {
+    if (event.target === event.currentTarget) onClose();
+  };
+
+  return (
+    <dialog
+      ref={ref}
+      aria-labelledby={headingId}
+      aria-describedby={descriptionId}
+      onKeyDown={onKeyDown}
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+      onClick={onClick}
+      className="m-auto max-h-[calc(100dvh-2rem)] w-[min(32rem,calc(100vw-2rem))] max-w-none overflow-y-auto rounded-lg border border-line bg-surface p-0 text-fg shadow-overlay backdrop:bg-scrim/40"
+    >
+      <div className="flex items-start justify-between gap-4 border-b border-line-subtle px-5 py-4">
+        <div className="min-w-0">
+          <h2 id={headingId} className="text-[0.9375rem] font-semibold text-fg">
+            New service
+          </h2>
+          <p id={descriptionId} className="mt-0.5 text-sm text-fg-muted">
+            A system this organization runs, owned by one of its teams.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="grid size-8 shrink-0 place-items-center rounded-md text-fg-subtle hover:bg-hover hover:text-fg"
+        >
+          <X aria-hidden="true" className="size-4" />
+          <span className="sr-only">Close</span>
+        </button>
+      </div>
+      <div className="px-5 py-5">
+        <CreateServiceForm onClose={onClose} />
+      </div>
+    </dialog>
+  );
+}
+
+/**
+ * `onCreate` is absent for those who may not manage services; `canManage`
  * says whether to tell the reader someone else must add one.
  */
 function ServiceList({
@@ -372,15 +430,16 @@ function ServiceTable({
 
 /**
  * The Services page: every service, its owner and criticality, and — for
- * those the API says may manage services — a form to create one, opened from
- * the header. Inline rather than a `/services/new` route, which would shadow a
- * service whose derived slug is `new`.
+ * those the API says may manage services — a dialog to create one, opened
+ * from the header. A dialog rather than a `/services/new` route, which would
+ * shadow a service whose derived slug is `new`.
  */
 export function ServicesView() {
   const organization = useOrganization();
   const services = useServices(organization.id);
   const canManage = useCan(Permission.SERVICES_MANAGE);
   const [creating, setCreating] = useState(false);
+  const openCreate = () => setCreating(true);
 
   return (
     <>
@@ -390,23 +449,18 @@ export function ServicesView() {
         meta={services.data?.length}
         description="The systems this organization runs, who owns each, and how much depends on it."
         actions={
-          canManage &&
-          !creating && (
-            <Button onClick={() => setCreating(true)}>New service</Button>
-          )
+          canManage && <Button onClick={openCreate}>New service</Button>
         }
       />
       <PageBody width="list">
-        {canManage && creating && (
-          <CreateServiceForm onCancel={() => setCreating(false)} />
-        )}
         <ServiceList
           canManage={canManage}
-          onCreate={
-            canManage && !creating ? () => setCreating(true) : undefined
-          }
+          onCreate={canManage ? openCreate : undefined}
         />
       </PageBody>
+      {canManage && creating && (
+        <CreateServiceDialog onClose={() => setCreating(false)} />
+      )}
     </>
   );
 }
