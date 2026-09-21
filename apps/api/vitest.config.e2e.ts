@@ -7,5 +7,9 @@ export default defineConfig({
     globals: true,
     root: './',
     include: ['**/*.e2e-spec.ts'],
+    // Each worker loads the Nest application and the generated Prisma client.
+    // Uncapped, one per core, they exhaust memory on a modest machine, and the
+    // paging that follows times out hooks and kills workers at random.
+    maxWorkers: 3,
   },
 });

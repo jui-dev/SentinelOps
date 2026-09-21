@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { AppModule } from './../src/app.module.js';
+import { PrismaService } from './../src/database/prisma.service.js';
 
 describe('AppController (e2e)', () => {
   let app: INestApplication;
@@ -9,7 +10,12 @@ describe('AppController (e2e)', () => {
   beforeEach(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      // Liveness reads no database. Stubbed so the test never connects to the
+      // development database, and its result never depends on Docker's state.
+      .overrideProvider(PrismaService)
+      .useValue({})
+      .compile();
 
     app = moduleFixture.createNestApplication();
     // Mirrors the global prefix applied in main.ts.

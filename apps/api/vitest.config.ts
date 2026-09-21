@@ -9,5 +9,9 @@ export default defineConfig({
     globals: true,
     root: './',
     include: ['**/*.spec.ts'],
+    // Workers load Nest modules and the generated Prisma client. Uncapped, one
+    // per core, they exhaust memory on a modest machine, and the paging that
+    // follows times out tests and kills workers at random.
+    maxWorkers: 3,
   },
 });
