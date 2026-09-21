@@ -214,12 +214,13 @@ export function SeverityMark({
 /**
  * The lifecycle vocabulary: one outline icon and one colour per status.
  *
- * Outline icons, where severity marks are filled solids, and the cool band
- * — violet, blue, green, in the order an incident moves — where severity
- * owns the warm one; so a status is never read as a severity, by shape or
- * by hue. The same icon and colour wherever a status is drawn, and wherever
- * the same state is: a responder still investigating is this blue, a
- * response complete this green.
+ * Outline icons in a pill, where severity marks are filled solids beside a
+ * code — crimson, blue, teal, in the order an incident moves — so a status
+ * is never read as a severity, by shape first: Declared and SEV1 are both
+ * red, and one is a hollow circle in a pill, the other a solid glyph. The
+ * same icon and colour wherever a status is drawn, and wherever the same
+ * state is: a responder still investigating is this blue, a response
+ * complete this teal.
  *
  * A retired status has neither: its word carries it, in neutral ink.
  */

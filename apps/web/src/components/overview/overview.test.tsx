@@ -906,7 +906,7 @@ describe("the operations overview", () => {
 
       const [declines, , , , resets] = await rows();
 
-      // Investigating blue, declared violet — the pill beside it, as a bar.
+      // Investigating blue, declared crimson — the pill beside it, as a bar.
       expect(barOf(declines)!.fill.className).toContain(
         "bg-status-investigating-text",
       );

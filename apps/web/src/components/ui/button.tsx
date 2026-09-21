@@ -9,7 +9,7 @@ const base =
   "inline-flex shrink-0 select-none items-center justify-center gap-1.5 whitespace-nowrap rounded-md font-medium transition-colors duration-(--duration-fast) ease-(--ease-standard) disabled:cursor-not-allowed";
 
 const variants: Record<ButtonVariant, string> = {
-  // Ink-indigo fill; a muted 1px edge carries its boundary on the dark
+  // Navy fill; a muted 1px edge carries its boundary on the dark
   // workspace (and shows in forced-colours mode, where the fill is
   // removed). A faint top light gives it body; pressed, it sinks.
   primary:

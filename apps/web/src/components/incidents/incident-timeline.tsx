@@ -146,8 +146,8 @@ const ACTIONS: Partial<Record<IncidentActivityResponse["type"], string>> = {
 /**
  * The rail's marker for a recorded event: an icon per kind, so a start, a
  * completion, and a lifecycle change are told apart at a glance. Colour only
- * where it means what it means elsewhere — the lifecycle's: violet for the
- * declaration, blue for a response under way, green for a response complete
+ * where it means what it means elsewhere — the lifecycle's: crimson for the
+ * declaration, blue for a response under way, teal for a response complete
  * and for the resolution.
  */
 const eventMarker = (

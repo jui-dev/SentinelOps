@@ -29,8 +29,8 @@ import { startOfUtcDay } from "@/lib/period/period";
  * Two channels carry intensity, never colour alone: a quiet day is a small
  * dot and a busy one a filled square, growing step by step, and each day's
  * accessible name says its total in words. The ramps are the `activity`
- * token family (globals.css) — azure for an organization, violet for a
- * person — and neither is a signal colour: this is how much happened, never
+ * token family (globals.css) — blue to cyan for an organization, ice for
+ * a person — and neither is a signal colour: this is how much happened, never
  * how bad it was.
  */
 
@@ -48,7 +48,7 @@ export type ActivityVariant = "operational" | "personal";
  */
 /**
  * The materials the calendar itself is drawn on. The panes know a third —
- * the navy one a chosen day is written on — but the grid is never on it:
+ * the navy inset a chosen day is written on — but the grid is never on it:
  * the ground is one surface, and what is picked out of it is the other.
  */
 type CalendarTone = Extract<ActivityTone, "surface" | "ink">;

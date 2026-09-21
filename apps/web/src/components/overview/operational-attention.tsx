@@ -46,8 +46,8 @@ import { OverviewPanel } from "./overview-panel";
  *            plain surface
  *   empty    one quiet line, no frame
  *
- * The glyphs are the lifecycle's own — a green check for response work
- * complete, a violet open circle for not started, the blue dot for
+ * The glyphs are the lifecycle's own — a teal check for response work
+ * complete, a crimson open circle for not started, the blue dot for
  * investigating — so a state reads the same wherever it is drawn. The
  * accent is left to what asks for a decision: the frame and the cue.
  */

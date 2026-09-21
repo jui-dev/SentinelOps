@@ -90,12 +90,12 @@ for (const tone of ["danger", "warning", "success", "info"]) {
 // The situation strip.
 each(["ink-fg", "ink-muted"], ["ink", "ink-raised", "ink-hover"], TEXT);
 each(["ink-accent"], ["ink", "ink-raised"], UI);
-// The chosen day's navy panel (activity-panes.tsx, tone="navy"), and the
+// The chosen day's inset (activity-panes.tsx, tone="navy"), and the
 // hovered row inside it. Everything drawn there reads through the roles the
 // `ink-region` utility rebinds, so what is checked is what it binds them to.
-const NAVY = ["ink-navy", "ink-navy-hover"];
-each(["ink-fg", "ink-navy-muted", "ink-accent-text"], NAVY, TEXT);
-each(["ink-focus"], NAVY, UI);
+const INSET = ["ink-inset", "ink-inset-hover"];
+each(["ink-fg", "ink-inset-muted", "ink-accent-text"], INSET, TEXT);
+each(["ink-focus"], INSET, UI);
 // Severity on ink: the marks must still read as marks there.
 each(
   [
@@ -106,7 +106,7 @@ each(
     "ink-signal-advisory",
     "ink-signal-inactive",
   ],
-  NAVY,
+  INSET,
   UI,
 );
 // Control boundaries, focus, and state marks.
@@ -158,6 +158,28 @@ each(["fg", "fg-muted", "accent-text"], ["accent-subtle"], TEXT);
 each(["accent-mark"], ["surface"], UI);
 each(["accent-rim"], ["thead"], UI);
 
+// The last thirty days' two views (incident-trend.tsx,
+// services-under-pressure.tsx): each mark reads on the surface it is drawn
+// on, and the share bar on its track too.
+each(["trend-bar", "trend-line", "pressure-bar"], ["surface"], UI);
+each(["pressure-bar"], ["line-subtle"], UI);
+// The Services impacted card's icon on its own disc.
+each(["service-mark"], ["service-disc"], UI);
+// The operational posture strip: its words, and the status and severity
+// marks it counts.
+each(["fg", "fg-muted", "fg-subtle"], ["summary"], TEXT);
+each(
+  [
+    "signal-critical",
+    "signal-high",
+    "signal-caution",
+    "signal-advisory",
+    ...LIFECYCLE.map((state) => `status-${state}-text`),
+  ],
+  ["summary"],
+  UI,
+);
+
 // Criticality (criticality-mark.tsx): neutrals only. The solid Critical
 // chip turns the strongest ink into the ground; the others are text on the
 // surface a row sits on, already held above.
@@ -208,15 +230,26 @@ const apart = (a: string, b: string) => {
 /**
  * How far apart two vocabularies' colours must look: several times the
  * smallest difference an eye notices (about 0.02), so a lifecycle pill is
- * never mistaken for a link, a severity, or a day of activity.
+ * never mistaken for a link, a severity, or a feedback tone — the things
+ * it shares a row with.
  */
 const DISTINCT = 0.08;
+
+/**
+ * The looser distance a lifecycle colour keeps from the analytical and
+ * activity colours. Those are never drawn beside a pill, nor in its form —
+ * a bar, a line, a square of a calendar — so they need only be plainly
+ * different (about two and a half times the least noticeable difference),
+ * not a vocabulary apart. The palette's blues and aquas sit too close
+ * together for the stricter distance to hold across all of them at once.
+ */
+const APART = 0.05;
 
 describe("semantic vocabularies", () => {
   const LIFECYCLE_TEXT = ["declared", "investigating", "resolved"].map(
     (state) => `status-${state}-text`,
   );
-  /** Every other vocabulary's colour a lifecycle colour could be taken for. */
+  /** Every vocabulary's colour a lifecycle pill shares a row with. */
   const OTHERS = [
     "accent-text",
     "accent-mark",
@@ -224,13 +257,23 @@ describe("semantic vocabularies", () => {
     "info-text",
     "warning-text",
     "danger-text",
+    // Resolved and generic success are different ideas.
+    "success-text",
     "signal-critical",
     "signal-high",
     "signal-caution",
     "signal-advisory",
+  ];
+  /** The analytical and activity colours, never drawn beside a pill. */
+  const DRAWN = [
+    "trend-bar",
+    "trend-line",
+    "pressure-bar",
     ...[1, 2, 3, 4].flatMap((level) => [
       `activity-operational-${level}`,
       `activity-personal-${level}`,
+      `activity-ink-operational-${level}`,
+      `activity-ink-personal-${level}`,
     ]),
   ];
 
@@ -241,6 +284,15 @@ describe("semantic vocabularies", () => {
           apart(colour(state, theme), colour(other, theme)),
           `${state} against ${other}`,
         ).toBeGreaterThanOrEqual(DISTINCT);
+      }
+    });
+
+    it.each(LIFECYCLE_TEXT)("keeps %s clear of the charts and the calendar", (state) => {
+      for (const other of DRAWN) {
+        expect(
+          apart(colour(state, theme), colour(other, theme)),
+          `${state} against ${other}`,
+        ).toBeGreaterThanOrEqual(APART);
       }
     });
 
@@ -256,9 +308,8 @@ describe("semantic vocabularies", () => {
     });
 
     // The one deliberate sharing: resolved and the nominal signal both say
-    // "done, nothing wrong", so they are the same green — one hue, drawn
-    // darker as text and brighter as a mark.
-    it("shares its green's hue with the nominal signal on purpose", () => {
+    // "done, nothing wrong", so they are the same teal.
+    it("shares its teal's hue with the nominal signal on purpose", () => {
       const hue = (name: string) => {
         const [, a, b] = oklab(colour(name, theme));
 
@@ -379,7 +430,7 @@ describe("design tokens", () => {
 
   /**
    * The two ink panels sit side by side inside one section panel, and the
-   * navy one is the raised of the two. None of these is a text or a mark
+   * chosen day's inset is the raised of the two. None of these is a text or a mark
    * pair, so none owes 3:1 — what they owe is being told apart, which the
    * system elsewhere leaves to a border alone.
    */
@@ -387,13 +438,13 @@ describe("design tokens", () => {
     const step = (a: string, b: string) =>
       contrast(colour(a, theme), colour(b, theme));
 
-    it("raises navy off the calendar's ink", () => {
-      expect(step("ink-navy", "ink")).toBeGreaterThanOrEqual(1.2);
+    it("raises the inset off the calendar's ink", () => {
+      expect(step("ink-inset", "ink")).toBeGreaterThanOrEqual(1.2);
     });
 
-    it("bounds and hovers navy with lines of its own", () => {
-      expect(step("ink-navy-line", "ink-navy")).toBeGreaterThanOrEqual(1.25);
-      expect(step("ink-navy-hover", "ink-navy")).toBeGreaterThanOrEqual(1.09);
+    it("bounds and hovers the inset with lines of its own", () => {
+      expect(step("ink-inset-line", "ink-inset")).toBeGreaterThanOrEqual(1.25);
+      expect(step("ink-inset-hover", "ink-inset")).toBeGreaterThanOrEqual(1.09);
     });
   });
 

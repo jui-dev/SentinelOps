@@ -42,7 +42,7 @@ const TONES: Record<ActivityTone, string> = {
   ink: "border-ink-line bg-ink",
   // Raised from it, and bluer, for what a chosen day says in words. The
   // rebind rides along, so everything inside reads on it.
-  navy: "ink-region border-ink-navy-line bg-ink-navy",
+  navy: "ink-region border-ink-inset-line bg-ink-inset",
 };
 
 /**
