@@ -361,6 +361,94 @@ export interface OperationalActivityResponse {
 }
 
 /**
+ * One day of incident occurrence: how many incidents were declared on it.
+ *
+ * `complete` is false for a day not yet over — today — and any after it;
+ * such a day is counted but never incident-free and has no average.
+ * `tracked` is false before the organization had any history. Neither kind
+ * is a quiet day: there is nothing yet to be quiet about.
+ *
+ * `rollingAverage` is the mean of the day and the six before it, for a
+ * complete day whose seven are all tracked, and null otherwise. To two
+ * decimal places.
+ */
+export interface IncidentOccurrenceDayResponse {
+  /** The UTC calendar day, `YYYY-MM-DD`. */
+  date: string;
+  declared: number;
+  complete: boolean;
+  tracked: boolean;
+  rollingAverage: number | null;
+}
+
+/**
+ * A service incidents were declared against in the period: identity, how
+ * many, and what share of the period's incidents that is. Every incident
+ * has exactly one service, fixed at declaration, so the shares of all the
+ * period's services sum to 1. An archived service is here like any other:
+ * its incidents are history.
+ */
+export interface ServiceOccurrenceResponse {
+  id: string;
+  name: string;
+  slug: string;
+  criticality: ServiceCriticality;
+  archivedAt: string | null;
+  declared: number;
+  /** Of the period's incidents, 0 to 1. */
+  share: number;
+}
+
+/**
+ * `GET .../incidents/occurrence`: how often incidents were declared over a
+ * period of whole UTC days, `from` to `to`, both included, and against
+ * which services — compared with the same number of days before it.
+ *
+ * Occurrence only: an incident counts once, on the UTC day it was
+ * declared, whatever became of it. See incidents.occurrence.ts for every
+ * rule this follows.
+ *
+ * Counting stops at `asOf` — now, or the period's end if that came first.
+ * `previous` covers the same elapsed time immediately before, so a day in
+ * progress never makes the present look quieter than the past.
+ *
+ * `trackedFrom` is the first UTC day of the organization's history, null
+ * when there is none. `incidentFreeDays` counts complete, tracked days with
+ * no declaration, of `completeDays`.
+ *
+ * `previous.changePercent` is the whole-number change from the previous
+ * period, and null when it cannot honestly be given: the previous period
+ * was not wholly tracked, or held fewer than `minimumSample` incidents —
+ * none, most often. The counts are always there to say it in words.
+ *
+ * `services.top` names the busiest few — ties by name — and
+ * `services.others` sums the rest, so the named and the others together are
+ * the whole period.
+ */
+export interface IncidentOccurrenceResponse {
+  from: string;
+  to: string;
+  asOf: string;
+  trackedFrom: string | null;
+  declared: number;
+  incidentFreeDays: number;
+  completeDays: number;
+  days: IncidentOccurrenceDayResponse[];
+  previous: {
+    from: string;
+    to: string;
+    declared: number;
+    comparable: boolean;
+    minimumSample: number;
+    changePercent: number | null;
+  };
+  services: {
+    top: ServiceOccurrenceResponse[];
+    others: { services: number; declared: number };
+  };
+}
+
+/**
  * Which of the three acts of responding a member's entry is. See
  * member-activity.ts for what is deliberately not one.
  */
