@@ -436,7 +436,7 @@ describe("incidents", () => {
         `GET ${base}/incidents?state=${state}&severity=SEV2&serviceId=${paymentApi.id}&teamId=${payments.id}&q=checkout`;
 
       it("sends the URL's filters to both lists, the service and team by id, and nothing unfiltered first", async () => {
-        navigation.search = "q=checkout&severity=SEV2&service=payment-api&team=payments";
+        navigation.search = `q=checkout&severity=SEV2&service=payment-api&team=${payments.id}`;
         const { requests } = api(READ_ONLY, {
           handler: (request) =>
             route(request) === filtered("active")
@@ -452,7 +452,7 @@ describe("incidents", () => {
         expect(await screen.findByText("No resolved incidents match")).toBeDefined();
         expect(count(requests, filtered("active"))).toBe(1);
         expect(count(requests, filtered("resolved"))).toBe(1);
-        // Waited for the slugs, rather than showing everything for a moment.
+        // Waited for the lists, rather than showing everything for a moment.
         expect(count(requests, `GET ${base}/incidents?state=active`)).toBe(0);
 
         const search = screen.getByRole("search", { name: "Filter incidents" });
@@ -461,7 +461,7 @@ describe("incidents", () => {
         expect((within(search).getByLabelText("Severity") as HTMLSelectElement).value).toBe("SEV2");
         expect((within(search).getByLabelText("Service") as HTMLSelectElement).value).toBe("payment-api");
         expect((within(search).getByLabelText("Responsible team") as HTMLSelectElement).value).toBe(
-          "payments",
+          payments.id,
         );
       });
 
@@ -514,7 +514,7 @@ describe("incidents", () => {
       });
 
       it("takes a filter that can never apply out of the URL, keeping the rest", async () => {
-        navigation.search = "q=checkout&severity=SEV9&service=no-such-service&team=platform";
+        navigation.search = `q=checkout&severity=SEV9&service=no-such-service&team=${platform.id}`;
         api(READ_ONLY, {
           handler: (request) =>
             route(request).startsWith(`GET ${base}/incidents?state=`)
@@ -526,7 +526,7 @@ describe("incidents", () => {
 
         await waitFor(() =>
           expect(navigation.replace).toHaveBeenCalledWith(
-            "/orgs/acme-ops/incidents?q=checkout&team=platform",
+            `/orgs/acme-ops/incidents?q=checkout&team=${platform.id}`,
             { scroll: false },
           ),
         );
@@ -680,7 +680,7 @@ describe("incidents", () => {
       ).toBe("/orgs/acme-ops/services/payment-api");
       expect(
         screen.getByRole("link", { name: "Payments" }).getAttribute("href"),
-      ).toBe("/orgs/acme-ops/teams/payments");
+      ).toBe(`/orgs/acme-ops/teams/${payments.id}`);
       expect(screen.getByText("by Ada Lovelace")).toBeDefined();
       // Read-only: nothing to change.
       expect(screen.queryByRole("button", { name: "Resolve incident" })).toBeNull();

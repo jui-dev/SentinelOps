@@ -201,7 +201,7 @@ function Teams({
               className="flex min-h-11 items-center justify-between gap-3 px-3 py-2"
             >
               <Link
-                href={teamHref(organization.slug, team.slug)}
+                href={teamHref(organization.slug, team.id)}
                 className="truncate text-sm font-medium text-fg hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
               >
                 {team.name}

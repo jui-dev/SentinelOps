@@ -24,7 +24,7 @@ import { fieldErrorsOf, isApiError } from "@/lib/api/errors";
 import { queryKeys } from "@/lib/api/query-keys";
 
 import { teamHref, teamsHref, useTeam } from "./team-scope";
-import { NAME_TAKEN_MESSAGE } from "./teams-view";
+import { NAME_TAKEN_MESSAGE } from "./new-team-view";
 
 const ownsServicesError = (error: unknown) =>
   isApiError(error, 409) && error.code === ApiErrorCode.TEAM_OWNS_SERVICES;
@@ -194,7 +194,7 @@ function DeleteTeam() {
             It owns {owned}. Move {team.serviceCount === 1 ? "it" : "them"} to
             another team before deleting this one.{" "}
             <Link
-              href={teamHref(organization.slug, team.slug)}
+              href={teamHref(organization.slug, team.id)}
               className={linkClasses}
             >
               See its services

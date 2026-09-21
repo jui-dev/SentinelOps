@@ -187,8 +187,8 @@ describe("a member's page", () => {
     const links = await within(teams).findAllByRole("link");
 
     expect(links.map((link) => [link.textContent, link.getAttribute("href")])).toEqual([
-      ["Payments", "/orgs/acme-ops/teams/payments"],
-      ["Platform", "/orgs/acme-ops/teams/platform"],
+      ["Payments", `/orgs/acme-ops/teams/${PAYMENTS.id}`],
+      ["Platform", `/orgs/acme-ops/teams/${PLATFORM.id}`],
     ]);
   });
 

@@ -17,10 +17,11 @@ import { SEVERITY_LEVELS } from "./severity";
 
 /**
  * The Incidents page's filters, held in its URL so a filtered list can be
- * linked to, shared, and returned to: `q`, `severity`, and the service and
- * team by slug — `?service=payment-api&team=payments` — which is what a
- * reader sees in the address. The API takes ids, so a slug is turned into
- * one from the organization's services and teams.
+ * linked to, shared, and returned to: `q`, `severity`, the service by slug,
+ * and the team by id — `?service=payment-api&team=0199…` — as a team's own
+ * page is addressed. The API takes ids, so a service slug is turned into one
+ * from the organization's services, and a team id is checked against its
+ * teams.
  */
 const PARAMS = ["q", "severity", "service", "team"] as const;
 
@@ -30,10 +31,10 @@ const isSeverity = (value: string): value is IncidentSeverity =>
 /**
  * The filters the URL asks for, as the API takes them.
  *
- * `pending` while a service or team named by slug cannot be looked up yet:
+ * `pending` while a service or team named in the URL cannot be looked up yet:
  * the lists wait rather than show everything for a moment. `invalid` names
- * the parameters that can never apply — a severity that is not one, a slug
- * this organization has no service or team for — which the page takes out
+ * the parameters that can never apply — a severity that is not one, a
+ * service or team this organization does not have — which the page takes out
  * of its URL, as it does a period the API would refuse.
  */
 export const useIncidentFilters = () => {
@@ -45,19 +46,19 @@ export const useIncidentFilters = () => {
   const q = searchParams.get("q")?.trim() || undefined;
   const severity = searchParams.get("severity") ?? undefined;
   const serviceSlug = searchParams.get("service") ?? undefined;
-  const teamSlug = searchParams.get("team") ?? undefined;
+  const teamId = searchParams.get("team") ?? undefined;
 
   const service = serviceSlug
     ? services.data?.find((each) => each.slug === serviceSlug)
     : undefined;
-  const team = teamSlug
-    ? teams.data?.find((each) => each.slug === teamSlug)
+  const team = teamId
+    ? teams.data?.find((each) => each.id === teamId)
     : undefined;
 
   const invalid = [
     ...(severity !== undefined && !isSeverity(severity) ? ["severity"] : []),
     ...(serviceSlug && services.data && !service ? ["service"] : []),
-    ...(teamSlug && teams.data && !team ? ["team"] : []),
+    ...(teamId && teams.data && !team ? ["team"] : []),
   ];
 
   const filters: IncidentFilters = {
@@ -71,7 +72,7 @@ export const useIncidentFilters = () => {
     filters,
     active: Object.keys(filters).length > 0,
     pending:
-      (!!serviceSlug && !services.data) || (!!teamSlug && !teams.data),
+      (!!serviceSlug && !services.data) || (!!teamId && !teams.data),
     invalid,
     error: services.error ?? teams.error,
   };
@@ -199,7 +200,7 @@ export function IncidentFilterBar({
         >
           <option value="">Any team</option>
           {teams.data?.map((team) => (
-            <option key={team.id} value={team.slug}>
+            <option key={team.id} value={team.id}>
               {team.name}
             </option>
           ))}

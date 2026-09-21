@@ -328,7 +328,7 @@ export function TeamDetail() {
         actions={
           canManage && (
             <Link
-              href={`${teamHref(organization.slug, team.slug)}/settings`}
+              href={`${teamHref(organization.slug, team.id)}/settings`}
               className={buttonClasses({ variant: "secondary" })}
             >
               Settings
@@ -341,7 +341,7 @@ export function TeamDetail() {
         {canReadServices && <OwnedServices />}
         {canReadIncidents && (
           <RelatedIncidents
-            scope={{ teamId: team.id, param: { team: team.slug } }}
+            scope={{ teamId: team.id, param: { team: team.id } }}
             description="The incidents this team is responsible for, whichever service they affect."
           />
         )}

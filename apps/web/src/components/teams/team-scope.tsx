@@ -20,8 +20,10 @@ import { queryKeys } from "@/lib/api/query-keys";
 export const teamsHref = (orgSlug: string) =>
   `${organizationPath(orgSlug)}/teams`;
 
-export const teamHref = (orgSlug: string, teamSlug: string) =>
-  `${teamsHref(orgSlug)}/${encodeURIComponent(teamSlug)}`;
+export const newTeamHref = (orgSlug: string) => `${teamsHref(orgSlug)}/new`;
+
+export const teamHref = (orgSlug: string, teamId: string) =>
+  `${teamsHref(orgSlug)}/${encodeURIComponent(teamId)}`;
 
 /** The organization's teams. Team pages read their team from this too. */
 export const useTeams = (organizationId: string) =>
@@ -41,12 +43,11 @@ export const useTeamMembers = (organizationId: string, teamId: string) =>
   });
 
 /**
- * The team a page under `/teams/[teamSlug]` works on.
+ * The team a page under `/teams/[teamId]` works on.
  *
- * URLs carry the slug; the API is addressed by id. The slug is resolved
- * against the organization's team list — the same way `OrganizationScope`
- * resolves an organization slug — which is stable because a team's slug never
- * changes.
+ * URLs carry the team's id, as the API does, so an address never depends on
+ * the team's name. The id is resolved against the organization's team list,
+ * which the team pages share.
  */
 const TeamContext = createContext<TeamResponse | null>(null);
 
@@ -84,9 +85,9 @@ export function TeamNotFound({ orgSlug }: { orgSlug: string }) {
 }
 
 export function TeamScope({ children }: { children: ReactNode }) {
-  const { orgSlug, teamSlug } = useParams<{
+  const { orgSlug, teamId } = useParams<{
     orgSlug: string;
-    teamSlug: string;
+    teamId: string;
   }>();
   const teams = useTeams(useOrganizationId());
 
@@ -100,7 +101,7 @@ export function TeamScope({ children }: { children: ReactNode }) {
 
   if (!teams.data) return <PageSpinner />;
 
-  const team = teams.data.find(({ slug }) => slug === teamSlug);
+  const team = teams.data.find(({ id }) => id === teamId);
 
   if (!team) return <TeamNotFound orgSlug={orgSlug} />;
 

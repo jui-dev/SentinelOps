@@ -20,10 +20,11 @@ import { renderWithSession } from "@/test/render";
 import { TeamDetail } from "./team-detail";
 import { TeamScope } from "./team-scope";
 import { TeamSettings } from "./team-settings";
+import { NewTeamView } from "./new-team-view";
 import { TeamsView } from "./teams-view";
 
 const navigation = vi.hoisted(() => ({
-  params: { orgSlug: "acme-ops" } as { orgSlug: string; teamSlug?: string },
+  params: { orgSlug: "acme-ops" } as { orgSlug: string; teamId?: string },
   push: vi.fn(),
 }));
 
@@ -152,14 +153,14 @@ describe("teams", () => {
   });
 
   describe("the list", () => {
-    it("lists teams with their member counts and links, without slugs", async () => {
+    it("lists teams with their member counts and links by id, without slugs", async () => {
       api(READ);
 
       inOrganization(<TeamsView />);
 
       const link = await screen.findByRole("link", { name: "Platform" });
 
-      expect(link.getAttribute("href")).toBe("/orgs/acme-ops/teams/platform");
+      expect(link.getAttribute("href")).toBe(`/orgs/acme-ops/teams/${platform.id}`);
       expect(screen.getByText("Owns the runtime.")).toBeDefined();
       expect(screen.queryByText("platform")).toBeNull();
     });
@@ -171,10 +172,36 @@ describe("teams", () => {
 
       expect(await screen.findByText("No teams yet")).toBeDefined();
       expect(screen.getByText(/An owner or admin can create one/)).toBeDefined();
-      expect(screen.queryByRole("button", { name: "New team" })).toBeNull();
+      expect(screen.queryByRole("link", { name: "New team" })).toBeNull();
     });
 
-    it("creates a team from a name and description only, then opens it", async () => {
+    it("offers New team as a link to its own page, and no form here", async () => {
+      api(MANAGE, { teams: [] });
+
+      inOrganization(<TeamsView />);
+
+      expect(await screen.findByText("No teams yet")).toBeDefined();
+      const links = screen.getAllByRole("link", { name: "New team" });
+
+      expect(links.map((l) => l.getAttribute("href"))).toEqual([
+        "/orgs/acme-ops/teams/new",
+        "/orgs/acme-ops/teams/new",
+      ]);
+      expect(screen.queryByLabelText("Name")).toBeNull();
+    });
+
+    it("refuses the new team page without teams:manage", async () => {
+      api(READ);
+
+      inOrganization(<NewTeamView />);
+
+      expect(
+        await screen.findByText(/Only an owner or admin can create teams/),
+      ).toBeDefined();
+      expect(screen.queryByRole("button", { name: "Create team" })).toBeNull();
+    });
+
+    it("creates a team from a name and description only, then returns to Teams", async () => {
       const user = userEvent.setup();
       const created = { ...platform, id: "new-id", name: "Payments", slug: "payments" };
       const { requests } = api(MANAGE, {
@@ -184,27 +211,19 @@ describe("teams", () => {
             : undefined,
       });
 
-      inOrganization(<TeamsView />);
+      inOrganization(<NewTeamView />);
 
-      await user.click(
-        (await screen.findAllByRole("button", { name: "New team" }))[0],
-      );
+      expect(
+        await screen.findByRole("heading", { level: 1, name: "New team" }),
+      ).toBeDefined();
+      expect(screen.queryByLabelText(/slug/i)).toBeNull();
 
-      const form = screen.getByRole("region", { name: "New team" });
-
-      expect(within(form).queryByLabelText(/slug/i)).toBeNull();
-
-      await user.type(within(form).getByLabelText("Name"), "Payments");
-      await user.type(
-        within(form).getByLabelText(/Description/),
-        "Card processing.",
-      );
-      await user.click(within(form).getByRole("button", { name: "Create team" }));
+      await user.type(await screen.findByLabelText("Name"), "Payments");
+      await user.type(screen.getByLabelText(/Description/), "Card processing.");
+      await user.click(screen.getByRole("button", { name: "Create team" }));
 
       await waitFor(() =>
-        expect(navigation.push).toHaveBeenCalledWith(
-          "/orgs/acme-ops/teams/payments",
-        ),
+        expect(navigation.push).toHaveBeenCalledWith("/orgs/acme-ops/teams"),
       );
       expect(
         requests.find((r) => route(r) === `POST ${base}/teams`)?.body,
@@ -220,12 +239,9 @@ describe("teams", () => {
             : undefined,
       });
 
-      inOrganization(<TeamsView />);
+      inOrganization(<NewTeamView />);
 
-      await user.click(
-        (await screen.findAllByRole("button", { name: "New team" }))[0],
-      );
-      await user.type(screen.getByLabelText("Name"), "platform!");
+      await user.type(await screen.findByLabelText("Name"), "platform!");
       await user.click(screen.getByRole("button", { name: "Create team" }));
 
       expect(
@@ -241,7 +257,7 @@ describe("teams", () => {
 
   describe("a team", () => {
     beforeEach(() => {
-      navigation.params = { orgSlug: "acme-ops", teamSlug: "platform" };
+      navigation.params = { orgSlug: "acme-ops", teamId: platform.id };
     });
 
     it("shows its name, description, and members — no slug, no other sections", async () => {
@@ -375,7 +391,7 @@ describe("teams", () => {
     });
 
     it("says plainly when it owns no services", async () => {
-      navigation.params = { orgSlug: "acme-ops", teamSlug: "platform" };
+      navigation.params = { orgSlug: "acme-ops", teamId: platform.id };
       api(READ_WITH_SERVICES, {
         handler: (request) =>
           route(request) === `GET ${base}/services`
@@ -444,11 +460,11 @@ describe("teams", () => {
       ).toBeDefined();
       expect(
         screen.getByRole("link", { name: "View all in Incidents" }).getAttribute("href"),
-      ).toBe("/orgs/acme-ops/incidents?team=platform");
+      ).toBe(`/orgs/acme-ops/incidents?team=${platform.id}`);
     });
 
     it("answers an unknown slug with a not-found page", async () => {
-      navigation.params = { orgSlug: "acme-ops", teamSlug: "nope" };
+      navigation.params = { orgSlug: "acme-ops", teamId: "nope" };
       api(READ);
 
       inTeam(<TeamDetail />);
@@ -461,7 +477,7 @@ describe("teams", () => {
 
   describe("settings", () => {
     beforeEach(() => {
-      navigation.params = { orgSlug: "acme-ops", teamSlug: "platform" };
+      navigation.params = { orgSlug: "acme-ops", teamId: platform.id };
     });
 
     it("saves the name and description", async () => {
@@ -565,7 +581,7 @@ describe("teams", () => {
         screen
           .getByRole("link", { name: "See its services" })
           .getAttribute("href"),
-      ).toBe("/orgs/acme-ops/teams/platform");
+      ).toBe(`/orgs/acme-ops/teams/${platform.id}`);
       expect(screen.queryByRole("button", { name: /Delete team/ })).toBeNull();
     });
 

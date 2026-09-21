@@ -22,10 +22,10 @@ import { ServiceDetail } from "@/components/services/service-detail";
 import { ServiceScope } from "@/components/services/service-scope";
 import { ServiceSettings } from "@/components/services/service-settings";
 import { ServicesView } from "@/components/services/services-view";
+import { NewTeamView } from "@/components/teams/new-team-view";
 import { TeamDetail } from "@/components/teams/team-detail";
 import { TeamScope } from "@/components/teams/team-scope";
 import { TeamSettings } from "@/components/teams/team-settings";
-import { TeamsView } from "@/components/teams/teams-view";
 import { clearAccessToken } from "@/lib/auth/token-store";
 
 import {
@@ -50,7 +50,7 @@ import { renderWithSession } from "./render";
 const navigation = vi.hoisted(() => ({
   params: {} as {
     orgSlug?: string;
-    teamSlug?: string;
+    teamId?: string;
     serviceSlug?: string;
     incidentNumber?: string;
     membershipId?: string;
@@ -666,18 +666,16 @@ describe("accessibility", () => {
       await expectNoAxeViolations(container);
     });
 
-    it("Teams, as an owner creating one", async () => {
+    it("New team, as an owner", async () => {
       signedIn(ADMIN);
-      const { container } = inWorkspace(<TeamsView />);
+      const { container } = inWorkspace(<NewTeamView />);
 
-      await screen.findByRole("table", { name: "Teams" });
-      (await screen.findAllByRole("button", { name: "New team" }))[0].click();
-      await screen.findByRole("region", { name: "New team" });
+      await screen.findByLabelText("Name");
       await expectNoAxeViolations(container);
     });
 
     it("Team, as an owner", async () => {
-      navigation.params = { orgSlug: organization.slug, teamSlug: team.slug };
+      navigation.params = { orgSlug: organization.slug, teamId: team.id };
       signedIn(ADMIN);
       const { container } = inWorkspace(
         <TeamScope>
@@ -692,7 +690,7 @@ describe("accessibility", () => {
     });
 
     it("Team, as a member", async () => {
-      navigation.params = { orgSlug: organization.slug, teamSlug: team.slug };
+      navigation.params = { orgSlug: organization.slug, teamId: team.id };
       signedIn(MEMBER);
       const { container } = inWorkspace(
         <TeamScope>
@@ -705,7 +703,7 @@ describe("accessibility", () => {
     });
 
     it("Team settings", async () => {
-      navigation.params = { orgSlug: organization.slug, teamSlug: team.slug };
+      navigation.params = { orgSlug: organization.slug, teamId: team.id };
       signedIn(ADMIN);
       const { container } = inWorkspace(
         <TeamScope>
