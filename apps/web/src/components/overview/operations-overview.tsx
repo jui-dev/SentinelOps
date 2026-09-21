@@ -17,7 +17,6 @@ import {
   useCan,
   useOrganization,
 } from "@/components/organizations/organization-scope";
-import { CriticalityMark } from "@/components/services/criticality-mark";
 import { serviceHref } from "@/components/services/service-scope";
 import { ErrorAlert } from "@/components/ui/alert";
 import { cx } from "@/components/ui/cx";
@@ -55,16 +54,15 @@ const plural = (count: number, one: string, many = `${one}s`) =>
   `${count} ${count === 1 ? one : many}`;
 
 /**
- * One group of the counts strip: its label, then its items. On a phone
- * the label heads its items, which may wrap; from `sm` the two groups'
- * labels share a column, so the pills and the glyphs start at the same
- * place; side by side, from `xl`, each label sits against its own items and
- * a rule keeps the two groups apart.
+ * One section of the posture instrument: the dimension it counts, named
+ * above, then its items. The two sections share one ground and are parted
+ * by a single hairline — beside each other from `sm`, one above the other
+ * on a phone — so they read as two readings of one instrument, not as two
+ * cards.
  */
-const GROUP = "flex min-w-0 flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3";
-const GROUP_LABEL =
-  "shrink-0 text-xs font-medium text-fg-muted sm:w-[4.75rem] xl:w-auto";
-const GROUP_ITEMS = "flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm";
+const GROUP = "flex min-w-0 flex-col gap-2 px-4 py-3 sm:px-5";
+const GROUP_LABEL = "text-xs font-medium text-fg-muted";
+const GROUP_ITEMS = "flex flex-wrap items-center gap-x-5 gap-y-2 text-sm";
 
 /** The two active statuses, in the order an incident moves through them. */
 const ACTIVE_STATUSES = ["DECLARED", "INVESTIGATING"] as const;
@@ -80,7 +78,7 @@ function StatusCounts({ counts }: { counts: ActiveStatusCounts }) {
     <div className={GROUP}>
       {/* The dl's name says the same, for assistive technology. */}
       <p aria-hidden="true" className={GROUP_LABEL}>
-        By status
+        Status
       </p>
       <dl aria-label="Active incidents by status" className={GROUP_ITEMS}>
         {ACTIVE_STATUSES.map((status) => (
@@ -115,7 +113,7 @@ function SeverityCountsLine({ counts }: { counts: SeverityCounts }) {
     <div className={GROUP}>
       {/* The dl's name says the same, for assistive technology. */}
       <p aria-hidden="true" className={GROUP_LABEL}>
-        By severity
+        Severity
       </p>
       <dl aria-label="Active incidents by severity" className={GROUP_ITEMS}>
         {SEVERITY_LEVELS.map(({ value }) => (
@@ -168,16 +166,14 @@ function Posture({ current }: { current: IncidentSummaryResponse["current"] }) {
     );
   }
 
-  // Two readings of the same incidents: where their response stands, and
-  // how severe they are. One above the other until there is room for both
-  // on a line — never a wrap that strands the rule at a line's end.
+  // Two readings of the same incidents — where their response stands, and
+  // how severe they are — on one darker ground: the summary the rows
+  // beneath it itemise. The hairline between them is the section's own,
+  // across on a phone and down from `sm`, where the instrument is only as
+  // wide as what it holds rather than spread across the panel.
   return (
-    <div className="flex flex-col gap-2.5 xl:flex-row xl:items-center xl:gap-x-6">
+    <div className="grid max-w-full grid-cols-1 divide-y divide-line-subtle rounded-md border border-line-subtle bg-summary sm:w-fit sm:grid-cols-[auto_auto] sm:divide-x sm:divide-y-0">
       <StatusCounts counts={current.activeByStatus} />
-      <span
-        aria-hidden="true"
-        className="hidden h-6 w-px shrink-0 bg-line-strong xl:block"
-      />
       <SeverityCountsLine counts={current.activeBySeverity} />
     </div>
   );
@@ -224,12 +220,6 @@ function ColumnHeader() {
   );
 }
 
-/** The bar's fill: the incident's own lifecycle colour, as a mark. */
-const DURATION_FILL: Record<(typeof ACTIVE_STATUSES)[number], string> = {
-  DECLARED: "bg-status-declared-text",
-  INVESTIGATING: "bg-status-investigating-text",
-};
-
 /**
  * How long this incident has been open, against how long incidents of its
  * severity have typically taken to resolve — the median over the last
@@ -241,9 +231,10 @@ const DURATION_FILL: Record<(typeof ACTIVE_STATUSES)[number], string> = {
  * say so. With too few resolutions to call anything typical there is no
  * bar at all — never one drawn against a guess.
  *
- * Its fill is the incident's lifecycle colour, so it reads as part of the
- * status beside it. The bar is decoration for assistive technology; the
- * same comparison is spoken.
+ * Its fill is neutral: the bar measures time against what is usual, not
+ * where the response stands nor how severe the incident is, so it borrows
+ * neither colour. "Past typical" is what carries the emphasis. The bar is
+ * decoration for assistive technology; the same comparison is spoken.
  */
 function DurationBar({
   incident,
@@ -261,9 +252,6 @@ function DurationBar({
   const share = elapsed / median;
   const past = share >= 1;
   const usual = `a typical ${formatDuration(median)} for a ${incident.severity}`;
-  const fill =
-    DURATION_FILL[incident.status as (typeof ACTIVE_STATUSES)[number]] ??
-    "bg-fg-subtle";
 
   return (
     // Beside the duration on one line when the row is stacked; beneath it,
@@ -275,7 +263,7 @@ function DurationBar({
         className="relative hidden h-1.5 w-14 overflow-hidden rounded-full bg-line sm:block xl:w-full xl:max-w-20"
       >
         <span
-          className={cx("absolute inset-y-0 left-0 rounded-full", fill)}
+          className="absolute inset-y-0 left-0 rounded-full bg-fg-subtle"
           style={{ width: `${Math.min(share, 1) * 100}%` }}
         />
       </span>
@@ -302,12 +290,14 @@ function DurationBar({
  * goes to the service instead. Only the incident's link draws the row's
  * focus ring, so tabbing to the service draws that link's own.
  *
- * Four vocabularies meet in a row and none borrows another's look: the
- * severity glyph, the lifecycle pill, the duration in the data face, and the
- * criticality chip. The service's name and criticality come from the
- * incident itself; `affected` — the summary's entry for that service — adds
- * how many active incidents it has, and is left out if the two answers ever
- * disagree about which services are affected.
+ * Three vocabularies meet in a row and none borrows another's look: the
+ * severity glyph, the lifecycle pill, and the duration in the data face.
+ * Service criticality is not drawn here: it is a standing classification,
+ * not what is happening now, and the summary above already counts the
+ * critical services affected. The service's name comes from the incident
+ * itself; `affected` — the summary's entry for that service — adds how many
+ * active incidents it has, and is left out if the two answers ever disagree
+ * about which services are affected.
  */
 function OperationRow({
   incident,
@@ -398,10 +388,6 @@ function OperationRow({
               {service.name}
             </span>
           )}
-          <CriticalityMark
-            criticality={service.criticality}
-            className="ml-auto shrink-0"
-          />
         </p>
         {affected && (
           <p className="numeric text-xs text-fg-muted">

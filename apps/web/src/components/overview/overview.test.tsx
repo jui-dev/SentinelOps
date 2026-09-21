@@ -833,7 +833,7 @@ describe("the operations overview", () => {
       expect(fraud.textContent).not.toContain("1 active incidents");
     });
 
-    it("reads severity, status, duration and criticality off each row", async () => {
+    it("reads severity, status, duration and service off each row", async () => {
       api(READ, { summary: spread, active: ACTIVE });
       renderOverview();
 
@@ -846,19 +846,25 @@ describe("the operations overview", () => {
       expect(declines.textContent).toContain("Investigating");
       expect(declines.textContent).toContain("Open 1d 1h");
       expect(declines.textContent).toContain("Team Payments");
-      expect(declines.textContent).toMatch(/Affects\s*Payment API\s*Critical/);
+      expect(declines.textContent).toMatch(/Affects\s*Payment API/);
 
       expect(monitoring.textContent).toMatch(/SEV3\s*Moderate/);
       expect(monitoring.textContent).toContain("Declared");
       expect(monitoring.textContent).toContain("Open 19h 20m");
       expect(monitoring.textContent).toContain("Team Risk");
-      expect(monitoring.textContent).toMatch(/Fraud Detection\s*High/);
+      expect(monitoring.textContent).toContain("Fraud Detection");
 
       expect(signIn.textContent).toMatch(/SEV4\s*Minor/);
       expect(signIn.textContent).toContain("Open 2d 7h");
-      expect(signIn.textContent).toMatch(/Authentication\s*Normal/);
+      expect(signIn.textContent).toContain("Authentication");
 
       expect(resets.textContent).toContain("Open 45m");
+
+      // Criticality is a standing classification, not what is happening
+      // now: no row draws it, in any form.
+      for (const row of [declines, monitoring, signIn, resets]) {
+        expect(row.textContent).not.toMatch(/\b(?:Critical|High|Normal|Low)\b/);
+      }
     });
 
     /** A row's duration bar — the track and its fill — if it has one. */
@@ -900,19 +906,20 @@ describe("the operations overview", () => {
       }
     });
 
-    it("fills the bar in the incident's own lifecycle colour", async () => {
+    it("fills the bar neutrally, whatever the incident's status", async () => {
       api(READ, { summary: spread, active: ACTIVE });
       renderOverview();
 
       const [declines, , , , resets] = await rows();
 
-      // Investigating blue, declared crimson — the pill beside it, as a bar.
-      expect(barOf(declines)!.fill.className).toContain(
-        "bg-status-investigating-text",
-      );
-      expect(barOf(resets)!.fill.className).toContain("bg-status-declared-text");
-      // Never a severity's colour: the bar is about time, not how bad.
-      expect(barOf(declines)!.fill.className).not.toMatch(/signal-/);
+      // Investigating and declared alike: the bar is about time, not where
+      // the response stands nor how bad the incident is.
+      for (const row of [declines, resets]) {
+        const { className } = barOf(row)!.fill;
+
+        expect(className).toContain("bg-fg-subtle");
+        expect(className).not.toMatch(/status-|signal-/);
+      }
     });
 
     it("draws the bar as decoration, and says the comparison in words", async () => {
