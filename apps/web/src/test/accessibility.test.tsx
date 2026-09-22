@@ -94,10 +94,13 @@ const MEMBER = [
 /** INC-7's analysis, as each test sets it: none started unless it says. */
 let resolvedAnalysis: object | null = null;
 
-const analysis = (status: "DRAFT" | "PUBLISHED") => ({
+const analysis = (
+  status: "DRAFT" | "PUBLISHED",
+  owner = { membershipId: currentUser.memberships[0].id, name: currentUser.name },
+) => ({
   status,
   version: 4,
-  owner: { membershipId: currentUser.memberships[0].id, name: currentUser.name },
+  owner,
   summary: "Report generation stalled behind a long-running migration.",
   impact: null,
   cause: null,
@@ -111,13 +114,28 @@ const analysis = (status: "DRAFT" | "PUBLISHED") => ({
   facts: {
     declaredAt: "2026-09-18T12:00:00.000Z",
     resolvedAt: "2026-09-18T13:00:00.000Z",
-    firstResponseAt: null,
+    firstResponseAt: "2026-09-18T12:10:00.000Z",
     responderCount: 1,
     updateCount: 0,
-    severity: { declared: "SEV3", highest: "SEV3", final: "SEV3" },
-    reassignmentCount: 0,
+    severity: { declared: "SEV3", highest: "SEV2", final: "SEV3" },
+    reassignmentCount: 1,
   },
-  keyMoments: [],
+  keyMoments: [
+    ["DECLARED", "12:00", null, "SEV3"],
+    ["FIRST_RESPONSE", "12:10", null, null],
+    ["SEVERITY_CHANGED", "12:20", "SEV3", "SEV2"],
+    ["TEAM_CHANGED", "12:30", "Platform", "Payments"],
+    ["SEVERITY_CHANGED", "12:40", "SEV2", "SEV3"],
+    ["LAST_RESPONSE_COMPLETED", "12:50", null, null],
+    ["RESOLVED", "13:00", null, null],
+  ].map(([kind, time, fromValue, toValue], index) => ({
+    kind,
+    activityId: `0199a1b2-c3d4-7000-8000-0000000003${String(index).padStart(2, "0")}`,
+    at: `2026-09-18T${time}:00.000Z`,
+    actor: { id: currentUser.id, name: currentUser.name },
+    fromValue,
+    toValue,
+  })),
 });
 
 const team = {
@@ -909,7 +927,33 @@ describe("accessibility", () => {
       const { container } = inWorkspace(<IncidentAnalysisPage />);
 
       await screen.findByRole("heading", { level: 1, name: "Incident analysis" });
-      await screen.findByText("Sections");
+      await screen.findByRole("heading", { name: "Incident facts" });
+      await screen.findByRole("heading", { name: /Key moments/ });
+      await expectNoAxeViolations(container);
+    });
+
+    it("Incident analysis, draft read by someone else", async () => {
+      navigation.params = { orgSlug: organization.slug, incidentNumber: "7" };
+      resolvedAnalysis = analysis("DRAFT", {
+        membershipId: "0199a1b2-c3d4-7000-8000-0000000000ab",
+        name: "Daniel Okafor",
+      });
+      signedIn(MEMBER);
+      const { container } = inWorkspace(<IncidentAnalysisPage />);
+
+      await screen.findByText(/Daniel Okafor is writing this analysis/);
+      await screen.findByRole("heading", { name: /Key moments/ });
+      await expectNoAxeViolations(container);
+    });
+
+    it("Incident analysis, published", async () => {
+      navigation.params = { orgSlug: organization.slug, incidentNumber: "7" };
+      resolvedAnalysis = analysis("PUBLISHED");
+      signedIn(MEMBER);
+      const { container } = inWorkspace(<IncidentAnalysisPage />);
+
+      await screen.findByText("This analysis is final. It is kept as published.");
+      await screen.findByRole("heading", { name: /Key moments/ });
       await expectNoAxeViolations(container);
     });
 

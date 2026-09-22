@@ -34,6 +34,24 @@ export function LocalDateTime({ value }: { value: string }) {
 }
 
 /**
+ * A moment where its day is already clear from context — a list measured
+ * from one start — shown as the local time alone: "3:40 AM". The full date
+ * and time stay on hover and are what assistive technology reads.
+ */
+export function LocalTime({ value }: { value: string }) {
+  const full = formatLocalDateTime(value);
+
+  return (
+    <time dateTime={value} title={full}>
+      <span aria-hidden="true">
+        {new Date(value).toLocaleTimeString(undefined, { timeStyle: "short" })}
+      </span>
+      <span className="sr-only">{full}</span>
+    </time>
+  );
+}
+
+/**
  * The current time, re-read on every minute boundary. One schedule for
  * everything that counts minutes — the strip's clock and how long an
  * incident has been running — so they tick together.

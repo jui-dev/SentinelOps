@@ -1,15 +1,6 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  ArrowLeftRight,
-  CircleCheck,
-  CircleDashed,
-  CircleDot,
-  Flag,
-  Gauge,
-} from "lucide-react";
-import type { LucideIcon } from "lucide-react";
 import { useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 
@@ -32,6 +23,8 @@ import { postIncidentUpdate } from "@/lib/api/endpoints";
 import { fieldErrorsOf, isApiError } from "@/lib/api/errors";
 import { queryKeys } from "@/lib/api/query-keys";
 
+import { EVENT_MARKERS } from "./event-markers";
+import type { EventMarker } from "./event-markers";
 import { useIncidentTimeline } from "./incident-queries";
 import { SeverityMark, StatusMark } from "./severity";
 import type { RetiredIncidentStatus } from "./severity";
@@ -143,31 +136,23 @@ const ACTIONS: Partial<Record<IncidentActivityResponse["type"], string>> = {
   RESPONSE_COMPLETED: "completed their response",
 };
 
-/**
- * The rail's marker for a recorded event: an icon per kind, so a start, a
- * completion, and a lifecycle change are told apart at a glance. Colour only
- * where it means what it means elsewhere — the lifecycle's: crimson for the
- * declaration, blue for a response under way, teal for a response complete
- * and for the resolution.
- */
-const eventMarker = (
-  entry: IncidentActivityResponse,
-): { Icon: LucideIcon; colour: string } => {
+/** The rail's marker for a recorded event, from the shared vocabulary. */
+const eventMarker = (entry: IncidentActivityResponse): EventMarker => {
   switch (entry.type) {
     case "DECLARED":
-      return { Icon: Flag, colour: "text-status-declared-text" };
+      return EVENT_MARKERS.declared;
     case "SEVERITY_CHANGED":
-      return { Icon: Gauge, colour: "text-fg-muted" };
+      return EVENT_MARKERS.severityChanged;
     case "TEAM_CHANGED":
-      return { Icon: ArrowLeftRight, colour: "text-fg-muted" };
+      return EVENT_MARKERS.teamChanged;
     case "RESPONSE_STARTED":
-      return { Icon: CircleDot, colour: "text-status-investigating-text" };
+      return EVENT_MARKERS.responseStarted;
     case "RESPONSE_COMPLETED":
-      return { Icon: CircleCheck, colour: "text-status-resolved-text" };
+      return EVENT_MARKERS.responseCompleted;
     default:
       return entry.toValue === "RESOLVED"
-        ? { Icon: CircleCheck, colour: "text-status-resolved-text" }
-        : { Icon: CircleDashed, colour: "text-fg-muted" };
+        ? EVENT_MARKERS.resolved
+        : EVENT_MARKERS.statusChanged;
   }
 };
 

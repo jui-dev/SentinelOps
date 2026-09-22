@@ -23,45 +23,115 @@ import type {
 } from "@/lib/api/contracts";
 import { isApiError } from "@/lib/api/errors";
 
+import { AnalysisDocument } from "./analysis-document";
 import { useAnalysisAccess, useIncidentAnalysis } from "./analysis-queries";
-import { AnalysisStatusMark, sectionsWrittenLabel } from "./analysis-status";
+import { AnalysisStatusMark } from "./analysis-status";
+import { FactsStrip } from "./facts-strip";
+import { KeyMoments } from "./key-moments";
 import { StartAnalysis } from "./start-analysis";
 
-/** A moment and who made it: "Sep 22, 2026, 2:10 PM", then "by Alex Kim". */
-function Attributed({ at, by }: { at: string; by?: string }) {
-  return (
+/** Where the analysis stands, beneath its title: its status, then who wrote it. */
+function StatusLine({ analysis }: { analysis: IncidentAnalysisResponse }) {
+  const { isOwner } = useAnalysisAccess(analysis);
+  const dot = (
     <>
-      <LocalDateTime value={at} />
-      {by && (
-        <span className="mt-0.5 block text-sm text-fg-muted">by {by}</span>
-      )}
+      <span aria-hidden="true" className="text-fg-subtle">
+        ·
+      </span>
+      <span className="sr-only">, </span>
     </>
+  );
+
+  // Published: the publication is the record's, so it leads; who owned the
+  // draft and who started it follow, quieter.
+  if (analysis.status === "PUBLISHED" && analysis.publishedAt) {
+    return (
+      <div className="flex flex-col gap-1 pt-1">
+        <p className="flex flex-wrap items-center gap-x-2 text-sm text-fg">
+          <AnalysisStatusMark status="PUBLISHED" />
+          {dot}
+          <LocalDateTime value={analysis.publishedAt} />
+          {analysis.publishedBy && (
+            <>
+              {dot}
+              <span>
+                by <span className="font-medium">{analysis.publishedBy.name}</span>
+              </span>
+            </>
+          )}
+        </p>
+        <p className="flex flex-wrap items-center gap-x-2 text-sm text-fg-subtle">
+          <span>Owner {analysis.owner.name}</span>
+          {dot}
+          <span>
+            Started <LocalDateTime value={analysis.createdAt} /> by{" "}
+            {analysis.createdBy.name}
+          </span>
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-1 pt-1">
+      <p className="flex flex-wrap items-center gap-x-2 text-sm text-fg-muted">
+        <AnalysisStatusMark status="DRAFT" />
+        {dot}
+        <span>
+          Owned by{" "}
+          <span className="font-medium text-fg">{analysis.owner.name}</span>
+          {isOwner && " (you)"}
+        </span>
+      </p>
+      {!isOwner && (
+        <p className="text-sm text-fg-muted">
+          {analysis.owner.name} is writing this analysis. It may change until
+          it is published.
+        </p>
+      )}
+    </div>
   );
 }
 
 /**
- * The analysis's record. Once published, the publication leads: it is the
- * final record's. The owner — who was accountable for the draft — follows.
+ * The analysis as its page reads it: the incident's facts across the top;
+ * the document in the main column; and beside it, from xl up, the moments
+ * that shaped the incident and — for a draft — when it was started and last
+ * changed. Below xl, one column: the document, then its context.
  */
-function AnalysisRecord({ analysis }: { analysis: IncidentAnalysisResponse }) {
-  const published = analysis.status === "PUBLISHED" && analysis.publishedAt;
+function Workspace({
+  analysis,
+  incident,
+}: {
+  analysis: IncidentAnalysisResponse;
+  incident: IncidentDetailResponse;
+}) {
+  const organization = useOrganization();
 
   return (
-    <RecordList className="max-w-3xl">
-      {published && (
-        <RecordRow label="Published">
-          <Attributed
-            at={analysis.publishedAt!}
-            by={analysis.publishedBy?.name}
+    <>
+      <FactsStrip analysis={analysis} />
+      <div className="grid items-start gap-x-10 gap-y-10 xl:grid-cols-[minmax(0,1fr)_18rem]">
+        <AnalysisDocument analysis={analysis} />
+        <aside aria-label="Analysis context" className="flex min-w-0 flex-col gap-8">
+          <KeyMoments
+            analysis={analysis}
+            timelineHref={`${incidentHref(organization.slug, incident.number)}#timeline`}
           />
-        </RecordRow>
-      )}
-      <RecordRow label="Owner">{analysis.owner.name}</RecordRow>
-      <RecordRow label="Started">
-        <Attributed at={analysis.createdAt} by={analysis.createdBy.name} />
-      </RecordRow>
-      <RecordRow label="Sections">{sectionsWrittenLabel(analysis)}</RecordRow>
-    </RecordList>
+          {analysis.status === "DRAFT" && (
+            <RecordList tone="secondary" stacked>
+              <RecordRow label="Started">
+                <LocalDateTime value={analysis.createdAt} />
+                <span className="mt-0.5 block">by {analysis.createdBy.name}</span>
+              </RecordRow>
+              <RecordRow label="Last changed">
+                <LocalDateTime value={analysis.updatedAt} />
+              </RecordRow>
+            </RecordList>
+          )}
+        </aside>
+      </div>
+    </>
   );
 }
 
@@ -86,13 +156,7 @@ function AnalysisBody({ incident }: { incident: IncidentDetailResponse }) {
           </Link>
         }
         title="Incident analysis"
-        description={
-          analysis.data && (
-            <p className="pt-1 text-sm">
-              <AnalysisStatusMark status={analysis.data.status} />
-            </p>
-          )
-        }
+        description={analysis.data && <StatusLine analysis={analysis.data} />}
       />
       <PageBody>
         {analysis.isError ? (
@@ -111,7 +175,7 @@ function AnalysisBody({ incident }: { incident: IncidentDetailResponse }) {
             </p>
           </EmptyState>
         ) : (
-          <AnalysisRecord analysis={analysis.data} />
+          <Workspace analysis={analysis.data} incident={incident} />
         )}
       </PageBody>
     </>
@@ -176,7 +240,8 @@ function LoadedIncident({ number }: { number: number }) {
 /**
  * One incident's analysis, at `/incidents/[incidentNumber]/analysis`: a page
  * of its own beneath the incident, whose eyebrow leads back to it. Where the
- * analysis stands, and its record; starting one when there is none.
+ * analysis stands, the incident's facts and key moments, and the analysis
+ * itself; starting one when there is none.
  */
 export function IncidentAnalysisPage() {
   const organization = useOrganization();
