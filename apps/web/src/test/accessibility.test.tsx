@@ -7,6 +7,7 @@ import { WorkspaceShell } from "@/components/app/workspace-shell";
 import { ChangePasswordForm } from "@/components/auth/change-password-form";
 import { LoginForm } from "@/components/auth/login-form";
 import { RegisterForm } from "@/components/auth/register-form";
+import { IncidentAnalysisPage } from "@/components/incident-analyses/incident-analysis-page";
 import { IncidentDetail } from "@/components/incidents/incident-detail";
 import { IncidentHistory } from "@/components/history/incident-history";
 import { IncidentsView } from "@/components/incidents/incidents-view";
@@ -78,8 +79,10 @@ const ADMIN = [
   "incidents:manage",
   "incidents:read",
   "incidents:respond",
+  "incident-analyses:write",
 ];
 const MEMBER = [
+  "incident-analyses:write",
   "incidents:read",
   "incidents:respond",
   "memberships:read",
@@ -87,6 +90,35 @@ const MEMBER = [
   "services:read",
   "teams:read",
 ];
+
+/** INC-7's analysis, as each test sets it: none started unless it says. */
+let resolvedAnalysis: object | null = null;
+
+const analysis = (status: "DRAFT" | "PUBLISHED") => ({
+  status,
+  version: 4,
+  owner: { membershipId: currentUser.memberships[0].id, name: currentUser.name },
+  summary: "Report generation stalled behind a long-running migration.",
+  impact: null,
+  cause: null,
+  lessons: null,
+  createdBy: { id: currentUser.id, name: currentUser.name },
+  createdAt: "2026-09-19T09:00:00.000Z",
+  publishedBy:
+    status === "PUBLISHED" ? { id: currentUser.id, name: currentUser.name } : null,
+  publishedAt: status === "PUBLISHED" ? "2026-09-20T09:00:00.000Z" : null,
+  updatedAt: "2026-09-20T09:00:00.000Z",
+  facts: {
+    declaredAt: "2026-09-18T12:00:00.000Z",
+    resolvedAt: "2026-09-18T13:00:00.000Z",
+    firstResponseAt: null,
+    responderCount: 1,
+    updateCount: 0,
+    severity: { declared: "SEV3", highest: "SEV3", final: "SEV3" },
+    reassignmentCount: 0,
+  },
+  keyMoments: [],
+});
 
 const team = {
   id: "0199a1b2-c3d4-7000-8000-0000000000d1",
@@ -439,6 +471,10 @@ const signedIn = (permissions: string[]) =>
         return jsonResponse(200, completeDetail);
       case `GET ${base}/incidents/41`:
         return jsonResponse(200, { ...majorIncident, responders: [] });
+      case `GET ${base}/incidents/7/analysis`:
+        return resolvedAnalysis
+          ? jsonResponse(200, resolvedAnalysis)
+          : apiError(404, "ANALYSIS_NOT_STARTED");
       case `GET ${base}/incidents/7`:
         return jsonResponse(200, {
           ...resolvedIncident,
@@ -516,6 +552,7 @@ describe("accessibility", () => {
     clearAccessToken();
     navigation.params = { orgSlug: organization.slug };
     navigation.pathname = `/orgs/${organization.slug}`;
+    resolvedAnalysis = null;
   });
 
   afterEach(() => {
@@ -831,6 +868,67 @@ describe("accessibility", () => {
 
       await screen.findByRole("heading", { level: 1, name: "Reports delayed" });
       await screen.findByRole("heading", { name: "Your response" });
+      await expectNoAxeViolations(container);
+    });
+
+    it("Incident, resolved, as the admin starting its analysis", async () => {
+      navigation.params = { orgSlug: organization.slug, incidentNumber: "7" };
+      signedIn(ADMIN);
+      const { container } = inWorkspace(<IncidentDetail />);
+
+      (await screen.findByRole("button", { name: "Start analysis" })).click();
+      await screen.findByRole("dialog", { name: "Start analysis" });
+      await screen.findByLabelText("Owner");
+      await expectNoAxeViolations(container);
+    });
+
+    it("Incident, resolved, with a draft analysis", async () => {
+      navigation.params = { orgSlug: organization.slug, incidentNumber: "7" };
+      resolvedAnalysis = analysis("DRAFT");
+      signedIn(MEMBER);
+      const { container } = inWorkspace(<IncidentDetail />);
+
+      await screen.findByRole("link", { name: "Open draft" });
+      await expectNoAxeViolations(container);
+    });
+
+    it("Incident, resolved, with a published analysis", async () => {
+      navigation.params = { orgSlug: organization.slug, incidentNumber: "7" };
+      resolvedAnalysis = analysis("PUBLISHED");
+      signedIn(MEMBER);
+      const { container } = inWorkspace(<IncidentDetail />);
+
+      await screen.findByRole("link", { name: "Read analysis" });
+      await expectNoAxeViolations(container);
+    });
+
+    it("Incident analysis, draft", async () => {
+      navigation.params = { orgSlug: organization.slug, incidentNumber: "7" };
+      resolvedAnalysis = analysis("DRAFT");
+      signedIn(MEMBER);
+      const { container } = inWorkspace(<IncidentAnalysisPage />);
+
+      await screen.findByRole("heading", { level: 1, name: "Incident analysis" });
+      await screen.findByText("Sections");
+      await expectNoAxeViolations(container);
+    });
+
+    it("Incident analysis, not started, as the admin", async () => {
+      navigation.params = { orgSlug: organization.slug, incidentNumber: "7" };
+      signedIn(ADMIN);
+      const { container } = inWorkspace(<IncidentAnalysisPage />);
+
+      await screen.findByText("No analysis yet");
+      await screen.findByRole("button", { name: "Start analysis" });
+      await expectNoAxeViolations(container);
+    });
+
+    it("Incident analysis, incident still active", async () => {
+      navigation.params = { orgSlug: organization.slug, incidentNumber: "42" };
+      signedIn(MEMBER);
+      const { container } = inWorkspace(<IncidentAnalysisPage />);
+
+      await screen.findByText(/An analysis begins once INC-42 is resolved/);
       await expectNoAxeViolations(container);
     });
 

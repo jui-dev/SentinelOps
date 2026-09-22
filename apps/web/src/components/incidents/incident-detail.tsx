@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { useId } from "react";
 import type { ReactNode } from "react";
 
+import { AnalysisEntry } from "@/components/incident-analyses/analysis-entry";
 import {
   useCan,
   useOrganization,
@@ -42,12 +43,12 @@ import { incidentKey, SeverityMark, StatusMark } from "./severity";
 const entityLinkClasses = `font-medium text-fg ${quietLinkClasses}`;
 
 /** The incident number in the URL, or undefined when it cannot be one. */
-const parseNumber = (value: string): number | undefined =>
+export const parseNumber = (value: string): number | undefined =>
   /^[1-9][0-9]{0,9}$/.test(value) && Number(value) <= 2_147_483_647
     ? Number(value)
     : undefined;
 
-function IncidentNotFound({ orgSlug }: { orgSlug: string }) {
+export function IncidentNotFound({ orgSlug }: { orgSlug: string }) {
   return (
     <PageBody width="form">
       <EmptyState
@@ -265,11 +266,15 @@ function IncidentPage({ incident }: { incident: IncidentDetailResponse }) {
     <>
       <IncidentHeader incident={incident} canManage={canManage} />
       <PageBody>
+        {/* How it ended, then what was learned from it: one closing pair. */}
         {resolved && incident.resolvedAt && (
-          <Resolution
-            resolution={incident.resolution}
-            resolvedAt={incident.resolvedAt}
-          />
+          <div className="flex flex-col gap-3">
+            <Resolution
+              resolution={incident.resolution}
+              resolvedAt={incident.resolvedAt}
+            />
+            <AnalysisEntry incident={incident} />
+          </div>
         )}
         <div className="grid items-start gap-x-10 gap-y-10 lg:grid-cols-[minmax(0,1fr)_16rem]">
           <div className="flex min-w-0 flex-col gap-8">

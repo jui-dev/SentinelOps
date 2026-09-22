@@ -253,6 +253,9 @@ const api = (
         return jsonResponse(200, detail);
       case `GET ${base}/incidents/${detail.number}/timeline`:
         return jsonResponse(200, timeline);
+      // No analysis has been started unless a test says otherwise.
+      case `GET ${base}/incidents/${detail.number}/analysis`:
+        return apiError(404, "ANALYSIS_NOT_STARTED");
       case `GET ${base}/services`:
         return jsonResponse(200, services);
       case `GET ${base}/teams`:

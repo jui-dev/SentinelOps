@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { QueryClient } from "@tanstack/react-query";
 
+import { incidentHref } from "@/components/incidents/incident-queries";
 import { useOrganization } from "@/components/organizations/organization-scope";
 import { ApiErrorCode, Permission } from "@/lib/api/contracts";
 import type {
@@ -38,6 +39,10 @@ import { queryKeys } from "@/lib/api/query-keys";
  * text the writer had not yet saved is the view's, never the cache's, so
  * nothing here can lose it.
  */
+
+/** An incident's analysis: a page of its own, beneath the incident. */
+export const incidentAnalysisHref = (orgSlug: string, number: number) =>
+  `${incidentHref(orgSlug, number)}/analysis`;
 
 /**
  * Which of two states of one analysis to keep: the later version. A write's
