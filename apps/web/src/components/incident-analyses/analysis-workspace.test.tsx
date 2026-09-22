@@ -17,6 +17,7 @@ import {
   draft,
   inOrganization,
   published,
+  sam,
 } from "./analysis.fixtures";
 import { IncidentAnalysisPage } from "./incident-analysis-page";
 
@@ -303,8 +304,22 @@ describe("the incident analysis workspace", () => {
       expect(status.textContent).not.toContain("is writing this analysis");
     });
 
-    it("tells anyone else who is writing it, and that it may change", async () => {
+    it("tells an admin they are editing someone else's draft", async () => {
       api(ADMIN, { analysis: draft() });
+
+      inOrganization(<IncidentAnalysisPage />);
+
+      expect(
+        await within(await header()).findByText(
+          "You're editing Daniel Okafor's analysis as an admin.",
+        ),
+      ).toBeDefined();
+    });
+
+    it("tells anyone else who is writing it, and that it may change", async () => {
+      const { permissions, handler } = asMember(sam.id);
+
+      api(permissions, { analysis: draft(), handler });
 
       inOrganization(<IncidentAnalysisPage />);
 

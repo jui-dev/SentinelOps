@@ -24,15 +24,17 @@ import type {
 import { isApiError } from "@/lib/api/errors";
 
 import { AnalysisDocument } from "./analysis-document";
+import { AnalysisEditor } from "./analysis-editor";
 import { useAnalysisAccess, useIncidentAnalysis } from "./analysis-queries";
 import { AnalysisStatusMark } from "./analysis-status";
 import { FactsStrip } from "./facts-strip";
 import { KeyMoments } from "./key-moments";
 import { StartAnalysis } from "./start-analysis";
+import { useAnalysisDraft } from "./use-analysis-draft";
 
 /** Where the analysis stands, beneath its title: its status, then who wrote it. */
 function StatusLine({ analysis }: { analysis: IncidentAnalysisResponse }) {
-  const { isOwner } = useAnalysisAccess(analysis);
+  const { isOwner, canWrite } = useAnalysisAccess(analysis);
   const dot = (
     <>
       <span aria-hidden="true" className="text-fg-subtle">
@@ -85,8 +87,9 @@ function StatusLine({ analysis }: { analysis: IncidentAnalysisResponse }) {
       </p>
       {!isOwner && (
         <p className="text-sm text-fg-muted">
-          {analysis.owner.name} is writing this analysis. It may change until
-          it is published.
+          {canWrite
+            ? `You're editing ${analysis.owner.name}'s analysis as an admin.`
+            : `${analysis.owner.name} is writing this analysis. It may change until it is published.`}
         </p>
       )}
     </div>
@@ -94,7 +97,8 @@ function StatusLine({ analysis }: { analysis: IncidentAnalysisResponse }) {
 }
 
 /**
- * The analysis as its page reads it: the incident's facts across the top;
+ * The analysis as its page reads it — and, for whoever may write a draft,
+ * writes it: the incident's facts across the top;
  * the document in the main column; and beside it, from xl up, the moments
  * that shaped the incident and — for a draft — when it was started and last
  * changed. Below xl, one column: the document, then its context.
@@ -107,12 +111,19 @@ function Workspace({
   incident: IncidentDetailResponse;
 }) {
   const organization = useOrganization();
+  const { canWrite } = useAnalysisAccess(analysis);
+  const draft = useAnalysisDraft(analysis, incident.number);
+  const editing = canWrite && analysis.status === "DRAFT";
 
   return (
     <>
       <FactsStrip analysis={analysis} />
       <div className="grid items-start gap-x-10 gap-y-10 xl:grid-cols-[minmax(0,1fr)_18rem]">
-        <AnalysisDocument analysis={analysis} />
+        {editing ? (
+          <AnalysisEditor draft={draft} />
+        ) : (
+          <AnalysisDocument analysis={analysis} />
+        )}
         <aside aria-label="Analysis context" className="flex min-w-0 flex-col gap-8">
           <KeyMoments
             analysis={analysis}
