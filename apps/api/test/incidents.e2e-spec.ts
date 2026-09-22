@@ -773,12 +773,16 @@ describe('Incidents (e2e)', () => {
       expect(response.status).toBe(200);
       expect(prisma.incident.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({
-            resolvedAt: {
-              gte: new Date('2026-09-13T00:00:00.000Z'),
-              lt: new Date('2026-09-20T00:00:00.000Z'),
-            },
-          }),
+          where: {
+            AND: expect.arrayContaining([
+              expect.objectContaining({
+                resolvedAt: {
+                  gte: new Date('2026-09-13T00:00:00.000Z'),
+                  lt: new Date('2026-09-20T00:00:00.000Z'),
+                },
+              }),
+            ]),
+          },
         }),
       );
     });

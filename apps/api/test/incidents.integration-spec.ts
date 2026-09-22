@@ -85,7 +85,7 @@ describe('incidents (integration)', () => {
   let fx: Fixture;
 
   const call = async (
-    method: 'get' | 'post' | 'patch' | 'delete',
+    method: 'get' | 'post' | 'patch' | 'put' | 'delete',
     path: string,
     userId: string,
     body?: object,
@@ -812,7 +812,11 @@ describe('incidents (integration)', () => {
         team: { id: string };
       }
 
-      /** Every page of one state under `filters`, following the cursor. */
+      /**
+       * Every page of one state under `filters`, following the cursor, as
+       * the admin, who reads every incident: a member's own are the read
+       * scope's tests.
+       */
       const walkFiltered = async (
         state: 'active' | 'resolved',
         filters: string,
@@ -828,7 +832,7 @@ describe('incidents (integration)', () => {
           const response = await call(
             'get',
             `${fx.orgA}/incidents?${query}`,
-            fx.dave,
+            fx.alice,
           );
 
           expect(response.status).toBe(200);
@@ -2448,10 +2452,14 @@ describe('incidents (integration)', () => {
         await prisma.incident.count({ where: { organizationId: fx.orgA } }),
       ).toBe(0);
 
+      // Even read as B's membership with every incident in view, A's are
+      // A's alone.
+      const reader = { membershipId: fx.carolInB, role: 'ADMIN' as const };
+
       expect(
-        (await incidents.list(fx.orgA, { state: 'active' })).items,
+        (await incidents.list(fx.orgA, reader, { state: 'active' })).items,
       ).toEqual([]);
-      await expect(incidents.get(fx.orgA, '1')).rejects.toBeInstanceOf(
+      await expect(incidents.get(fx.orgA, reader, '1')).rejects.toBeInstanceOf(
         HttpException,
       );
     });
@@ -2875,36 +2883,48 @@ describe('incidents (integration)', () => {
       expect(await count('RESPONSE_STARTED')).toBe(2);
     });
 
-    it('should refuse starting to anyone off the responsible team, the admin included, and leave them able to read', async () => {
+    it('should refuse starting to anyone off the responsible team, the admin included, leaving the admin able to read', async () => {
       await declare(fx.orgA, fx.alice, fx.apiA);
 
-      for (const userId of [fx.erin, fx.carol]) {
-        expectCode(
-          await startAs(fx.orgA, userId, 1),
-          403,
-          'NOT_ON_RESPONSIBLE_TEAM',
-        );
-      }
+      // The admin sees the incident and is refused by the team rule; Erin,
+      // on another team, cannot see it at all.
+      expectCode(
+        await startAs(fx.orgA, fx.carol, 1),
+        403,
+        'NOT_ON_RESPONSIBLE_TEAM',
+      );
+      expectCode(await startAs(fx.orgA, fx.erin, 1), 404, 'INCIDENT_NOT_FOUND');
       expect(await prisma.incidentResponder.count()).toBe(0);
-      expect((await call('get', path(fx.orgA), fx.erin)).body.status).toBe(
+      // The admin oversees every incident; Erin, on another team, sees none
+      // of this one (see 'read scope').
+      expect((await call('get', path(fx.orgA), fx.carol)).body.status).toBe(
         'DECLARED',
       );
       expect(
-        (await call('get', `${path(fx.orgA)}/timeline`, fx.erin)).status,
+        (await call('get', `${path(fx.orgA)}/timeline`, fx.carol)).status,
       ).toBe(200);
+      expectCode(
+        await call('get', path(fx.orgA), fx.erin),
+        404,
+        'INCIDENT_NOT_FOUND',
+      );
     });
 
     it('should let a member post only while investigating', async () => {
       await declare(fx.orgA, fx.alice, fx.apiA);
 
-      // Being on the team is not enough, and nor is being on another.
-      for (const userId of [fx.dave, fx.erin]) {
-        expectCode(
-          await post(fx.orgA, userId, 'Looking.'),
-          403,
-          'START_INVESTIGATING_FIRST',
-        );
-      }
+      // Being on the team is not enough; on another, the incident is not
+      // even there.
+      expectCode(
+        await post(fx.orgA, fx.dave, 'Looking.'),
+        403,
+        'START_INVESTIGATING_FIRST',
+      );
+      expectCode(
+        await post(fx.orgA, fx.erin, 'Looking.'),
+        404,
+        'INCIDENT_NOT_FOUND',
+      );
 
       await startAs(fx.orgA, fx.dave, 1);
       expect((await post(fx.orgA, fx.dave, 'Card processor.')).status).toBe(
@@ -3022,7 +3042,8 @@ describe('incidents (integration)', () => {
 
       expect(await prisma.incidentActivity.count()).toBe(before);
 
-      const read = await call('get', path(fx.orgA), fx.erin);
+      // Readable by the responsible team, Finn included, who never responded.
+      const read = await call('get', path(fx.orgA), finn);
 
       expect(read.body.status).toBe('RESOLVED');
       expect(read.body.responders).toEqual([
@@ -3043,12 +3064,9 @@ describe('incidents (integration)', () => {
       expect(reassigned.body.team.name).toBe('Platform');
       expect(reassigned.body.responders).toHaveLength(1);
 
-      // Payments can no longer start; Platform can.
-      expectCode(
-        await startAs(fx.orgA, finn, 1),
-        403,
-        'NOT_ON_RESPONSIBLE_TEAM',
-      );
+      // Payments can no longer start — Finn, who never responded, no longer
+      // sees it at all; Platform can.
+      expectCode(await startAs(fx.orgA, finn, 1), 404, 'INCIDENT_NOT_FOUND');
       expect((await startAs(fx.orgA, fx.erin, 1)).status).toBe(200);
 
       // Dave's response is his to finish, and holds the resolution until he
@@ -3115,11 +3133,9 @@ describe('incidents (integration)', () => {
         ).toBe(204);
       }
 
-      expectCode(
-        await startAs(fx.orgA, finn, 1),
-        403,
-        'NOT_ON_RESPONSIBLE_TEAM',
-      );
+      // Off the team with no response, Finn no longer sees the incident;
+      // Dave's response keeps it his.
+      expectCode(await startAs(fx.orgA, finn, 1), 404, 'INCIDENT_NOT_FOUND');
       expect((await post(fx.orgA, fx.dave, 'Still on it.')).status).toBe(201);
       expect((await completeAs(fx.orgA, fx.dave, 1)).status).toBe(200);
     });
@@ -3589,6 +3605,414 @@ describe('incidents (integration)', () => {
       expect(changes).toHaveLength(2);
       expect(first).toBeDefined();
       expect(second.fromValue).toBe(first.toValue);
+    });
+  });
+  /**
+   * What a member may read: their teams' incidents, the ones they responded
+   * to, and the ones whose analysis they own (incidents.scope.ts). The admin
+   * reads everything. One outside a member's scope answers exactly as a
+   * missing incident does, on every read of it.
+   */
+  describe('read scope', () => {
+    /** Every read of one incident a member might try. */
+    const readsOf = (number: number) => [
+      `incidents/${number}`,
+      `incidents/${number}/timeline`,
+      `incidents/${number}/analysis`,
+    ];
+
+    /** The numbers in one page of a list, as `userId` reads it. */
+    const listed = async (
+      organizationId: string,
+      userId: string,
+      query = 'state=active',
+    ): Promise<number[]> => {
+      const response = await call(
+        'get',
+        `${organizationId}/incidents?${query}`,
+        userId,
+      );
+
+      expect(response.status).toBe(200);
+
+      return response.body.items.map(
+        ({ number }: { number: number }) => number,
+      );
+    };
+
+    /**
+     * Every read of `number` answers 404 INCIDENT_NOT_FOUND, with the body a
+     * number this organization has never used gets.
+     */
+    const expectHidden = async (
+      organizationId: string,
+      userId: string,
+      number: number,
+    ) => {
+      const missing = readsOf(999);
+
+      for (const [index, path] of readsOf(number).entries()) {
+        const hidden = await call('get', `${organizationId}/${path}`, userId);
+        const absent = await call(
+          'get',
+          `${organizationId}/${missing[index]}`,
+          userId,
+        );
+
+        expectCode(hidden, 404, 'INCIDENT_NOT_FOUND');
+        expect(comparable(hidden.body)).toEqual(comparable(absent.body));
+      }
+    };
+
+    /** The incident and its timeline both read. */
+    const expectVisible = async (
+      organizationId: string,
+      userId: string,
+      number: number,
+    ) => {
+      const [incident, timeline] = await Promise.all(
+        readsOf(number)
+          .slice(0, 2)
+          .map((path) => call('get', `${organizationId}/${path}`, userId)),
+      );
+
+      expect(incident.status).toBe(200);
+      expect(incident.body.number).toBe(number);
+      expect(timeline.status).toBe(200);
+      expect(timeline.body.length).toBeGreaterThan(0);
+    };
+
+    /** Starts the analysis of resolved incident `number`, owned by `owner`. */
+    const analyse = async (number: number, owner?: string) =>
+      expect(
+        (
+          await call(
+            'post',
+            `${fx.orgA}/incidents/${number}/analysis`,
+            fx.alice,
+            owner ? { ownerMembershipId: owner } : {},
+          )
+        ).status,
+      ).toBe(201);
+
+    beforeEach(async () => {
+      const statusPage = await aService(fx.orgA, fx.platformA, 'Status Page');
+
+      // 1 and 2 are Payments' (Dave's), 3 is Platform's (Erin's).
+      await declare(fx.orgA, fx.alice, fx.apiA);
+      await declare(fx.orgA, fx.alice, fx.apiA, { severity: 'SEV2' });
+      await declare(fx.orgA, fx.alice, statusPage, { severity: 'SEV2' });
+    });
+
+    it('should let an admin on no team read every incident', async () => {
+      expect(await listed(fx.orgA, fx.alice)).toEqual([1, 2, 3]);
+
+      for (const number of [1, 2, 3]) {
+        await expectVisible(fx.orgA, fx.alice, number);
+      }
+    });
+
+    it("should let a member read their team's incidents and nothing else", async () => {
+      expect(await listed(fx.orgA, fx.dave)).toEqual([1, 2]);
+      expect(await listed(fx.orgA, fx.erin)).toEqual([3]);
+
+      await expectVisible(fx.orgA, fx.dave, 1);
+      await expectVisible(fx.orgA, fx.erin, 3);
+      await expectHidden(fx.orgA, fx.erin, 1);
+      await expectHidden(fx.orgA, fx.dave, 3);
+    });
+
+    it("should hide another team's analysed incident exactly as a missing one", async () => {
+      expect((await resolve(fx.orgA, fx.alice, 1)).status).toBe(200);
+      await analyse(1);
+
+      // Not the analysis, nor ANALYSIS_NOT_STARTED: there is no incident.
+      await expectHidden(fx.orgA, fx.erin, 1);
+      expect(await listed(fx.orgA, fx.erin, 'state=resolved')).toEqual([]);
+      expect(await listed(fx.orgA, fx.dave, 'state=resolved')).toEqual([1]);
+    });
+
+    it('should keep a responder reading an incident reassigned away from their team', async () => {
+      const frank = await aMemberOn(fx.paymentsA, 'Frank');
+
+      expect((await startAs(fx.orgA, fx.dave, 1)).status).toBe(200);
+      expect(
+        (
+          await call('patch', `${fx.orgA}/incidents/1`, fx.alice, {
+            teamId: fx.platformA,
+          })
+        ).status,
+      ).toBe(200);
+
+      // Dave responded; Erin's team is responsible now; Frank, on the old
+      // team, never took part.
+      await expectVisible(fx.orgA, fx.dave, 1);
+      await expectVisible(fx.orgA, fx.erin, 1);
+      await expectHidden(fx.orgA, frank, 1);
+      expect(await listed(fx.orgA, fx.dave)).toEqual([1, 2]);
+      expect(await listed(fx.orgA, fx.erin)).toEqual([1, 3]);
+      expect(await listed(fx.orgA, frank)).toEqual([2]);
+    });
+
+    it('should keep a responder reading an incident after they leave its team', async () => {
+      expect((await resolve(fx.orgA, fx.alice, 1)).status).toBe(200);
+      await prisma.teamMembership.deleteMany({
+        where: { membershipId: fx.daveInA },
+      });
+
+      await expectVisible(fx.orgA, fx.dave, 1);
+      await expectHidden(fx.orgA, fx.dave, 2);
+      expect(await listed(fx.orgA, fx.dave, 'state=resolved')).toEqual([1]);
+      expect(await listed(fx.orgA, fx.dave)).toEqual([]);
+    });
+
+    it('should let a member read the incident whose analysis they own, on no team of theirs', async () => {
+      expect((await resolve(fx.orgA, fx.alice, 1)).status).toBe(200);
+      await expectHidden(fx.orgA, fx.erin, 1);
+
+      await analyse(1, fx.erinInA);
+
+      await expectVisible(fx.orgA, fx.erin, 1);
+
+      const analysis = await call(
+        'get',
+        `${fx.orgA}/incidents/1/analysis`,
+        fx.erin,
+      );
+
+      expect(analysis.status).toBe(200);
+      expect(analysis.body.owner.membershipId).toBe(fx.erinInA);
+      expect(await listed(fx.orgA, fx.erin, 'state=resolved')).toEqual([1]);
+    });
+
+    it('should never let a filter, a search, or a cursor widen the scope', async () => {
+      expect(
+        await listed(fx.orgA, fx.erin, `state=active&teamId=${fx.paymentsA}`),
+      ).toEqual([]);
+      expect(
+        await listed(fx.orgA, fx.erin, `state=active&serviceId=${fx.apiA}`),
+      ).toEqual([]);
+      expect(await listed(fx.orgA, fx.erin, 'state=active&q=INC-1')).toEqual(
+        [],
+      );
+      expect(
+        await listed(fx.orgA, fx.erin, 'state=active&q=Card%20payments'),
+      ).toEqual([3]);
+      // After SEV1 #1 comes every SEV2 — only one of which is each member's.
+      expect(
+        await listed(fx.orgA, fx.erin, 'state=active&cursor=SEV1:1'),
+      ).toEqual([3]);
+      expect(
+        await listed(fx.orgA, fx.dave, 'state=active&cursor=SEV1:1'),
+      ).toEqual([2]);
+    });
+
+    it('should scope by the capacity the organization admitted, one token in two tenants', async () => {
+      // Carol is an ADMIN in A, and a MEMBER on no team in B.
+      await declare(fx.orgB, fx.bob, fx.apiB);
+
+      await expectVisible(fx.orgA, fx.carol, 1);
+      expect(await listed(fx.orgA, fx.carol)).toEqual([1, 2, 3]);
+      await expectHidden(fx.orgB, fx.carol, 1);
+      expect(await listed(fx.orgB, fx.carol)).toEqual([]);
+
+      // Placed on B's Payments, she reads B's incident — and B's list is
+      // still B's alone.
+      await prisma.teamMembership.create({
+        data: {
+          organizationId: fx.orgB,
+          teamId: fx.paymentsB,
+          membershipId: fx.carolInB,
+        },
+      });
+
+      await expectVisible(fx.orgB, fx.carol, 1);
+      expect(await listed(fx.orgB, fx.carol)).toEqual([1]);
+      await expectHidden(fx.orgB, fx.carol, 2);
+    });
+
+    it("should not admit a member of one tenant to another's incident", async () => {
+      await declare(fx.orgB, fx.bob, fx.apiB);
+
+      // Dave is on A's Payments, and no member of B at all.
+      for (const path of readsOf(1)) {
+        expectCode(
+          await call('get', `${fx.orgB}/${path}`, fx.dave),
+          404,
+          'ORGANIZATION_NOT_FOUND',
+        );
+      }
+    });
+
+    /**
+     * Every change a member might try on incident `number`: responding to
+     * it, and writing its analysis.
+     */
+    const changesOf = (
+      number: number,
+    ): ['post' | 'patch', string, object | undefined][] => [
+      ['post', `incidents/${number}/responders/me`, undefined],
+      ['post', `incidents/${number}/responders/me/complete`, undefined],
+      ['post', `incidents/${number}/updates`, { message: 'Rolling back.' }],
+      ['patch', `incidents/${number}/analysis`, { version: 1, summary: 'x' }],
+      ['post', `incidents/${number}/analysis/publish`, { version: 1 }],
+    ];
+
+    /**
+     * Every change to `number` answers exactly as the same change to a
+     * number never used, and writes nothing.
+     */
+    const expectChangesHidden = async (userId: string, number: number) => {
+      const counts = async () => [
+        await prisma.incidentResponder.count(),
+        await prisma.incidentActivity.count(),
+        await prisma.incidentAnalysis.count({ where: { version: { gt: 1 } } }),
+      ];
+      const before = await counts();
+      const missing = changesOf(999);
+
+      for (const [index, [method, path, body]] of changesOf(number).entries()) {
+        const hidden = await call(method, `${fx.orgA}/${path}`, userId, body);
+        const absent = await call(
+          method,
+          `${fx.orgA}/${missing[index][1]}`,
+          userId,
+          body,
+        );
+
+        expectCode(hidden, 404, 'INCIDENT_NOT_FOUND');
+        expect(comparable(hidden.body)).toEqual(comparable(absent.body));
+      }
+
+      expect(await counts()).toEqual(before);
+    };
+
+    it('should answer every change to an active hidden incident exactly as to a missing one', async () => {
+      // Not NOT_ON_RESPONSIBLE_TEAM, START_INVESTIGATING_FIRST, or
+      // NOT_INVESTIGATING: Erin cannot see Payments' incident at all.
+      await expectChangesHidden(fx.erin, 1);
+    });
+
+    it('should not reveal that a hidden incident is resolved, or has an analysis', async () => {
+      // 1 resolved with an analysis, 2 resolved without: to Erin, both
+      // are as missing as 999 — never INCIDENT_RESOLVED, ANALYSIS_NOT_STARTED,
+      // or NOT_ANALYSIS_OWNER.
+      expect((await resolve(fx.orgA, fx.alice, 1)).status).toBe(200);
+      await analyse(1);
+      expect((await resolve(fx.orgA, fx.alice, 2)).status).toBe(200);
+
+      await expectChangesHidden(fx.erin, 1);
+      await expectChangesHidden(fx.erin, 2);
+    });
+
+    it('should keep refusing a visible incident by the rule of the change', async () => {
+      const frank = await aMemberOn(fx.paymentsA, 'Frank');
+      const path = `${fx.orgA}/incidents/1`;
+
+      // Frank sees his team's incident, and has not started on it.
+      expectCode(
+        await call('post', `${path}/updates`, frank, { message: 'x' }),
+        403,
+        'START_INVESTIGATING_FIRST',
+      );
+      expectCode(
+        await call('post', `${path}/responders/me/complete`, frank),
+        409,
+        'NOT_INVESTIGATING',
+      );
+
+      // Dave responded and completed; the incident moves to Platform. He
+      // still sees it, and may not start again.
+      expect((await startAs(fx.orgA, fx.dave, 1)).status).toBe(200);
+      expect((await completeAs(fx.orgA, fx.dave, 1)).status).toBe(200);
+      expect(
+        (await call('patch', path, fx.alice, { teamId: fx.platformA })).status,
+      ).toBe(200);
+      expectCode(
+        await startAs(fx.orgA, fx.dave, 1),
+        409,
+        'RESPONSE_ALREADY_COMPLETED',
+      );
+    });
+
+    it('should let a visible, authorized change through as before', async () => {
+      // Dave responds, then the incident moves away from his team: his
+      // response keeps it his, and he posts and completes.
+      expect((await startAs(fx.orgA, fx.dave, 1)).status).toBe(200);
+      expect(
+        (
+          await call('patch', `${fx.orgA}/incidents/1`, fx.alice, {
+            teamId: fx.platformA,
+          })
+        ).status,
+      ).toBe(200);
+      expect(
+        (
+          await call('post', `${fx.orgA}/incidents/1/updates`, fx.dave, {
+            message: 'Rolling back.',
+          })
+        ).status,
+      ).toBe(201);
+      expect((await completeAs(fx.orgA, fx.dave, 1)).status).toBe(200);
+
+      // The admin, on no team, posts to any incident without responding.
+      expect(
+        (
+          await call('post', `${fx.orgA}/incidents/3/updates`, fx.alice, {
+            message: 'Watching.',
+          })
+        ).status,
+      ).toBe(201);
+    });
+
+    it('should keep analysis ownership deciding who writes a visible analysis', async () => {
+      expect((await resolve(fx.orgA, fx.alice, 1)).status).toBe(200);
+      await analyse(1, fx.erinInA);
+      const analysis = `${fx.orgA}/incidents/1/analysis`;
+
+      // Dave sees the incident — his team's, his response — and does not
+      // own its analysis.
+      expectCode(
+        await call('patch', analysis, fx.dave, { version: 1, summary: 'x' }),
+        403,
+        'NOT_ANALYSIS_OWNER',
+      );
+      expectCode(
+        await call('post', `${analysis}/publish`, fx.dave, { version: 1 }),
+        403,
+        'NOT_ANALYSIS_OWNER',
+      );
+
+      // Erin sees it only as its owner, and writes it.
+      const edited = await call('patch', analysis, fx.erin, {
+        version: 1,
+        summary: 'Card payments failed for two hours.',
+      });
+
+      expect(edited.status).toBe(200);
+      expect(edited.body.version).toBe(2);
+
+      // Handed to Dave, it is no longer anything of Erin's: she finds no
+      // incident, rather than an analysis she does not own.
+      expect(
+        (
+          await call('put', `${analysis}/owner`, fx.alice, {
+            ownerMembershipId: fx.daveInA,
+            version: 2,
+          })
+        ).status,
+      ).toBe(200);
+      await expectChangesHidden(fx.erin, 1);
+
+      // The admin writes any analysis, and Dave, now its owner, publishes.
+      expect(
+        (await call('patch', analysis, fx.carol, { version: 3, lessons: 'y' }))
+          .status,
+      ).toBe(200);
+      expect(
+        (await call('post', `${analysis}/publish`, fx.dave, { version: 4 }))
+          .status,
+      ).toBe(200);
     });
   });
 });

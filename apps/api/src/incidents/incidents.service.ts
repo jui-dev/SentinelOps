@@ -23,6 +23,8 @@ import {
   occurrenceWindows,
 } from './incidents.occurrence.js';
 import type { InstantRange } from './incidents.occurrence.js';
+import { withinIncidentScope } from './incidents.scope.js';
+import type { IncidentReader } from './incidents.scope.js';
 import { buildMemberActivityCalendar } from './member-activity.js';
 import type {
   IncidentActivityResponse,
@@ -421,12 +423,16 @@ export class IncidentsService {
    *
    * A period narrows each list by the moment that defines its state: active
    * incidents declared in it, resolved incidents resolved in it.
+   *
+   * Only the incidents the reader may see (see incidents.scope.ts), their
+   * scope joined to the page's conditions under AND, so neither the cursor's
+   * OR nor the search's AND can displace it.
    */
   async list(
     organizationId: string,
+    reader: IncidentReader,
     query: ListIncidentsQuery,
   ): Promise<IncidentPage> {
-    const scope = { organizationId, organization: { deletedAt: null } };
     // A period narrows each state by the moment that defines it.
     const period =
       query.from && query.to
@@ -439,8 +445,7 @@ export class IncidentsService {
       const after = query.cursor ? decodeActiveCursor(query.cursor) : undefined;
 
       rows = await this.prisma.incident.findMany({
-        where: {
-          ...scope,
+        where: withinIncidentScope(organizationId, reader, {
           status: { not: 'RESOLVED' },
           ...(period && { createdAt: period }),
           ...filters,
@@ -456,7 +461,7 @@ export class IncidentsService {
               },
             ],
           }),
-        },
+        }),
         select: incidentSelection,
         orderBy: [{ severity: 'asc' }, { number: 'asc' }],
         take: INCIDENT_PAGE_SIZE + 1,
@@ -467,13 +472,12 @@ export class IncidentsService {
         : undefined;
 
       rows = await this.prisma.incident.findMany({
-        where: {
-          ...scope,
+        where: withinIncidentScope(organizationId, reader, {
           status: 'RESOLVED',
           ...(period && { resolvedAt: period }),
           ...filters,
           ...(before !== undefined && { number: { lt: before } }),
-        },
+        }),
         select: incidentSelection,
         orderBy: { number: 'desc' },
         take: INCIDENT_PAGE_SIZE + 1,
@@ -992,9 +996,14 @@ export class IncidentsService {
     );
   }
 
-  /** One incident, by its number within the organization, with its responders. */
+  /**
+   * One incident, by its number within the organization, with its
+   * responders. One the reader may not see (see incidents.scope.ts) is 404
+   * INCIDENT_NOT_FOUND, exactly as a missing or foreign one is.
+   */
   async get(
     organizationId: string,
+    reader: IncidentReader,
     incidentNumber: string,
   ): Promise<IncidentDetailResponse> {
     const number = parseIncidentNumber(incidentNumber);
@@ -1004,7 +1013,7 @@ export class IncidentsService {
     }
 
     const incident = await this.prisma.incident.findFirst({
-      where: { organizationId, number, organization: { deletedAt: null } },
+      where: withinIncidentScope(organizationId, reader, { number }),
       select: incidentDetailSelection,
     });
 
@@ -1182,7 +1191,7 @@ export class IncidentsService {
     organizationId: string,
     incidentNumber: string,
     input: UpdateIncidentRequest,
-    actor: { membershipId: string },
+    actor: IncidentReader,
   ): Promise<IncidentDetailResponse> {
     const number = parseIncidentNumber(incidentNumber);
 
@@ -1195,7 +1204,12 @@ export class IncidentsService {
 
     try {
       incident = await this.prisma.$transaction(async (tx) => {
-        const incidentId = await this.lockActive(tx, organizationId, number);
+        const incidentId = await this.lockActive(
+          tx,
+          organizationId,
+          actor,
+          number,
+        );
         const now = new Date();
         const before = await tx.incident.findFirstOrThrow({
           where: { id: incidentId, organizationId },
@@ -1390,7 +1404,7 @@ export class IncidentsService {
   async startResponse(
     organizationId: string,
     incidentNumber: string,
-    actor: { membershipId: string },
+    actor: IncidentReader,
   ): Promise<IncidentDetailResponse> {
     const number = parseIncidentNumber(incidentNumber);
 
@@ -1400,7 +1414,12 @@ export class IncidentsService {
 
     const { incident, started, statusChanged } = await this.prisma.$transaction(
       async (tx) => {
-        const incidentId = await this.lockActive(tx, organizationId, number);
+        const incidentId = await this.lockActive(
+          tx,
+          organizationId,
+          actor,
+          number,
+        );
         const actorId = await this.resolveActor(
           tx,
           organizationId,
@@ -1517,7 +1536,7 @@ export class IncidentsService {
   async completeResponse(
     organizationId: string,
     incidentNumber: string,
-    actor: { membershipId: string },
+    actor: IncidentReader,
   ): Promise<IncidentDetailResponse> {
     const number = parseIncidentNumber(incidentNumber);
 
@@ -1527,7 +1546,12 @@ export class IncidentsService {
 
     const { incident, completed } = await this.prisma.$transaction(
       async (tx) => {
-        const incidentId = await this.lockActive(tx, organizationId, number);
+        const incidentId = await this.lockActive(
+          tx,
+          organizationId,
+          actor,
+          number,
+        );
         const actorId = await this.resolveActor(
           tx,
           organizationId,
@@ -1609,10 +1633,11 @@ export class IncidentsService {
   /**
    * The incident's timeline, oldest first: operational updates and recorded
    * lifecycle changes. Unpaged, and readable whether or not the incident is
-   * resolved.
+   * resolved. Only for an incident the reader may see, as `get`.
    */
   async timeline(
     organizationId: string,
+    reader: IncidentReader,
     incidentNumber: string,
   ): Promise<IncidentActivityResponse[]> {
     const number = parseIncidentNumber(incidentNumber);
@@ -1622,7 +1647,7 @@ export class IncidentsService {
     }
 
     const incident = await this.prisma.incident.findFirst({
-      where: { organizationId, number, organization: { deletedAt: null } },
+      where: withinIncidentScope(organizationId, reader, { number }),
       select: {
         activity: {
           select: activitySelection,
@@ -1673,7 +1698,12 @@ export class IncidentsService {
     }
 
     const activity = await this.prisma.$transaction(async (tx) => {
-      const incidentId = await this.lockActive(tx, organizationId, number);
+      const incidentId = await this.lockActive(
+        tx,
+        organizationId,
+        actor,
+        number,
+      );
       const actorId = await this.resolveActor(
         tx,
         organizationId,
@@ -1887,6 +1917,13 @@ export class IncidentsService {
    * Judges the incident for a change — 404, then 409 — and holds its row
    * until the transaction ends. Returns its id.
    *
+   * Only an incident the actor may see (see incidents.scope.ts) is found:
+   * one outside their scope is 404, like a missing one, before its status
+   * or any rule of the change is judged — so neither a 409 nor the change's
+   * own 403 can tell a member that it exists. Visibility is the only thing
+   * judged here; whether the actor may make the change is still each
+   * caller's own rule, applied after this.
+   *
    * The pattern update() follows: a read to answer precisely, then a write
    * whose own predicate re-asserts that the incident is unresolved. Here the
    * write only touches updatedAt — an operational update is part of the
@@ -1902,10 +1939,11 @@ export class IncidentsService {
   private async lockActive(
     tx: Prisma.TransactionClient,
     organizationId: string,
+    actor: IncidentReader,
     number: number,
   ): Promise<string> {
     const current = await tx.incident.findFirst({
-      where: { organizationId, number, organization: { deletedAt: null } },
+      where: withinIncidentScope(organizationId, actor, { number }),
       select: { id: true, status: true },
     });
 

@@ -54,6 +54,11 @@ import { IncidentsService } from './incidents.service.js';
  * own response — is `incidents:respond`, which every role holds; the service
  * then decides by the incident's responsible team and the caller's own
  * response. Who holds which permission is decided by the role table alone.
+ * Reading a list, an incident, or its timeline is scoped to the caller's own
+ * incidents unless they hold `incidents:read-all` (see incidents.scope.ts);
+ * one outside it answers 404 like a missing one. Every change finds its
+ * incident the same way, before judging whether the caller may make it, so
+ * no refusal tells a member that an incident they cannot see exists.
  *
  * Incidents are addressed by number, validated in the service, so a
  * malformed one answers 404 like any other number this organization lacks.
@@ -63,14 +68,18 @@ import { IncidentsService } from './incidents.service.js';
 export class IncidentsController {
   constructor(private readonly incidents: IncidentsService) {}
 
-  /** One page of active or resolved incidents. */
+  /** One page of the active or resolved incidents the caller may see. */
   @Get()
   @RequirePermission(Permission.INCIDENTS_READ)
   list(
     @CurrentMembership() membership: OrganizationContext,
     @Query({ schema: listIncidentsQuerySchema }) query: ListIncidentsQuery,
   ): Promise<IncidentPage> {
-    return this.incidents.list(membership.organizationId, query);
+    return this.incidents.list(
+      membership.organizationId,
+      { membershipId: membership.membershipId, role: membership.role },
+      query,
+    );
   }
 
   /**
@@ -159,7 +168,11 @@ export class IncidentsController {
     @CurrentMembership() membership: OrganizationContext,
     @Param('incidentNumber') incidentNumber: string,
   ): Promise<IncidentDetailResponse> {
-    return this.incidents.get(membership.organizationId, incidentNumber);
+    return this.incidents.get(
+      membership.organizationId,
+      { membershipId: membership.membershipId, role: membership.role },
+      incidentNumber,
+    );
   }
 
   /**
@@ -178,7 +191,7 @@ export class IncidentsController {
       membership.organizationId,
       incidentNumber,
       body,
-      { membershipId: membership.membershipId },
+      { membershipId: membership.membershipId, role: membership.role },
     );
   }
 
@@ -193,7 +206,11 @@ export class IncidentsController {
     @CurrentMembership() membership: OrganizationContext,
     @Param('incidentNumber') incidentNumber: string,
   ): Promise<IncidentActivityResponse[]> {
-    return this.incidents.timeline(membership.organizationId, incidentNumber);
+    return this.incidents.timeline(
+      membership.organizationId,
+      { membershipId: membership.membershipId, role: membership.role },
+      incidentNumber,
+    );
   }
 
   /**
@@ -233,7 +250,7 @@ export class IncidentsController {
     return this.incidents.startResponse(
       membership.organizationId,
       incidentNumber,
-      { membershipId: membership.membershipId },
+      { membershipId: membership.membershipId, role: membership.role },
     );
   }
 
@@ -251,7 +268,7 @@ export class IncidentsController {
     return this.incidents.completeResponse(
       membership.organizationId,
       incidentNumber,
-      { membershipId: membership.membershipId },
+      { membershipId: membership.membershipId, role: membership.role },
     );
   }
 }

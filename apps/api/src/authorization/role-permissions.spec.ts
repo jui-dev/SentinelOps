@@ -26,6 +26,7 @@ const EXPECTED: Record<Role, Record<Permission, boolean>> = {
     'services:read': true,
     'services:manage': true,
     'incidents:read': true,
+    'incidents:read-all': true,
     'incidents:manage': true,
     'incidents:respond': true,
     'incident-analyses:write': true,
@@ -43,6 +44,7 @@ const EXPECTED: Record<Role, Record<Permission, boolean>> = {
     'services:read': true,
     'services:manage': false,
     'incidents:read': true,
+    'incidents:read-all': false,
     'incidents:manage': false,
     'incidents:respond': true,
     'incident-analyses:write': true,
@@ -102,6 +104,21 @@ describe('role permissions', () => {
     for (const role of ROLES) {
       expect(hasPermission(role, Permission.INCIDENTS_READ)).toBe(true);
       expect(hasPermission(role, Permission.INCIDENTS_RESPOND)).toBe(true);
+    }
+  });
+
+  it('should let only admins oversee every incident', () => {
+    // Everyone else reads their own incidents: incidents.scope.ts.
+    expect(hasPermission('ADMIN', Permission.INCIDENTS_READ_ALL)).toBe(true);
+    expect(hasPermission('MEMBER', Permission.INCIDENTS_READ_ALL)).toBe(false);
+  });
+
+  it('should let whoever runs incident lifecycles oversee every incident', () => {
+    // A lifecycle can be run only on an incident its runner can read.
+    for (const role of ROLES) {
+      if (hasPermission(role, Permission.INCIDENTS_MANAGE)) {
+        expect(hasPermission(role, Permission.INCIDENTS_READ_ALL)).toBe(true);
+      }
     }
   });
 

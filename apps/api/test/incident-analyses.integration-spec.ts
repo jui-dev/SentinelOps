@@ -18,7 +18,7 @@ import { resolveTestDatabaseUrl } from './test-database.js';
  * on A's Payments team, which owns its Payment API; Carol is on B's.
  *
  * What is proven here and nowhere else: that an admin starts a resolved
- * incident's analysis, and every member reads it, with facts and key moments
+ * incident's analysis, and whoever may read the incident reads it, with facts and key moments
  * derived from the incident's real timeline; that an active incident is
  * refused; that of any number of concurrent starts exactly one succeeds and
  * the rest are told it has started — never two analyses, never a 500 —
@@ -296,6 +296,21 @@ describe('incident analyses (integration)', () => {
     body: object,
   ) => call('patch', analysisPath(organizationId, number), userId, body);
 
+  /**
+   * Places a member of A on A's Payments team, which is responsible for its
+   * incidents: they see them, and own none of their analyses.
+   */
+  const onPaymentsInA = async (membershipId: string) => {
+    const { id: teamId } = await prisma.team.findFirstOrThrow({
+      where: { organizationId: fx.orgA },
+      select: { id: true },
+    });
+
+    await prisma.teamMembership.create({
+      data: { organizationId: fx.orgA, teamId, membershipId },
+    });
+  };
+
   /** The analysis row as it stands, read directly. */
   const stored = (organizationId: string, number: number) =>
     prisma.incidentAnalysis.findFirstOrThrow({
@@ -460,13 +475,21 @@ describe('incident analyses (integration)', () => {
         ],
       });
 
-      // Every member reads the same analysis the start answered with.
-      for (const userId of [fx.alice, fx.dave, fx.erin]) {
+      // Whoever may read the incident reads the same analysis the start
+      // answered with: the admin, and Dave, on its team. Erin, on no team
+      // and with no part in it, finds no incident at all.
+      for (const userId of [fx.alice, fx.dave]) {
         const read = await readAnalysis(fx.orgA, userId, number);
 
         expect(read.status).toBe(200);
         expect(read.body).toEqual(started.body);
       }
+
+      expectCode(
+        await readAnalysis(fx.orgA, fx.erin, number),
+        404,
+        'INCIDENT_NOT_FOUND',
+      );
     });
 
     it('should start it owned by another active member of the organization', async () => {
@@ -680,7 +703,8 @@ describe('incident analyses (integration)', () => {
       });
       // The facts are still the incident's, derived as before.
       expect(second.body.facts.responderCount).toBe(1);
-      expect((await readAnalysis(fx.orgA, fx.erin, number)).body).toEqual(
+      // Another reader, who may read every incident, sees the same.
+      expect((await readAnalysis(fx.orgA, fx.carol, number)).body).toEqual(
         second.body,
       );
     });
@@ -735,6 +759,8 @@ describe('incident analyses (integration)', () => {
       expect(byAdmin.status).toBe(200);
       expect(byAdmin.body.version).toBe(2);
 
+      // Erin sees the incident, on its team, and does not own the analysis.
+      await onPaymentsInA(fx.erinInA);
       expectCode(
         await editAnalysis(fx.orgA, fx.erin, number, {
           version: 2,
@@ -1294,7 +1320,8 @@ describe('incident analyses (integration)', () => {
       expect(
         new Date(published.body.publishedAt).getTime(),
       ).toBeGreaterThanOrEqual(before - 1000);
-      expect((await readAnalysis(fx.orgA, fx.erin, number)).body).toEqual(
+      // Another reader, who may read every incident, sees the same.
+      expect((await readAnalysis(fx.orgA, fx.carol, number)).body).toEqual(
         published.body,
       );
     });
@@ -1323,6 +1350,8 @@ describe('incident analyses (integration)', () => {
     it('should refuse a member who does not own it with 403 NOT_ANALYSIS_OWNER, keeping it a draft', async () => {
       const number = await aSummarisedDraftDaveOwns();
 
+      // Erin sees the incident, on its team, and does not own the analysis.
+      await onPaymentsInA(fx.erinInA);
       expectCode(
         await publishAnalysis(fx.orgA, fx.erin, number, { version: 2 }),
         403,

@@ -4,6 +4,8 @@ import { PrismaService } from '../database/prisma.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { uniqueViolationHint } from '../database/unique-violation.js';
 import { incidentNotFound } from '../incidents/incidents.errors.js';
+import { withinIncidentScope } from '../incidents/incidents.scope.js';
+import type { IncidentReader } from '../incidents/incidents.scope.js';
 import { parseIncidentNumber } from '../incidents/incidents.schemas.js';
 import { membershipNotFound } from '../organizations/organizations.errors.js';
 import { organizationNotFound } from '../tenancy/tenancy.errors.js';
@@ -111,7 +113,13 @@ const isAnalysisConflict = (hint: string): boolean =>
  * Every read is scoped to the admitted organization through the incident,
  * addressed by its number within it, so a foreign incident answers exactly
  * as a missing one does (404 INCIDENT_NOT_FOUND). Only then is the analysis
- * itself judged.
+ * itself judged. Reading, editing, and publishing one are further scoped to
+ * the incidents the caller may see (see incidents.scope.ts), with the same
+ * 404 outside it, so no later answer — ANALYSIS_NOT_STARTED,
+ * NOT_ANALYSIS_OWNER, ANALYSIS_PUBLISHED — tells a member about an incident
+ * they cannot see. That is visibility only: who may write is still
+ * mayWriteAnalysis. Starting one and choosing its owner are
+ * `incidents:manage`, whose holders see every incident.
  *
  * The facts and key moments are derived on every read from the incident,
  * which is resolved and therefore final, so they need no transaction with
@@ -123,13 +131,24 @@ export class IncidentAnalysesService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  /** The incident's analysis: 404 ANALYSIS_NOT_STARTED when it has none. */
+  /**
+   * The incident's analysis: 404 ANALYSIS_NOT_STARTED when it has none.
+   * Readable only with the incident itself (see incidents.scope.ts): an
+   * incident the reader may not see is 404 INCIDENT_NOT_FOUND, as a missing
+   * one is, before the analysis is judged — so the answer says nothing about
+   * whether it has one.
+   */
   async get(
     organizationId: string,
+    reader: IncidentReader,
     incidentNumber: string,
   ): Promise<IncidentAnalysisResponse> {
     const incident = await this.prisma.incident.findFirst({
-      where: this.incidentWhere(organizationId, incidentNumber),
+      where: withinIncidentScope(
+        organizationId,
+        reader,
+        this.incidentWhere(organizationId, incidentNumber),
+      ),
       select: { ...factsSelection, analysis: { select: analysisSelection } },
     });
 
@@ -271,7 +290,11 @@ export class IncidentAnalysesService {
     const { incident, analysis } = await this.prisma.$transaction(
       async (tx) => {
         const incident = await tx.incident.findFirst({
-          where: this.incidentWhere(organizationId, incidentNumber),
+          where: withinIncidentScope(
+            organizationId,
+            caller,
+            this.incidentWhere(organizationId, incidentNumber),
+          ),
           select: {
             ...factsSelection,
             id: true,
@@ -457,7 +480,11 @@ export class IncidentAnalysesService {
     const { incident, analysis } = await this.prisma.$transaction(
       async (tx) => {
         const incident = await tx.incident.findFirst({
-          where: this.incidentWhere(organizationId, incidentNumber),
+          where: withinIncidentScope(
+            organizationId,
+            caller,
+            this.incidentWhere(organizationId, incidentNumber),
+          ),
           select: {
             ...factsSelection,
             id: true,

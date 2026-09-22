@@ -52,7 +52,11 @@ export class IncidentAnalysesController {
     @CurrentMembership() membership: OrganizationContext,
     @Param('incidentNumber') incidentNumber: string,
   ): Promise<IncidentAnalysisResponse> {
-    return this.analyses.get(membership.organizationId, incidentNumber);
+    return this.analyses.get(
+      membership.organizationId,
+      { membershipId: membership.membershipId, role: membership.role },
+      incidentNumber,
+    );
   }
 
   /**

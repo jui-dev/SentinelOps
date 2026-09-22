@@ -25,6 +25,12 @@ import { Permission } from './permissions.js';
  * caller also runs incidents' lifecycles. Starting one and choosing its owner
  * are part of that lifecycle, `incidents:manage`.
  *
+ * Reading incidents (`incidents:read`) is every role's, scoped by
+ * incidents.scope.ts to the caller's own incidents unless they also hold
+ * `incidents:read-all`, which only ADMIN does: the Admin oversees the whole
+ * organization, a MEMBER sees the incidents they are responsible for or
+ * took part in.
+ *
  * Declaring is ADMIN-only as the current rule, not a settled one: letting a
  * MEMBER declare against services their own teams own may be reconsidered.
  */
@@ -42,6 +48,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, ReadonlySet<Permission>>> =
       Permission.SERVICES_READ,
       Permission.SERVICES_MANAGE,
       Permission.INCIDENTS_READ,
+      Permission.INCIDENTS_READ_ALL,
       Permission.INCIDENTS_MANAGE,
       Permission.INCIDENTS_RESPOND,
       Permission.INCIDENT_ANALYSES_WRITE,

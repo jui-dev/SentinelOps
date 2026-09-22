@@ -22,7 +22,19 @@ export const Permission = {
   TEAMS_MANAGE: 'teams:manage',
   SERVICES_READ: 'services:read',
   SERVICES_MANAGE: 'services:manage',
+  /**
+   * Read incidents: lists, one incident, its timeline, and its analysis.
+   * Scoped by incidents.scope.ts to the caller's own incidents — their
+   * teams', the ones they responded to, and the ones whose analysis they
+   * own — unless the caller also holds `incidents:read-all`.
+   */
   INCIDENTS_READ: 'incidents:read',
+  /**
+   * Oversee every incident in the organization: widens `incidents:read` from
+   * the caller's own incidents to all of them. Never declared on a route by
+   * itself; the read services consult it to decide the scope.
+   */
+  INCIDENTS_READ_ALL: 'incidents:read-all',
   /**
    * Run an incident's lifecycle: declare it, change it, reassign it, and
    * resolve it. Whoever holds it also oversees every incident's response,

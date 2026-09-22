@@ -122,10 +122,17 @@ describe('demo history (integration)', () => {
       activities: history.flatMap((incident) => incident.activity).length,
     });
 
+    // Read as the dev Admin, who oversees every incident.
+    const admin = await prisma.membership.findFirstOrThrow({
+      where: { organizationId, role: 'ADMIN' },
+      select: { id: true, role: true },
+    });
+    const reader = { membershipId: admin.id, role: admin.role };
+
     for (const built of history) {
       const number = String(built.number);
-      const detail = await incidents.get(organizationId, number);
-      const timeline = await incidents.timeline(organizationId, number);
+      const detail = await incidents.get(organizationId, reader, number);
+      const timeline = await incidents.timeline(organizationId, reader, number);
 
       expect(detail).toMatchObject({
         title: built.title,
@@ -263,17 +270,16 @@ describe('demo history (integration)', () => {
     const sam = await membershipOf('sam@example.com');
     const admin = await membershipOf('admin@example.com');
 
-    await incidents.startResponse(organizationId, number, {
-      membershipId: sam.id,
-    });
-    await incidents.completeResponse(organizationId, number, {
-      membershipId: sam.id,
-    });
+    const asSam = { membershipId: sam.id, role: sam.role };
+    const asAdmin = { membershipId: admin.id, role: admin.role };
+
+    await incidents.startResponse(organizationId, number, asSam);
+    await incidents.completeResponse(organizationId, number, asSam);
     const resolved = await incidents.update(
       organizationId,
       number,
       { status: 'RESOLVED', resolution: 'Alert consumer restarted.' },
-      { membershipId: admin.id },
+      asAdmin,
     );
     const next = await incidents.create(
       organizationId,

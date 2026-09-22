@@ -6,6 +6,7 @@ import request from 'supertest';
 import { AppModule } from './../src/app.module.js';
 import { TokenService } from './../src/auth/token.service.js';
 import { PrismaService } from './../src/database/prisma.service.js';
+import { incidentReadScope } from './../src/incidents/incidents.scope.js';
 import type { Role } from './../src/generated/prisma/enums.js';
 
 /**
@@ -197,10 +198,16 @@ describe('Incident analyses (e2e)', () => {
       expect(
         response.body.keyMoments.map(({ kind }: { kind: string }) => kind),
       ).toEqual(['DECLARED', 'RESOLVED']);
-      // The incident is found within the admitted organization, by number.
-      expect(prisma.incident.findFirst.mock.calls[0][0].where).toMatchObject({
-        organizationId: ORG_ID,
-        number: 1,
+      // The incident is found within the admitted organization, by number —
+      // and, for a member, only among their own incidents.
+      expect(prisma.incident.findFirst.mock.calls[0][0].where).toEqual({
+        AND: [
+          { organizationId: ORG_ID, organization: { deletedAt: null } },
+          ...(role === 'MEMBER'
+            ? [incidentReadScope({ membershipId: MEMBERSHIP_ID, role })]
+            : []),
+          expect.objectContaining({ organizationId: ORG_ID, number: 1 }),
+        ],
       });
     });
 
