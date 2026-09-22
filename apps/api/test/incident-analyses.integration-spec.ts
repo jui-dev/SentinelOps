@@ -29,7 +29,9 @@ import { resolveTestDatabaseUrl } from './test-database.js';
  * a 500 — and a published one is not edited at all; that an admin hands a
  * draft to another active member one version at a time, so an edit its old
  * owner already had under way is refused, and they may no longer edit it;
- * that the owner is
+ * that the owner or an admin publishes a draft that has a summary, once,
+ * as it stood at the version they read — never a text changed under them,
+ * and a second publication is told it was published; that the owner is
  * an active member of the admitted organization, a foreign, missing, or
  * deleted one being indistinguishable; and that another organization's
  * incidents are indistinguishable from missing ones.
@@ -321,6 +323,49 @@ describe('incident analyses (integration)', () => {
         })
       ).status,
     ).toBe(201);
+
+    return number;
+  };
+
+  const reassign = (
+    organizationId: string,
+    userId: string,
+    number: number,
+    body: object,
+  ) =>
+    call('put', `${analysisPath(organizationId, number)}/owner`, userId, body);
+
+  const publishAnalysis = (
+    organizationId: string,
+    userId: string,
+    number: number,
+    body: object,
+  ) =>
+    call(
+      'post',
+      `${analysisPath(organizationId, number)}/publish`,
+      userId,
+      body,
+    );
+
+  /**
+   * A resolved incident in A whose analysis Dave owns, given a summary and
+   * published through the routes: version 3, summary 'Final'.
+   */
+  const aPublishedAnalysisDaveOwns = async () => {
+    const number = await aDraftDaveOwns();
+
+    expect(
+      (
+        await editAnalysis(fx.orgA, fx.dave, number, {
+          version: 1,
+          summary: 'Final',
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (await publishAnalysis(fx.orgA, fx.dave, number, { version: 2 })).status,
+    ).toBe(200);
 
     return number;
   };
@@ -820,25 +865,12 @@ describe('incident analyses (integration)', () => {
     });
 
     it('should refuse editing a published analysis with 409 ANALYSIS_PUBLISHED, applying nothing', async () => {
-      const number = await aDraftDaveOwns();
-      const { id } = await stored(fx.orgA, number);
-
-      // Published directly: there is no publish route yet.
-      await prisma.incidentAnalysis.update({
-        where: { id },
-        data: {
-          status: 'PUBLISHED',
-          summary: 'Final',
-          publishedAt: new Date(),
-          publishedById: fx.alice,
-          version: { increment: 1 },
-        },
-      });
+      const number = await aPublishedAnalysisDaveOwns();
 
       for (const userId of [fx.dave, fx.alice]) {
         expectCode(
           await editAnalysis(fx.orgA, userId, number, {
-            version: 2,
+            version: 3,
             summary: 'Changed after publishing',
           }),
           409,
@@ -846,7 +878,8 @@ describe('incident analyses (integration)', () => {
         );
       }
       expect(await stored(fx.orgA, number)).toMatchObject({
-        version: 2,
+        status: 'PUBLISHED',
+        version: 3,
         summary: 'Final',
       });
     });
@@ -905,19 +938,6 @@ describe('incident analyses (integration)', () => {
   });
 
   describe('reassigning the owner', () => {
-    const reassign = (
-      organizationId: string,
-      userId: string,
-      number: number,
-      body: object,
-    ) =>
-      call(
-        'put',
-        `${analysisPath(organizationId, number)}/owner`,
-        userId,
-        body,
-      );
-
     /** The analysis row's owner and version, read directly. */
     const ownership = async (organizationId: string, number: number) => {
       const { status, version, owner } =
@@ -1145,32 +1165,19 @@ describe('incident analyses (integration)', () => {
     });
 
     it('should refuse reassigning a published analysis with 409 ANALYSIS_PUBLISHED', async () => {
-      const number = await aDraftDaveOwns();
-      const { id } = await stored(fx.orgA, number);
-
-      // Published directly: there is no publish route yet.
-      await prisma.incidentAnalysis.update({
-        where: { id },
-        data: {
-          status: 'PUBLISHED',
-          summary: 'Final',
-          publishedAt: new Date(),
-          publishedById: fx.alice,
-          version: { increment: 1 },
-        },
-      });
+      const number = await aPublishedAnalysisDaveOwns();
 
       expectCode(
         await reassign(fx.orgA, fx.alice, number, {
           ownerMembershipId: fx.erinInA,
-          version: 2,
+          version: 3,
         }),
         409,
         'ANALYSIS_PUBLISHED',
       );
       expect(await ownership(fx.orgA, number)).toEqual({
         status: 'PUBLISHED',
-        version: 2,
+        version: 3,
         ownerMembershipId: fx.daveInA,
       });
     });
@@ -1229,6 +1236,330 @@ describe('incident analyses (integration)', () => {
         'PERMISSION_DENIED',
       );
       expect((await ownership(fx.orgB, inB)).version).toBe(1);
+    });
+  });
+
+  describe('publishing', () => {
+    /** The published columns as they stand, read directly. */
+    const publication = (organizationId: string, number: number) =>
+      prisma.incidentAnalysis.findFirstOrThrow({
+        where: { organizationId, incident: { number } },
+        select: {
+          id: true,
+          status: true,
+          version: true,
+          summary: true,
+          publishedAt: true,
+          publishedById: true,
+        },
+      });
+
+    /** Dave's draft with a summary written: version 2. */
+    const aSummarisedDraftDaveOwns = async () => {
+      const number = await aDraftDaveOwns();
+
+      expect(
+        (
+          await editAnalysis(fx.orgA, fx.dave, number, {
+            version: 1,
+            summary: 'Card payments failed for two hours.',
+          })
+        ).status,
+      ).toBe(200);
+
+      return number;
+    };
+
+    it('should publish the owner’s draft as it stands, attributed to them, as the next version', async () => {
+      const number = await aSummarisedDraftDaveOwns();
+      const before = Date.now();
+
+      const published = await publishAnalysis(fx.orgA, fx.dave, number, {
+        version: 2,
+      });
+
+      expect(published.status).toBe(200);
+      expect(published.body).toMatchObject({
+        status: 'PUBLISHED',
+        version: 3,
+        owner: { membershipId: fx.daveInA, name: 'Dave Duarte' },
+        createdBy: { id: fx.alice, name: 'Alice Anders' },
+        publishedBy: { id: fx.dave, name: 'Dave Duarte' },
+        summary: 'Card payments failed for two hours.',
+        // The other sections may honestly be unknown.
+        impact: null,
+        cause: null,
+        lessons: null,
+      });
+      expect(
+        new Date(published.body.publishedAt).getTime(),
+      ).toBeGreaterThanOrEqual(before - 1000);
+      expect((await readAnalysis(fx.orgA, fx.erin, number)).body).toEqual(
+        published.body,
+      );
+    });
+
+    it('should let an admin publish a draft they do not own, and record who published it apart from owner and starter', async () => {
+      const number = await aSummarisedDraftDaveOwns();
+
+      await reassign(fx.orgA, fx.alice, number, {
+        ownerMembershipId: fx.erinInA,
+        version: 2,
+      });
+
+      const published = await publishAnalysis(fx.orgA, fx.carol, number, {
+        version: 3,
+      });
+
+      expect(published.status).toBe(200);
+      expect(published.body).toMatchObject({
+        version: 4,
+        createdBy: { id: fx.alice },
+        owner: { membershipId: fx.erinInA },
+        publishedBy: { id: fx.carol, name: 'Carol Chen' },
+      });
+    });
+
+    it('should refuse a member who does not own it with 403 NOT_ANALYSIS_OWNER, keeping it a draft', async () => {
+      const number = await aSummarisedDraftDaveOwns();
+
+      expectCode(
+        await publishAnalysis(fx.orgA, fx.erin, number, { version: 2 }),
+        403,
+        'NOT_ANALYSIS_OWNER',
+      );
+      expect(await publication(fx.orgA, number)).toMatchObject({
+        status: 'DRAFT',
+        version: 2,
+        publishedAt: null,
+        publishedById: null,
+      });
+    });
+
+    it('should refuse a draft without a summary with 409 ANALYSIS_SUMMARY_REQUIRED, keeping it a draft', async () => {
+      const number = await aDraftDaveOwns();
+
+      await editAnalysis(fx.orgA, fx.dave, number, {
+        version: 1,
+        impact: 'Every card checkout.',
+        cause: 'Not yet determined.',
+        lessons: 'Alert on certificate expiry.',
+      });
+
+      expectCode(
+        await publishAnalysis(fx.orgA, fx.dave, number, { version: 2 }),
+        409,
+        'ANALYSIS_SUMMARY_REQUIRED',
+      );
+      expect(await publication(fx.orgA, number)).toMatchObject({
+        status: 'DRAFT',
+        version: 2,
+      });
+    });
+
+    it('should refuse a stale version with 409 ANALYSIS_CHANGED, keeping it a draft', async () => {
+      const number = await aSummarisedDraftDaveOwns();
+
+      expectCode(
+        await publishAnalysis(fx.orgA, fx.dave, number, { version: 1 }),
+        409,
+        'ANALYSIS_CHANGED',
+      );
+      expect((await publication(fx.orgA, number)).status).toBe('DRAFT');
+    });
+
+    it('should tell a second publication, and a repeated one, that it is published — keeping the first publisher', async () => {
+      const number = await aPublishedAnalysisDaveOwns();
+
+      // A double click, with the version the first click read.
+      expectCode(
+        await publishAnalysis(fx.orgA, fx.dave, number, { version: 2 }),
+        409,
+        'ANALYSIS_PUBLISHED',
+      );
+      // Someone else, with the version it has now.
+      expectCode(
+        await publishAnalysis(fx.orgA, fx.alice, number, { version: 3 }),
+        409,
+        'ANALYSIS_PUBLISHED',
+      );
+      expect(await publication(fx.orgA, number)).toMatchObject({
+        status: 'PUBLISHED',
+        version: 3,
+        publishedById: fx.dave,
+      });
+    });
+
+    it('should publish exactly once of two concurrent publications', async () => {
+      const number = await aSummarisedDraftDaveOwns();
+
+      const responses = await Promise.all([
+        publishAnalysis(fx.orgA, fx.dave, number, { version: 2 }),
+        publishAnalysis(fx.orgA, fx.alice, number, { version: 2 }),
+      ]);
+      const [winner] = responses.filter(({ status }) => status === 200);
+      const [loser] = responses.filter(({ status }) => status === 409);
+
+      expect(responses.map(({ status }) => status).sort()).toEqual([200, 409]);
+      expect(loser.body.code).toBe('ANALYSIS_PUBLISHED');
+      expect(await publication(fx.orgA, number)).toMatchObject({
+        status: 'PUBLISHED',
+        version: 3,
+        publishedById: winner.body.publishedBy.id,
+      });
+    });
+
+    // The safety the version gives publishing: an edit that cleared the
+    // summary is applied but not committed, so the publication reads the
+    // old summary and passes every check, then waits on the row. Once the
+    // edit commits, the publication matches nothing — a text changed under
+    // it is never published.
+    it('should not publish a summary cleared while its UPDATE waited', async () => {
+      const number = await aSummarisedDraftDaveOwns();
+      const { id } = await publication(fx.orgA, number);
+
+      const edit = await hold((tx) =>
+        tx.incidentAnalysis.update({
+          where: { id },
+          data: { summary: null, version: { increment: 1 } },
+        }),
+      );
+      const pending = publishAnalysis(fx.orgA, fx.dave, number, {
+        version: 2,
+      });
+
+      pending.catch(() => undefined);
+      await someoneIsWaitingOnALock();
+      edit.release();
+      await edit.done;
+
+      expectCode(await pending, 409, 'ANALYSIS_CHANGED');
+      expect(await publication(fx.orgA, number)).toMatchObject({
+        status: 'DRAFT',
+        version: 3,
+        summary: null,
+        publishedAt: null,
+        publishedById: null,
+      });
+    });
+
+    it('should refuse an edit queued behind a publication with 409 ANALYSIS_PUBLISHED', async () => {
+      const number = await aSummarisedDraftDaveOwns();
+      const { id } = await publication(fx.orgA, number);
+
+      const gate = await hold(
+        (tx) =>
+          tx.$queryRaw`SELECT id FROM incident_analyses WHERE id = ${id}::uuid FOR UPDATE`,
+      );
+      const publishing = publishAnalysis(fx.orgA, fx.dave, number, {
+        version: 2,
+      });
+
+      publishing.catch(() => undefined);
+      await someoneIsWaitingOnALock(1);
+
+      const editing = editAnalysis(fx.orgA, fx.alice, number, {
+        version: 2,
+        summary: 'Rewritten as it was published',
+      });
+
+      editing.catch(() => undefined);
+      await someoneIsWaitingOnALock(2);
+      gate.release();
+      await gate.done;
+
+      expect((await publishing).status).toBe(200);
+      expectCode(await editing, 409, 'ANALYSIS_PUBLISHED');
+      expect(await publication(fx.orgA, number)).toMatchObject({
+        status: 'PUBLISHED',
+        version: 3,
+        summary: 'Card payments failed for two hours.',
+      });
+    });
+
+    it("should refuse the old owner's publication queued behind a reassignment, then refuse him outright", async () => {
+      const number = await aSummarisedDraftDaveOwns();
+      const { id } = await publication(fx.orgA, number);
+
+      const gate = await hold(
+        (tx) =>
+          tx.$queryRaw`SELECT id FROM incident_analyses WHERE id = ${id}::uuid FOR UPDATE`,
+      );
+      const reassigning = reassign(fx.orgA, fx.alice, number, {
+        ownerMembershipId: fx.erinInA,
+        version: 2,
+      });
+
+      reassigning.catch(() => undefined);
+      await someoneIsWaitingOnALock(1);
+
+      const publishing = publishAnalysis(fx.orgA, fx.dave, number, {
+        version: 2,
+      });
+
+      publishing.catch(() => undefined);
+      await someoneIsWaitingOnALock(2);
+      gate.release();
+      await gate.done;
+
+      expect((await reassigning).status).toBe(200);
+      expectCode(await publishing, 409, 'ANALYSIS_CHANGED');
+      expectCode(
+        await publishAnalysis(fx.orgA, fx.dave, number, { version: 3 }),
+        403,
+        'NOT_ANALYSIS_OWNER',
+      );
+      expect(await publication(fx.orgA, number)).toMatchObject({
+        status: 'DRAFT',
+        version: 3,
+      });
+    });
+
+    it('should answer 404 ANALYSIS_NOT_STARTED for an incident nobody has analysed', async () => {
+      const number = await aResolvedIncident(
+        fx.orgA,
+        fx.alice,
+        fx.dave,
+        fx.apiA,
+      );
+
+      expectCode(
+        await publishAnalysis(fx.orgA, fx.alice, number, { version: 1 }),
+        404,
+        'ANALYSIS_NOT_STARTED',
+      );
+    });
+
+    it("should answer another organization's incident exactly as a missing one, and judge the caller by the organization named", async () => {
+      const inB = await aResolvedIncident(fx.orgB, fx.bob, fx.carol, fx.apiB);
+
+      expect((await startAnalysis(fx.orgB, fx.bob, inB)).status).toBe(201);
+      expect(
+        (
+          await editAnalysis(fx.orgB, fx.bob, inB, {
+            version: 1,
+            summary: 'Summary in B',
+          })
+        ).status,
+      ).toBe(200);
+
+      const missing = await publishAnalysis(fx.orgA, fx.alice, 99, {
+        version: 2,
+      });
+
+      expectCode(missing, 404, 'INCIDENT_NOT_FOUND');
+      expect(
+        comparable(
+          (await publishAnalysis(fx.orgA, fx.alice, inB, { version: 2 })).body,
+        ),
+      ).toEqual(comparable(missing.body));
+      // Carol is ADMIN in A, but only a MEMBER in B, where Bob owns it.
+      expectCode(
+        await publishAnalysis(fx.orgB, fx.carol, inB, { version: 2 }),
+        403,
+        'NOT_ANALYSIS_OWNER',
+      );
+      expect((await publication(fx.orgB, inB)).status).toBe('DRAFT');
     });
   });
 

@@ -13,6 +13,7 @@ import {
   analysisChanged,
   analysisNotStarted,
   analysisPublished,
+  analysisSummaryRequired,
   incidentNotResolved,
   notAnalysisOwner,
 } from './incident-analyses.errors.js';
@@ -23,6 +24,7 @@ import { toIncidentAnalysisResponse } from './incident-analyses.responses.js';
 import { ANALYSIS_SECTIONS } from './incident-analyses.schemas.js';
 import type {
   EditIncidentAnalysisRequest,
+  PublishIncidentAnalysisRequest,
   ReassignIncidentAnalysisOwnerRequest,
   StartIncidentAnalysisRequest,
 } from './incident-analyses.schemas.js';
@@ -86,7 +88,7 @@ const isAnalysisConflict = (hint: string): boolean =>
 
 /**
  * Incident analyses: reading an incident's, starting one, editing a draft's
- * sections, and handing a draft to another owner.
+ * sections, handing a draft to another owner, and publishing it.
  *
  * Every read is scoped to the admitted organization through the incident,
  * addressed by its number within it, so a foreign incident answers exactly
@@ -175,6 +177,7 @@ export class IncidentAnalysesService {
     }
 
     const createdById = await this.resolveActor(
+      this.prisma,
       organizationId,
       caller.membershipId,
     );
@@ -436,6 +439,133 @@ export class IncidentAnalysesService {
   }
 
   /**
+   * Publishes a draft analysis as it stands at the version the caller read:
+   * the organization's record of the incident from then on. One way — a
+   * published analysis is not edited, reassigned, or published again.
+   *
+   * Publishing is part of writing the analysis, so it is its owner's, or
+   * whoever holds `incidents:manage`. Who published it is the user behind
+   * the admitted membership, and when is the server's clock; neither comes
+   * from a body.
+   *
+   * Judged in the order that reveals least: the incident (404), its analysis
+   * (404 ANALYSIS_NOT_STARTED), whether the caller may write it (403
+   * NOT_ANALYSIS_OWNER), its state — published (409 ANALYSIS_PUBLISHED) or
+   * moved past the caller's version (409 ANALYSIS_CHANGED) — and last its
+   * content: a summary, the one section a publication requires (409
+   * ANALYSIS_SUMMARY_REQUIRED). The version is judged before the content, so
+   * that answer is always about the analysis the caller read.
+   *
+   * The guarantee is the UPDATE, as for an edit: its WHERE names the
+   * analysis, the organization, DRAFT, and the caller's version, and it
+   * increments the version in SQL. The summary is not in it: the version
+   * already fixes the text that was read, so an edit that cleared the summary
+   * in the meantime has moved the version on and the publication matches
+   * nothing. The database's CHECK that a published analysis has a summary is
+   * the backstop. Of two publications, the second matches nothing and is
+   * told the analysis is published — it did not publish it.
+   *
+   * Publishing is an accepted write, and makes a new version.
+   */
+  async publish(
+    organizationId: string,
+    incidentNumber: string,
+    caller: AnalysisCaller,
+    input: PublishIncidentAnalysisRequest,
+  ): Promise<IncidentAnalysisResponse> {
+    const { version } = input;
+
+    const { incident, analysis } = await this.prisma.$transaction(
+      async (tx) => {
+        const incident = await tx.incident.findFirst({
+          where: this.incidentWhere(organizationId, incidentNumber),
+          select: {
+            ...factsSelection,
+            id: true,
+            analysis: {
+              select: {
+                id: true,
+                status: true,
+                version: true,
+                ownerMembershipId: true,
+                summary: true,
+              },
+            },
+          },
+        });
+
+        if (!incident) {
+          throw incidentNotFound();
+        }
+
+        const current = incident.analysis;
+
+        if (!current) {
+          throw analysisNotStarted();
+        }
+
+        if (!mayWriteAnalysis(caller, current)) {
+          throw notAnalysisOwner();
+        }
+
+        if (current.status === 'PUBLISHED') {
+          throw analysisPublished();
+        }
+
+        if (current.version !== version) {
+          throw analysisChanged();
+        }
+
+        if (current.summary === null) {
+          throw analysisSummaryRequired();
+        }
+
+        const publishedById = await this.resolveActor(
+          tx,
+          organizationId,
+          caller.membershipId,
+        );
+
+        const { count } = await tx.incidentAnalysis.updateMany({
+          where: { id: current.id, organizationId, status: 'DRAFT', version },
+          data: {
+            status: 'PUBLISHED',
+            publishedAt: new Date(),
+            publishedById,
+            version: { increment: 1 },
+          },
+        });
+
+        if (count !== 1) {
+          const now = await tx.incidentAnalysis.findFirst({
+            where: { id: current.id, organizationId },
+            select: { status: true },
+          });
+
+          throw now?.status === 'PUBLISHED'
+            ? analysisPublished()
+            : analysisChanged();
+        }
+
+        return {
+          incident,
+          analysis: await tx.incidentAnalysis.findUniqueOrThrow({
+            where: { id: current.id },
+            select: analysisSelection,
+          }),
+        };
+      },
+    );
+
+    this.logger.log('Incident analysis published', {
+      incidentId: incident.id,
+      version: analysis.version,
+    });
+
+    return this.respond(incident, analysis);
+  }
+
+  /**
    * Finds the incident `incidentNumber` names in the admitted organization.
    * A malformed number is 404 INCIDENT_NOT_FOUND here, like a missing one
    * or — numbers being per organization — one another tenant holds.
@@ -492,10 +622,11 @@ export class IncidentAnalysesService {
    * actors.
    */
   private async resolveActor(
+    db: Prisma.TransactionClient,
     organizationId: string,
     membershipId: string,
   ): Promise<string> {
-    const membership = await this.prisma.membership.findFirst({
+    const membership = await db.membership.findFirst({
       where: { id: membershipId, organizationId, user: { deletedAt: null } },
       select: { userId: true },
     });

@@ -1,4 +1,13 @@
-import { Body, Get, Param, Patch, Post, Put } from '@nestjs/common';
+import {
+  Body,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Patch,
+  Post,
+  Put,
+} from '@nestjs/common';
 
 import { Permission } from '../authorization/permissions.js';
 import { RequirePermission } from '../authorization/require-permission.decorator.js';
@@ -8,11 +17,13 @@ import { OrganizationController } from '../tenancy/organization-controller.decor
 import type { IncidentAnalysisResponse } from './incident-analyses.contract.js';
 import {
   editIncidentAnalysisSchema,
+  publishIncidentAnalysisSchema,
   reassignIncidentAnalysisOwnerSchema,
   startIncidentAnalysisSchema,
 } from './incident-analyses.schemas.js';
 import type {
   EditIncidentAnalysisRequest,
+  PublishIncidentAnalysisRequest,
   ReassignIncidentAnalysisOwnerRequest,
   StartIncidentAnalysisRequest,
 } from './incident-analyses.schemas.js';
@@ -27,8 +38,9 @@ import { IncidentAnalysesService } from './incident-analyses.service.js';
  * is part of the incident's record. Starting one and choosing who owns it —
  * then or later — are `incidents:manage`, part of running the incident's
  * lifecycle.
- * Editing one is `incident-analyses:write`, which the service narrows to the
- * analysis's owner unless the caller also holds `incidents:manage`.
+ * Editing and publishing one are `incident-analyses:write`, which the
+ * service narrows to the analysis's owner unless the caller also holds
+ * `incidents:manage`.
  */
 @OrganizationController('incidents/:incidentNumber/analysis')
 export class IncidentAnalysesController {
@@ -101,6 +113,28 @@ export class IncidentAnalysesController {
     return this.analyses.reassignOwner(
       membership.organizationId,
       incidentNumber,
+      body,
+    );
+  }
+
+  /**
+   * Publishes a draft analysis as it stands at `version`. The caller must
+   * own it or hold `incidents:manage`; who published it is always the
+   * caller. An action, not a creation: 200 with the analysis.
+   */
+  @Post('publish')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission(Permission.INCIDENT_ANALYSES_WRITE)
+  publish(
+    @CurrentMembership() membership: OrganizationContext,
+    @Param('incidentNumber') incidentNumber: string,
+    @Body({ schema: publishIncidentAnalysisSchema })
+    body: PublishIncidentAnalysisRequest,
+  ): Promise<IncidentAnalysisResponse> {
+    return this.analyses.publish(
+      membership.organizationId,
+      incidentNumber,
+      { membershipId: membership.membershipId, role: membership.role },
       body,
     );
   }

@@ -1,5 +1,6 @@
 import {
   editIncidentAnalysisSchema,
+  publishIncidentAnalysisSchema,
   reassignIncidentAnalysisOwnerSchema,
   startIncidentAnalysisSchema,
 } from './incident-analyses.schemas.js';
@@ -151,6 +152,35 @@ describe('reassignIncidentAnalysisOwnerSchema', () => {
         parse({ ownerMembershipId: MEMBERSHIP_ID, version: 1, [key]: 'x' })
           .success,
       ).toBe(false);
+    }
+  });
+});
+
+describe('publishIncidentAnalysisSchema', () => {
+  const parse = (body: unknown) =>
+    publishIncidentAnalysisSchema.safeParse(body);
+
+  it('should take the version, and nothing else', () => {
+    expect(publishIncidentAnalysisSchema.parse({ version: 3 })).toEqual({
+      version: 3,
+    });
+  });
+
+  it('should require a positive integer version within the column', () => {
+    for (const version of [undefined, 0, -1, 1.5, '2', 2_147_483_648]) {
+      expect(parse({ version }).success).toBe(false);
+    }
+  });
+
+  it('should refuse a section, a status, or attribution alongside it', () => {
+    for (const key of [
+      'summary',
+      'status',
+      'publishedAt',
+      'publishedById',
+      'ownerMembershipId',
+    ]) {
+      expect(parse({ version: 1, [key]: 'x' }).success).toBe(false);
     }
   });
 });

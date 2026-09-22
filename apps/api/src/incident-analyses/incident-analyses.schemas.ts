@@ -90,3 +90,16 @@ export const reassignIncidentAnalysisOwnerSchema = z.strictObject({
 export type ReassignIncidentAnalysisOwnerRequest = z.infer<
   typeof reassignIncidentAnalysisOwnerSchema
 >;
+
+/**
+ * Publishing a draft analysis as it stands at `version`: the sections the
+ * caller last read, as saved. Nothing else is said — a publication changes
+ * no text.
+ */
+export const publishIncidentAnalysisSchema = z.strictObject({
+  version: versionSchema,
+});
+
+export type PublishIncidentAnalysisRequest = z.infer<
+  typeof publishIncidentAnalysisSchema
+>;

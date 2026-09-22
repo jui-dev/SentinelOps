@@ -19,6 +19,7 @@ export const IncidentAnalysesErrorCode = {
   NOT_ANALYSIS_OWNER: 'NOT_ANALYSIS_OWNER',
   ANALYSIS_PUBLISHED: 'ANALYSIS_PUBLISHED',
   ANALYSIS_CHANGED: 'ANALYSIS_CHANGED',
+  ANALYSIS_SUMMARY_REQUIRED: 'ANALYSIS_SUMMARY_REQUIRED',
 } as const;
 
 export type IncidentAnalysesErrorCode =
@@ -75,4 +76,14 @@ export const analysisPublished = (): ConflictException =>
 export const analysisChanged = (): ConflictException =>
   new ConflictException('This analysis has changed since you last read it', {
     errorCode: IncidentAnalysesErrorCode.ANALYSIS_CHANGED,
+  });
+
+/**
+ * A published analysis says, at least, what happened. The summary is the
+ * only section publishing requires: impact, cause, and lessons may honestly
+ * be unknown.
+ */
+export const analysisSummaryRequired = (): ConflictException =>
+  new ConflictException('Write a summary before publishing this analysis', {
+    errorCode: IncidentAnalysesErrorCode.ANALYSIS_SUMMARY_REQUIRED,
   });
