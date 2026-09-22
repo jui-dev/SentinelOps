@@ -181,6 +181,25 @@ describe("an analysis draft", () => {
       expect(state.conflicts).toEqual({ cause: "A config change." });
     });
 
+    it("advances past a new owner without touching unsaved text", () => {
+      const state = writing(["cause", "  A deploy, still being written"], ["lessons", ""]);
+      const reassigned = {
+        ...v3,
+        version: 4,
+        owner: { membershipId: "0199a1b2-c3d4-7000-8000-0000000000ac", name: "Sam Okafor" },
+      };
+
+      const next = reconcile(state, reassigned);
+
+      expect(next.merged).toBe(false);
+      expect(next.state.base.version).toBe(4);
+      // Exactly as typed — not trimmed, not cleared, not reinterpreted.
+      expect(next.state.text).toEqual(state.text);
+      expect(dirtySections(next.state)).toEqual(dirtySections(state));
+      expect(next.state.conflicts).toEqual({});
+      expect(saveRequest(next.state)).toEqual({ version: 4, cause: "A deploy, still being written" });
+    });
+
     it("changes nothing for a version it already has", () => {
       const state = writing(["cause", "A deploy."]);
 

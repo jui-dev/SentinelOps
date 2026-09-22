@@ -13,10 +13,7 @@ import { DialogActions, FormDialog } from "@/components/ui/dialog";
 import { Select } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { ApiErrorCode } from "@/lib/api/contracts";
-import type {
-  IncidentDetailResponse,
-  OrganizationMembershipResponse,
-} from "@/lib/api/contracts";
+import type { IncidentDetailResponse } from "@/lib/api/contracts";
 import { isApiError } from "@/lib/api/errors";
 
 import {
@@ -24,16 +21,13 @@ import {
   incidentAnalysisHref,
   useStartIncidentAnalysis,
 } from "./analysis-queries";
-
-const MEMBER_GONE =
-  "That person is no longer a member of this organization. The list of members has been refreshed.";
+import { MEMBER_GONE, OWNER_HINT, OwnerOptions } from "./owner-options";
 
 /**
  * Choosing who owns the analysis, and starting it. The caller owns it unless
  * they choose someone else — then nothing is sent, and the API makes them
- * the owner. Those who responded to the incident come first: they know it
- * best. Started, the analysis is already in the cache, so its page opens at
- * once.
+ * the owner. Those who responded to the incident come first. Started, the
+ * analysis is already in the cache, so its page opens at once.
  */
 function StartAnalysisForm({
   incident,
@@ -51,20 +45,6 @@ function StartAnalysisForm({
 
   if (memberships.isError) return <ErrorAlert error={memberships.error} />;
   if (!memberships.data) return <Spinner label="Loading members…" />;
-
-  const responded = new Set(
-    incident.responders.map(({ membershipId }) => membershipId),
-  );
-  const responders = memberships.data.filter(({ id }) => responded.has(id));
-  const others = memberships.data.filter(({ id }) => !responded.has(id));
-
-  const optionFor = (membership: OrganizationMembershipResponse) => (
-    <option key={membership.id} value={membership.id}>
-      {membership.id === me
-        ? `${membership.user.name} (you)`
-        : `${membership.user.name} (${membership.user.email})`}
-    </option>
-  );
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -101,19 +81,14 @@ function StartAnalysisForm({
         name="ownerMembershipId"
         value={ownerId}
         onChange={(event) => setOwnerId(event.target.value)}
-        hint="The owner is responsible for writing and publishing it. Admins can edit any draft."
+        hint={OWNER_HINT}
         error={memberGone ? MEMBER_GONE : undefined}
       >
-        {responders.length > 0 ? (
-          <>
-            <optgroup label={`Responded to ${incidentKey(incident.number)}`}>
-              {responders.map(optionFor)}
-            </optgroup>
-            <optgroup label="Everyone else">{others.map(optionFor)}</optgroup>
-          </>
-        ) : (
-          others.map(optionFor)
-        )}
+        <OwnerOptions
+          incident={incident}
+          memberships={memberships.data}
+          me={me}
+        />
       </Select>
       <DialogActions>
         <Button variant="secondary" onClick={onCancel}>

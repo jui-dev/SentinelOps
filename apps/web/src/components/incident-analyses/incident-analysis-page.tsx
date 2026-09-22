@@ -28,6 +28,7 @@ import { AnalysisDocument } from "./analysis-document";
 import { AnalysisEditor } from "./analysis-editor";
 import { useAnalysisAccess, useIncidentAnalysis } from "./analysis-queries";
 import { AnalysisStatusMark } from "./analysis-status";
+import { ChangeOwner } from "./change-owner";
 import { UnsavedText } from "./draft-recovery";
 import { FactsStrip } from "./facts-strip";
 import { KeyMoments } from "./key-moments";
@@ -37,8 +38,14 @@ import { StartAnalysis } from "./start-analysis";
 import { useAnalysisDraft } from "./use-analysis-draft";
 
 /** Where the analysis stands, beneath its title: its status, then who wrote it. */
-function StatusLine({ analysis }: { analysis: IncidentAnalysisResponse }) {
-  const { isOwner, canWrite } = useAnalysisAccess(analysis);
+function StatusLine({
+  analysis,
+  incident,
+}: {
+  analysis: IncidentAnalysisResponse;
+  incident: IncidentDetailResponse;
+}) {
+  const { isOwner, canWrite, canReassign } = useAnalysisAccess(analysis);
   const dot = (
     <>
       <span aria-hidden="true" className="text-fg-subtle">
@@ -80,7 +87,8 @@ function StatusLine({ analysis }: { analysis: IncidentAnalysisResponse }) {
 
   return (
     <div className="flex flex-col gap-1 pt-1">
-      <p className="flex flex-wrap items-center gap-x-2 text-sm text-fg-muted">
+      {/* A div, not a paragraph: the change of owner opens its dialog here. */}
+      <div className="flex flex-wrap items-center gap-x-2 text-sm text-fg-muted">
         <AnalysisStatusMark status="DRAFT" />
         {dot}
         <span>
@@ -88,7 +96,13 @@ function StatusLine({ analysis }: { analysis: IncidentAnalysisResponse }) {
           <span className="font-medium text-fg">{analysis.owner.name}</span>
           {isOwner && " (you)"}
         </span>
-      </p>
+        {canReassign && (
+          <>
+            {dot}
+            <ChangeOwner analysis={analysis} incident={incident} />
+          </>
+        )}
+      </div>
       {!isOwner && (
         <p className="text-sm text-fg-muted">
           {canWrite
@@ -181,7 +195,9 @@ function AnalysisBody({ incident }: { incident: IncidentDetailResponse }) {
           </Link>
         }
         title="Incident analysis"
-        description={analysis.data && <StatusLine analysis={analysis.data} />}
+        description={
+          analysis.data && <StatusLine analysis={analysis.data} incident={incident} />
+        }
       />
       <PageBody>
         {analysis.isError ? (
