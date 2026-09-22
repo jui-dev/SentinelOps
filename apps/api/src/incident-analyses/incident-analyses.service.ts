@@ -80,6 +80,24 @@ const factsSelection = {
   },
 } as const;
 
+/**
+ * What a change to a draft may write: its sections, its owner, or its
+ * publication. Never its version, which applyToDraft advances, nor the
+ * status it is guarded on: the one status a change may write is PUBLISHED,
+ * the only way out of DRAFT. Nor anything that names what it is — its
+ * organization, incident, or who started it.
+ */
+interface DraftChange {
+  summary?: string | null;
+  impact?: string | null;
+  cause?: string | null;
+  lessons?: string | null;
+  ownerMembershipId?: string;
+  status?: 'PUBLISHED';
+  publishedAt?: Date;
+  publishedById?: string;
+}
+
 /** Whether a unique violation came from the one-analysis-per-incident key. */
 const isAnalysisConflict = (hint: string): boolean =>
   hint.includes('incident_analyses_organization_id_incident_id_key') ||
@@ -235,19 +253,9 @@ export class IncidentAnalysesService {
    * caller's version (409 ANALYSIS_CHANGED). Those reads give the precise
    * answer; they do not make the guarantee.
    *
-   * The guarantee is the UPDATE itself. It names the analysis, the
-   * organization, DRAFT, and the caller's version in its WHERE clause, and
-   * increments the version in SQL. Of two edits based on one version, the
-   * second waits on the row lock the first holds; once the first commits,
-   * Postgres re-evaluates the second's WHERE against the new row, the
-   * version no longer matches, and it updates nothing. So only one edit ever
-   * makes version N+1, and nothing is written to a published analysis —
-   * whatever the reads above saw. When nothing was updated, the row is read
-   * again to say which: published, or changed.
-   *
-   * One transaction, at the default isolation, with no explicit lock, only
-   * so that the response is read under the row lock the UPDATE took: it is
-   * this edit's result, not a later one's. The facts are derived from the
+   * The guarantee is applyToDraft's conditional UPDATE: of two edits based
+   * on one version, only one applies, and nothing is written to a published
+   * analysis — whatever the reads above saw. The facts are derived from the
    * incident, which is resolved and final.
    *
    * Every accepted edit makes a new version, even one that changes no text.
@@ -300,29 +308,16 @@ export class IncidentAnalysesService {
           throw analysisChanged();
         }
 
-        // A section left undefined is not written.
-        const { count } = await tx.incidentAnalysis.updateMany({
-          where: { id: current.id, organizationId, status: 'DRAFT', version },
-          data: { ...sections, version: { increment: 1 } },
-        });
-
-        if (count !== 1) {
-          const now = await tx.incidentAnalysis.findFirst({
-            where: { id: current.id, organizationId },
-            select: { status: true },
-          });
-
-          throw now?.status === 'PUBLISHED'
-            ? analysisPublished()
-            : analysisChanged();
-        }
-
         return {
           incident,
-          analysis: await tx.incidentAnalysis.findUniqueOrThrow({
-            where: { id: current.id },
-            select: analysisSelection,
-          }),
+          // A section left undefined is not written.
+          analysis: await this.applyToDraft(
+            tx,
+            organizationId,
+            current.id,
+            version,
+            sections,
+          ),
         };
       },
     );
@@ -354,11 +349,9 @@ export class IncidentAnalysesService {
    * deleted). Only a draft is reassigned: once published, nothing is left
    * for an owner to do.
    *
-   * The guarantee is the UPDATE, as for an edit: its WHERE names the
-   * analysis, the organization, DRAFT, and the caller's version, and it
-   * increments the version in SQL. A reassignment and an edit based on the
-   * same version cannot both apply; whichever commits second matches nothing
-   * and is told ANALYSIS_CHANGED. So an owner's edit already under way when
+   * The guarantee is applyToDraft's conditional UPDATE, as for an edit: a
+   * reassignment and an edit based on the same version cannot both apply;
+   * whichever commits second matches nothing and is told ANALYSIS_CHANGED. So an owner's edit already under way when
    * they are replaced is refused, and once they read the analysis again,
    * they are no longer its owner.
    *
@@ -403,28 +396,15 @@ export class IncidentAnalysesService {
 
         await this.requireActiveMember(tx, organizationId, ownerMembershipId);
 
-        const { count } = await tx.incidentAnalysis.updateMany({
-          where: { id: current.id, organizationId, status: 'DRAFT', version },
-          data: { ownerMembershipId, version: { increment: 1 } },
-        });
-
-        if (count !== 1) {
-          const now = await tx.incidentAnalysis.findFirst({
-            where: { id: current.id, organizationId },
-            select: { status: true },
-          });
-
-          throw now?.status === 'PUBLISHED'
-            ? analysisPublished()
-            : analysisChanged();
-        }
-
         return {
           incident,
-          analysis: await tx.incidentAnalysis.findUniqueOrThrow({
-            where: { id: current.id },
-            select: analysisSelection,
-          }),
+          analysis: await this.applyToDraft(
+            tx,
+            organizationId,
+            current.id,
+            version,
+            { ownerMembershipId },
+          ),
         };
       },
     );
@@ -456,9 +436,8 @@ export class IncidentAnalysesService {
    * ANALYSIS_SUMMARY_REQUIRED). The version is judged before the content, so
    * that answer is always about the analysis the caller read.
    *
-   * The guarantee is the UPDATE, as for an edit: its WHERE names the
-   * analysis, the organization, DRAFT, and the caller's version, and it
-   * increments the version in SQL. The summary is not in it: the version
+   * The guarantee is applyToDraft's conditional UPDATE, as for an edit.
+   * The summary is not in its WHERE: the version
    * already fixes the text that was read, so an edit that cleared the summary
    * in the meantime has moved the version on and the publication matches
    * nothing. The database's CHECK that a published analysis has a summary is
@@ -526,33 +505,15 @@ export class IncidentAnalysesService {
           caller.membershipId,
         );
 
-        const { count } = await tx.incidentAnalysis.updateMany({
-          where: { id: current.id, organizationId, status: 'DRAFT', version },
-          data: {
-            status: 'PUBLISHED',
-            publishedAt: new Date(),
-            publishedById,
-            version: { increment: 1 },
-          },
-        });
-
-        if (count !== 1) {
-          const now = await tx.incidentAnalysis.findFirst({
-            where: { id: current.id, organizationId },
-            select: { status: true },
-          });
-
-          throw now?.status === 'PUBLISHED'
-            ? analysisPublished()
-            : analysisChanged();
-        }
-
         return {
           incident,
-          analysis: await tx.incidentAnalysis.findUniqueOrThrow({
-            where: { id: current.id },
-            select: analysisSelection,
-          }),
+          analysis: await this.applyToDraft(
+            tx,
+            organizationId,
+            current.id,
+            version,
+            { status: 'PUBLISHED', publishedAt: new Date(), publishedById },
+          ),
         };
       },
     );
@@ -563,6 +524,59 @@ export class IncidentAnalysesService {
     });
 
     return this.respond(incident, analysis);
+  }
+
+  /**
+   * Applies one change to a draft analysis, if it is still a draft at
+   * `version`, makes it the next version, and returns it as it now stands.
+   * Every change to a draft goes through here, so each is scoped to the
+   * organization, made only to a draft, guarded by the version its caller
+   * read, and advances that version exactly once.
+   *
+   * The guarantee is the UPDATE itself. Its WHERE names the analysis, the
+   * organization, DRAFT, and `version`, and it increments the version in
+   * SQL. Of two changes based on one version, the second waits on the row
+   * lock the first holds; once the first commits, Postgres re-evaluates the
+   * second's WHERE against the new row, the version no longer matches, and
+   * it updates nothing. So only one change ever makes version N+1, and
+   * nothing is written to a published analysis, whatever the caller read
+   * before. When nothing was updated, the row is read again to say which:
+   * published (409 ANALYSIS_PUBLISHED), or changed (409 ANALYSIS_CHANGED).
+   *
+   * Runs in the caller's transaction, at the default isolation and with no
+   * explicit lock, so that the analysis returned is read under the row lock
+   * the UPDATE took: this change's result, not a later one's.
+   *
+   * What to read, who may change it, and what makes the change valid are
+   * the caller's to judge first; this only makes it.
+   */
+  private async applyToDraft(
+    tx: Prisma.TransactionClient,
+    organizationId: string,
+    analysisId: string,
+    version: number,
+    change: DraftChange,
+  ) {
+    const { count } = await tx.incidentAnalysis.updateMany({
+      where: { id: analysisId, organizationId, status: 'DRAFT', version },
+      data: { ...change, version: { increment: 1 } },
+    });
+
+    if (count !== 1) {
+      const now = await tx.incidentAnalysis.findFirst({
+        where: { id: analysisId, organizationId },
+        select: { status: true },
+      });
+
+      throw now?.status === 'PUBLISHED'
+        ? analysisPublished()
+        : analysisChanged();
+    }
+
+    return tx.incidentAnalysis.findUniqueOrThrow({
+      where: { id: analysisId },
+      select: analysisSelection,
+    });
   }
 
   /**
