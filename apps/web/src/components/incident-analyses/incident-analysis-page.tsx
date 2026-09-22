@@ -5,12 +5,16 @@ import { useParams } from "next/navigation";
 import { useState } from "react";
 
 import {
+  entityLinkClasses,
+  Fact,
   IncidentNotFound,
   parseNumber,
 } from "@/components/incidents/incident-detail";
 import { incidentHref, useIncident } from "@/components/incidents/incident-queries";
 import { incidentKey } from "@/components/incidents/severity";
 import { useOrganization } from "@/components/organizations/organization-scope";
+import { serviceHref } from "@/components/services/service-scope";
+import { teamHref } from "@/components/teams/team-scope";
 import { ErrorAlert } from "@/components/ui/alert";
 import { EmptyState } from "@/components/ui/empty-state";
 import { linkClasses, quietLinkClasses } from "@/components/ui/link";
@@ -115,6 +119,39 @@ function StatusLine({
 }
 
 /**
+ * What the incident was about — the service it affected and the team
+ * responsible — so the analysis reads on its own long after. Quieter than
+ * the analysis's own status, in the incident header's own terms.
+ */
+function IncidentContext({ incident }: { incident: IncidentDetailResponse }) {
+  const organization = useOrganization();
+
+  return (
+    <dl className="flex flex-wrap items-center gap-x-6 gap-y-1 pt-1">
+      <Fact label="Service">
+        <Link
+          href={serviceHref(organization.slug, incident.service.slug)}
+          className={entityLinkClasses}
+        >
+          {incident.service.name}
+        </Link>
+        {incident.service.archivedAt && (
+          <span className="text-fg-muted"> (archived)</span>
+        )}
+      </Fact>
+      <Fact label="Team">
+        <Link
+          href={teamHref(organization.slug, incident.team.id)}
+          className={entityLinkClasses}
+        >
+          {incident.team.name}
+        </Link>
+      </Fact>
+    </dl>
+  );
+}
+
+/**
  * The analysis as its page reads it — and, for whoever may write a draft,
  * writes it: the incident's facts across the top;
  * the document in the main column; and beside it, from xl up, the moments
@@ -196,7 +233,12 @@ function AnalysisBody({ incident }: { incident: IncidentDetailResponse }) {
         }
         title="Incident analysis"
         description={
-          analysis.data && <StatusLine analysis={analysis.data} incident={incident} />
+          analysis.data && (
+            <div className="flex flex-col gap-2">
+              <StatusLine analysis={analysis.data} incident={incident} />
+              <IncidentContext incident={incident} />
+            </div>
+          )
         }
       />
       <PageBody>
@@ -216,7 +258,13 @@ function AnalysisBody({ incident }: { incident: IncidentDetailResponse }) {
             </p>
           </EmptyState>
         ) : (
-          <Workspace analysis={analysis.data} incident={incident} />
+          // Keyed by the analysis: nothing of one analysis's page state
+          // carries into another's.
+          <Workspace
+            key={`${organization.id}:${incident.number}`}
+            analysis={analysis.data}
+            incident={incident}
+          />
         )}
       </PageBody>
     </>

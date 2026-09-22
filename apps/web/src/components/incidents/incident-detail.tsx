@@ -40,7 +40,7 @@ import { IncidentTimeline } from "./incident-timeline";
 import { ManageIncident } from "./manage-incident";
 import { incidentKey, SeverityMark, StatusMark } from "./severity";
 
-const entityLinkClasses = `font-medium text-fg ${quietLinkClasses}`;
+export const entityLinkClasses = `font-medium text-fg ${quietLinkClasses}`;
 
 /** The incident number in the URL, or undefined when it cannot be one. */
 export const parseNumber = (value: string): number | undefined =>
@@ -116,7 +116,7 @@ const usePerspective = (
 };
 
 /** A fact in the header's line: a small label, then its value. */
-function Fact({ label, children }: { label: string; children: ReactNode }) {
+export function Fact({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex items-baseline gap-2">
       <dt className="label-caps text-fg-subtle">{label}</dt>

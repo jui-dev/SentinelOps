@@ -27,6 +27,12 @@ import {
 import type { DraftState } from "./draft-state";
 
 interface Draft {
+  /**
+   * Which analysis this is the draft of: its organization and incident.
+   * Text typed for one analysis is never shown for, saved to, or reconciled
+   * with another.
+   */
+  identity: string;
   state: DraftState;
   /** Unsaved text brought back from an earlier visit to this page. */
   restored: boolean;
@@ -36,13 +42,16 @@ interface Draft {
 
 /** The draft to start from: unsaved text left in this tab, or the analysis. */
 const startingDraft = (
+  identity: string,
   analysis: IncidentAnalysisResponse,
   membershipId: string,
   incidentNumber: number,
 ): Draft => {
   const stored = readDraft(membershipId, incidentNumber);
 
-  if (!stored) return { state: initialDraft(analysis), restored: false, merged: false };
+  if (!stored) {
+    return { identity, state: initialDraft(analysis), restored: false, merged: false };
+  }
 
   // Left at an earlier version: reconciled like any later analysis, so what
   // was saved meanwhile is never overwritten, nor what was typed lost.
@@ -51,7 +60,7 @@ const startingDraft = (
     analysis,
   );
 
-  return { state, restored: dirtySections(state).length > 0, merged };
+  return { identity, state, restored: dirtySections(state).length > 0, merged };
 };
 
 /**
@@ -73,14 +82,20 @@ export const useAnalysisDraft = (
   const organization = useOrganization();
   const membershipId = organization.membership.id;
   const edit = useEditIncidentAnalysis(organization.id, incidentNumber);
+  const identity = `${organization.id}:${incidentNumber}`;
   const [draft, setDraft] = useState(() =>
-    startingDraft(analysis, membershipId, incidentNumber),
+    startingDraft(identity, analysis, membershipId, incidentNumber),
   );
   const [seen, setSeen] = useState(analysis.version);
 
-  // A later version of the analysis — a refetch, someone else's change, or
-  // this writer's own save — brought into the draft as the render sees it.
-  if (analysis.version !== seen) {
+  if (draft.identity !== identity) {
+    // Another analysis: its own draft, from its server state and whatever
+    // this tab kept for it — nothing of the last one's.
+    setDraft(startingDraft(identity, analysis, membershipId, incidentNumber));
+    setSeen(analysis.version);
+  } else if (analysis.version !== seen) {
+    // A later version of the analysis — a refetch, someone else's change, or
+    // this writer's own save — brought into the draft as the render sees it.
     setSeen(analysis.version);
 
     const next = reconcile(draft.state, analysis);
@@ -116,6 +131,10 @@ export const useAnalysisDraft = (
   const update = (next: (current: DraftState) => DraftState) =>
     setDraft((current) => ({ ...current, state: next(current.state) }));
 
+  /** Applies a save's answer only to the draft it was sent from. */
+  const settle = (from: string, next: (current: Draft) => Draft) =>
+    setDraft((current) => (current.identity === from ? next(current) : current));
+
   const save = () => {
     if (!canSave(state)) return;
 
@@ -126,13 +145,14 @@ export const useAnalysisDraft = (
       // The answer also reaches the draft through the cache; applied here as
       // well so the save never waits on a render, and harmlessly twice.
       onSuccess: (saved) =>
-        setDraft((current) => ({
+        settle(identity, (current) => ({
+          ...current,
           state: reconcile(current.state, saved).state,
           restored: false,
           merged: false,
         })),
       onError: (error) =>
-        setDraft((current) => ({
+        settle(identity, (current) => ({
           ...current,
           state: saveFailed(current.state),
           // Refused for someone else's change: the analysis is fetched
@@ -162,6 +182,7 @@ export const useAnalysisDraft = (
     save,
     discard: () =>
       setDraft((current) => ({
+        ...current,
         state: discarded(current.state),
         restored: false,
         merged: false,

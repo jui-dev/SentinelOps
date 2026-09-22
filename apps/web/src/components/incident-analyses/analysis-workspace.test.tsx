@@ -348,6 +348,23 @@ describe("the incident analysis workspace", () => {
       expect(document.body.textContent).not.toMatch(/version/i);
     });
 
+    it("names the service and team the incident concerned, draft and published alike", async () => {
+      for (const analysis of [draft(), published()]) {
+        api(READ_ONLY, { analysis });
+
+        const { unmount } = inOrganization(<IncidentAnalysisPage />);
+        const status = await header();
+
+        expect(
+          (await within(status).findByRole("link", { name: "Payment API" })).getAttribute("href"),
+        ).toBe("/orgs/acme-ops/services/payment-api");
+        expect(within(status).getByRole("link", { name: "Payments" }).getAttribute("href")).toBe(
+          "/orgs/acme-ops/teams/0199a1b2-c3d4-7000-8000-0000000000c1",
+        );
+        unmount();
+      }
+    });
+
     it("leads a published analysis with its publication, then its owner and start", async () => {
       api(READ_ONLY, { analysis: published() });
 
