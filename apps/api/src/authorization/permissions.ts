@@ -37,6 +37,15 @@ export const Permission = {
    */
   INCIDENTS_RESPOND: 'incidents:respond',
   /**
+   * Write an incident analysis: its sections, and publishing it. Scoped by
+   * IncidentAnalysesService to the analysis's owner, unless the caller also
+   * holds `incidents:manage` — a permission this table grants to a role, and
+   * the service narrows to the analysis, as `incidents:respond` is narrowed
+   * to the incident. Starting an analysis and choosing its owner are
+   * `incidents:manage`; reading one is `incidents:read`.
+   */
+  INCIDENT_ANALYSES_WRITE: 'incident-analyses:write',
+  /**
    * Read one's own notifications, and acknowledge them. Only ever the
    * caller's own: NotificationsService scopes every query to the admitted
    * membership, so this grants nothing about anyone else's. Acknowledging

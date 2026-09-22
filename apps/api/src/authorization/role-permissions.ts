@@ -20,6 +20,11 @@ import { Permission } from './permissions.js';
  * their team is responsible for. That scope depends on the incident, so it
  * is IncidentsService's check, not this table's.
  *
+ * Writing an incident analysis (`incident-analyses:write`) is every role's
+ * too, scoped by IncidentAnalysesService to the analysis's owner unless the
+ * caller also runs incidents' lifecycles. Starting one and choosing its owner
+ * are part of that lifecycle, `incidents:manage`.
+ *
  * Declaring is ADMIN-only as the current rule, not a settled one: letting a
  * MEMBER declare against services their own teams own may be reconsidered.
  */
@@ -39,6 +44,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, ReadonlySet<Permission>>> =
       Permission.INCIDENTS_READ,
       Permission.INCIDENTS_MANAGE,
       Permission.INCIDENTS_RESPOND,
+      Permission.INCIDENT_ANALYSES_WRITE,
       Permission.NOTIFICATIONS_READ,
     ]),
     MEMBER: new Set([
@@ -48,6 +54,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, ReadonlySet<Permission>>> =
       Permission.SERVICES_READ,
       Permission.INCIDENTS_READ,
       Permission.INCIDENTS_RESPOND,
+      Permission.INCIDENT_ANALYSES_WRITE,
       Permission.NOTIFICATIONS_READ,
     ]),
   };

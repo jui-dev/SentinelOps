@@ -28,6 +28,7 @@ const EXPECTED: Record<Role, Record<Permission, boolean>> = {
     'incidents:read': true,
     'incidents:manage': true,
     'incidents:respond': true,
+    'incident-analyses:write': true,
     'notifications:read': true,
   },
   MEMBER: {
@@ -44,6 +45,7 @@ const EXPECTED: Record<Role, Record<Permission, boolean>> = {
     'incidents:read': true,
     'incidents:manage': false,
     'incidents:respond': true,
+    'incident-analyses:write': true,
     'notifications:read': true,
   },
 };
@@ -107,6 +109,22 @@ describe('role permissions', () => {
     // Declaring, changing, assigning people, and resolving.
     expect(hasPermission('ADMIN', Permission.INCIDENTS_MANAGE)).toBe(true);
     expect(hasPermission('MEMBER', Permission.INCIDENTS_MANAGE)).toBe(false);
+  });
+
+  it('should let every role write an incident analysis, which the service narrows to its owner', () => {
+    for (const role of ROLES) {
+      expect(hasPermission(role, Permission.INCIDENT_ANALYSES_WRITE)).toBe(
+        true,
+      );
+    }
+  });
+
+  it('should let an analysis writer read the incident it analyses', () => {
+    for (const role of ROLES) {
+      if (hasPermission(role, Permission.INCIDENT_ANALYSES_WRITE)) {
+        expect(hasPermission(role, Permission.INCIDENTS_READ)).toBe(true);
+      }
+    }
   });
 
   it('should let every role read and acknowledge its own notifications', () => {

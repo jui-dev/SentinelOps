@@ -121,6 +121,7 @@ describe('OrganizationsService', () => {
           id: MEMBERSHIP_ID,
           role: 'ADMIN',
           permissions: [
+            'incident-analyses:write',
             'incidents:manage',
             'incidents:read',
             'incidents:respond',

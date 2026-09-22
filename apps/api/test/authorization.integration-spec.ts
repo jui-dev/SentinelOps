@@ -57,6 +57,7 @@ const comparable = (body: Record<string, unknown>) => {
 
 /** What the role-to-permission table grants, as the API reports it: sorted. */
 const FULL_PERMISSIONS: readonly string[] = [
+  'incident-analyses:write',
   'incidents:manage',
   'incidents:read',
   'incidents:respond',
@@ -72,8 +73,12 @@ const FULL_PERMISSIONS: readonly string[] = [
   'teams:manage',
   'teams:read',
 ];
-/** What a MEMBER holds: every read, incident response, and its own notifications. */
+/**
+ * What a MEMBER holds: every read, incident response, writing the incident
+ * analyses they own, and its own notifications.
+ */
 const MEMBER_PERMISSIONS: readonly string[] = [
+  'incident-analyses:write',
   'incidents:read',
   'incidents:respond',
   'memberships:read',

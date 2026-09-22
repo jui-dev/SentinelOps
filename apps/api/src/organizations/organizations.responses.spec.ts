@@ -32,6 +32,7 @@ describe('organization response mappers', () => {
           id: 'membership-1',
           role: 'ADMIN',
           permissions: [
+            'incident-analyses:write',
             'incidents:manage',
             'incidents:read',
             'incidents:respond',
@@ -63,6 +64,7 @@ describe('organization response mappers', () => {
       );
 
       expect(response.membership.permissions).toEqual([
+        'incident-analyses:write',
         'incidents:read',
         'incidents:respond',
         'memberships:read',

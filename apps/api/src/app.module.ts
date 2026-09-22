@@ -9,6 +9,7 @@ import { envSchema } from './config/env.validation.js';
 import { DatabaseModule } from './database/database.module.js';
 import { DevModule } from './dev/dev.module.js';
 import { HealthModule } from './health/health.module.js';
+import { IncidentAnalysesModule } from './incident-analyses/incident-analyses.module.js';
 import { IncidentsModule } from './incidents/incidents.module.js';
 import { InvitationsModule } from './invitations/invitations.module.js';
 import { LoggerModule } from './logger/logger.module.js';
@@ -52,6 +53,7 @@ import { TeamsModule } from './teams/teams.module.js';
     TeamsModule,
     ServicesModule,
     IncidentsModule,
+    IncidentAnalysesModule,
     NotificationsModule,
     // TEMPORARY: ensures a known login in development only. Remove with
     // src/dev/ — see src/dev/dev-account.ts.
