@@ -1,4 +1,8 @@
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 
 /**
  * The machine-readable `code` values this module puts on the error contract.
@@ -12,6 +16,9 @@ export const IncidentAnalysesErrorCode = {
   ANALYSIS_NOT_STARTED: 'ANALYSIS_NOT_STARTED',
   INCIDENT_NOT_RESOLVED: 'INCIDENT_NOT_RESOLVED',
   ANALYSIS_ALREADY_STARTED: 'ANALYSIS_ALREADY_STARTED',
+  NOT_ANALYSIS_OWNER: 'NOT_ANALYSIS_OWNER',
+  ANALYSIS_PUBLISHED: 'ANALYSIS_PUBLISHED',
+  ANALYSIS_CHANGED: 'ANALYSIS_CHANGED',
 } as const;
 
 export type IncidentAnalysesErrorCode =
@@ -41,4 +48,31 @@ export const incidentNotResolved = (): ConflictException =>
 export const analysisAlreadyStarted = (): ConflictException =>
   new ConflictException('This incident’s analysis has already been started', {
     errorCode: IncidentAnalysesErrorCode.ANALYSIS_ALREADY_STARTED,
+  });
+
+/**
+ * The caller may write incident analyses, but not this one: only its owner,
+ * or whoever runs incidents' lifecycles, writes it. Reading it is still open
+ * to them.
+ */
+export const notAnalysisOwner = (): ForbiddenException =>
+  new ForbiddenException('Only this analysis’s owner can change it', {
+    errorCode: IncidentAnalysesErrorCode.NOT_ANALYSIS_OWNER,
+  });
+
+/** A published analysis's written sections are final. */
+export const analysisPublished = (): ConflictException =>
+  new ConflictException(
+    'This analysis is published and its sections can no longer be changed',
+    { errorCode: IncidentAnalysesErrorCode.ANALYSIS_PUBLISHED },
+  );
+
+/**
+ * The analysis has changed since the version the request was based on.
+ * Nothing was applied: read it again, and make the change against what it
+ * says now.
+ */
+export const analysisChanged = (): ConflictException =>
+  new ConflictException('This analysis has changed since you last read it', {
+    errorCode: IncidentAnalysesErrorCode.ANALYSIS_CHANGED,
   });

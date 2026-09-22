@@ -22,7 +22,11 @@ import { resolveTestDatabaseUrl } from './test-database.js';
  * derived from the incident's real timeline; that an active incident is
  * refused; that of any number of concurrent starts exactly one succeeds and
  * the rest are told it has started — never two analyses, never a 500 —
- * including the start that only the unique key can refuse; that the owner is
+ * including the start that only the unique key can refuse; that a draft is
+ * edited by its owner or an admin, section by section, one version at a
+ * time — of two edits based on one version exactly one applies, and an edit
+ * the conditional UPDATE alone refuses is told why, never applied and never
+ * a 500 — and a published one is not edited at all; that the owner is
  * an active member of the admitted organization, a foreign, missing, or
  * deleted one being indistinguishable; and that another organization's
  * incidents are indistinguishable from missing ones.
@@ -545,6 +549,357 @@ describe('incident analyses (integration)', () => {
       expect(
         (await readAnalysis(fx.orgA, fx.alice, number)).body.owner.membershipId,
       ).toBe(fx.daveInA);
+    });
+  });
+
+  describe('editing', () => {
+    const editAnalysis = (
+      organizationId: string,
+      userId: string,
+      number: number,
+      body: object,
+    ) => call('patch', analysisPath(organizationId, number), userId, body);
+
+    /** The analysis row as it stands, read directly. */
+    const stored = (organizationId: string, number: number) =>
+      prisma.incidentAnalysis.findFirstOrThrow({
+        where: { organizationId, incident: { number } },
+        select: {
+          id: true,
+          status: true,
+          version: true,
+          summary: true,
+          impact: true,
+          cause: true,
+          lessons: true,
+          updatedAt: true,
+        },
+      });
+
+    /** A resolved incident in A with a draft analysis Dave owns. */
+    const aDraftDaveOwns = async () => {
+      const number = await aResolvedIncident(
+        fx.orgA,
+        fx.alice,
+        fx.dave,
+        fx.apiA,
+      );
+
+      expect(
+        (
+          await startAnalysis(fx.orgA, fx.alice, number, {
+            ownerMembershipId: fx.daveInA,
+          })
+        ).status,
+      ).toBe(201);
+
+      return number;
+    };
+
+    it('should let the owner edit sections one version at a time, leaving the others as they were', async () => {
+      const number = await aDraftDaveOwns();
+      const before = await stored(fx.orgA, number);
+
+      const first = await editAnalysis(fx.orgA, fx.dave, number, {
+        version: 1,
+        summary: 'Card payments failed for two hours.',
+        cause: 'An expired certificate on the processor link.',
+      });
+
+      expect(first.status).toBe(200);
+      expect(first.body).toMatchObject({
+        status: 'DRAFT',
+        version: 2,
+        summary: 'Card payments failed for two hours.',
+        impact: null,
+        cause: 'An expired certificate on the processor link.',
+        lessons: null,
+      });
+      expect(new Date(first.body.updatedAt).getTime()).toBeGreaterThan(
+        before.updatedAt.getTime(),
+      );
+
+      const second = await editAnalysis(fx.orgA, fx.dave, number, {
+        version: 2,
+        impact: 'Every card checkout in the EU.',
+      });
+
+      expect(second.status).toBe(200);
+      expect(second.body).toMatchObject({
+        version: 3,
+        summary: 'Card payments failed for two hours.',
+        impact: 'Every card checkout in the EU.',
+        cause: 'An expired certificate on the processor link.',
+        lessons: null,
+      });
+      // The facts are still the incident's, derived as before.
+      expect(second.body.facts.responderCount).toBe(1);
+      expect((await readAnalysis(fx.orgA, fx.erin, number)).body).toEqual(
+        second.body,
+      );
+    });
+
+    it('should clear a section sent blank or null', async () => {
+      const number = await aDraftDaveOwns();
+
+      await editAnalysis(fx.orgA, fx.dave, number, {
+        version: 1,
+        summary: 'Summary',
+        cause: 'Cause',
+      });
+
+      const cleared = await editAnalysis(fx.orgA, fx.dave, number, {
+        version: 2,
+        summary: '   ',
+        cause: null,
+      });
+
+      expect(cleared.status).toBe(200);
+      expect(cleared.body).toMatchObject({
+        version: 3,
+        summary: null,
+        cause: null,
+      });
+    });
+
+    it('should make a new version of every accepted edit, even one that changes no text', async () => {
+      const number = await aDraftDaveOwns();
+
+      await editAnalysis(fx.orgA, fx.dave, number, {
+        version: 1,
+        summary: 'Summary',
+      });
+      const again = await editAnalysis(fx.orgA, fx.dave, number, {
+        version: 2,
+        summary: 'Summary',
+      });
+
+      expect(again.status).toBe(200);
+      expect(again.body.version).toBe(3);
+    });
+
+    it('should let an admin edit a draft they do not own, and refuse a member who does not own it', async () => {
+      const number = await aDraftDaveOwns();
+
+      const byAdmin = await editAnalysis(fx.orgA, fx.carol, number, {
+        version: 1,
+        lessons: 'Alert on certificate expiry.',
+      });
+
+      expect(byAdmin.status).toBe(200);
+      expect(byAdmin.body.version).toBe(2);
+
+      expectCode(
+        await editAnalysis(fx.orgA, fx.erin, number, {
+          version: 2,
+          lessons: 'Rewritten by someone else',
+        }),
+        403,
+        'NOT_ANALYSIS_OWNER',
+      );
+      expect(await stored(fx.orgA, number)).toMatchObject({
+        version: 2,
+        lessons: 'Alert on certificate expiry.',
+      });
+    });
+
+    it('should refuse an edit based on an older version with 409 ANALYSIS_CHANGED, applying nothing', async () => {
+      const number = await aDraftDaveOwns();
+
+      await editAnalysis(fx.orgA, fx.dave, number, {
+        version: 1,
+        summary: 'Current',
+      });
+
+      expectCode(
+        await editAnalysis(fx.orgA, fx.carol, number, {
+          version: 1,
+          summary: 'Stale',
+          impact: 'Stale',
+        }),
+        409,
+        'ANALYSIS_CHANGED',
+      );
+      expect(await stored(fx.orgA, number)).toMatchObject({
+        version: 2,
+        summary: 'Current',
+        impact: null,
+      });
+    });
+
+    it('should apply exactly one of two edits based on the same version', async () => {
+      const number = await aDraftDaveOwns();
+
+      const responses = await Promise.all([
+        editAnalysis(fx.orgA, fx.dave, number, {
+          version: 1,
+          summary: 'From Dave',
+        }),
+        editAnalysis(fx.orgA, fx.carol, number, {
+          version: 1,
+          summary: 'From Carol',
+        }),
+      ]);
+      const [winner] = responses.filter(({ status }) => status === 200);
+      const [loser] = responses.filter(({ status }) => status === 409);
+
+      expect(responses.map(({ status }) => status).sort()).toEqual([200, 409]);
+      expect(loser.body.code).toBe('ANALYSIS_CHANGED');
+      expect(await stored(fx.orgA, number)).toMatchObject({
+        version: 2,
+        summary: winner.body.summary,
+      });
+    });
+
+    // The edit only the database can refuse: another writer has moved the
+    // version on but not committed, so this edit reads version 1 and passes
+    // every check, then its UPDATE waits on the row. Once the other commits,
+    // Postgres re-evaluates the UPDATE's WHERE against the new row, matches
+    // nothing, and the edit must be told — not applied, not a 500.
+    it('should refuse an edit whose version moved on while its UPDATE waited, with 409 ANALYSIS_CHANGED', async () => {
+      const number = await aDraftDaveOwns();
+      const { id } = await stored(fx.orgA, number);
+
+      const other = await hold((tx) =>
+        tx.incidentAnalysis.update({
+          where: { id },
+          data: { lessons: 'Held', version: { increment: 1 } },
+        }),
+      );
+      const pending = editAnalysis(fx.orgA, fx.dave, number, {
+        version: 1,
+        summary: 'Waited',
+      });
+
+      pending.catch(() => undefined);
+      await someoneIsWaitingOnALock();
+      other.release();
+      await other.done;
+
+      expectCode(await pending, 409, 'ANALYSIS_CHANGED');
+      expect(await stored(fx.orgA, number)).toMatchObject({
+        version: 2,
+        summary: null,
+        lessons: 'Held',
+      });
+    });
+
+    it('should refuse an edit the analysis was published under while its UPDATE waited, with 409 ANALYSIS_PUBLISHED', async () => {
+      const number = await aDraftDaveOwns();
+      const { id } = await stored(fx.orgA, number);
+
+      const publisher = await hold((tx) =>
+        tx.incidentAnalysis.update({
+          where: { id },
+          data: {
+            status: 'PUBLISHED',
+            summary: 'Published summary',
+            publishedAt: new Date(),
+            publishedById: fx.alice,
+            version: { increment: 1 },
+          },
+        }),
+      );
+      const pending = editAnalysis(fx.orgA, fx.dave, number, {
+        version: 1,
+        summary: 'Too late',
+      });
+
+      pending.catch(() => undefined);
+      await someoneIsWaitingOnALock();
+      publisher.release();
+      await publisher.done;
+
+      expectCode(await pending, 409, 'ANALYSIS_PUBLISHED');
+      expect(await stored(fx.orgA, number)).toMatchObject({
+        status: 'PUBLISHED',
+        version: 2,
+        summary: 'Published summary',
+      });
+    });
+
+    it('should refuse editing a published analysis with 409 ANALYSIS_PUBLISHED, applying nothing', async () => {
+      const number = await aDraftDaveOwns();
+      const { id } = await stored(fx.orgA, number);
+
+      // Published directly: there is no publish route yet.
+      await prisma.incidentAnalysis.update({
+        where: { id },
+        data: {
+          status: 'PUBLISHED',
+          summary: 'Final',
+          publishedAt: new Date(),
+          publishedById: fx.alice,
+          version: { increment: 1 },
+        },
+      });
+
+      for (const userId of [fx.dave, fx.alice]) {
+        expectCode(
+          await editAnalysis(fx.orgA, userId, number, {
+            version: 2,
+            summary: 'Changed after publishing',
+          }),
+          409,
+          'ANALYSIS_PUBLISHED',
+        );
+      }
+      expect(await stored(fx.orgA, number)).toMatchObject({
+        version: 2,
+        summary: 'Final',
+      });
+    });
+
+    it('should answer 404 ANALYSIS_NOT_STARTED for an incident nobody has analysed', async () => {
+      const number = await aResolvedIncident(
+        fx.orgA,
+        fx.alice,
+        fx.dave,
+        fx.apiA,
+      );
+
+      expectCode(
+        await editAnalysis(fx.orgA, fx.alice, number, {
+          version: 1,
+          summary: 'Summary',
+        }),
+        404,
+        'ANALYSIS_NOT_STARTED',
+      );
+    });
+
+    it("should answer another organization's incident exactly as a missing one", async () => {
+      // B's incident 1 has an analysis Bob started; A has no incident 1.
+      const inB = await aResolvedIncident(fx.orgB, fx.bob, fx.carol, fx.apiB);
+
+      expect((await startAnalysis(fx.orgB, fx.bob, inB)).status).toBe(201);
+
+      const body = { version: 1, summary: 'From another organization' };
+      const missing = await editAnalysis(fx.orgA, fx.alice, 99, body);
+
+      expectCode(missing, 404, 'INCIDENT_NOT_FOUND');
+      expect(
+        comparable((await editAnalysis(fx.orgA, fx.alice, inB, body)).body),
+      ).toEqual(comparable(missing.body));
+      expect(await stored(fx.orgB, inB)).toMatchObject({
+        version: 1,
+        summary: null,
+      });
+    });
+
+    it('should judge a caller by their capacity in the organization named', async () => {
+      // Carol is ADMIN in A, but only a MEMBER in B, where Bob owns it.
+      const inB = await aResolvedIncident(fx.orgB, fx.bob, fx.carol, fx.apiB);
+
+      expect((await startAnalysis(fx.orgB, fx.bob, inB)).status).toBe(201);
+      expectCode(
+        await editAnalysis(fx.orgB, fx.carol, inB, {
+          version: 1,
+          summary: 'Summary',
+        }),
+        403,
+        'NOT_ANALYSIS_OWNER',
+      );
     });
   });
 

@@ -12,14 +12,16 @@ import type { Role } from './../src/generated/prisma/enums.js';
  * Incident analysis routes wired through the real AppModule, with Prisma
  * mocked.
  *
- * Proves the wiring: both routes are admitted and authorized; every role may
+ * Proves the wiring: every route is admitted and authorized; every role may
  * read an incident's analysis; only an ADMIN may start one, and a MEMBER is
- * refused with 403 before anything is read or written; the organization and
+ * refused with 403 before anything is read or written; an ADMIN edits any
+ * draft and a MEMBER only one they own, through an UPDATE guarded by the
+ * analysis, its organization, DRAFT, and the version the edit was based on; the organization and
  * the one who started it come from admission, never a body; bodies are
  * validated strictly, and may be absent; a malformed incident number is a
  * 404 before any query; and a non-member receives admission's 404. Behaviour
  * against real rows, tenant isolation, and concurrent starts are proven in
- * incident-analyses.integration-spec.ts.
+ * incident-analyses.integration-spec.ts, and concurrent edits too.
  */
 const USER_ID = '0199a1b2-c3d4-7000-8000-000000000001';
 const ORG_ID = '0199a1b2-c3d4-7000-8000-00000000000a';
@@ -28,6 +30,7 @@ const MEMBERSHIP_ID = '0199a1b2-c3d4-7000-8000-0000000000aa';
 /** Another member of ORG_ID. */
 const OWNER_MEMBERSHIP_ID = '0199a1b2-c3d4-7000-8000-0000000000ab';
 const INCIDENT_ID = '0199a1b2-c3d4-7000-8000-0000000000e1';
+const ANALYSIS_ID = '0199a1b2-c3d4-7000-8000-0000000000e2';
 const DECLARED = new Date('2026-09-18T12:00:00.000Z');
 const RESOLVED = new Date('2026-09-18T14:00:00.000Z');
 
@@ -83,9 +86,15 @@ describe('Incident analyses (e2e)', () => {
   let tokens: TokenService;
 
   const prisma = {
+    $transaction: vi.fn(),
     membership: { findFirst: vi.fn() },
     incident: { findFirst: vi.fn() },
-    incidentAnalysis: { create: vi.fn() },
+    incidentAnalysis: {
+      create: vi.fn(),
+      updateMany: vi.fn(),
+      findFirst: vi.fn(),
+      findUniqueOrThrow: vi.fn(),
+    },
   };
 
   /**
@@ -117,7 +126,11 @@ describe('Incident analyses (e2e)', () => {
       },
     );
 
-  const send = async (method: 'get' | 'post', path: string, body?: object) => {
+  const send = async (
+    method: 'get' | 'post' | 'patch',
+    path: string,
+    body?: object,
+  ) => {
     const pending = request(app.getHttpServer())
       [method](path)
       .set('Authorization', `Bearer ${await tokens.signAccessToken(USER_ID)}`);
@@ -139,9 +152,20 @@ describe('Incident analyses (e2e)', () => {
 
     tokens = app.get(TokenService);
 
+    // Interactive transactions run their work against the same mock.
+    prisma.$transaction.mockImplementation((work: (tx: unknown) => unknown) =>
+      work(prisma),
+    );
     prisma.membership.findFirst.mockResolvedValue(null);
     prisma.incident.findFirst.mockResolvedValue(incidentRow());
     prisma.incidentAnalysis.create.mockResolvedValue(analysisRow);
+    prisma.incidentAnalysis.updateMany.mockResolvedValue({ count: 1 });
+    prisma.incidentAnalysis.findFirst.mockResolvedValue({ status: 'DRAFT' });
+    prisma.incidentAnalysis.findUniqueOrThrow.mockResolvedValue({
+      ...analysisRow,
+      version: 2,
+      cause: 'An expired certificate.',
+    });
   });
 
   afterEach(async () => {
@@ -287,6 +311,173 @@ describe('Incident analyses (e2e)', () => {
     });
   });
 
+  describe('editing', () => {
+    /** The draft the edit reads first: owned by `ownerMembershipId`. */
+    const draft = (
+      overrides: Partial<{
+        status: string;
+        version: number;
+        ownerMembershipId: string;
+      }> = {},
+    ) =>
+      incidentRow({
+        id: ANALYSIS_ID,
+        status: 'DRAFT',
+        version: 1,
+        ownerMembershipId: OWNER_MEMBERSHIP_ID,
+        ...overrides,
+      });
+
+    const edit = { version: 1, cause: 'An expired certificate.' };
+
+    it('should let an ADMIN edit a draft they do not own, through the guarded update', async () => {
+      admitAs('ADMIN');
+      prisma.incident.findFirst.mockResolvedValue(draft());
+
+      const response = await send('patch', base, edit);
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        version: 2,
+        cause: 'An expired certificate.',
+      });
+      expect(prisma.incidentAnalysis.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: ANALYSIS_ID,
+          organizationId: ORG_ID,
+          status: 'DRAFT',
+          version: 1,
+        },
+        data: { cause: 'An expired certificate.', version: { increment: 1 } },
+      });
+    });
+
+    it('should let a MEMBER edit the draft they own', async () => {
+      admitAs('MEMBER');
+      prisma.incident.findFirst.mockResolvedValue(
+        draft({ ownerMembershipId: MEMBERSHIP_ID }),
+      );
+
+      const response = await send('patch', base, edit);
+
+      expect(response.status).toBe(200);
+    });
+
+    it('should write only the sections named, clearing those sent blank or null', async () => {
+      admitAs('ADMIN');
+      prisma.incident.findFirst.mockResolvedValue(draft());
+
+      await send('patch', base, { version: 1, impact: '  ', lessons: null });
+
+      expect(prisma.incidentAnalysis.updateMany.mock.calls[0][0].data).toEqual({
+        impact: null,
+        lessons: null,
+        version: { increment: 1 },
+      });
+    });
+
+    it('should refuse a MEMBER who does not own it with 403 NOT_ANALYSIS_OWNER, writing nothing', async () => {
+      admitAs('MEMBER');
+      prisma.incident.findFirst.mockResolvedValue(draft());
+
+      const response = await send('patch', base, edit);
+
+      expect(response.status).toBe(403);
+      expect(response.body.code).toBe('NOT_ANALYSIS_OWNER');
+      expect(prisma.incidentAnalysis.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('should refuse a published analysis with 409 ANALYSIS_PUBLISHED, writing nothing', async () => {
+      admitAs('ADMIN');
+      prisma.incident.findFirst.mockResolvedValue(
+        draft({ status: 'PUBLISHED' }),
+      );
+
+      const response = await send('patch', base, edit);
+
+      expect(response.status).toBe(409);
+      expect(response.body.code).toBe('ANALYSIS_PUBLISHED');
+      expect(prisma.incidentAnalysis.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('should refuse an edit based on an older version with 409 ANALYSIS_CHANGED, writing nothing', async () => {
+      admitAs('ADMIN');
+      prisma.incident.findFirst.mockResolvedValue(draft({ version: 2 }));
+
+      const response = await send('patch', base, edit);
+
+      expect(response.status).toBe(409);
+      expect(response.body.code).toBe('ANALYSIS_CHANGED');
+      expect(prisma.incidentAnalysis.updateMany).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      { now: 'DRAFT', code: 'ANALYSIS_CHANGED' },
+      { now: 'PUBLISHED', code: 'ANALYSIS_PUBLISHED' },
+    ])(
+      'should answer 409 $code when the guarded update matches nothing and it is now $now',
+      async ({ now, code }) => {
+        admitAs('ADMIN');
+        prisma.incident.findFirst.mockResolvedValue(draft());
+        prisma.incidentAnalysis.updateMany.mockResolvedValue({ count: 0 });
+        prisma.incidentAnalysis.findFirst.mockResolvedValue({ status: now });
+
+        const response = await send('patch', base, edit);
+
+        expect(response.status).toBe(409);
+        expect(response.body.code).toBe(code);
+        expect(
+          prisma.incidentAnalysis.findUniqueOrThrow,
+        ).not.toHaveBeenCalled();
+      },
+    );
+
+    it('should answer 404 ANALYSIS_NOT_STARTED when the incident has none', async () => {
+      admitAs('ADMIN');
+      prisma.incident.findFirst.mockResolvedValue(incidentRow(null));
+
+      const response = await send('patch', base, edit);
+
+      expect(response.status).toBe(404);
+      expect(response.body.code).toBe('ANALYSIS_NOT_STARTED');
+    });
+
+    it('should answer a malformed incident number with 404 INCIDENT_NOT_FOUND, reading nothing', async () => {
+      admitAs('ADMIN');
+
+      const response = await send(
+        'patch',
+        base.replace('/incidents/1/', '/incidents/INC-1/'),
+        edit,
+      );
+
+      expect(response.status).toBe(404);
+      expect(response.body.code).toBe('INCIDENT_NOT_FOUND');
+      expect(prisma.incident.findFirst).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      {},
+      { version: 1 },
+      { cause: 'No version' },
+      { version: 0, cause: 'Cause' },
+      { version: 1, cause: 'x'.repeat(4001) },
+      { version: 1, cause: 'Cause', status: 'PUBLISHED' },
+      { version: 1, cause: 'Cause', ownerMembershipId: MEMBERSHIP_ID },
+    ])(
+      'should refuse the edit body %o with 400, reading nothing',
+      async (body) => {
+        admitAs('ADMIN');
+
+        const response = await send('patch', base, body);
+
+        expect(response.status).toBe(400);
+        expect(prisma.incident.findFirst).not.toHaveBeenCalled();
+        expect(prisma.incidentAnalysis.updateMany).not.toHaveBeenCalled();
+      },
+    );
+  });
+
   describe('validation', () => {
     beforeEach(() => {
       admitAs('ADMIN');
@@ -308,7 +499,7 @@ describe('Incident analyses (e2e)', () => {
   });
 
   describe('a non-member', () => {
-    it.each(['get' as const, 'post' as const])(
+    it.each(['get' as const, 'post' as const, 'patch' as const])(
       'should receive 404 from %s',
       async (method) => {
         admitAs('ADMIN');
@@ -316,13 +507,14 @@ describe('Incident analyses (e2e)', () => {
         const response = await send(
           method,
           base.replace(ORG_ID, OTHER_ORG_ID),
-          method === 'get' ? undefined : {},
+          method === 'get' ? undefined : { version: 1, summary: 'Summary' },
         );
 
         expect(response.status).toBe(404);
         expect(response.body.code).toBe('ORGANIZATION_NOT_FOUND');
         expect(prisma.incident.findFirst).not.toHaveBeenCalled();
         expect(prisma.incidentAnalysis.create).not.toHaveBeenCalled();
+        expect(prisma.incidentAnalysis.updateMany).not.toHaveBeenCalled();
       },
     );
   });

@@ -10,12 +10,21 @@ import { organizationNotFound } from '../tenancy/tenancy.errors.js';
 import type { IncidentAnalysisResponse } from './incident-analyses.contract.js';
 import {
   analysisAlreadyStarted,
+  analysisChanged,
   analysisNotStarted,
+  analysisPublished,
   incidentNotResolved,
+  notAnalysisOwner,
 } from './incident-analyses.errors.js';
 import { deriveIncidentFacts } from './incident-analyses.facts.js';
+import { mayWriteAnalysis } from './incident-analyses.policy.js';
+import type { AnalysisCaller } from './incident-analyses.policy.js';
 import { toIncidentAnalysisResponse } from './incident-analyses.responses.js';
-import type { StartIncidentAnalysisRequest } from './incident-analyses.schemas.js';
+import { ANALYSIS_SECTIONS } from './incident-analyses.schemas.js';
+import type {
+  EditIncidentAnalysisRequest,
+  StartIncidentAnalysisRequest,
+} from './incident-analyses.schemas.js';
 
 /**
  * Columns an analysis response is built from. The owner and the attribution
@@ -75,7 +84,8 @@ const isAnalysisConflict = (hint: string): boolean =>
   hint.includes('incidentid');
 
 /**
- * Incident analyses: reading an incident's, and starting one.
+ * Incident analyses: reading an incident's, starting one, and editing a
+ * draft's sections.
  *
  * Every read is scoped to the admitted organization through the incident,
  * addressed by its number within it, so a foreign incident answers exactly
@@ -200,6 +210,122 @@ export class IncidentAnalysesService {
     this.logger.log('Incident analysis started', {
       incidentId: incident.id,
       ownerMembershipId,
+    });
+
+    return this.respond(incident, analysis);
+  }
+
+  /**
+   * Edits a draft analysis's sections: those the request names, and no
+   * others. Applies only if the analysis is still at the version the caller
+   * read, and makes it the next version.
+   *
+   * Judged in the order that reveals least: the incident (404), its analysis
+   * (404 ANALYSIS_NOT_STARTED), whether the caller may write it (403
+   * NOT_ANALYSIS_OWNER — its owner, or whoever holds `incidents:manage`),
+   * then its state: published (409 ANALYSIS_PUBLISHED) or moved past the
+   * caller's version (409 ANALYSIS_CHANGED). Those reads give the precise
+   * answer; they do not make the guarantee.
+   *
+   * The guarantee is the UPDATE itself. It names the analysis, the
+   * organization, DRAFT, and the caller's version in its WHERE clause, and
+   * increments the version in SQL. Of two edits based on one version, the
+   * second waits on the row lock the first holds; once the first commits,
+   * Postgres re-evaluates the second's WHERE against the new row, the
+   * version no longer matches, and it updates nothing. So only one edit ever
+   * makes version N+1, and nothing is written to a published analysis —
+   * whatever the reads above saw. When nothing was updated, the row is read
+   * again to say which: published, or changed.
+   *
+   * One transaction, at the default isolation, with no explicit lock, only
+   * so that the response is read under the row lock the UPDATE took: it is
+   * this edit's result, not a later one's. The facts are derived from the
+   * incident, which is resolved and final.
+   *
+   * Every accepted edit makes a new version, even one that changes no text.
+   */
+  async edit(
+    organizationId: string,
+    incidentNumber: string,
+    caller: AnalysisCaller,
+    input: EditIncidentAnalysisRequest,
+  ): Promise<IncidentAnalysisResponse> {
+    const { version, ...sections } = input;
+
+    const { incident, analysis } = await this.prisma.$transaction(
+      async (tx) => {
+        const incident = await tx.incident.findFirst({
+          where: this.incidentWhere(organizationId, incidentNumber),
+          select: {
+            ...factsSelection,
+            id: true,
+            analysis: {
+              select: {
+                id: true,
+                status: true,
+                version: true,
+                ownerMembershipId: true,
+              },
+            },
+          },
+        });
+
+        if (!incident) {
+          throw incidentNotFound();
+        }
+
+        const current = incident.analysis;
+
+        if (!current) {
+          throw analysisNotStarted();
+        }
+
+        if (!mayWriteAnalysis(caller, current)) {
+          throw notAnalysisOwner();
+        }
+
+        if (current.status === 'PUBLISHED') {
+          throw analysisPublished();
+        }
+
+        if (current.version !== version) {
+          throw analysisChanged();
+        }
+
+        // A section left undefined is not written.
+        const { count } = await tx.incidentAnalysis.updateMany({
+          where: { id: current.id, organizationId, status: 'DRAFT', version },
+          data: { ...sections, version: { increment: 1 } },
+        });
+
+        if (count !== 1) {
+          const now = await tx.incidentAnalysis.findFirst({
+            where: { id: current.id, organizationId },
+            select: { status: true },
+          });
+
+          throw now?.status === 'PUBLISHED'
+            ? analysisPublished()
+            : analysisChanged();
+        }
+
+        return {
+          incident,
+          analysis: await tx.incidentAnalysis.findUniqueOrThrow({
+            where: { id: current.id },
+            select: analysisSelection,
+          }),
+        };
+      },
+    );
+
+    // Which sections, never what they say.
+    this.logger.log('Incident analysis edited', {
+      incidentId: incident.id,
+      version: analysis.version,
+      sections: ANALYSIS_SECTIONS.filter(
+        (section) => sections[section] !== undefined,
+      ),
     });
 
     return this.respond(incident, analysis);
