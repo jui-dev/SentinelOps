@@ -100,6 +100,7 @@ model Organization {
   services           Service[]
   incidents          Incident[]
   incidentResponders IncidentResponder[]
+  incidentAnalyses   IncidentAnalysis[]
   notifications      Notification[]
 
   @@map("organizations")
@@ -151,6 +152,8 @@ model User {
   invitationsSent     Invitation[]       @relation("InvitationsSent")
   incidentsDeclared   Incident[]         @relation("IncidentsDeclared")
   incidentActivity    IncidentActivity[]
+  analysesStarted     IncidentAnalysis[] @relation("IncidentAnalysesStarted")
+  analysesPublished   IncidentAnalysis[] @relation("IncidentAnalysesPublished")
   /// Notifications about something this user did — never the ones they
   /// receive, which belong to a membership.
   notificationsCaused Notification[]
@@ -191,6 +194,10 @@ model Membership {
   /// application deletes a membership today; member removal, when it
   /// arrives, decides what happens to that history.
   incidentResponses IncidentResponder[]
+  /// Restrict, like the responder key: the owner of an incident analysis
+  /// cannot be physically deleted. Member removal, when it arrives, decides
+  /// whether ownership moves first.
+  analysesOwned     IncidentAnalysis[]
   /// This member's inbox in this organization. Cascades: revoking the grant
   /// removes what it was told, along with its access.
   notifications     Notification[]
@@ -549,6 +556,7 @@ model Incident {
   createdBy    User                @relation("IncidentsDeclared", fields: [createdById], references: [id], onDelete: Restrict)
   responders   IncidentResponder[]
   activity     IncidentActivity[]
+  analysis     IncidentAnalysis?
 
   /// The addressing key: the API names an incident by its number within the
   /// organization. Also serves keyset pages ordered by number.
@@ -719,6 +727,102 @@ model IncidentActivity {
   /// it stays because the Restrict check on a user needs exactly it.
   @@index([organizationId, actorId, createdAt])
   @@map("incident_activities")
+}
+
+/// Where an incident analysis stands. It moves forward once, DRAFT →
+/// PUBLISHED, and a published analysis's written sections are final.
+///
+///   DRAFT      being written by its owner; readable by the organization
+///   PUBLISHED  the organization's record of the incident
+enum IncidentAnalysisStatus {
+  DRAFT
+  PUBLISHED
+
+  @@map("incident_analysis_status")
+}
+
+/// What the organization learned from one resolved incident: a short
+/// written account, owned by one member, drafted and then published.
+///
+/// Only what people must write is stored here. Everything SentinelOps already
+/// knows — duration, severity, responders, the timeline, the resolution — is
+/// read from the incident, which is final once resolved, so reading it live
+/// is reading a snapshot and nothing is copied.
+///
+/// One per incident, by the unique key below, and only for a resolved
+/// incident. That second rule spans two tables, so it is not a constraint:
+/// the service checks it when the analysis is started, and RESOLVED being
+/// terminal means the check can never become false afterwards.
+///
+/// Tenant consistency is a database invariant, as for responders. The
+/// incident and owner keys are composite on the shared organization_id, so
+/// both must belong to the analysis's own organization however the row is
+/// written. Rows are created with scalar ids, not nested `connect`. The owner
+/// key is Restrict; the incident key cascades, which only a physical deletion
+/// of the organization ever exercises.
+///
+/// It also carries a plain key to its organization, which cascades, for the
+/// reason IncidentResponder gives: reached only through incidents, these rows
+/// would still be present when the memberships' Restrict check ran, and a
+/// physical deletion of the organization would be refused.
+///
+/// Three invariants live as CHECK constraints in the migration, because
+/// Prisma cannot declare them: status is PUBLISHED exactly when published_at
+/// and published_by_id are set, a published analysis has a summary, and
+/// version is positive.
+model IncidentAnalysis {
+  id                String                 @id @default(uuid(7)) @db.Uuid
+  organizationId    String                 @map("organization_id") @db.Uuid
+  incidentId        String                 @map("incident_id") @db.Uuid
+  status            IncidentAnalysisStatus @default(DRAFT)
+  /// The member accountable for writing it: a responsibility held now, so
+  /// the organization Membership, as a responder is. Who started or
+  /// published it is attribution, and is a User below.
+  ownerMembershipId String                 @map("owner_membership_id") @db.Uuid
+  /// Identifies one state of this row. Every write names the version it was
+  /// based on and increments it, so a write based on anything older changes
+  /// nothing — no edit is lost, and what is published is what was read.
+  version           Int                    @default(1)
+
+  /// The written sections. Null when not written; blank is normalised to
+  /// null at the Zod boundary. Summary is the only one publication
+  /// requires: impact, cause, and lessons may honestly be unknown, and a
+  /// published analysis says so rather than demanding certainty.
+  summary String?
+  impact  String?
+  cause   String?
+  lessons String?
+
+  /// Who started it, and who published it: global Users, since attribution
+  /// must outlive the membership, as Incident.createdById explains. Restrict,
+  /// like it. Taken from the admitted membership, never from a body.
+  createdById   String  @map("created_by_id") @db.Uuid
+  publishedById String? @map("published_by_id") @db.Uuid
+
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  /// Set by the server in the same write that sets PUBLISHED.
+  publishedAt DateTime? @map("published_at") @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  incident     Incident     @relation(fields: [organizationId, incidentId], references: [organizationId, id], onDelete: Cascade, onUpdate: Restrict)
+  owner        Membership   @relation(fields: [organizationId, ownerMembershipId], references: [organizationId, id], onDelete: Restrict, onUpdate: Restrict)
+  createdBy    User         @relation("IncidentAnalysesStarted", fields: [createdById], references: [id], onDelete: Restrict)
+  publishedBy  User?        @relation("IncidentAnalysesPublished", fields: [publishedById], references: [id], onDelete: Restrict)
+
+  /// One analysis per incident. The organization is part of the key only
+  /// because a one-to-one relation must be unique over exactly its foreign
+  /// key's columns; the composite key into incidents already allows one
+  /// organization per incident, so this is uniqueness per incident. It also
+  /// serves the cascade from incidents, from organizations by its leading
+  /// column, and reading an incident's analysis — always organization-scoped.
+  @@unique([organizationId, incidentId])
+  /// Serves the Restrict check when a membership is deleted.
+  @@index([organizationId, ownerMembershipId])
+  /// Serve the Restrict checks when a user row is physically deleted.
+  @@index([createdById])
+  @@index([publishedById])
+  @@map("incident_analyses")
 }
 
 /// What a notification tells its recipient. Named for what it means to them,

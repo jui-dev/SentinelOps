@@ -1962,6 +1962,336 @@ describe('core domain schema (integration)', () => {
       });
     });
 
+    describe('incident analyses', () => {
+      /**
+       * Both tenants, the user's membership in each, and in each a resolved
+       * incident — the only kind an analysis is written for.
+       */
+      const analysing = async () => {
+        const tenants = await twoTenants();
+        const { acme, globex, user } = tenants;
+        const grant = (organizationId: string) =>
+          prisma.membership.create({
+            data: { organizationId, userId: user.id },
+          });
+        const resolved = (
+          organizationId: string,
+          serviceId: string,
+          teamId: string,
+        ) =>
+          prisma.incident.create({
+            data: {
+              organizationId,
+              serviceId,
+              teamId,
+              createdById: user.id,
+              number: 1,
+              title: 'Card payments failing',
+              severity: 'SEV1',
+              status: 'RESOLVED',
+              resolvedAt: new Date(),
+              resolution: 'Rolled back the gateway release.',
+            },
+          });
+
+        return {
+          ...tenants,
+          acmeMember: await grant(acme.id),
+          globexMember: await grant(globex.id),
+          acmeIncident: await resolved(
+            acme.id,
+            tenants.acmeService.id,
+            tenants.acmePayments.id,
+          ),
+          globexIncident: await resolved(
+            globex.id,
+            tenants.globexService.id,
+            tenants.globexPayments.id,
+          ),
+        };
+      };
+
+      const anAnalysis = (data: {
+        organizationId: string;
+        incidentId: string;
+        ownerMembershipId: string;
+        createdById: string;
+      }) => prisma.incidentAnalysis.create({ data });
+
+      /** acme's analysis of its incident, owned and started by the user. */
+      const analysed = async () => {
+        const tenants = await analysing();
+        const { acme, user, acmeMember, acmeIncident } = tenants;
+
+        return {
+          ...tenants,
+          analysis: await anAnalysis({
+            organizationId: acme.id,
+            incidentId: acmeIncident.id,
+            ownerMembershipId: acmeMember.id,
+            createdById: user.id,
+          }),
+        };
+      };
+
+      it('should start as a DRAFT at version 1, with nothing written or published', async () => {
+        const { analysis } = await analysed();
+
+        expect(analysis.status).toBe('DRAFT');
+        expect(analysis.version).toBe(1);
+        expect(analysis.summary).toBeNull();
+        expect(analysis.impact).toBeNull();
+        expect(analysis.cause).toBeNull();
+        expect(analysis.lessons).toBeNull();
+        expect(analysis.publishedAt).toBeNull();
+        expect(analysis.publishedById).toBeNull();
+      });
+
+      it('should hold PUBLISHED exactly when it records who published it and when', async () => {
+        const { user, analysis } = await analysed();
+        const set = (
+          status: string,
+          publishedAt: string,
+          publishedById: string | null,
+        ) =>
+          prisma.$executeRawUnsafe(
+            `UPDATE incident_analyses
+             SET status = $1::incident_analysis_status, summary = 'Summary',
+                 published_at = ${publishedAt}, published_by_id = $2::uuid
+             WHERE id = $3::uuid`,
+            status,
+            publishedById,
+            analysis.id,
+          );
+
+        // Published, missing either half of the record of it.
+        await expect(set('PUBLISHED', 'NULL', null)).rejects.toSatisfy(
+          isRefusedBy('23514'),
+        );
+        await expect(set('PUBLISHED', 'now()', null)).rejects.toSatisfy(
+          isRefusedBy('23514'),
+        );
+        await expect(set('PUBLISHED', 'NULL', user.id)).rejects.toSatisfy(
+          isRefusedBy('23514'),
+        );
+        // A draft carrying either half.
+        await expect(set('DRAFT', 'now()', null)).rejects.toSatisfy(
+          isRefusedBy('23514'),
+        );
+        await expect(set('DRAFT', 'NULL', user.id)).rejects.toSatisfy(
+          isRefusedBy('23514'),
+        );
+
+        const published = await prisma.incidentAnalysis.update({
+          where: { id: analysis.id },
+          data: {
+            status: 'PUBLISHED',
+            summary: 'Summary',
+            publishedAt: new Date(),
+            publishedById: user.id,
+          },
+        });
+
+        expect(published.status).toBe('PUBLISHED');
+      });
+
+      it('should refuse publishing without a summary, and require nothing else', async () => {
+        const { user, analysis } = await analysed();
+
+        await expect(
+          prisma.$executeRawUnsafe(
+            `UPDATE incident_analyses
+             SET status = 'PUBLISHED', published_at = now(), published_by_id = $1::uuid,
+                 impact = 'Impact', cause = 'Cause', lessons = 'Lessons'
+             WHERE id = $2::uuid`,
+            user.id,
+            analysis.id,
+          ),
+        ).rejects.toSatisfy(isRefusedBy('23514'));
+
+        // Impact, cause, and lessons may honestly be unknown.
+        const published = await prisma.incidentAnalysis.update({
+          where: { id: analysis.id },
+          data: {
+            status: 'PUBLISHED',
+            summary: 'Summary',
+            publishedAt: new Date(),
+            publishedById: user.id,
+          },
+        });
+
+        expect(published.impact).toBeNull();
+        expect(published.cause).toBeNull();
+        expect(published.lessons).toBeNull();
+      });
+
+      it('should keep a draft without a summary', async () => {
+        const { analysis } = await analysed();
+
+        const draft = await prisma.incidentAnalysis.update({
+          where: { id: analysis.id },
+          data: { cause: 'Cause', version: { increment: 1 } },
+        });
+
+        expect(draft.summary).toBeNull();
+        expect(draft.version).toBe(2);
+      });
+
+      it('should refuse a version below 1', async () => {
+        const { analysis } = await analysed();
+
+        for (const version of [0, -1]) {
+          await expect(
+            prisma.$executeRawUnsafe(
+              'UPDATE incident_analyses SET version = $1 WHERE id = $2::uuid',
+              version,
+              analysis.id,
+            ),
+          ).rejects.toSatisfy(isRefusedBy('23514'));
+        }
+      });
+
+      it('should hold one analysis per incident', async () => {
+        const { acme, user, acmeMember, acmeIncident } = await analysed();
+
+        await expect(
+          anAnalysis({
+            organizationId: acme.id,
+            incidentId: acmeIncident.id,
+            ownerMembershipId: acmeMember.id,
+            createdById: user.id,
+          }),
+        ).rejects.toSatisfy(isUniqueViolation);
+      });
+
+      it("should reject another organization's incident, whichever organization the row claims", async () => {
+        const {
+          acme,
+          globex,
+          user,
+          acmeMember,
+          globexMember,
+          acmeIncident,
+          globexIncident,
+        } = await analysing();
+
+        // Each row's owner belongs to the organization it claims, so only
+        // the incident is foreign.
+        await expect(
+          anAnalysis({
+            organizationId: acme.id,
+            incidentId: globexIncident.id,
+            ownerMembershipId: acmeMember.id,
+            createdById: user.id,
+          }),
+        ).rejects.toSatisfy(isForeignKeyViolation);
+        await expect(
+          anAnalysis({
+            organizationId: globex.id,
+            incidentId: acmeIncident.id,
+            ownerMembershipId: globexMember.id,
+            createdById: user.id,
+          }),
+        ).rejects.toSatisfy(isForeignKeyViolation);
+      });
+
+      it("should reject another organization's membership as owner, however it is written", async () => {
+        const { acme, user, acmeMember, globexMember, acmeIncident } =
+          await analysing();
+
+        await expect(
+          anAnalysis({
+            organizationId: acme.id,
+            incidentId: acmeIncident.id,
+            ownerMembershipId: globexMember.id,
+            createdById: user.id,
+          }),
+        ).rejects.toSatisfy(isForeignKeyViolation);
+        await expect(
+          prisma.$executeRawUnsafe(
+            `INSERT INTO incident_analyses
+               (id, organization_id, incident_id, owner_membership_id, created_by_id, updated_at)
+             VALUES (gen_random_uuid(), $1::uuid, $2::uuid, $3::uuid, $4::uuid, now())`,
+            acme.id,
+            acmeIncident.id,
+            globexMember.id,
+            user.id,
+          ),
+        ).rejects.toSatisfy(isForeignKeyViolation);
+
+        // Nor can an existing analysis be handed to one.
+        const analysis = await anAnalysis({
+          organizationId: acme.id,
+          incidentId: acmeIncident.id,
+          ownerMembershipId: acmeMember.id,
+          createdById: user.id,
+        });
+
+        await expect(
+          prisma.incidentAnalysis.update({
+            where: { id: analysis.id },
+            data: { ownerMembershipId: globexMember.id },
+          }),
+        ).rejects.toSatisfy(isForeignKeyViolation);
+      });
+
+      it('should refuse deleting a membership that owns an analysis, keeping the analysis', async () => {
+        const { acmeMember, analysis } = await analysed();
+
+        await expect(
+          prisma.membership.delete({ where: { id: acmeMember.id } }),
+        ).rejects.toSatisfy(isForeignKeyViolation);
+        expect(
+          await prisma.incidentAnalysis.count({ where: { id: analysis.id } }),
+        ).toBe(1);
+      });
+
+      // A Restrict key into memberships, and the organization cascade
+      // deletes memberships, incidents, and analyses in one statement.
+      // Postgres must still complete it.
+      it("should remove an organization's analyses when it is physically deleted", async () => {
+        const { acme, globex, user, globexMember, globexIncident } =
+          await analysed();
+        await anAnalysis({
+          organizationId: globex.id,
+          incidentId: globexIncident.id,
+          ownerMembershipId: globexMember.id,
+          createdById: user.id,
+        });
+
+        await prisma.$executeRawUnsafe(
+          'DELETE FROM organizations WHERE id = $1::uuid',
+          acme.id,
+        );
+
+        expect(
+          await prisma.incidentAnalysis.count({
+            where: { organizationId: acme.id },
+          }),
+        ).toBe(0);
+        expect(
+          await prisma.incidentAnalysis.count({
+            where: { organizationId: globex.id },
+          }),
+        ).toBe(1);
+        expect(await prisma.user.count({ where: { id: user.id } })).toBe(1);
+      });
+
+      it('should know exactly two analysis statuses', async () => {
+        const labels = await prisma.$queryRaw<{ label: string }[]>`
+          SELECT e.enumlabel AS label
+          FROM pg_enum e
+          JOIN pg_type t ON t.oid = e.enumtypid
+          WHERE t.typname = 'incident_analysis_status'
+          ORDER BY e.enumsortorder`;
+
+        expect(labels.map(({ label }) => label)).toEqual([
+          'DRAFT',
+          'PUBLISHED',
+        ]);
+      });
+    });
+
     it('should keep no incident lead, and record team changes and responses on the timeline', async () => {
       const lead = await prisma.$queryRaw<{ column_name: string }[]>`
         SELECT column_name FROM information_schema.columns
@@ -2054,7 +2384,7 @@ describe('core domain schema (integration)', () => {
            AND column_name IN (
              'created_at', 'updated_at', 'deleted_at', 'expires_at',
              'revoked_at', 'accepted_at', 'archived_at', 'resolved_at',
-             'started_at', 'completed_at', 'read_at'
+             'started_at', 'completed_at', 'read_at', 'published_at'
            )`,
       );
 
@@ -2071,7 +2401,8 @@ describe('core domain schema (integration)', () => {
       // incident_responders adds started_at and completed_at (2): a response
       // starts and completes, and has no other edits. notifications adds
       // created_at and read_at (2): one is read, never otherwise edited.
-      expect(columns).toHaveLength(30);
+      // incident_analyses adds created_at, updated_at, and published_at (3).
+      expect(columns).toHaveLength(33);
       for (const column of columns) {
         expect(column.data_type).toBe('timestamp with time zone');
       }
