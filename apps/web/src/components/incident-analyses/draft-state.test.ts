@@ -8,10 +8,12 @@ import {
   dirtySections,
   discarded,
   initialDraft,
+  keepMine,
   reconcile,
   saveFailed,
   saveRequest,
   startSaving,
+  takeSaved,
   typed,
 } from "./draft-state";
 import type { DraftState } from "./draft-state";
@@ -100,6 +102,89 @@ describe("an analysis draft", () => {
       const once = reconcile(startSaving(sending, saveRequest(sending)), answer).state;
 
       expect(reconcile(once, answer).state).toBe(once);
+    });
+  });
+
+  describe("when someone else's changes arrive", () => {
+    it("takes them silently where nothing was typed", () => {
+      const { state, merged } = reconcile(initialDraft(v3), later(4, { impact: "Two hours." }));
+
+      expect(merged).toBe(false);
+      expect(state.text.impact).toBe("Two hours.");
+      expect(dirtySections(state)).toEqual([]);
+    });
+
+    it("merges them beside unsaved text in another section", () => {
+      const { state, merged } = reconcile(
+        writing(["cause", "A deploy."]),
+        later(4, { impact: "Two hours." }),
+      );
+
+      expect(merged).toBe(true);
+      expect(state.text).toMatchObject({ impact: "Two hours.", cause: "A deploy." });
+      expect(state.conflicts).toEqual({});
+      expect(saveRequest(state)).toEqual({ version: 4, cause: "A deploy." });
+    });
+
+    it("asks where both changed the same section, keeping the writer's text", () => {
+      const { state, merged } = reconcile(
+        writing(["cause", "A deploy."]),
+        later(4, { cause: "A config change." }),
+      );
+
+      expect(merged).toBe(true);
+      expect(state.text.cause).toBe("A deploy.");
+      expect(state.conflicts).toEqual({ cause: "A config change." });
+      expect(canSave(state)).toBe(false);
+    });
+
+    it("saves the writer's text over theirs only once they choose to keep it", () => {
+      const conflicted = reconcile(writing(["cause", "A deploy."]), later(4, { cause: "A config change." })).state;
+      const kept = keepMine(conflicted, "cause");
+
+      expect(canSave(kept)).toBe(true);
+      expect(saveRequest(kept)).toEqual({ version: 4, cause: "A deploy." });
+    });
+
+    it("takes the saved text when the writer chooses it", () => {
+      const conflicted = reconcile(writing(["cause", "A deploy."]), later(4, { cause: "A config change." })).state;
+      const taken = takeSaved(conflicted, "cause");
+
+      expect(taken.text.cause).toBe("A config change.");
+      expect(taken.conflicts).toEqual({});
+      expect(dirtySections(taken)).toEqual([]);
+    });
+
+    it("settles a section both changed alike", () => {
+      const { state } = reconcile(writing(["cause", "A deploy. "]), later(4, { cause: "A deploy." }));
+
+      expect(state.conflicts).toEqual({});
+      expect(dirtySections(state)).toEqual([]);
+    });
+
+    it("keeps an open choice current when the section changes again", () => {
+      const first = reconcile(writing(["cause", "A deploy."]), later(4, { cause: "A config change." })).state;
+      const { state } = reconcile(first, later(5, { cause: "A certificate expiry." }));
+
+      expect(state.text.cause).toBe("A deploy.");
+      expect(state.conflicts).toEqual({ cause: "A certificate expiry." });
+    });
+
+    it("treats a changed section its own failed save sent as a conflict, not its own", () => {
+      // Someone else's change made the next version; this save was refused.
+      const sending = writing(["cause", "A deploy."]);
+      const saving = startSaving(sending, saveRequest(sending));
+
+      const { state } = reconcile(saveFailed(saving), later(4, { cause: "A config change." }));
+
+      expect(state.conflicts).toEqual({ cause: "A config change." });
+    });
+
+    it("changes nothing for a version it already has", () => {
+      const state = writing(["cause", "A deploy."]);
+
+      expect(reconcile(state, v3).state).toBe(state);
+      expect(reconcile(state, later(2, { cause: "Old." })).state).toBe(state);
     });
   });
 });

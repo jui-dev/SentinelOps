@@ -15,12 +15,15 @@ export function CopyField({
   label,
   value,
   copyLabel = "Copy",
+  multiline = false,
   className,
 }: {
   label: string;
   value: string;
   /** The button's text before copying, e.g. "Copy link". */
   copyLabel?: string;
+  /** Prose rather than a key: several lines, in the reading face. */
+  multiline?: boolean;
   className?: string;
 }) {
   const id = useId();
@@ -40,14 +43,24 @@ export function CopyField({
       <label htmlFor={id} className="text-sm font-medium text-fg">
         {label}
       </label>
-      <div className="flex gap-2">
-        <input
-          id={id}
-          readOnly
-          value={value}
-          onFocus={(event) => event.currentTarget.select()}
-          className="data h-8 min-w-0 flex-1 rounded-md border border-line-control bg-field px-2.5 text-fg focus-visible:border-accent focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-focus"
-        />
+      <div className={cx("flex gap-2", multiline && "flex-col items-start")}>
+        {multiline ? (
+          <textarea
+            id={id}
+            readOnly
+            value={value}
+            onFocus={(event) => event.currentTarget.select()}
+            className="field-sizing-content min-h-16 w-full min-w-0 resize-none rounded-md border border-line-control bg-field px-2.5 py-1.5 text-base leading-6 text-fg focus-visible:border-accent focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-focus"
+          />
+        ) : (
+          <input
+            id={id}
+            readOnly
+            value={value}
+            onFocus={(event) => event.currentTarget.select()}
+            className="data h-8 min-w-0 flex-1 rounded-md border border-line-control bg-field px-2.5 text-fg focus-visible:border-accent focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-focus"
+          />
+        )}
         <Button variant="secondary" icon={copied ? Check : Copy} onClick={copy}>
           {copied ? "Copied" : copyLabel}
         </Button>

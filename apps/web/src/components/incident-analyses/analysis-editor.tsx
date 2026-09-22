@@ -6,13 +6,15 @@ import { Alert } from "@/components/ui/alert";
 import { ANALYSIS_SECTIONS } from "@/lib/api/contracts";
 
 import { DraftActionBar } from "./draft-action-bar";
+import { ChangedNotice, ConflictNotice } from "./draft-recovery";
 import { SectionEditor } from "./section-editor";
 import type { AnalysisDraft } from "./use-analysis-draft";
 
 /**
  * The draft written in place: the document's four sections as fields, and
- * the bar that saves them. Unsaved text restored from an earlier visit is
- * said at the top.
+ * the bar that saves them. What happened meanwhile is said at the top —
+ * unsaved text restored from an earlier visit, or someone else's changes
+ * brought in beside it.
  *
  * Ctrl/⌘+S saves from anywhere on the page while it is open.
  */
@@ -43,21 +45,35 @@ export function AnalysisEditor({ draft }: { draft: AnalysisDraft }) {
       }}
       className="flex min-w-0 flex-col gap-8"
     >
-      {/* The notice and the bar keep the fields' width, so they read as
-          the document's own — measured in its type, not the notice's. */}
+      {/* The notices and the bar keep the fields' width, so they read as
+          the document's own — measured in its type, not the notices'. */}
       {draft.restored && (
         <div className="max-w-[68ch]">
           <Alert tone="info">Your unsaved changes from earlier have been restored.</Alert>
         </div>
       )}
-      {ANALYSIS_SECTIONS.map((section) => (
-        <SectionEditor
-          key={section}
-          section={section}
-          value={draft.state.text[section]}
-          onChange={(text) => draft.change(section, text)}
-        />
-      ))}
+      {draft.merged && (
+        <div className="max-w-[68ch]">
+          <ChangedNotice draft={draft} />
+        </div>
+      )}
+      {ANALYSIS_SECTIONS.map((section) => {
+        const saved = draft.state.conflicts[section];
+
+        return (
+          <SectionEditor
+            key={section}
+            section={section}
+            value={draft.state.text[section]}
+            onChange={(text) => draft.change(section, text)}
+            notice={
+              saved !== undefined && (
+                <ConflictNotice section={section} saved={saved} draft={draft} />
+              )
+            }
+          />
+        );
+      })}
       <DraftActionBar draft={draft} />
     </form>
   );

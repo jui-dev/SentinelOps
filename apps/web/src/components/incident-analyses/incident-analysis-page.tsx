@@ -27,6 +27,7 @@ import { AnalysisDocument } from "./analysis-document";
 import { AnalysisEditor } from "./analysis-editor";
 import { useAnalysisAccess, useIncidentAnalysis } from "./analysis-queries";
 import { AnalysisStatusMark } from "./analysis-status";
+import { UnsavedText } from "./draft-recovery";
 import { FactsStrip } from "./facts-strip";
 import { KeyMoments } from "./key-moments";
 import { StartAnalysis } from "./start-analysis";
@@ -122,7 +123,11 @@ function Workspace({
         {editing ? (
           <AnalysisEditor draft={draft} />
         ) : (
-          <AnalysisDocument analysis={analysis} />
+          <div className="flex min-w-0 flex-col gap-8">
+            {/* Text written here that can no longer be saved: kept to copy. */}
+            {draft.unsaved && <UnsavedText analysis={analysis} draft={draft} />}
+            <AnalysisDocument analysis={analysis} />
+          </div>
         )}
         <aside aria-label="Analysis context" className="flex min-w-0 flex-col gap-8">
           <KeyMoments
