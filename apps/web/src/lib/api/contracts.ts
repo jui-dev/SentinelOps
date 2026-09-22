@@ -344,6 +344,119 @@ export interface PostIncidentUpdateRequest {
   message: string;
 }
 
+/**
+ * An incident analysis is written once the incident is resolved: a DRAFT
+ * its owner writes, then PUBLISHED — final, and never reopened.
+ */
+export type IncidentAnalysisStatus = "DRAFT" | "PUBLISHED";
+
+/** The written sections of an analysis, in the order they are read. */
+export const ANALYSIS_SECTIONS = [
+  "summary",
+  "impact",
+  "cause",
+  "lessons",
+] as const;
+
+export type AnalysisSection = (typeof ANALYSIS_SECTIONS)[number];
+
+/** The most characters one section holds, as the API enforces. */
+export const ANALYSIS_SECTION_MAX_LENGTH = 4000;
+
+/**
+ * What SentinelOps already knew about the incident, derived by the API on
+ * every read: instants and counts, never durations — the client measures
+ * between them. `firstResponseAt` is null when nobody's start was recorded.
+ */
+export interface IncidentAnalysisFactsResponse {
+  declaredAt: string;
+  resolvedAt: string;
+  firstResponseAt: string | null;
+  responderCount: number;
+  updateCount: number;
+  severity: {
+    declared: IncidentSeverity;
+    highest: IncidentSeverity;
+    final: IncidentSeverity;
+  };
+  reassignmentCount: number;
+}
+
+export type IncidentKeyMomentKind =
+  | "DECLARED"
+  | "FIRST_RESPONSE"
+  | "SEVERITY_CHANGED"
+  | "TEAM_CHANGED"
+  | "LAST_RESPONSE_COMPLETED"
+  | "RESOLVED";
+
+/**
+ * A timeline entry that shaped the incident — a selection, not the
+ * timeline. `activityId` names the entry; `fromValue` and `toValue` are as
+ * it recorded them: two severities, or two team names as they were then.
+ */
+export interface IncidentKeyMomentResponse {
+  kind: IncidentKeyMomentKind;
+  activityId: string;
+  at: string;
+  actor: { id: string; name: string };
+  fromValue: string | null;
+  toValue: string | null;
+}
+
+/**
+ * `.../incidents/:number/analysis`: one incident's analysis. It has no id of
+ * its own — it is addressed through its incident.
+ *
+ * `version` identifies this state of it, and every write names the version
+ * it was based on: a write based on any other is refused, and changes
+ * nothing. Every accepted write — an edit, a new owner, publishing — makes
+ * the next version.
+ *
+ * A section is null until written. `owner` is a membership, accountable for
+ * writing it now; `createdBy` and `publishedBy` are attribution.
+ */
+export interface IncidentAnalysisResponse {
+  status: IncidentAnalysisStatus;
+  version: number;
+  owner: { membershipId: string; name: string };
+  summary: string | null;
+  impact: string | null;
+  cause: string | null;
+  lessons: string | null;
+  createdBy: { id: string; name: string };
+  createdAt: string;
+  publishedBy: { id: string; name: string } | null;
+  publishedAt: string | null;
+  updatedAt: string;
+  facts: IncidentAnalysisFactsResponse;
+  keyMoments: IncidentKeyMomentResponse[];
+}
+
+/** Starting an analysis. The owner is the caller unless another is named. */
+export interface StartIncidentAnalysisRequest {
+  ownerMembershipId?: string;
+}
+
+/**
+ * Editing a draft's sections, based on `version`. A section left out is
+ * unchanged; blank or null clears it. At least one must be named.
+ */
+export type EditIncidentAnalysisRequest = {
+  version: number;
+} & Partial<Record<AnalysisSection, string | null>>;
+
+/** Handing a draft to another member, based on `version`. */
+export interface ReassignIncidentAnalysisOwnerRequest {
+  ownerMembershipId: string;
+  version: number;
+}
+
+/** Publishing a draft exactly as it stands at `version`. */
+export interface PublishIncidentAnalysisRequest {
+  version: number;
+}
+
 /** A count for each severity level; a level with none is 0. */
 export type SeverityCounts = Record<IncidentSeverity, number>;
 
@@ -717,6 +830,7 @@ export const Permission = {
   INCIDENTS_READ: "incidents:read",
   INCIDENTS_MANAGE: "incidents:manage",
   INCIDENTS_RESPOND: "incidents:respond",
+  INCIDENT_ANALYSES_WRITE: "incident-analyses:write",
   NOTIFICATIONS_READ: "notifications:read",
 } as const;
 
@@ -759,6 +873,13 @@ export const ApiErrorCode = {
   NOT_INVESTIGATING: "NOT_INVESTIGATING",
   RESPONDERS_STILL_INVESTIGATING: "RESPONDERS_STILL_INVESTIGATING",
   NOTIFICATION_NOT_FOUND: "NOTIFICATION_NOT_FOUND",
+  ANALYSIS_NOT_STARTED: "ANALYSIS_NOT_STARTED",
+  INCIDENT_NOT_RESOLVED: "INCIDENT_NOT_RESOLVED",
+  ANALYSIS_ALREADY_STARTED: "ANALYSIS_ALREADY_STARTED",
+  NOT_ANALYSIS_OWNER: "NOT_ANALYSIS_OWNER",
+  ANALYSIS_PUBLISHED: "ANALYSIS_PUBLISHED",
+  ANALYSIS_CHANGED: "ANALYSIS_CHANGED",
+  ANALYSIS_SUMMARY_REQUIRED: "ANALYSIS_SUMMARY_REQUIRED",
 } as const;
 
 export interface ValidationErrorDetail {

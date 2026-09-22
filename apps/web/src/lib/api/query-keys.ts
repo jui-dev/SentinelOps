@@ -33,6 +33,9 @@ import type { IncidentFilters } from "./contracts";
  *   or completing a response stales every member's.
  * - `incidentTimeline`: one incident's timeline, beneath its entry. Posting
  *   an update or changing the incident stales it.
+ * - `incidentAnalysis`: one incident's analysis — null when none is
+ *   started — beneath its entry. Only its own writes change it, and each
+ *   writes the API's answer here; it never moves back to an older version.
  * - `incidentActivity`: how much the organization did on each day of one
  *   period, beneath the prefix. Declaring, responding to, or resolving an
  *   incident writes a timeline entry, so it stales every period's.
@@ -128,5 +131,14 @@ export const queryKeys = {
       "detail",
       number,
       "timeline",
+    ] as const,
+  incidentAnalysis: (organizationId: string, number: number) =>
+    [
+      "organization",
+      organizationId,
+      "incidents",
+      "detail",
+      number,
+      "analysis",
     ] as const,
 };

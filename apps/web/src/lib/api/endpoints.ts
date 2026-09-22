@@ -14,7 +14,9 @@ import type {
   CreatedInvitationResponse,
   CreateIncidentRequest,
   CurrentUserResponse,
+  EditIncidentAnalysisRequest,
   IncidentActivityResponse,
+  IncidentAnalysisResponse,
   IncidentAttentionResponse,
   IncidentDetailResponse,
   IncidentFilters,
@@ -36,9 +38,12 @@ import type {
   OrganizationResponse,
   Page,
   PostIncidentUpdateRequest,
+  PublishIncidentAnalysisRequest,
+  ReassignIncidentAnalysisOwnerRequest,
   RegisterRequest,
   RegisterWithInvitationRequest,
   ServiceResponse,
+  StartIncidentAnalysisRequest,
   TeamMemberResponse,
   TeamResponse,
   UpdateIncidentRequest,
@@ -382,6 +387,62 @@ export const postIncidentUpdate = (
 ) =>
   authenticatedRequest<IncidentActivityResponse>(
     `${incidentPath(organizationId, number)}/updates`,
+    { method: "POST", body },
+  );
+
+const analysisPath = (organizationId: string, number: number) =>
+  `${incidentPath(organizationId, number)}/analysis`;
+
+/**
+ * The incident's analysis. 404 ANALYSIS_NOT_STARTED when it has none — an
+ * ordinary answer, given only once the incident itself has been found.
+ */
+export const getIncidentAnalysis = (organizationId: string, number: number) =>
+  authenticatedRequest<IncidentAnalysisResponse>(
+    analysisPath(organizationId, number),
+  );
+
+/** Starts a resolved incident's analysis, as a draft. */
+export const startIncidentAnalysis = (
+  organizationId: string,
+  number: number,
+  body?: StartIncidentAnalysisRequest,
+) =>
+  authenticatedRequest<IncidentAnalysisResponse>(
+    analysisPath(organizationId, number),
+    { method: "POST", body },
+  );
+
+/** Edits the named sections of a draft, if it is still at `version`. */
+export const editIncidentAnalysis = (
+  organizationId: string,
+  number: number,
+  body: EditIncidentAnalysisRequest,
+) =>
+  authenticatedRequest<IncidentAnalysisResponse>(
+    analysisPath(organizationId, number),
+    { method: "PATCH", body },
+  );
+
+/** Hands a draft to another member, if it is still at `version`. */
+export const reassignIncidentAnalysisOwner = (
+  organizationId: string,
+  number: number,
+  body: ReassignIncidentAnalysisOwnerRequest,
+) =>
+  authenticatedRequest<IncidentAnalysisResponse>(
+    `${analysisPath(organizationId, number)}/owner`,
+    { method: "PUT", body },
+  );
+
+/** Publishes a draft exactly as it stands at `version`. */
+export const publishIncidentAnalysis = (
+  organizationId: string,
+  number: number,
+  body: PublishIncidentAnalysisRequest,
+) =>
+  authenticatedRequest<IncidentAnalysisResponse>(
+    `${analysisPath(organizationId, number)}/publish`,
     { method: "POST", body },
   );
 
