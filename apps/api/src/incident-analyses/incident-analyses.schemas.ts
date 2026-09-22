@@ -28,6 +28,12 @@ export type StartIncidentAnalysisRequest = z.infer<
 /** The largest value a Postgres `integer` column holds. */
 const MAX_VERSION = 2_147_483_647;
 
+/**
+ * The version a write was based on — the one the caller last read. The
+ * write applies only if the analysis is still at it.
+ */
+const versionSchema = z.number().int().min(1).max(MAX_VERSION);
+
 /** The written sections, each of which an edit may name. */
 export const ANALYSIS_SECTIONS = [
   'summary',
@@ -57,7 +63,7 @@ export const analysisSectionSchema = z
  */
 export const editIncidentAnalysisSchema = z
   .strictObject({
-    version: z.number().int().min(1).max(MAX_VERSION),
+    version: versionSchema,
     summary: analysisSectionSchema.optional(),
     impact: analysisSectionSchema.optional(),
     cause: analysisSectionSchema.optional(),
@@ -70,4 +76,17 @@ export const editIncidentAnalysisSchema = z
 
 export type EditIncidentAnalysisRequest = z.infer<
   typeof editIncidentAnalysisSchema
+>;
+
+/**
+ * Handing a draft analysis to another member of the admitted organization,
+ * if it is still at `version`.
+ */
+export const reassignIncidentAnalysisOwnerSchema = z.strictObject({
+  ownerMembershipId: resourceIdSchema,
+  version: versionSchema,
+});
+
+export type ReassignIncidentAnalysisOwnerRequest = z.infer<
+  typeof reassignIncidentAnalysisOwnerSchema
 >;

@@ -1,5 +1,6 @@
 import {
   editIncidentAnalysisSchema,
+  reassignIncidentAnalysisOwnerSchema,
   startIncidentAnalysisSchema,
 } from './incident-analyses.schemas.js';
 
@@ -109,5 +110,47 @@ describe('editIncidentAnalysisSchema', () => {
 
   it('should refuse a section that is not text', () => {
     expect(parse({ version: 1, summary: 42 }).success).toBe(false);
+  });
+});
+
+describe('reassignIncidentAnalysisOwnerSchema', () => {
+  const parse = (body: unknown) =>
+    reassignIncidentAnalysisOwnerSchema.safeParse(body);
+
+  it('should take the new owner and the version', () => {
+    expect(
+      reassignIncidentAnalysisOwnerSchema.parse({
+        ownerMembershipId: MEMBERSHIP_ID,
+        version: 4,
+      }),
+    ).toEqual({ ownerMembershipId: MEMBERSHIP_ID, version: 4 });
+  });
+
+  it('should require both', () => {
+    expect(parse({ ownerMembershipId: MEMBERSHIP_ID }).success).toBe(false);
+    expect(parse({ version: 1 }).success).toBe(false);
+  });
+
+  it('should refuse an owner that is not a resource id, or null', () => {
+    for (const ownerMembershipId of ['dave', null, '']) {
+      expect(parse({ ownerMembershipId, version: 1 }).success).toBe(false);
+    }
+  });
+
+  it('should require a positive integer version within the column', () => {
+    for (const version of [0, -1, 1.5, '2', 2_147_483_648]) {
+      expect(parse({ ownerMembershipId: MEMBERSHIP_ID, version }).success).toBe(
+        false,
+      );
+    }
+  });
+
+  it('should refuse anything else, sections included', () => {
+    for (const key of ['summary', 'status', 'createdById', 'organizationId']) {
+      expect(
+        parse({ ownerMembershipId: MEMBERSHIP_ID, version: 1, [key]: 'x' })
+          .success,
+      ).toBe(false);
+    }
   });
 });

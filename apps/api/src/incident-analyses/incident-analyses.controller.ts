@@ -1,4 +1,4 @@
-import { Body, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Get, Param, Patch, Post, Put } from '@nestjs/common';
 
 import { Permission } from '../authorization/permissions.js';
 import { RequirePermission } from '../authorization/require-permission.decorator.js';
@@ -8,10 +8,12 @@ import { OrganizationController } from '../tenancy/organization-controller.decor
 import type { IncidentAnalysisResponse } from './incident-analyses.contract.js';
 import {
   editIncidentAnalysisSchema,
+  reassignIncidentAnalysisOwnerSchema,
   startIncidentAnalysisSchema,
 } from './incident-analyses.schemas.js';
 import type {
   EditIncidentAnalysisRequest,
+  ReassignIncidentAnalysisOwnerRequest,
   StartIncidentAnalysisRequest,
 } from './incident-analyses.schemas.js';
 import { IncidentAnalysesService } from './incident-analyses.service.js';
@@ -22,8 +24,9 @@ import { IncidentAnalysesService } from './incident-analyses.service.js';
  * The same three layers as every organization route: admission by
  * `@OrganizationController()`, authorization by `@RequirePermission()`, and
  * isolation in the service. Reading is `incidents:read`, since an analysis
- * is part of the incident's record. Starting one — and choosing who owns it
- * — is `incidents:manage`, part of running the incident's lifecycle.
+ * is part of the incident's record. Starting one and choosing who owns it —
+ * then or later — are `incidents:manage`, part of running the incident's
+ * lifecycle.
  * Editing one is `incident-analyses:write`, which the service narrows to the
  * analysis's owner unless the caller also holds `incidents:manage`.
  */
@@ -78,6 +81,26 @@ export class IncidentAnalysesController {
       membership.organizationId,
       incidentNumber,
       { membershipId: membership.membershipId, role: membership.role },
+      body,
+    );
+  }
+
+  /**
+   * Hands a draft analysis to another member of the organization, if it is
+   * still at `version`. Choosing who owns an analysis is part of running the
+   * incident's lifecycle, as it is when one is started.
+   */
+  @Put('owner')
+  @RequirePermission(Permission.INCIDENTS_MANAGE)
+  reassignOwner(
+    @CurrentMembership() membership: OrganizationContext,
+    @Param('incidentNumber') incidentNumber: string,
+    @Body({ schema: reassignIncidentAnalysisOwnerSchema })
+    body: ReassignIncidentAnalysisOwnerRequest,
+  ): Promise<IncidentAnalysisResponse> {
+    return this.analyses.reassignOwner(
+      membership.organizationId,
+      incidentNumber,
       body,
     );
   }

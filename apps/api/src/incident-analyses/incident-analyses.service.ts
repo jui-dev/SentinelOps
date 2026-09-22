@@ -23,6 +23,7 @@ import { toIncidentAnalysisResponse } from './incident-analyses.responses.js';
 import { ANALYSIS_SECTIONS } from './incident-analyses.schemas.js';
 import type {
   EditIncidentAnalysisRequest,
+  ReassignIncidentAnalysisOwnerRequest,
   StartIncidentAnalysisRequest,
 } from './incident-analyses.schemas.js';
 
@@ -84,8 +85,8 @@ const isAnalysisConflict = (hint: string): boolean =>
   hint.includes('incidentid');
 
 /**
- * Incident analyses: reading an incident's, starting one, and editing a
- * draft's sections.
+ * Incident analyses: reading an incident's, starting one, editing a draft's
+ * sections, and handing a draft to another owner.
  *
  * Every read is scoped to the admitted organization through the incident,
  * addressed by its number within it, so a foreign incident answers exactly
@@ -180,7 +181,11 @@ export class IncidentAnalysesService {
     const ownerMembershipId = input?.ownerMembershipId ?? caller.membershipId;
 
     if (ownerMembershipId !== caller.membershipId) {
-      await this.requireActiveMember(organizationId, ownerMembershipId);
+      await this.requireActiveMember(
+        this.prisma,
+        organizationId,
+        ownerMembershipId,
+      );
     }
 
     let analysis;
@@ -332,6 +337,105 @@ export class IncidentAnalysesService {
   }
 
   /**
+   * Hands a draft analysis to another active member of the organization, if
+   * it is still at the version the caller read, and makes it the next
+   * version. The owner is who is accountable for the analysis now; who
+   * started it and who publishes it are recorded apart, and do not change.
+   *
+   * Judged in the order that reveals least: the incident (404), its analysis
+   * (404 ANALYSIS_NOT_STARTED), its state — published (409
+   * ANALYSIS_PUBLISHED), or moved past the caller's version (409
+   * ANALYSIS_CHANGED) — and then the new owner, which must be a membership
+   * of this organization whose account still exists (404
+   * MEMBERSHIP_NOT_FOUND, the same for one that is missing, foreign, or
+   * deleted). Only a draft is reassigned: once published, nothing is left
+   * for an owner to do.
+   *
+   * The guarantee is the UPDATE, as for an edit: its WHERE names the
+   * analysis, the organization, DRAFT, and the caller's version, and it
+   * increments the version in SQL. A reassignment and an edit based on the
+   * same version cannot both apply; whichever commits second matches nothing
+   * and is told ANALYSIS_CHANGED. So an owner's edit already under way when
+   * they are replaced is refused, and once they read the analysis again,
+   * they are no longer its owner.
+   *
+   * Naming the current owner is accepted, and still makes a new version:
+   * every accepted write does.
+   */
+  async reassignOwner(
+    organizationId: string,
+    incidentNumber: string,
+    input: ReassignIncidentAnalysisOwnerRequest,
+  ): Promise<IncidentAnalysisResponse> {
+    const { ownerMembershipId, version } = input;
+
+    const { incident, analysis } = await this.prisma.$transaction(
+      async (tx) => {
+        const incident = await tx.incident.findFirst({
+          where: this.incidentWhere(organizationId, incidentNumber),
+          select: {
+            ...factsSelection,
+            id: true,
+            analysis: { select: { id: true, status: true, version: true } },
+          },
+        });
+
+        if (!incident) {
+          throw incidentNotFound();
+        }
+
+        const current = incident.analysis;
+
+        if (!current) {
+          throw analysisNotStarted();
+        }
+
+        if (current.status === 'PUBLISHED') {
+          throw analysisPublished();
+        }
+
+        if (current.version !== version) {
+          throw analysisChanged();
+        }
+
+        await this.requireActiveMember(tx, organizationId, ownerMembershipId);
+
+        const { count } = await tx.incidentAnalysis.updateMany({
+          where: { id: current.id, organizationId, status: 'DRAFT', version },
+          data: { ownerMembershipId, version: { increment: 1 } },
+        });
+
+        if (count !== 1) {
+          const now = await tx.incidentAnalysis.findFirst({
+            where: { id: current.id, organizationId },
+            select: { status: true },
+          });
+
+          throw now?.status === 'PUBLISHED'
+            ? analysisPublished()
+            : analysisChanged();
+        }
+
+        return {
+          incident,
+          analysis: await tx.incidentAnalysis.findUniqueOrThrow({
+            where: { id: current.id },
+            select: analysisSelection,
+          }),
+        };
+      },
+    );
+
+    this.logger.log('Incident analysis owner changed', {
+      incidentId: incident.id,
+      version: analysis.version,
+      ownerMembershipId,
+    });
+
+    return this.respond(incident, analysis);
+  }
+
+  /**
    * Finds the incident `incidentNumber` names in the admitted organization.
    * A malformed number is 404 INCIDENT_NOT_FOUND here, like a missing one
    * or — numbers being per organization — one another tenant holds.
@@ -405,10 +509,11 @@ export class IncidentAnalysesService {
 
   /** 404 MEMBERSHIP_NOT_FOUND unless it is an active member of this organization. */
   private async requireActiveMember(
+    db: Prisma.TransactionClient,
     organizationId: string,
     membershipId: string,
   ): Promise<void> {
-    const membership = await this.prisma.membership.findFirst({
+    const membership = await db.membership.findFirst({
       where: { id: membershipId, organizationId, user: { deletedAt: null } },
       select: { id: true },
     });

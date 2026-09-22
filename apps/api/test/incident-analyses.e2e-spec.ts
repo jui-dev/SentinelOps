@@ -16,8 +16,10 @@ import type { Role } from './../src/generated/prisma/enums.js';
  * read an incident's analysis; only an ADMIN may start one, and a MEMBER is
  * refused with 403 before anything is read or written; an ADMIN edits any
  * draft and a MEMBER only one they own, through an UPDATE guarded by the
- * analysis, its organization, DRAFT, and the version the edit was based on; the organization and
- * the one who started it come from admission, never a body; bodies are
+ * analysis, its organization, DRAFT, and the version the edit was based on;
+ * only an ADMIN hands a draft to another active member, guarded the same
+ * way; the organization and the one who started it come from admission,
+ * never a body; bodies are
  * validated strictly, and may be absent; a malformed incident number is a
  * 404 before any query; and a non-member receives admission's 404. Behaviour
  * against real rows, tenant isolation, and concurrent starts are proven in
@@ -127,7 +129,7 @@ describe('Incident analyses (e2e)', () => {
     );
 
   const send = async (
-    method: 'get' | 'post' | 'patch',
+    method: 'get' | 'post' | 'patch' | 'put',
     path: string,
     body?: object,
   ) => {
@@ -476,6 +478,177 @@ describe('Incident analyses (e2e)', () => {
         expect(prisma.incidentAnalysis.updateMany).not.toHaveBeenCalled();
       },
     );
+  });
+
+  describe('reassigning the owner', () => {
+    const ownerPath = `${base}/owner`;
+    const reassign = { ownerMembershipId: OWNER_MEMBERSHIP_ID, version: 1 };
+
+    /** The draft the reassignment reads first. */
+    const draft = (
+      overrides: Partial<{ status: string; version: number }> = {},
+    ) =>
+      incidentRow({
+        id: ANALYSIS_ID,
+        status: 'DRAFT',
+        version: 1,
+        ...overrides,
+      });
+
+    it('should let an ADMIN hand a draft to another member, through the guarded update', async () => {
+      admitAs('ADMIN');
+      prisma.incident.findFirst.mockResolvedValue(draft());
+
+      const response = await send('put', ownerPath, reassign);
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({ version: 2 });
+      expect(prisma.incidentAnalysis.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: ANALYSIS_ID,
+          organizationId: ORG_ID,
+          status: 'DRAFT',
+          version: 1,
+        },
+        data: {
+          ownerMembershipId: OWNER_MEMBERSHIP_ID,
+          version: { increment: 1 },
+        },
+      });
+    });
+
+    it('should refuse a MEMBER — even the current owner — with 403, before reading anything', async () => {
+      admitAs('MEMBER');
+
+      const response = await send('put', ownerPath, {
+        ownerMembershipId: MEMBERSHIP_ID,
+        version: 1,
+      });
+
+      expect(response.status).toBe(403);
+      expect(response.body.code).toBe('PERMISSION_DENIED');
+      expect(prisma.incident.findFirst).not.toHaveBeenCalled();
+      expect(prisma.incidentAnalysis.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('should refuse an owner who is not an active member here with 404 MEMBERSHIP_NOT_FOUND, writing nothing', async () => {
+      admitAs('ADMIN');
+      prisma.incident.findFirst.mockResolvedValue(draft());
+
+      const response = await send('put', ownerPath, {
+        ownerMembershipId: '0199a1b2-c3d4-7000-8000-0000000000ff',
+        version: 1,
+      });
+
+      expect(response.status).toBe(404);
+      expect(response.body.code).toBe('MEMBERSHIP_NOT_FOUND');
+      expect(prisma.incidentAnalysis.updateMany).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      { state: { status: 'PUBLISHED' }, code: 'ANALYSIS_PUBLISHED' },
+      { state: { version: 2 }, code: 'ANALYSIS_CHANGED' },
+    ])(
+      'should refuse with 409 $code, writing nothing',
+      async ({ state, code }) => {
+        admitAs('ADMIN');
+        prisma.incident.findFirst.mockResolvedValue(draft(state));
+
+        const response = await send('put', ownerPath, reassign);
+
+        expect(response.status).toBe(409);
+        expect(response.body.code).toBe(code);
+        expect(prisma.incidentAnalysis.updateMany).not.toHaveBeenCalled();
+      },
+    );
+
+    it('should judge the analysis before the owner it names', async () => {
+      admitAs('ADMIN');
+      prisma.incident.findFirst.mockResolvedValue(draft({ version: 2 }));
+
+      const response = await send('put', ownerPath, {
+        ownerMembershipId: '0199a1b2-c3d4-7000-8000-0000000000ff',
+        version: 1,
+      });
+
+      expect(response.body.code).toBe('ANALYSIS_CHANGED');
+    });
+
+    it.each([
+      { now: 'DRAFT', code: 'ANALYSIS_CHANGED' },
+      { now: 'PUBLISHED', code: 'ANALYSIS_PUBLISHED' },
+    ])(
+      'should answer 409 $code when the guarded update matches nothing and it is now $now',
+      async ({ now, code }) => {
+        admitAs('ADMIN');
+        prisma.incident.findFirst.mockResolvedValue(draft());
+        prisma.incidentAnalysis.updateMany.mockResolvedValue({ count: 0 });
+        prisma.incidentAnalysis.findFirst.mockResolvedValue({ status: now });
+
+        const response = await send('put', ownerPath, reassign);
+
+        expect(response.status).toBe(409);
+        expect(response.body.code).toBe(code);
+        expect(
+          prisma.incidentAnalysis.findUniqueOrThrow,
+        ).not.toHaveBeenCalled();
+      },
+    );
+
+    it('should answer 404 ANALYSIS_NOT_STARTED when the incident has none', async () => {
+      admitAs('ADMIN');
+      prisma.incident.findFirst.mockResolvedValue(incidentRow(null));
+
+      const response = await send('put', ownerPath, reassign);
+
+      expect(response.status).toBe(404);
+      expect(response.body.code).toBe('ANALYSIS_NOT_STARTED');
+    });
+
+    it('should answer a malformed incident number with 404 INCIDENT_NOT_FOUND, reading nothing', async () => {
+      admitAs('ADMIN');
+
+      const response = await send(
+        'put',
+        ownerPath.replace('/incidents/1/', '/incidents/INC-1/'),
+        reassign,
+      );
+
+      expect(response.status).toBe(404);
+      expect(response.body.code).toBe('INCIDENT_NOT_FOUND');
+      expect(prisma.incident.findFirst).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      {},
+      { version: 1 },
+      { ownerMembershipId: OWNER_MEMBERSHIP_ID },
+      { ownerMembershipId: 'dave', version: 1 },
+      { ownerMembershipId: OWNER_MEMBERSHIP_ID, version: 0 },
+      { ownerMembershipId: OWNER_MEMBERSHIP_ID, version: 1, summary: 'x' },
+    ])('should refuse the body %o with 400, reading nothing', async (body) => {
+      admitAs('ADMIN');
+
+      const response = await send('put', ownerPath, body);
+
+      expect(response.status).toBe(400);
+      expect(prisma.incident.findFirst).not.toHaveBeenCalled();
+      expect(prisma.incidentAnalysis.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('should receive admission 404 as a non-member', async () => {
+      admitAs('ADMIN');
+
+      const response = await send(
+        'put',
+        ownerPath.replace(ORG_ID, OTHER_ORG_ID),
+        reassign,
+      );
+
+      expect(response.status).toBe(404);
+      expect(response.body.code).toBe('ORGANIZATION_NOT_FOUND');
+      expect(prisma.incidentAnalysis.updateMany).not.toHaveBeenCalled();
+    });
   });
 
   describe('validation', () => {

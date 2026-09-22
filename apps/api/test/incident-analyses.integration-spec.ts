@@ -26,7 +26,10 @@ import { resolveTestDatabaseUrl } from './test-database.js';
  * edited by its owner or an admin, section by section, one version at a
  * time — of two edits based on one version exactly one applies, and an edit
  * the conditional UPDATE alone refuses is told why, never applied and never
- * a 500 — and a published one is not edited at all; that the owner is
+ * a 500 — and a published one is not edited at all; that an admin hands a
+ * draft to another active member one version at a time, so an edit its old
+ * owner already had under way is refused, and they may no longer edit it;
+ * that the owner is
  * an active member of the admitted organization, a foreign, missing, or
  * deleted one being indistinguishable; and that another organization's
  * incidents are indistinguishable from missing ones.
@@ -67,7 +70,7 @@ describe('incident analyses (integration)', () => {
   let fx: Fixture;
 
   const call = async (
-    method: 'get' | 'post' | 'patch',
+    method: 'get' | 'post' | 'patch' | 'put',
     path: string,
     userId: string,
     body?: object,
@@ -265,20 +268,61 @@ describe('incident analyses (integration)', () => {
     return { release, done };
   };
 
-  /** Resolves once some other session in this database is waiting on a lock. */
-  const someoneIsWaitingOnALock = async () => {
+  /**
+   * Resolves once at least `sessions` other sessions in this database are
+   * waiting on a lock.
+   */
+  const someoneIsWaitingOnALock = async (sessions = 1) => {
     for (let attempt = 0; attempt < 200; attempt += 1) {
       const [{ waiting }] = await prisma.$queryRaw<{ waiting: number }[]>`
         SELECT count(*)::int AS waiting
         FROM pg_stat_activity
         WHERE datname = current_database() AND wait_event_type = 'Lock'`;
 
-      if (waiting > 0) return;
+      if (waiting >= sessions) return;
 
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
 
-    throw new Error('No session started waiting on a lock');
+    throw new Error(`Fewer than ${sessions} sessions waiting on a lock`);
+  };
+
+  const editAnalysis = (
+    organizationId: string,
+    userId: string,
+    number: number,
+    body: object,
+  ) => call('patch', analysisPath(organizationId, number), userId, body);
+
+  /** The analysis row as it stands, read directly. */
+  const stored = (organizationId: string, number: number) =>
+    prisma.incidentAnalysis.findFirstOrThrow({
+      where: { organizationId, incident: { number } },
+      select: {
+        id: true,
+        status: true,
+        version: true,
+        summary: true,
+        impact: true,
+        cause: true,
+        lessons: true,
+        updatedAt: true,
+      },
+    });
+
+  /** A resolved incident in A with a draft analysis Dave owns. */
+  const aDraftDaveOwns = async () => {
+    const number = await aResolvedIncident(fx.orgA, fx.alice, fx.dave, fx.apiA);
+
+    expect(
+      (
+        await startAnalysis(fx.orgA, fx.alice, number, {
+          ownerMembershipId: fx.daveInA,
+        })
+      ).status,
+    ).toBe(201);
+
+    return number;
   };
 
   beforeAll(async () => {
@@ -553,49 +597,6 @@ describe('incident analyses (integration)', () => {
   });
 
   describe('editing', () => {
-    const editAnalysis = (
-      organizationId: string,
-      userId: string,
-      number: number,
-      body: object,
-    ) => call('patch', analysisPath(organizationId, number), userId, body);
-
-    /** The analysis row as it stands, read directly. */
-    const stored = (organizationId: string, number: number) =>
-      prisma.incidentAnalysis.findFirstOrThrow({
-        where: { organizationId, incident: { number } },
-        select: {
-          id: true,
-          status: true,
-          version: true,
-          summary: true,
-          impact: true,
-          cause: true,
-          lessons: true,
-          updatedAt: true,
-        },
-      });
-
-    /** A resolved incident in A with a draft analysis Dave owns. */
-    const aDraftDaveOwns = async () => {
-      const number = await aResolvedIncident(
-        fx.orgA,
-        fx.alice,
-        fx.dave,
-        fx.apiA,
-      );
-
-      expect(
-        (
-          await startAnalysis(fx.orgA, fx.alice, number, {
-            ownerMembershipId: fx.daveInA,
-          })
-        ).status,
-      ).toBe(201);
-
-      return number;
-    };
-
     it('should let the owner edit sections one version at a time, leaving the others as they were', async () => {
       const number = await aDraftDaveOwns();
       const before = await stored(fx.orgA, number);
@@ -900,6 +901,334 @@ describe('incident analyses (integration)', () => {
         403,
         'NOT_ANALYSIS_OWNER',
       );
+    });
+  });
+
+  describe('reassigning the owner', () => {
+    const reassign = (
+      organizationId: string,
+      userId: string,
+      number: number,
+      body: object,
+    ) =>
+      call(
+        'put',
+        `${analysisPath(organizationId, number)}/owner`,
+        userId,
+        body,
+      );
+
+    /** The analysis row's owner and version, read directly. */
+    const ownership = async (organizationId: string, number: number) => {
+      const { status, version, owner } =
+        await prisma.incidentAnalysis.findFirstOrThrow({
+          where: { organizationId, incident: { number } },
+          select: {
+            status: true,
+            version: true,
+            owner: { select: { id: true } },
+          },
+        });
+
+      return { status, version, ownerMembershipId: owner.id };
+    };
+
+    it('should hand a draft to another active member as the next version', async () => {
+      const number = await aDraftDaveOwns();
+
+      const response = await reassign(fx.orgA, fx.alice, number, {
+        ownerMembershipId: fx.erinInA,
+        version: 1,
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        status: 'DRAFT',
+        version: 2,
+        owner: { membershipId: fx.erinInA, name: 'Erin Estrada' },
+        // Who started it does not change.
+        createdBy: { id: fx.alice, name: 'Alice Anders' },
+      });
+      expect((await readAnalysis(fx.orgA, fx.dave, number)).body).toEqual(
+        response.body,
+      );
+    });
+
+    // The ownership and concurrency contract, through the real routes: an
+    // edit Dave already had under way when he was replaced is refused as
+    // changed; once he reads the analysis again he is not its owner, and
+    // Erin edits it at the version it is now.
+    it("should refuse the old owner's edit already under way, then his next one, and let the new owner edit", async () => {
+      const number = await aDraftDaveOwns();
+      const { id } = await stored(fx.orgA, number);
+
+      // Holds the row, so both requests below pass their checks and then
+      // queue on it: the reassignment first, Dave's edit behind it.
+      const gate = await hold(
+        (tx) =>
+          tx.$queryRaw`SELECT id FROM incident_analyses WHERE id = ${id}::uuid FOR UPDATE`,
+      );
+      const reassigning = reassign(fx.orgA, fx.alice, number, {
+        ownerMembershipId: fx.erinInA,
+        version: 1,
+      });
+
+      reassigning.catch(() => undefined);
+      await someoneIsWaitingOnALock(1);
+
+      const editing = editAnalysis(fx.orgA, fx.dave, number, {
+        version: 1,
+        summary: 'Written by Dave while he was replaced',
+      });
+
+      editing.catch(() => undefined);
+      await someoneIsWaitingOnALock(2);
+      gate.release();
+      await gate.done;
+
+      const reassigned = await reassigning;
+
+      expect(reassigned.status).toBe(200);
+      expect(reassigned.body.version).toBe(2);
+      expectCode(await editing, 409, 'ANALYSIS_CHANGED');
+
+      // Dave reads it again: Erin owns it, at version 2.
+      const refetched = await readAnalysis(fx.orgA, fx.dave, number);
+
+      expect(refetched.body).toMatchObject({
+        version: 2,
+        summary: null,
+        owner: { membershipId: fx.erinInA },
+      });
+      expectCode(
+        await editAnalysis(fx.orgA, fx.dave, number, {
+          version: refetched.body.version,
+          summary: 'Written by Dave after he was replaced',
+        }),
+        403,
+        'NOT_ANALYSIS_OWNER',
+      );
+
+      const byErin = await editAnalysis(fx.orgA, fx.erin, number, {
+        version: 2,
+        summary: 'Written by Erin',
+      });
+
+      expect(byErin.status).toBe(200);
+      expect(byErin.body).toMatchObject({
+        version: 3,
+        summary: 'Written by Erin',
+      });
+    });
+
+    it('should refuse a reassignment whose version moved on while its UPDATE waited, with 409 ANALYSIS_CHANGED', async () => {
+      const number = await aDraftDaveOwns();
+      const { id } = await stored(fx.orgA, number);
+
+      // An edit, applied but not yet committed.
+      const edit = await hold((tx) =>
+        tx.incidentAnalysis.update({
+          where: { id },
+          data: { summary: 'Held edit', version: { increment: 1 } },
+        }),
+      );
+      const pending = reassign(fx.orgA, fx.alice, number, {
+        ownerMembershipId: fx.erinInA,
+        version: 1,
+      });
+
+      pending.catch(() => undefined);
+      await someoneIsWaitingOnALock();
+      edit.release();
+      await edit.done;
+
+      expectCode(await pending, 409, 'ANALYSIS_CHANGED');
+      expect(await ownership(fx.orgA, number)).toEqual({
+        status: 'DRAFT',
+        version: 2,
+        ownerMembershipId: fx.daveInA,
+      });
+    });
+
+    it('should apply exactly one of two reassignments based on the same version', async () => {
+      const number = await aDraftDaveOwns();
+
+      const responses = await Promise.all([
+        reassign(fx.orgA, fx.alice, number, {
+          ownerMembershipId: fx.erinInA,
+          version: 1,
+        }),
+        reassign(fx.orgA, fx.carol, number, {
+          ownerMembershipId: fx.aliceInA,
+          version: 1,
+        }),
+      ]);
+      const [winner] = responses.filter(({ status }) => status === 200);
+      const [loser] = responses.filter(({ status }) => status === 409);
+
+      expect(responses.map(({ status }) => status).sort()).toEqual([200, 409]);
+      expect(loser.body.code).toBe('ANALYSIS_CHANGED');
+      expect(await ownership(fx.orgA, number)).toEqual({
+        status: 'DRAFT',
+        version: 2,
+        ownerMembershipId: winner.body.owner.membershipId,
+      });
+    });
+
+    it('should accept naming the current owner, and still make a new version', async () => {
+      const number = await aDraftDaveOwns();
+
+      const response = await reassign(fx.orgA, fx.alice, number, {
+        ownerMembershipId: fx.daveInA,
+        version: 1,
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        version: 2,
+        owner: { membershipId: fx.daveInA },
+      });
+    });
+
+    it('should refuse an owner who is not an active member here, alike whether foreign, missing, or deleted', async () => {
+      const number = await aDraftDaveOwns();
+
+      const foreign = await reassign(fx.orgA, fx.alice, number, {
+        ownerMembershipId: fx.carolInB,
+        version: 1,
+      });
+      const missing = await reassign(fx.orgA, fx.alice, number, {
+        ownerMembershipId: randomUUID(),
+        version: 1,
+      });
+
+      await prisma.user.update({
+        where: { id: fx.erin },
+        data: { deletedAt: new Date() },
+      });
+
+      const deleted = await reassign(fx.orgA, fx.alice, number, {
+        ownerMembershipId: fx.erinInA,
+        version: 1,
+      });
+
+      expectCode(foreign, 404, 'MEMBERSHIP_NOT_FOUND');
+      expect(comparable(missing.body)).toEqual(comparable(foreign.body));
+      expect(comparable(deleted.body)).toEqual(comparable(foreign.body));
+      expect(await ownership(fx.orgA, number)).toEqual({
+        status: 'DRAFT',
+        version: 1,
+        ownerMembershipId: fx.daveInA,
+      });
+    });
+
+    it('should refuse a stale version with 409 ANALYSIS_CHANGED, changing nothing', async () => {
+      const number = await aDraftDaveOwns();
+
+      await editAnalysis(fx.orgA, fx.dave, number, {
+        version: 1,
+        summary: 'Summary',
+      });
+
+      expectCode(
+        await reassign(fx.orgA, fx.alice, number, {
+          ownerMembershipId: fx.erinInA,
+          version: 1,
+        }),
+        409,
+        'ANALYSIS_CHANGED',
+      );
+      expect(await ownership(fx.orgA, number)).toMatchObject({
+        version: 2,
+        ownerMembershipId: fx.daveInA,
+      });
+    });
+
+    it('should refuse reassigning a published analysis with 409 ANALYSIS_PUBLISHED', async () => {
+      const number = await aDraftDaveOwns();
+      const { id } = await stored(fx.orgA, number);
+
+      // Published directly: there is no publish route yet.
+      await prisma.incidentAnalysis.update({
+        where: { id },
+        data: {
+          status: 'PUBLISHED',
+          summary: 'Final',
+          publishedAt: new Date(),
+          publishedById: fx.alice,
+          version: { increment: 1 },
+        },
+      });
+
+      expectCode(
+        await reassign(fx.orgA, fx.alice, number, {
+          ownerMembershipId: fx.erinInA,
+          version: 2,
+        }),
+        409,
+        'ANALYSIS_PUBLISHED',
+      );
+      expect(await ownership(fx.orgA, number)).toEqual({
+        status: 'PUBLISHED',
+        version: 2,
+        ownerMembershipId: fx.daveInA,
+      });
+    });
+
+    it('should refuse a member, even the owner, with 403', async () => {
+      const number = await aDraftDaveOwns();
+
+      expectCode(
+        await reassign(fx.orgA, fx.dave, number, {
+          ownerMembershipId: fx.erinInA,
+          version: 1,
+        }),
+        403,
+        'PERMISSION_DENIED',
+      );
+      expect((await ownership(fx.orgA, number)).version).toBe(1);
+    });
+
+    it('should answer 404 ANALYSIS_NOT_STARTED for an incident nobody has analysed', async () => {
+      const number = await aResolvedIncident(
+        fx.orgA,
+        fx.alice,
+        fx.dave,
+        fx.apiA,
+      );
+
+      expectCode(
+        await reassign(fx.orgA, fx.alice, number, {
+          ownerMembershipId: fx.erinInA,
+          version: 1,
+        }),
+        404,
+        'ANALYSIS_NOT_STARTED',
+      );
+    });
+
+    it("should answer another organization's incident exactly as a missing one, and judge the caller by the organization named", async () => {
+      const inB = await aResolvedIncident(fx.orgB, fx.bob, fx.carol, fx.apiB);
+
+      expect((await startAnalysis(fx.orgB, fx.bob, inB)).status).toBe(201);
+
+      const body = { ownerMembershipId: fx.erinInA, version: 1 };
+      const missing = await reassign(fx.orgA, fx.alice, 99, body);
+
+      expectCode(missing, 404, 'INCIDENT_NOT_FOUND');
+      expect(
+        comparable((await reassign(fx.orgA, fx.alice, inB, body)).body),
+      ).toEqual(comparable(missing.body));
+      // Carol is ADMIN in A, but only a MEMBER in B.
+      expectCode(
+        await reassign(fx.orgB, fx.carol, inB, {
+          ownerMembershipId: fx.carolInB,
+          version: 1,
+        }),
+        403,
+        'PERMISSION_DENIED',
+      );
+      expect((await ownership(fx.orgB, inB)).version).toBe(1);
     });
   });
 
