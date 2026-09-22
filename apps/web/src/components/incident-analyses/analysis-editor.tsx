@@ -7,6 +7,7 @@ import { ANALYSIS_SECTIONS } from "@/lib/api/contracts";
 
 import { DraftActionBar } from "./draft-action-bar";
 import { ChangedNotice, ConflictNotice } from "./draft-recovery";
+import type { PublishOutcome } from "./publish-dialog";
 import { SectionEditor } from "./section-editor";
 import type { AnalysisDraft } from "./use-analysis-draft";
 
@@ -18,7 +19,15 @@ import type { AnalysisDraft } from "./use-analysis-draft";
  *
  * Ctrl/⌘+S saves from anywhere on the page while it is open.
  */
-export function AnalysisEditor({ draft }: { draft: AnalysisDraft }) {
+export function AnalysisEditor({
+  draft,
+  incidentNumber,
+  onPublishOutcome,
+}: {
+  draft: AnalysisDraft;
+  incidentNumber: number;
+  onPublishOutcome: (outcome: PublishOutcome) => void;
+}) {
   const form = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
@@ -74,7 +83,11 @@ export function AnalysisEditor({ draft }: { draft: AnalysisDraft }) {
           />
         );
       })}
-      <DraftActionBar draft={draft} />
+      <DraftActionBar
+        draft={draft}
+        incidentNumber={incidentNumber}
+        onPublishOutcome={onPublishOutcome}
+      />
     </form>
   );
 }

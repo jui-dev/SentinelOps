@@ -77,6 +77,22 @@ export const canSave = (state: DraftState) =>
   dirtySections(state).length > 0;
 
 /**
+ * Why the draft cannot be published now, or null when it can. Only what is
+ * saved is ever published, so anything unsaved, being saved, or awaiting a
+ * choice blocks it; then the one section a publication requires.
+ */
+export type PublishBlock = "saving" | "conflict" | "unsaved" | "summary";
+
+export const publishBlock = (state: DraftState): PublishBlock | null => {
+  if (state.saving !== null) return "saving";
+  if (Object.keys(state.conflicts).length > 0) return "conflict";
+  if (dirtySections(state).length > 0) return "unsaved";
+  if (state.base.sections.summary === "") return "summary";
+
+  return null;
+};
+
+/**
  * The save to send: the unsaved sections, as they would be stored, based on
  * the base's version.
  */

@@ -16,6 +16,7 @@ import {
   discarded,
   initialDraft,
   keepMine,
+  publishBlock,
   reconcile,
   saveFailed,
   saveRequest,
@@ -150,6 +151,8 @@ export const useAnalysisDraft = (
     unsaved,
     saving: state.saving !== null,
     canSave: canSave(state),
+    /** Why it cannot be published now; null when it can. */
+    publishBlock: publishBlock(state),
     /** A save that failed for a reason other than the analysis itself. */
     failure,
     restored: draft.restored,
@@ -163,6 +166,11 @@ export const useAnalysisDraft = (
         restored: false,
         merged: false,
       })),
+    /**
+     * Someone else's change was found by something other than a save — a
+     * refused publication — and the writer should review it.
+     */
+    noteChanged: () => setDraft((current) => ({ ...current, merged: true })),
     keepMine: (section: AnalysisSection) =>
       update((current) => keepMine(current, section)),
     takeSaved: (section: AnalysisSection) =>

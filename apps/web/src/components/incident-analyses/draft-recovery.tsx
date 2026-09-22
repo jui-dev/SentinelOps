@@ -53,10 +53,11 @@ export function ChangedNotice({ draft }: { draft: AnalysisDraft }) {
   return (
     <Alert tone="warning" title="Someone saved changes to this analysis while you were editing.">
       <p>
-        None of your text was lost.{" "}
-        {conflicts
-          ? "Where you both changed a section, choose which text to keep."
-          : "Their changes are in; yours are still unsaved."}
+        {!draft.unsaved
+          ? "Their changes are in. Review them before publishing."
+          : conflicts
+            ? "None of your text was lost. Where you both changed a section, choose which text to keep."
+            : "None of your text was lost. Their changes are in; yours are still unsaved."}
       </p>
     </Alert>
   );

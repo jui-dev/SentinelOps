@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { useState } from "react";
 
 import {
   IncidentNotFound,
@@ -30,6 +31,8 @@ import { AnalysisStatusMark } from "./analysis-status";
 import { UnsavedText } from "./draft-recovery";
 import { FactsStrip } from "./facts-strip";
 import { KeyMoments } from "./key-moments";
+import { PublishOutcomeNotice } from "./publish-dialog";
+import type { PublishOutcome } from "./publish-dialog";
 import { StartAnalysis } from "./start-analysis";
 import { useAnalysisDraft } from "./use-analysis-draft";
 
@@ -115,15 +118,21 @@ function Workspace({
   const { canWrite } = useAnalysisAccess(analysis);
   const draft = useAnalysisDraft(analysis, incident.number);
   const editing = canWrite && analysis.status === "DRAFT";
+  const [outcome, setOutcome] = useState<PublishOutcome | null>(null);
 
   return (
     <>
       <FactsStrip analysis={analysis} />
       <div className="grid items-start gap-x-10 gap-y-10 xl:grid-cols-[minmax(0,1fr)_18rem]">
         {editing ? (
-          <AnalysisEditor draft={draft} />
+          <AnalysisEditor
+            draft={draft}
+            incidentNumber={incident.number}
+            onPublishOutcome={setOutcome}
+          />
         ) : (
           <div className="flex min-w-0 flex-col gap-8">
+            {outcome && <PublishOutcomeNotice outcome={outcome} analysis={analysis} />}
             {/* Text written here that can no longer be saved: kept to copy. */}
             {draft.unsaved && <UnsavedText analysis={analysis} draft={draft} />}
             <AnalysisDocument analysis={analysis} />
