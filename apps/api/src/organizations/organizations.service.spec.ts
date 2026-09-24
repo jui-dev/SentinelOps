@@ -124,6 +124,7 @@ describe('OrganizationsService', () => {
             'incident-analyses:write',
             'incidents:manage',
             'incidents:read',
+            'incidents:read-all',
             'incidents:respond',
             'invitations:manage',
             'invitations:read',
