@@ -27,12 +27,24 @@ export const Permission = {
    * Scoped by incidents.scope.ts to the caller's own incidents — their
    * teams', the ones they responded to, and the ones whose analysis they
    * own — unless the caller also holds `incidents:read-all`.
+   *
+   * Reaches nothing that counts the organization as a whole: an aggregate
+   * has no reader to narrow it by, so it is `incidents:read-all` instead.
    */
   INCIDENTS_READ: 'incidents:read',
   /**
-   * Oversee every incident in the organization: widens `incidents:read` from
-   * the caller's own incidents to all of them. Never declared on a route by
-   * itself; the read services consult it to decide the scope.
+   * Oversee every incident in the organization, in both of the ways that
+   * can be asked for.
+   *
+   * One incident at a time, it widens `incidents:read` from the caller's own
+   * incidents to all of them: the read services consult it to decide the
+   * scope, and no route declares it for that.
+   *
+   * All of them at once, it is what the organization-wide aggregates
+   * declare — the summary, the activity calendar, occurrence. Those count
+   * every incident there is, so there is no scope to narrow them to: either
+   * the caller oversees the organization or the figures are not theirs to
+   * see. A member without it is refused 403.
    */
   INCIDENTS_READ_ALL: 'incidents:read-all',
   /**

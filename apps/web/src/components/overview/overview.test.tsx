@@ -2,7 +2,7 @@ import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { OrganizationOverview } from "@/components/organizations/organization-overview";
+import { OrganizationLanding } from "@/components/organizations/organization-landing";
 import { OrganizationScope } from "@/components/organizations/organization-scope";
 import { OverviewSummary } from "@/components/overview/overview-summary";
 import type { CurrentOperationsState } from "@/components/overview/use-current-operations";
@@ -40,12 +40,27 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
 }));
 
+/** An overseer: `incidents:read-all` is what the Overview is offered on. */
 const READ = [
   "incidents:read",
+  "incidents:read-all",
   "memberships:read",
   "organization:read",
   "services:read",
   "teams:read",
+];
+
+/** A member: every read the Overview needs, except oversight. */
+const MEMBER_READ = READ.filter(
+  (permission) => permission !== "incidents:read-all",
+);
+
+/** The requests only the organization-wide Overview makes. */
+const OVERSIGHT_REQUESTS = [
+  "/incidents/summary",
+  "/incidents/occurrence",
+  "/incidents/activity",
+  "/incidents?state=active",
 ];
 
 const base = `/organizations/${organization.id}`;
@@ -554,9 +569,83 @@ const api = (
 const renderOverview = () =>
   renderWithSession(
     <OrganizationScope>
-      <OrganizationOverview />
+      <OrganizationLanding />
     </OrganizationScope>,
   );
+
+/**
+ * Which workspace `/orgs/[orgSlug]` resolves to, and — for a member — that
+ * resolving it begins none of the organization-wide requests. Not "they are
+ * abandoned quickly": the assertion is that they were never sent, because the
+ * sections that would send them are never mounted.
+ */
+describe("the organization landing", () => {
+  beforeEach(() => {
+    clearAccessToken();
+    vi.useFakeTimers({
+      toFake: ["Date"],
+      now: new Date("2026-09-19T12:00:00.000Z"),
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("gives an overseer the organization's Overview", async () => {
+    api(READ);
+    renderOverview();
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Overview" }),
+    ).toBeDefined();
+    expect(screen.queryByText("My Operations")).toBeNull();
+  });
+
+  it("gives a member My Operations, and asks the organization for nothing", async () => {
+    const { requests } = api(MEMBER_READ, { role: "MEMBER" });
+    renderOverview();
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "My Operations" }),
+    ).toBeDefined();
+    expect(screen.queryByRole("heading", { name: "Overview" })).toBeNull();
+
+    // Never sent — not sent and refused, not sent and cancelled.
+    const asked = requests.map((request) => request.path);
+
+    for (const oversight of OVERSIGHT_REQUESTS) {
+      expect(asked.some((path) => path.includes(oversight))).toBe(false);
+    }
+
+    // The only thing asked of the organization is who is asking.
+    expect(asked.filter((path) => path.startsWith(base))).toEqual([base]);
+  });
+
+  it("offers a member the way to the incidents that are theirs", async () => {
+    api(MEMBER_READ, { role: "MEMBER" });
+    renderOverview();
+
+    const onward = await screen.findByRole("link", { name: /Go to Incidents/ });
+
+    expect(onward.getAttribute("href")).toBe("/orgs/acme-ops/incidents");
+  });
+
+  it("borrows none of the Overview's panels to look populated", async () => {
+    api(MEMBER_READ, { role: "MEMBER" });
+    renderOverview();
+
+    await screen.findByRole("heading", { level: 1, name: "My Operations" });
+
+    for (const panel of [
+      "Current operations",
+      "Recent operational health",
+      "Operational activity",
+    ]) {
+      expect(screen.queryByRole("region", { name: panel })).toBeNull();
+    }
+  });
+});
 
 describe("the operations overview", () => {
   beforeEach(() => {
@@ -1336,8 +1425,11 @@ describe("the operations overview", () => {
     ).toBeNull();
   });
 
+  // A grant that oversees the organization but may not read its incidents.
+  // No role holds it today; the Overview keeps the branch so that one which
+  // did would find a page that says why it is empty rather than being so.
   it("asks nothing about incidents without incidents:read", async () => {
-    const { requests } = api(["organization:read"]);
+    const { requests } = api(["organization:read", "incidents:read-all"]);
     renderOverview();
 
     await screen.findByText("No operations to show");

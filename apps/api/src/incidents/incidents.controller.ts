@@ -60,6 +60,16 @@ import { IncidentsService } from './incidents.service.js';
  * incident the same way, before judging whether the caller may make it, so
  * no refusal tells a member that an incident they cannot see exists.
  *
+ * The organization-wide readings — the summary, the activity calendar, and
+ * occurrence — are oversight rather than reading. Each counts every incident
+ * there is, with no reader to narrow it by, so each requires
+ * `incidents:read-all` outright: a member without it is refused 403, like
+ * anyone whose role lacks a permission a route declares. Not 404, which is
+ * what admission answers, and which here would be read as a missing incident
+ * number rather than as the refusal it is. `attention` is the exception that
+ * proves the rule: it asks what waits on the caller, so it is scoped by them
+ * and stays `incidents:read`.
+ *
  * Incidents are addressed by number, validated in the service, so a
  * malformed one answers 404 like any other number this organization lacks.
  * There is no delete: incidents are history.
@@ -85,10 +95,12 @@ export class IncidentsController {
   /**
    * Counts of the incidents active now, and of those declared and resolved
    * in a period of whole UTC days, with a preview of that period's history.
-   * Declared before `:incidentNumber`, which would otherwise claim the path.
+   * Every incident in the organization, the preview included — oversight, so
+   * `incidents:read-all`. Declared before `:incidentNumber`, which would
+   * otherwise claim the path.
    */
   @Get('summary')
-  @RequirePermission(Permission.INCIDENTS_READ)
+  @RequirePermission(Permission.INCIDENTS_READ_ALL)
   summary(
     @CurrentMembership() membership: OrganizationContext,
     @Query({ schema: incidentSummaryQuerySchema }) query: IncidentSummaryQuery,
@@ -98,11 +110,11 @@ export class IncidentsController {
 
   /**
    * How much happened on each day of a period, across every incident, with
-   * the incidents each day touched. Declared before `:incidentNumber`,
-   * which would otherwise claim the path.
+   * the incidents each day touched — oversight, so `incidents:read-all`.
+   * Declared before `:incidentNumber`, which would otherwise claim the path.
    */
   @Get('activity')
-  @RequirePermission(Permission.INCIDENTS_READ)
+  @RequirePermission(Permission.INCIDENTS_READ_ALL)
   activity(
     @CurrentMembership() membership: OrganizationContext,
     @Query({ schema: incidentActivityQuerySchema })
@@ -113,11 +125,12 @@ export class IncidentsController {
 
   /**
    * How often incidents were declared over a period, day by day and by
-   * service, against the same elapsed time before it. Declared before
-   * `:incidentNumber`, which would otherwise claim the path.
+   * service, against the same elapsed time before it — oversight, so
+   * `incidents:read-all`. Declared before `:incidentNumber`, which would
+   * otherwise claim the path.
    */
   @Get('occurrence')
-  @RequirePermission(Permission.INCIDENTS_READ)
+  @RequirePermission(Permission.INCIDENTS_READ_ALL)
   occurrence(
     @CurrentMembership() membership: OrganizationContext,
     @Query({ schema: incidentOccurrenceQuerySchema })

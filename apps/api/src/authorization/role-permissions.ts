@@ -31,6 +31,12 @@ import { Permission } from './permissions.js';
  * organization, a MEMBER sees the incidents they are responsible for or
  * took part in.
  *
+ * That same `incidents:read-all` is what the organization-wide aggregates
+ * require — the summary, the activity calendar, occurrence. A figure counted
+ * across every incident cannot be narrowed to a reader, so a MEMBER holding
+ * `incidents:read` does not thereby see the organization's totals; giving
+ * them a reading of their own is their own surface's work, not this table's.
+ *
  * Declaring is ADMIN-only as the current rule, not a settled one: letting a
  * MEMBER declare against services their own teams own may be reconsidered.
  */

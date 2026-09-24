@@ -1257,7 +1257,7 @@ describe('incidents (integration)', () => {
       const response = await call(
         'get',
         `${organizationId}/incidents/summary?from=${from}&to=${to}`,
-        organizationId === fx.orgA ? fx.dave : fx.bob,
+        organizationId === fx.orgA ? fx.alice : fx.bob,
       );
 
       expect(response.status).toBe(200);
@@ -1623,7 +1623,7 @@ describe('incidents (integration)', () => {
       const response = await call(
         'get',
         `${organizationId}/incidents/activity?from=${from}&to=${to}`,
-        organizationId === fx.orgA ? fx.dave : fx.bob,
+        organizationId === fx.orgA ? fx.alice : fx.bob,
       );
 
       expect(response.status).toBe(200);
@@ -1838,7 +1838,7 @@ describe('incidents (integration)', () => {
       const response = await call(
         'get',
         `${organizationId}/incidents/occurrence?from=${from}&to=${to}`,
-        organizationId === fx.orgA ? fx.dave : fx.bob,
+        organizationId === fx.orgA ? fx.alice : fx.bob,
       );
 
       expect(response.status).toBe(200);
@@ -4013,6 +4013,80 @@ describe('incidents (integration)', () => {
         (await call('post', `${analysis}/publish`, fx.dave, { version: 4 }))
           .status,
       ).toBe(200);
+    });
+  });
+
+  /**
+   * The other half of read scope: the figures counted across every incident.
+   *
+   * Read scope narrows one incident at a time, and answers 404 for one
+   * outside it, so that no refusal says an incident exists. An aggregate has
+   * nothing to narrow — it is the organization's total or it is nothing —
+   * so it is refused outright instead, and refused with 403, the answer an
+   * admitted member gets for a permission their role does not hold. Against
+   * the real database, so the refusal is proven to come before the reads
+   * rather than after them.
+   */
+  describe('organization-wide figures', () => {
+    const PERIOD = 'from=2026-09-13&to=2026-09-19';
+    const paths = ['summary', 'activity', 'occurrence'];
+
+    it.each(paths)('should answer the admin 200 for %s', async (path) => {
+      const response = await call(
+        'get',
+        `${fx.orgA}/incidents/${path}?${PERIOD}`,
+        fx.alice,
+      );
+
+      expect(response.status).toBe(200);
+    });
+
+    it.each(paths)(
+      'should refuse a member 403 PERMISSION_DENIED for %s',
+      async (path) => {
+        expectCode(
+          await call(
+            'get',
+            `${fx.orgA}/incidents/${path}?${PERIOD}`,
+            fx.dave,
+          ),
+          403,
+          'PERMISSION_DENIED',
+        );
+      },
+    );
+
+    it('should still let that member read the incidents that are theirs', async () => {
+      // The same member, unchanged in every other way: the refusal above is
+      // about the aggregate, not about reading incidents.
+      const list = await call(
+        'get',
+        `${fx.orgA}/incidents?state=active`,
+        fx.dave,
+      );
+      const attention = await call(
+        'get',
+        `${fx.orgA}/incidents/attention`,
+        fx.dave,
+      );
+
+      expect(list.status).toBe(200);
+      expect(attention.status).toBe(200);
+    });
+
+    it('should answer a non-member 404, admission before authorization', async () => {
+      // Bob belongs to orgB alone. He is not told these routes exist.
+      for (const path of paths) {
+        expectCode(
+          await call(
+            'get',
+            `${fx.orgA}/incidents/${path}?${PERIOD}`,
+            fx.bob,
+          ),
+          404,
+          'ORGANIZATION_NOT_FOUND',
+        );
+      }
     });
   });
 });

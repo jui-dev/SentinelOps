@@ -77,13 +77,23 @@ vi.mock("next/navigation", async () => {
   };
 });
 
+/**
+ * An overseer. Incident history is one reading of the whole organization, so
+ * `incidents:read-all` is what it is offered on — `MEMBER_READ` below is the
+ * same grant without it.
+ */
 const READ = [
   "incidents:read",
+  "incidents:read-all",
   "memberships:read",
   "organization:read",
   "services:read",
   "teams:read",
 ];
+
+const MEMBER_READ = READ.filter(
+  (permission) => permission !== "incidents:read-all",
+);
 
 const base = `/organizations/${organization.id}`;
 const none = { SEV1: 0, SEV2: 0, SEV3: 0, SEV4: 0 };
@@ -293,6 +303,34 @@ const renderHistory = () =>
 /** The page's one region of records. */
 const historyRegion = () =>
   screen.getByRole("region", { name: "Incidents in this period" });
+
+/**
+ * The record covers every incident the organization has, so it is offered on
+ * oversight rather than on reading incidents. A member is told so, and the
+ * page asks the API for nothing it would be refused.
+ */
+describe("incident history, without oversight", () => {
+  beforeEach(() => {
+    clearAccessToken();
+    navigation.reset();
+    navigation.replace.mockClear();
+  });
+
+  it("says why it is empty, and asks for no summary", async () => {
+    const { requests } = api(MEMBER_READ);
+    renderHistory();
+
+    await screen.findByRole("heading", { level: 1, name: "Incident history" });
+    await screen.findByText("No history to show");
+
+    expect(
+      screen.queryByRole("region", { name: "Incidents in this period" }),
+    ).toBeNull();
+    expect(
+      requests.some((request) => request.path.includes("/incidents/summary")),
+    ).toBe(false);
+  });
+});
 
 describe("incident history", () => {
   beforeEach(() => {

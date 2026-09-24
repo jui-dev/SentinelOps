@@ -578,6 +578,10 @@ export class IncidentsService {
   /**
    * The organization's incidents now, and in one period of whole UTC days.
    *
+   * Organization-wide by design, and so oversight: there is no reader here to
+   * narrow it by, and the route declares `incidents:read-all` rather than
+   * `incidents:read` because of it.
+   *
    * Counts, not pages: every figure covers every incident it describes. The
    * reads share one repeatable-read snapshot, so the figures and the history
    * agree with each other even while incidents change. Active incidents are
@@ -738,7 +742,8 @@ export class IncidentsService {
 
   /**
    * When the organization was operationally active, day by day, over a
-   * period of whole UTC days.
+   * period of whole UTC days. Organization-wide, like the summary, and
+   * `incidents:read-all` for the same reason.
    *
    * One read: every timeline entry recorded in the period, across every
    * incident, served by the (organization_id, created_at) index.
@@ -776,7 +781,8 @@ export class IncidentsService {
   /**
    * How often incidents were declared over a period of whole UTC days, and
    * against which services, compared with the same elapsed time before it.
-   * See incidents.occurrence.ts for every rule; this only reads.
+   * Organization-wide, like the summary, and `incidents:read-all` for the
+   * same reason. See incidents.occurrence.ts for every rule; this only reads.
    *
    * Five reads in one repeatable-read snapshot, so the days, the previous
    * total, the services, and where history begins agree with each other

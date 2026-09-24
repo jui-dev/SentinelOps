@@ -14,6 +14,7 @@ import { IncidentsView } from "@/components/incidents/incidents-view";
 import { InvitationAcceptance } from "@/components/invitations/invitation-acceptance";
 import { MemberDetail } from "@/components/organizations/member-detail";
 import { MembersView } from "@/components/organizations/members-view";
+import { OrganizationLanding } from "@/components/organizations/organization-landing";
 import { OrganizationOverview } from "@/components/organizations/organization-overview";
 import { OrganizationPicker } from "@/components/organizations/organization-picker";
 import { OrganizationScope } from "@/components/organizations/organization-scope";
@@ -78,6 +79,7 @@ const ADMIN = [
   "teams:read",
   "incidents:manage",
   "incidents:read",
+  "incidents:read-all",
   "incidents:respond",
   "incident-analyses:write",
 ];
@@ -620,6 +622,26 @@ describe("accessibility", () => {
       await screen.findByLabelText("What happened on this day");
       await expectNoAxeViolations(container);
     }, 30_000);
+
+    // The same address as Overview, for a caller who does not oversee the
+    // organization. Nothing loads, so nothing is awaited but the heading.
+    it("My Operations", async () => {
+      signedIn(MEMBER);
+      const { container } = inWorkspace(<OrganizationLanding />);
+
+      await screen.findByRole("heading", { level: 1, name: "My Operations" });
+      await expectNoAxeViolations(container);
+    });
+
+    it("Incident history, as a member who does not oversee it", async () => {
+      navigation.pathname = `/orgs/${organization.slug}/incidents/history`;
+      signedIn(MEMBER);
+      const { container } = inWorkspace(<IncidentHistory />);
+
+      await screen.findByRole("heading", { level: 1, name: "Incident history" });
+      await screen.findByText("No history to show");
+      await expectNoAxeViolations(container);
+    });
 
     it("Incident history", async () => {
       navigation.pathname = `/orgs/${organization.slug}/incidents/history`;

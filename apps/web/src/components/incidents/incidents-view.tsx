@@ -384,6 +384,9 @@ function IncidentList({
 export function IncidentsView() {
   const organization = useOrganization();
   const canManage = useCan(Permission.INCIDENTS_MANAGE);
+  // Incident history reads the organization's whole record, so it is offered
+  // only to a caller who may see it — never a link to an empty page.
+  const canReadEveryIncident = useCan(Permission.INCIDENTS_READ_ALL);
   const [declaring, setDeclaring] = useState(false);
   const searchParams = useSearchParams();
   const replace = useReplaceParams();
@@ -420,9 +423,11 @@ export function IncidentsView() {
         actions={
           // A phone wraps the link above the button rather than crowding it.
           <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
-            <OnwardLink href={incidentHistoryHref(organization.slug)}>
-              Incident history
-            </OnwardLink>
+            {canReadEveryIncident && (
+              <OnwardLink href={incidentHistoryHref(organization.slug)}>
+                Incident history
+              </OnwardLink>
+            )}
             {canManage && (
               <Button onClick={() => setDeclaring(true)}>
                 Declare incident

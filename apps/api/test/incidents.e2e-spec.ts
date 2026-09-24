@@ -227,6 +227,81 @@ describe('Incidents (e2e)', () => {
       });
     });
 
+    it("should read the caller's attention, not mistaking the path for a number", async () => {
+      const response = await send('get', `${base}/attention`);
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        manage: role === 'ADMIN' ? { readyToResolve: [] } : null,
+        respond: { needsYourTeam: [], yourResponses: [] },
+      });
+      expect(prisma.incident.findFirst).not.toHaveBeenCalled();
+      // The caller's teams are found by their admitted membership, within
+      // the organization — never by anything the request names.
+      expect(prisma.teamMembership.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            organizationId: ORG_ID,
+            team: {
+              memberships: { some: { membershipId: MEMBERSHIP_ID } },
+            },
+          },
+        }),
+      );
+      expect(prisma.incident.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            organizationId: ORG_ID,
+            status: { not: 'RESOLVED' },
+          }),
+        }),
+      );
+    });
+
+    it('should read an incident by its number', async () => {
+      const response = await send('get', `${base}/1`);
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({ number: 1 });
+      expect(response.body.responders).toEqual([]);
+      expect(response.body).not.toHaveProperty('lead');
+    });
+
+    it('should post an operational update and read the timeline', async () => {
+      const expected = {
+        id: activityRow.id,
+        type: 'UPDATE',
+        message: 'Investigating elevated database latency.',
+        fromValue: null,
+        toValue: null,
+        actor: { id: USER_ID, name: 'Ada Lovelace' },
+        createdAt: '2026-09-18T12:00:00.000Z',
+      };
+
+      const posted = await send('post', `${base}/1/updates`, {
+        message: 'Investigating elevated database latency.',
+      });
+
+      expect(posted.status).toBe(201);
+      expect(posted.body).toEqual(expected);
+
+      prisma.incident.findFirst.mockResolvedValue({ activity: [activityRow] });
+      const timeline = await send('get', `${base}/1/timeline`);
+
+      expect(timeline.status).toBe(200);
+      expect(timeline.body).toEqual([expected]);
+    });
+  });
+
+  /**
+   * The organization's own figures: the summary, the activity calendar,
+   * and occurrence. Oversight rather than reading, so they are admitted
+   * here alone — a MEMBER holds `incidents:read` but not
+   * `incidents:read-all`, and is refused each of them below.
+   */
+  describe('as an overseer', () => {
+    beforeEach(() => admitAs('ADMIN'));
+
     it('should summarise the incidents, not mistaking the path for a number', async () => {
       const response = await send(
         'get',
@@ -343,71 +418,6 @@ describe('Incidents (e2e)', () => {
           where: expect.objectContaining({ organizationId: ORG_ID }),
         }),
       );
-    });
-
-    it("should read the caller's attention, not mistaking the path for a number", async () => {
-      const response = await send('get', `${base}/attention`);
-
-      expect(response.status).toBe(200);
-      expect(response.body).toEqual({
-        manage: role === 'ADMIN' ? { readyToResolve: [] } : null,
-        respond: { needsYourTeam: [], yourResponses: [] },
-      });
-      expect(prisma.incident.findFirst).not.toHaveBeenCalled();
-      // The caller's teams are found by their admitted membership, within
-      // the organization — never by anything the request names.
-      expect(prisma.teamMembership.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: {
-            organizationId: ORG_ID,
-            team: {
-              memberships: { some: { membershipId: MEMBERSHIP_ID } },
-            },
-          },
-        }),
-      );
-      expect(prisma.incident.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            organizationId: ORG_ID,
-            status: { not: 'RESOLVED' },
-          }),
-        }),
-      );
-    });
-
-    it('should read an incident by its number', async () => {
-      const response = await send('get', `${base}/1`);
-
-      expect(response.status).toBe(200);
-      expect(response.body).toMatchObject({ number: 1 });
-      expect(response.body.responders).toEqual([]);
-      expect(response.body).not.toHaveProperty('lead');
-    });
-
-    it('should post an operational update and read the timeline', async () => {
-      const expected = {
-        id: activityRow.id,
-        type: 'UPDATE',
-        message: 'Investigating elevated database latency.',
-        fromValue: null,
-        toValue: null,
-        actor: { id: USER_ID, name: 'Ada Lovelace' },
-        createdAt: '2026-09-18T12:00:00.000Z',
-      };
-
-      const posted = await send('post', `${base}/1/updates`, {
-        message: 'Investigating elevated database latency.',
-      });
-
-      expect(posted.status).toBe(201);
-      expect(posted.body).toEqual(expected);
-
-      prisma.incident.findFirst.mockResolvedValue({ activity: [activityRow] });
-      const timeline = await send('get', `${base}/1/timeline`);
-
-      expect(timeline.status).toBe(200);
-      expect(timeline.body).toEqual([expected]);
     });
   });
 
@@ -618,6 +628,51 @@ describe('Incidents (e2e)', () => {
         expect(prisma.incident.update).not.toHaveBeenCalled();
       },
     );
+
+    // The organization's own figures. A member holds `incidents:read`, so
+    // these are not refused for want of a permission to read incidents at
+    // all — they are refused because a figure counted across every incident
+    // is `incidents:read-all`, which a member does not hold.
+    it.each([
+      { name: 'the summary', path: 'summary' },
+      { name: 'the activity calendar', path: 'activity' },
+      { name: 'occurrence', path: 'occurrence' },
+    ])(
+      'should refuse $name with 403, reading nothing',
+      async ({ path }) => {
+        const response = await send(
+          'get',
+          `${base}/${path}?from=2026-09-13&to=2026-09-19`,
+        );
+
+        expect(response.status).toBe(403);
+        expect(response.body.code).toBe('PERMISSION_DENIED');
+        expect(prisma.$transaction).not.toHaveBeenCalled();
+        expect(prisma.incidentActivity.findMany).not.toHaveBeenCalled();
+      },
+    );
+
+    // Authorization runs before the handler, so the period is never looked
+    // at: a refusal, not a complaint about the request.
+    it.each(['summary', 'activity', 'occurrence'])(
+      'should refuse %s before validating the period',
+      async (path) => {
+        const response = await send('get', `${base}/${path}?from=nonsense`);
+
+        expect(response.status).toBe(403);
+        expect(response.body.code).toBe('PERMISSION_DENIED');
+      },
+    );
+
+    // Reading incidents is still theirs, and so is what waits on them.
+    it.each([
+      { name: 'the list', path: `${base}?state=active` },
+      { name: 'their attention', path: `${base}/attention` },
+    ])('should still read $name', async ({ path }) => {
+      const response = await send('get', path);
+
+      expect(response.status).toBe(200);
+    });
 
     it("should list a declared incident on the caller's team as needing it, and nothing to resolve", async () => {
       prisma.teamMembership.findMany.mockResolvedValue([

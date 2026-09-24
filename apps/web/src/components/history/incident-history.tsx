@@ -312,10 +312,18 @@ function SelectedPeriod() {
  * stands now, and when the organization has been operationally active, are
  * the Overview's; what one member did is their own page's. This page is the
  * record.
+ *
+ * The whole of it is one reading of the organization: the period's counts and
+ * its history both come from the incident summary, which counts every
+ * incident there is — including ones the viewer may not open. So it is
+ * offered on `incidents:read-all`, as the Overview is, and not on
+ * `incidents:read`, which every role holds. A member's own history is a
+ * question this page does not answer and will not: it wants a record scoped
+ * to them, which is My Operations' work rather than a narrowing of this.
  */
 export function IncidentHistory() {
   const organization = useOrganization();
-  const canReadIncidents = useCan(Permission.INCIDENTS_READ);
+  const canReadEveryIncident = useCan(Permission.INCIDENTS_READ_ALL);
 
   return (
     <>
@@ -332,11 +340,12 @@ export function IncidentHistory() {
         description="Every incident declared or resolved in a period you choose, most recent first. Days are UTC."
       />
       <PageBody>
-        {canReadIncidents ? (
+        {canReadEveryIncident ? (
           <SelectedPeriod />
         ) : (
           <EmptyNote title="No history to show">
-            Your role does not include reading incidents.
+            This record covers every incident in the organization, which your
+            role does not include reading.
           </EmptyNote>
         )}
       </PageBody>

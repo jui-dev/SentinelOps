@@ -828,6 +828,12 @@ export const Permission = {
   SERVICES_READ: "services:read",
   SERVICES_MANAGE: "services:manage",
   INCIDENTS_READ: "incidents:read",
+  /**
+   * Oversight of every incident in the organization. What the Overview and
+   * Incident history are offered on: both read figures counted across every
+   * incident, which the API answers only to a caller holding this.
+   */
+  INCIDENTS_READ_ALL: "incidents:read-all",
   INCIDENTS_MANAGE: "incidents:manage",
   INCIDENTS_RESPOND: "incidents:respond",
   INCIDENT_ANALYSES_WRITE: "incident-analyses:write",

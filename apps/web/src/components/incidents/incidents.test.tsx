@@ -50,6 +50,7 @@ vi.mock("next/navigation", () => ({
 const ADMIN = [
   "incidents:manage",
   "incidents:read",
+  "incidents:read-all",
   "incidents:respond",
   "invitations:manage",
   "invitations:read",
@@ -332,8 +333,8 @@ describe("incidents", () => {
       expect(within(first).getByText("Critical")).toBeDefined();
     });
 
-    it("offers the way on to Incident history, whatever the caller may do", async () => {
-      api(READ_ONLY);
+    it("offers an overseer the way on to Incident history", async () => {
+      api(ADMIN);
 
       inOrganization(<IncidentsView />);
 
@@ -344,6 +345,19 @@ describe("incidents", () => {
           .getByRole("link", { name: /Incident history/ })
           .getAttribute("href"),
       ).toBe("/orgs/acme-ops/incidents/history");
+    });
+
+    // The record is the organization's, not the caller's, so it is offered
+    // only where it can be read. A link to a page that would say "nothing to
+    // show" is worse than no link.
+    it("offers no way on to Incident history without oversight", async () => {
+      api(READ_ONLY);
+
+      inOrganization(<IncidentsView />);
+
+      await screen.findByRole("table", { name: "Active incidents" });
+
+      expect(screen.queryByRole("link", { name: /Incident history/ })).toBeNull();
     });
 
     it("offers no declaration without incidents:manage", async () => {
