@@ -45,6 +45,15 @@ export const Permission = {
    * every incident there is, so there is no scope to narrow them to: either
    * the caller oversees the organization or the figures are not theirs to
    * see. A member without it is refused 403.
+   *
+   * One person at a time, it is also what reading *another member's*
+   * operational history takes — their responses, and their activity
+   * calendar. A history indexed by a person rather than by an incident
+   * cannot be narrowed to a reader either without saying something it does
+   * not mean, so it follows the same rule: the member's own always, anyone
+   * else's as oversight. The read services decide that, and no route
+   * declares it for it — a member asking for someone else's is answered 404,
+   * not 403, so the route is the same one and the membership stays hidden.
    */
   INCIDENTS_READ_ALL: 'incidents:read-all',
   /**

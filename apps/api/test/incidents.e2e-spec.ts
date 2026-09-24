@@ -34,6 +34,8 @@ const OTHER_ORG_ID = '0199a1b2-c3d4-7000-8000-00000000000b';
 const MEMBERSHIP_ID = '0199a1b2-c3d4-7000-8000-0000000000aa';
 /** Well formed, and not a membership of ORG_ID. */
 const OTHER_MEMBERSHIP_ID = '0199a1b2-c3d4-7000-8000-0000000000ab';
+/** Well formed, a membership of ORG_ID, and not the caller's own. */
+const ANOTHER_MEMBERSHIP_ID = '0199a1b2-c3d4-7000-8000-0000000000ac';
 const TEAM_ID = '0199a1b2-c3d4-7000-8000-0000000000c1';
 const SERVICE_ID = '0199a1b2-c3d4-7000-8000-0000000000d1';
 const INCIDENT_ID = '0199a1b2-c3d4-7000-8000-0000000000e1';
@@ -983,7 +985,7 @@ describe('Incidents (e2e)', () => {
       `/api/v1/organizations/${ORG_ID}/memberships/${membershipId}/responses`;
 
     it.each(['ADMIN', 'MEMBER'] as const)(
-      'should let a %s read them, as a page',
+      'should let a %s read their own, as a page',
       async (role) => {
         admitAs(role);
         prisma.incidentResponder.findMany.mockResolvedValue([]);
@@ -997,6 +999,40 @@ describe('Incidents (e2e)', () => {
         });
       },
     );
+
+    it("should let an ADMIN read another member's, as oversight", async () => {
+      admitAs('ADMIN');
+      prisma.incidentResponder.findMany.mockResolvedValue([]);
+
+      const response = await send('get', responses(ANOTHER_MEMBERSHIP_ID));
+
+      expect(response.status).toBe(200);
+      expect(prisma.incidentResponder.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            organizationId: ORG_ID,
+            membershipId: ANOTHER_MEMBERSHIP_ID,
+          }),
+        }),
+      );
+    });
+
+    it("should answer a MEMBER asking for another member's with 404, reading nothing", async () => {
+      admitAs('MEMBER');
+
+      const response = await send('get', responses(ANOTHER_MEMBERSHIP_ID));
+
+      expect(response.status).toBe(404);
+      expect(response.body.code).toBe('MEMBERSHIP_NOT_FOUND');
+      // Refused before the membership is even looked up, so whether it
+      // exists is not disclosed by the reply or by how long it took.
+      expect(prisma.membership.findFirst).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ id: ANOTHER_MEMBERSHIP_ID }),
+        }),
+      );
+      expect(prisma.incidentResponder.findMany).not.toHaveBeenCalled();
+    });
 
     it('should answer a malformed membership id with 404, reading no responses', async () => {
       admitAs('MEMBER');
@@ -1027,7 +1063,7 @@ describe('Incidents (e2e)', () => {
       `/api/v1/organizations/${ORG_ID}/memberships/${membershipId}/activity?${query}`;
 
     it.each(['ADMIN', 'MEMBER'] as const)(
-      'should let a %s read it, as a calendar of days',
+      'should let a %s read their own, as a calendar of days',
       async (role) => {
         admitAs(role);
 
@@ -1064,6 +1100,47 @@ describe('Incidents (e2e)', () => {
       );
     });
 
+    it("should let an ADMIN read another member's, as oversight", async () => {
+      const admitted = admitAs('ADMIN').getMockImplementation();
+      const OTHER_USER_ID = '0199a1b2-c3d4-7000-8000-000000000002';
+
+      // Admission resolves the caller; the addressed membership resolves to
+      // its own user, whose entries are the ones read.
+      prisma.membership.findFirst.mockImplementation(
+        (args: { where: Record<string, unknown> }) =>
+          args.where.id === ANOTHER_MEMBERSHIP_ID
+            ? { id: ANOTHER_MEMBERSHIP_ID, userId: OTHER_USER_ID }
+            : admitted?.(args),
+      );
+
+      const response = await send('get', activity(ANOTHER_MEMBERSHIP_ID));
+
+      expect(response.status).toBe(200);
+      expect(prisma.incidentActivity.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            organizationId: ORG_ID,
+            actorId: OTHER_USER_ID,
+          }),
+        }),
+      );
+    });
+
+    it("should answer a MEMBER asking for another member's with 404, reading nothing", async () => {
+      admitAs('MEMBER');
+
+      const response = await send('get', activity(ANOTHER_MEMBERSHIP_ID));
+
+      expect(response.status).toBe(404);
+      expect(response.body.code).toBe('MEMBERSHIP_NOT_FOUND');
+      expect(prisma.membership.findFirst).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ id: ANOTHER_MEMBERSHIP_ID }),
+        }),
+      );
+      expect(prisma.incidentActivity.findMany).not.toHaveBeenCalled();
+    });
+
     it('should answer a malformed membership id with 404, reading no activity', async () => {
       admitAs('MEMBER');
 
@@ -1075,7 +1152,9 @@ describe('Incidents (e2e)', () => {
     });
 
     it('should answer a membership this organization lacks with 404', async () => {
-      const admitted = admitAs('MEMBER').getMockImplementation();
+      // Asked by an oversight caller: for anyone else the id is refused
+      // before this lookup, which is what the test above proves.
+      const admitted = admitAs('ADMIN').getMockImplementation();
 
       // Admission still resolves the caller; the addressed membership, which
       // this organization does not have, resolves to nothing.

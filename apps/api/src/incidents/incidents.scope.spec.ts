@@ -1,8 +1,13 @@
-import { incidentReadScope, withinIncidentScope } from './incidents.scope.js';
+import {
+  incidentReadScope,
+  mayReadMemberHistory,
+  withinIncidentScope,
+} from './incidents.scope.js';
 
 const ORG = '0199a1b2-c3d4-7000-8000-00000000000a';
 const OTHER_ORG = '0199a1b2-c3d4-7000-8000-00000000000b';
 const MEMBERSHIP = '0199a1b2-c3d4-7000-8000-0000000000aa';
+const OTHER_MEMBERSHIP = '0199a1b2-c3d4-7000-8000-0000000000ab';
 const ADMIN = { membershipId: MEMBERSHIP, role: 'ADMIN' as const };
 const MEMBER = { membershipId: MEMBERSHIP, role: 'MEMBER' as const };
 const ISOLATION = { organizationId: ORG, organization: { deletedAt: null } };
@@ -79,5 +84,33 @@ describe('withinIncidentScope', () => {
       incidentReadScope(MEMBER),
       { organizationId: OTHER_ORG },
     ]);
+  });
+});
+
+describe('mayReadMemberHistory', () => {
+  it('should let a member read their own history', () => {
+    expect(mayReadMemberHistory(MEMBER, MEMBERSHIP)).toBe(true);
+  });
+
+  it('should refuse a member another member’s history', () => {
+    expect(mayReadMemberHistory(MEMBER, OTHER_MEMBERSHIP)).toBe(false);
+  });
+
+  it('should let whoever oversees every incident read anyone’s', () => {
+    expect(mayReadMemberHistory(ADMIN, OTHER_MEMBERSHIP)).toBe(true);
+    expect(mayReadMemberHistory(ADMIN, MEMBERSHIP)).toBe(true);
+  });
+
+  it('should recognise a member’s own id in any case', () => {
+    // The id comes from a URL; the reader's own from the database.
+    expect(mayReadMemberHistory(MEMBER, MEMBERSHIP.toUpperCase())).toBe(true);
+  });
+
+  it('should refuse a role it does not recognise anyone else’s', () => {
+    // hasPermission denies an unknown role, so it reads only its own.
+    const stranger = { membershipId: MEMBERSHIP, role: 'OWNER' as never };
+
+    expect(mayReadMemberHistory(stranger, MEMBERSHIP)).toBe(true);
+    expect(mayReadMemberHistory(stranger, OTHER_MEMBERSHIP)).toBe(false);
   });
 });

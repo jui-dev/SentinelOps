@@ -1027,7 +1027,7 @@ describe('incidents (integration)', () => {
       expect((await startAs(fx.orgA, fx.erin, 2)).status).toBe(200);
       expect((await startAs(fx.orgA, fx.dave, 3)).status).toBe(200);
 
-      const dave = await responses(fx.orgA, fx.daveInA, fx.erin);
+      const dave = await responses(fx.orgA, fx.daveInA, fx.alice);
 
       expect(dave.status).toBe(200);
       expect(
@@ -1049,7 +1049,7 @@ describe('incidents (integration)', () => {
       expect(dave.body.items[0].incident).not.toHaveProperty('resolution');
       expect(dave.body.page).toEqual({ cursor: null, hasMore: false });
 
-      const erin = await responses(fx.orgA, fx.erinInA, fx.dave);
+      const erin = await responses(fx.orgA, fx.erinInA, fx.alice);
 
       expect(
         erin.body.items.map(
@@ -1064,7 +1064,7 @@ describe('incidents (integration)', () => {
         select: { id: true },
       });
 
-      expect((await responses(fx.orgA, frank.id, fx.dave)).body.items).toEqual(
+      expect((await responses(fx.orgA, frank.id, fx.alice)).body.items).toEqual(
         [],
       );
     });
@@ -1132,6 +1132,59 @@ describe('incidents (integration)', () => {
       );
     });
 
+    it("should give a member their own history and hide everyone else's", async () => {
+      await declare(fx.orgA, fx.alice, fx.apiA);
+      expect((await startAs(fx.orgA, fx.dave, 1)).status).toBe(200);
+
+      // Frank shares Payments with Dave; Erin is on Platform. Neither
+      // relation makes Dave's history theirs to read.
+      const frank = await aMemberOn(fx.paymentsA, 'Frank');
+
+      const own = await responses(fx.orgA, fx.daveInA, fx.dave);
+
+      expect(own.status).toBe(200);
+      expect(own.body.items).toHaveLength(1);
+
+      // What a member gets for a well-formed id that is nobody's.
+      const missing = await responses(
+        fx.orgA,
+        '0199a1b2-c3d4-7000-8000-00000000ffff',
+        fx.erin,
+      );
+
+      for (const caller of [frank, fx.erin]) {
+        const hidden = await responses(fx.orgA, fx.daveInA, caller);
+
+        expectCode(hidden, 404, 'MEMBERSHIP_NOT_FOUND');
+        expect(comparable(hidden.body)).toEqual(comparable(missing.body));
+      }
+
+      // The Admin oversees the same history.
+      expect((await responses(fx.orgA, fx.daveInA, fx.alice)).status).toBe(200);
+    });
+
+    it('should hide it even from someone who may read the incidents in it', async () => {
+      await declare(fx.orgA, fx.alice, fx.apiA);
+      expect((await startAs(fx.orgA, fx.dave, 1)).status).toBe(200);
+      // Reassigned to Platform, so Erin may now read the incident itself.
+      await call('patch', `${fx.orgA}/incidents/1`, fx.alice, {
+        teamId: fx.platformA,
+      });
+
+      expect(
+        (await call('get', `${fx.orgA}/incidents/1`, fx.erin)).status,
+      ).toBe(200);
+
+      // Dave's history is still not hers. It is indexed by the person rather
+      // than by the incident, so it is never narrowed to what she may see:
+      // whole, or refused.
+      expectCode(
+        await responses(fx.orgA, fx.daveInA, fx.erin),
+        404,
+        'MEMBERSHIP_NOT_FOUND',
+      );
+    });
+
     it('should answer a membership of another organization exactly as a missing one', async () => {
       await declare(fx.orgB, fx.bob, fx.apiB);
 
@@ -1160,13 +1213,26 @@ describe('incidents (integration)', () => {
       await startAs(fx.orgA, fx.dave, 1);
 
       const service = app.get(IncidentsService);
+      const oversight = { membershipId: fx.daveInA, role: 'ADMIN' as const };
 
       await expect(
-        service.memberResponses(fx.orgB, fx.daveInA, {}),
+        service.memberResponses(fx.orgB, oversight, fx.daveInA, {}),
       ).rejects.toMatchObject({ status: 404 });
       expect(
-        (await service.memberResponses(fx.orgA, fx.daveInA, {})).items,
+        (await service.memberResponses(fx.orgA, oversight, fx.daveInA, {}))
+          .items,
       ).toHaveLength(1);
+
+      // The reader is judged here too: a member asking for someone else's
+      // history is refused with no guard in front of the service.
+      await expect(
+        service.memberResponses(
+          fx.orgA,
+          { membershipId: fx.erinInA, role: 'MEMBER' },
+          fx.daveInA,
+          {},
+        ),
+      ).rejects.toMatchObject({ status: 404 });
     });
   });
 
@@ -2199,7 +2265,7 @@ describe('incidents (integration)', () => {
         ).status,
       ).toBe(200);
 
-      const dave = await activityOf(fx.orgA, fx.daveInA, fx.erin);
+      const dave = await activityOf(fx.orgA, fx.daveInA, fx.alice);
 
       expect(dave.status).toBe(200);
       expect(dave.body.thresholds).toEqual([1, 2, 4, 6]);
@@ -2214,7 +2280,7 @@ describe('incidents (integration)', () => {
         incidents: [1],
       });
 
-      const erin = await activityOf(fx.orgA, fx.erinInA, fx.dave);
+      const erin = await activityOf(fx.orgA, fx.erinInA, fx.alice);
 
       expect(erin.body.total).toBe(2);
       expect(counted(erin.body)).toEqual({
@@ -2227,7 +2293,7 @@ describe('incidents (integration)', () => {
       const alice = await activityOf(
         fx.orgA,
         await membershipOf(fx.orgA, fx.alice),
-        fx.dave,
+        fx.carol,
       );
 
       expect(alice.body.total).toBe(1);
@@ -2252,7 +2318,7 @@ describe('incidents (integration)', () => {
             select: { id: true },
           })
           .then(({ id }) => id),
-        fx.dave,
+        fx.alice,
       );
 
       expect(frank.status).toBe(200);
@@ -2331,6 +2397,39 @@ describe('incidents (integration)', () => {
         update: 1,
         responseCompleted: 0,
       });
+    });
+
+    it("should give a member their own activity and hide everyone else's", async () => {
+      await declare(fx.orgA, fx.alice, fx.apiA);
+      expect((await startAs(fx.orgA, fx.dave, 1)).status).toBe(200);
+
+      const period = around();
+      const own = await activityOf(fx.orgA, fx.daveInA, fx.dave, period);
+
+      expect(own.status).toBe(200);
+      // His start, and not the STATUS_CHANGED the server wrote after it.
+      expect(own.body.total).toBe(1);
+
+      // What a member gets for a well-formed id that is nobody's.
+      const missing = await activityOf(fx.orgA, randomUUID(), fx.erin, period);
+      const hidden = await activityOf(fx.orgA, fx.daveInA, fx.erin, period);
+
+      expectCode(hidden, 404, 'MEMBERSHIP_NOT_FOUND');
+      expect(comparable(hidden.body)).toEqual(comparable(missing.body));
+
+      // Frank shares Payments with Dave, which changes nothing.
+      const frank = await aMemberOn(fx.paymentsA, 'Frank');
+
+      expectCode(
+        await activityOf(fx.orgA, fx.daveInA, frank, period),
+        404,
+        'MEMBERSHIP_NOT_FOUND',
+      );
+
+      // The Admin oversees the same calendar.
+      expect(
+        (await activityOf(fx.orgA, fx.daveInA, fx.alice, period)).status,
+      ).toBe(200);
     });
 
     it('should answer a foreign or missing membership exactly as a malformed one', async () => {

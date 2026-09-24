@@ -21,6 +21,8 @@ import { MembersView } from "./members-view";
 import { OrganizationScope } from "./organization-scope";
 
 const GRACE = "0199a1b2-c3d4-7000-8000-0000000000bb";
+/** The caller's own membership, as organizationDetail reports it. */
+const SELF = "0199a1b2-c3d4-7000-8000-0000000000aa";
 
 const navigation = vi.hoisted(() => ({ membershipId: "" }));
 
@@ -301,7 +303,9 @@ describe("a member's page", () => {
     ).toBe("/orgs/acme-ops/members");
   });
   describe("their recent responses", () => {
-    const WITH_INCIDENTS = [...MEMBER, "incidents:read"];
+    // Another member's history is oversight's to read: the API answers it
+    // only to `incidents:read-all`, so that is what this panel is shown on.
+    const WITH_INCIDENTS = [...MEMBER, "incidents:read", "incidents:read-all"];
     const responses = `GET ${base}/memberships/${GRACE}/responses`;
 
     const response = (
@@ -406,6 +410,37 @@ describe("a member's page", () => {
       expect(await screen.findByRole("heading", { name: "Teams" })).toBeDefined();
       expect(screen.queryByRole("heading", { name: "Recent responses" })).toBeNull();
       expect(requests.some((r) => route(r).startsWith(responses))).toBe(false);
+    });
+
+    it("is not asked for on another member without oversight of every incident", async () => {
+      const { requests } = api([...MEMBER, "incidents:read"], [PAYMENTS]);
+
+      renderMember();
+
+      expect(await screen.findByRole("heading", { name: "Teams" })).toBeDefined();
+      expect(screen.queryByRole("heading", { name: "Recent responses" })).toBeNull();
+      expect(requests.some((r) => route(r).startsWith(responses))).toBe(false);
+    });
+
+    it("is shown on a member's own page, with only incidents:read", async () => {
+      const own = `GET ${base}/memberships/${SELF}/responses`;
+
+      navigation.membershipId = SELF;
+      const { requests } = api([...MEMBER, "incidents:read"], [PAYMENTS], (request) =>
+        route(request) === `GET ${base}/memberships/${SELF}`
+          ? jsonResponse(200, { ...grace([PAYMENTS]), id: SELF })
+          : route(request) === own
+            ? jsonResponse(200, {
+                items: [response(7, "INVESTIGATING")],
+                page: { cursor: null, hasMore: false },
+              })
+            : undefined,
+      );
+
+      renderMember();
+
+      expect(await screen.findByText("Card declines 7")).toBeDefined();
+      expect(requests.some((r) => route(r) === own)).toBe(true);
     });
   });
 });

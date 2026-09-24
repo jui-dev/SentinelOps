@@ -16,12 +16,14 @@ import { IncidentsService } from './incidents.service.js';
  *
  * It lives with incidents for the reason MemberResponsesController gives:
  * what it returns is incident data, so it is `incidents:read`, which every
- * role holds. Reading it is not a privilege over the member — this is the
- * organization's operational history, the same history their responses list
- * already shows, arranged by day.
+ * role holds. Reading it *is* a privilege over the member — it is the same
+ * history their responses list shows, arranged by day, and a person's
+ * history is not the organization's to hand to whoever asks. So whose it may
+ * be is mayReadMemberHistory's judgement, made in IncidentsService from the
+ * admitted membership: their own always, another member's only as oversight.
  *
- * The membership is resolved within the admitted organization by
- * IncidentsService, with the same 404 the membership routes give.
+ * The membership is resolved within the admitted organization there as well,
+ * with the same 404 the membership routes give.
  */
 @OrganizationController('memberships/:membershipId/activity')
 export class MemberActivityController {
@@ -38,6 +40,7 @@ export class MemberActivityController {
   ): Promise<MemberActivityResponse> {
     return this.incidents.memberActivity(
       membership.organizationId,
+      { membershipId: membership.membershipId, role: membership.role },
       membershipId,
       query,
     );

@@ -202,9 +202,13 @@ describe('demo history (integration)', () => {
       let cursor: string | undefined;
 
       do {
-        const page = await incidents.memberResponses(organizationId, id, {
-          cursor,
-        });
+        // Each persona reading their own, which is what every member may do.
+        const page = await incidents.memberResponses(
+          organizationId,
+          { membershipId: id, role: 'MEMBER' },
+          id,
+          { cursor },
+        );
 
         pages.push(...page.items);
         cursor = page.page.cursor ?? undefined;

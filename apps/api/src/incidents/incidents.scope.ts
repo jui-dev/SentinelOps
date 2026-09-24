@@ -82,3 +82,33 @@ export const withinIncidentScope = (
     ],
   };
 };
+
+/**
+ * Whether this reader may read one member's own operational history — the
+ * responses they started, and the calendar of when they took part.
+ *
+ * Person-indexed rather than incident-indexed, which is why
+ * `incidentReadScope` has no part in it. A history narrowed to the incidents
+ * the reader happens to see would still be presented as that member's own,
+ * with its pages and its daily counts quietly meaning something else; a
+ * partial history that does not say so is worse than none. Either it is the
+ * reader's to see whole, or it is not theirs at all.
+ *
+ * Their own, always. Anyone else's only with `incidents:read-all`, for the
+ * reason the organization-wide figures declare it: a reading taken across
+ * every incident has no reader to narrow it to, so it is oversight or it is
+ * nothing. Sharing a team is not enough — a member's responses outlive a
+ * reassignment and reach the other teams they are on, so it would hand over
+ * incidents the reader has no relation to at all.
+ *
+ * The id being asked about comes from a URL and may be in any case; the
+ * reader's own comes from the database, in Postgres's canonical lowercase.
+ * Folded before comparing, so a member asking for their own history cannot be
+ * refused it by how they spelled it.
+ */
+export const mayReadMemberHistory = (
+  reader: IncidentReader,
+  membershipId: string,
+): boolean =>
+  membershipId.toLowerCase() === reader.membershipId ||
+  hasPermission(reader.role, Permission.INCIDENTS_READ_ALL);

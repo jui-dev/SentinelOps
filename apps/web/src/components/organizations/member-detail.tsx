@@ -252,6 +252,14 @@ function MemberPage({ member }: { member: OrganizationMembershipResponse }) {
   // Team page's own controls. Advice only; the API checks regardless.
   const canManage = useCan(Permission.TEAMS_MANAGE);
   const canReadIncidents = useCan(Permission.INCIDENTS_READ);
+  const canOverseeIncidents = useCan(Permission.INCIDENTS_READ_ALL);
+  // A person's operational history is their own, or oversight's: the API
+  // answers another member's only to `incidents:read-all`, and hides the rest
+  // behind a 404. Advice, as every useCan is — but asked here so a member is
+  // not shown a panel whose request would be refused.
+  const isSelf = member.id === organization.membership.id;
+  const canReadTheirHistory =
+    canReadIncidents && (isSelf || canOverseeIncidents);
   const isYou = member.user.id === me.data?.id;
 
   return (
@@ -284,7 +292,7 @@ function MemberPage({ member }: { member: OrganizationMembershipResponse }) {
       />
       <PageBody width="form">
         <Teams member={member} canManage={canManage} />
-        {canReadIncidents && (
+        {canReadTheirHistory && (
           <MemberResponses membershipId={member.id} name={member.user.name} />
         )}
       </PageBody>

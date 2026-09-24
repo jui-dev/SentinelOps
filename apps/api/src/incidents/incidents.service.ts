@@ -23,7 +23,10 @@ import {
   occurrenceWindows,
 } from './incidents.occurrence.js';
 import type { InstantRange } from './incidents.occurrence.js';
-import { withinIncidentScope } from './incidents.scope.js';
+import {
+  mayReadMemberHistory,
+  withinIncidentScope,
+} from './incidents.scope.js';
 import type { IncidentReader } from './incidents.scope.js';
 import { buildMemberActivityCalendar } from './member-activity.js';
 import type {
@@ -508,18 +511,29 @@ export class IncidentsService {
    * Only actual participation — being on the incident's team is not a
    * response — so a member who never started has none.
    *
-   * The membership is resolved within the organization first: a malformed,
-   * missing, or foreign one is 404 MEMBERSHIP_NOT_FOUND, identically. Keyset
+   * Whose history a reader may ask for is mayReadMemberHistory's judgement:
+   * their own always, anyone else's only as oversight. A history that is not
+   * theirs is 404 MEMBERSHIP_NOT_FOUND — the same answer a malformed,
+   * missing, or foreign id gets, and given before any query, so whether that
+   * membership exists is not disclosed by the reply or by how long it took.
+   *
+   * The membership is then resolved within the organization, which also
+   * settles the organization's soft deletion before anything is read. Keyset
    * pages over (startedAt, id) — the id a UUIDv7, breaking a tie — served by
    * the (membership_id, started_at) index. The incidents are the lists'
-   * shape, with no responders or resolution.
+   * shape, with no responders or resolution, and are not narrowed by the
+   * reader: see mayReadMemberHistory.
    */
   async memberResponses(
     organizationId: string,
+    reader: IncidentReader,
     membershipId: string,
     query: MemberResponsesQuery,
   ): Promise<MemberResponsePage> {
-    if (!isResourceId(membershipId)) {
+    if (
+      !isResourceId(membershipId) ||
+      !mayReadMemberHistory(reader, membershipId)
+    ) {
       throw membershipNotFound();
     }
 
@@ -884,10 +898,12 @@ export class IncidentsService {
    * When one member personally took part in incident response, day by day,
    * over a period of whole UTC days.
    *
-   * The membership is resolved within the organization first, as
-   * memberResponses does: a malformed, missing, or foreign one is 404
-   * MEMBERSHIP_NOT_FOUND, identically, and resolving it also settles the
-   * organization's soft deletion before anything is read.
+   * Whose history it is, as memberResponses decides it: their own always,
+   * anyone else's only as oversight, and anything else 404
+   * MEMBERSHIP_NOT_FOUND before a query — indistinguishable from a
+   * malformed, missing, or foreign id. The membership is then resolved
+   * within the organization, which also settles the organization's soft
+   * deletion before anything is read.
    *
    * Attribution is by author. A timeline entry names the global User rather
    * than the membership — attribution outlives the grant — so the membership
@@ -903,10 +919,14 @@ export class IncidentsService {
    */
   async memberActivity(
     organizationId: string,
+    reader: IncidentReader,
     membershipId: string,
     query: IncidentActivityQuery,
   ): Promise<MemberActivityResponse> {
-    if (!isResourceId(membershipId)) {
+    if (
+      !isResourceId(membershipId) ||
+      !mayReadMemberHistory(reader, membershipId)
+    ) {
       throw membershipNotFound();
     }
 

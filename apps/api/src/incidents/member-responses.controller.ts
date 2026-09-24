@@ -13,10 +13,15 @@ import { IncidentsService } from './incidents.service.js';
 /**
  * A member's responses to incidents, addressed under the membership they
  * belong to. It lives with incidents, not organizations, because what it
- * returns is incident data: `incidents:read`, which every role holds, as
- * reading any incident's responders does. The membership is resolved within
- * the admitted organization by IncidentsService, with the same 404 the
- * membership routes give.
+ * returns is incident data: `incidents:read`, which every role holds.
+ *
+ * Holding it is not leave to read anyone's. Whose history a caller may ask
+ * for is decided by mayReadMemberHistory from the admitted membership —
+ * their own always, another member's only with `incidents:read-all` — so
+ * this route declares `incidents:read` and IncidentsService narrows it, as
+ * the incident reads themselves are narrowed. The membership is resolved
+ * within the admitted organization there too, and one that is not this
+ * caller's to read answers with the same 404 the membership routes give.
  */
 @OrganizationController('memberships/:membershipId/responses')
 export class MemberResponsesController {
@@ -32,6 +37,7 @@ export class MemberResponsesController {
   ): Promise<MemberResponsePage> {
     return this.incidents.memberResponses(
       membership.organizationId,
+      { membershipId: membership.membershipId, role: membership.role },
       membershipId,
       query,
     );
