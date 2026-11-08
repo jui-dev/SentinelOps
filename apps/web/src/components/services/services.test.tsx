@@ -197,7 +197,7 @@ describe("services", () => {
       );
       expect(
         screen.getByRole("link", { name: "Payments" }).getAttribute("href"),
-      ).toBe(`/orgs/acme-ops/teams/${payments.id}`);
+      ).toBe("/orgs/acme-ops/teams/payments");
       expect(screen.getByText("Critical")).toBeDefined();
       expect(screen.getByText("Takes card payments.")).toBeDefined();
       expect(screen.queryByText("payment-api")).toBeNull();
@@ -406,7 +406,7 @@ describe("services", () => {
       expect(screen.getByText("Takes card payments.")).toBeDefined();
       expect(
         screen.getByRole("link", { name: "Payments" }).getAttribute("href"),
-      ).toBe(`/orgs/acme-ops/teams/${payments.id}`);
+      ).toBe("/orgs/acme-ops/teams/payments");
       expect(screen.getByText("Critical")).toBeDefined();
       expect(
         screen.getByText(/Failure stops the organization's core work/),

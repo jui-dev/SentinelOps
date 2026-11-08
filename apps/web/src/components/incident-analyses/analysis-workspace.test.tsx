@@ -359,7 +359,7 @@ describe("the incident analysis workspace", () => {
           (await within(status).findByRole("link", { name: "Payment API" })).getAttribute("href"),
         ).toBe("/orgs/acme-ops/services/payment-api");
         expect(within(status).getByRole("link", { name: "Payments" }).getAttribute("href")).toBe(
-          "/orgs/acme-ops/teams/0199a1b2-c3d4-7000-8000-0000000000c1",
+          "/orgs/acme-ops/teams/payments",
         );
         unmount();
       }

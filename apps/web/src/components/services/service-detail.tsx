@@ -113,7 +113,7 @@ export function ServiceDetail() {
           <RecordList>
             <RecordRow label="Owner team">
               <Link
-                href={teamHref(organization.slug, service.ownerTeam.id)}
+                href={teamHref(organization.slug, service.ownerTeam.slug)}
                 className={`font-medium text-fg ${quietLinkClasses}`}
               >
                 {service.ownerTeam.name}

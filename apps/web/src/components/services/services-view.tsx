@@ -333,7 +333,7 @@ function ServiceTable({
             </TD>
             <TD className="hidden sm:table-cell">
               <Link
-                href={teamHref(organization.slug, service.ownerTeam.id)}
+                href={teamHref(organization.slug, service.ownerTeam.slug)}
                 className={`text-fg-muted ${quietLinkClasses}`}
               >
                 {service.ownerTeam.name}

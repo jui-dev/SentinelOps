@@ -194,7 +194,7 @@ function DeleteTeam() {
             It owns {owned}. Move {team.serviceCount === 1 ? "it" : "them"} to
             another team before deleting this one.{" "}
             <Link
-              href={teamHref(organization.slug, team.id)}
+              href={teamHref(organization.slug, team.slug)}
               className={linkClasses}
             >
               See its services

@@ -24,13 +24,15 @@ import { TeamsView } from "./teams-view";
 
 const navigation = vi.hoisted(() => ({
   params: { orgSlug: "acme-ops" } as { orgSlug: string; teamId?: string },
+  pathname: "/orgs/acme-ops/teams",
   push: vi.fn(),
+  replace: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
   useParams: () => navigation.params,
-  usePathname: () => "/orgs/acme-ops/teams",
-  useRouter: () => ({ replace: vi.fn(), push: navigation.push }),
+  usePathname: () => navigation.pathname,
+  useRouter: () => ({ replace: navigation.replace, push: navigation.push }),
 }));
 
 const MANAGE = [
@@ -152,15 +154,22 @@ describe("teams", () => {
   });
 
   describe("the list", () => {
-    it("lists teams with their member counts and links by id, without slugs", async () => {
+    it("lists teams as plain names, each opened from its View action at the slug address", async () => {
       api(READ);
 
       inOrganization(<TeamsView />);
 
-      const link = await screen.findByRole("link", { name: "Platform" });
+      const view = await screen.findByRole("link", { name: "View Platform" });
 
-      expect(link.getAttribute("href")).toBe(`/orgs/acme-ops/teams/${platform.id}`);
+      expect(view.getAttribute("href")).toBe("/orgs/acme-ops/teams/platform");
+      expect(view.textContent).toBe("View");
+      expect(
+        screen.getByRole("columnheader", { name: "Action" }),
+      ).toBeDefined();
+      // The name is text, not a second way in.
+      expect(screen.getByText("Platform").closest("a")).toBeNull();
       expect(screen.getByText("Owns the runtime.")).toBeDefined();
+      // The slug is the address, never shown as text.
       expect(screen.queryByText("platform")).toBeNull();
     });
 
@@ -279,7 +288,7 @@ describe("teams", () => {
 
   describe("a team", () => {
     beforeEach(() => {
-      navigation.params = { orgSlug: "acme-ops", teamId: platform.id };
+      navigation.params = { orgSlug: "acme-ops", teamId: platform.slug };
     });
 
     it("shows its name, description, and members — no slug, no other sections", async () => {
@@ -413,7 +422,7 @@ describe("teams", () => {
     });
 
     it("says plainly when it owns no services", async () => {
-      navigation.params = { orgSlug: "acme-ops", teamId: platform.id };
+      navigation.params = { orgSlug: "acme-ops", teamId: platform.slug };
       api(READ_WITH_SERVICES, {
         handler: (request) =>
           route(request) === `GET ${base}/services`
@@ -494,12 +503,33 @@ describe("teams", () => {
       expect(
         await screen.findByRole("heading", { name: "Team not found" }),
       ).toBeDefined();
+      expect(navigation.replace).not.toHaveBeenCalled();
+    });
+
+    it("redirects an id address to the slug address, keeping what follows", async () => {
+      // A notification carries only the team's id; old addresses used it too.
+      navigation.params = { orgSlug: "acme-ops", teamId: platform.id };
+      navigation.pathname = `/orgs/acme-ops/teams/${platform.id}/settings`;
+      navigation.replace.mockReset();
+      api(READ);
+
+      inTeam(<TeamDetail />);
+
+      await waitFor(() =>
+        expect(navigation.replace).toHaveBeenCalledWith(
+          "/orgs/acme-ops/teams/platform/settings",
+        ),
+      );
+      // Not rendered at the id address meanwhile, and not "not found".
+      expect(screen.queryByRole("heading", { name: "Team not found" })).toBeNull();
+      expect(screen.queryByRole("heading", { name: "Platform" })).toBeNull();
+      navigation.pathname = "/orgs/acme-ops/teams";
     });
   });
 
   describe("settings", () => {
     beforeEach(() => {
-      navigation.params = { orgSlug: "acme-ops", teamId: platform.id };
+      navigation.params = { orgSlug: "acme-ops", teamId: platform.slug };
     });
 
     it("saves the name and description", async () => {
@@ -603,7 +633,7 @@ describe("teams", () => {
         screen
           .getByRole("link", { name: "See its services" })
           .getAttribute("href"),
-      ).toBe(`/orgs/acme-ops/teams/${platform.id}`);
+      ).toBe("/orgs/acme-ops/teams/platform");
       expect(screen.queryByRole("button", { name: /Delete team/ })).toBeNull();
     });
 

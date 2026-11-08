@@ -187,7 +187,7 @@ function IncidentHeader({
             </Fact>
             <Fact label="Team">
               <Link
-                href={teamHref(organization.slug, incident.team.id)}
+                href={teamHref(organization.slug, incident.team.slug)}
                 className={entityLinkClasses}
               >
                 {incident.team.name}

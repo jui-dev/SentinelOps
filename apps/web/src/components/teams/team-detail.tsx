@@ -328,7 +328,7 @@ export function TeamDetail() {
         actions={
           canManage && (
             <Link
-              href={`${teamHref(organization.slug, team.id)}/settings`}
+              href={`${teamHref(organization.slug, team.slug)}/settings`}
               className={buttonClasses({ variant: "secondary" })}
             >
               Settings

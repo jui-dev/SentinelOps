@@ -714,7 +714,7 @@ describe("incidents", () => {
       ).toBe("/orgs/acme-ops/services/payment-api");
       expect(
         screen.getByRole("link", { name: "Payments" }).getAttribute("href"),
-      ).toBe(`/orgs/acme-ops/teams/${payments.id}`);
+      ).toBe("/orgs/acme-ops/teams/payments");
       expect(screen.getByText("by Ada Lovelace")).toBeDefined();
       // Read-only: nothing to change.
       expect(screen.queryByRole("button", { name: "Resolve incident" })).toBeNull();

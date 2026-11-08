@@ -1,5 +1,6 @@
 "use client";
 
+import { ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
@@ -14,11 +15,17 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { PageBody, PageHeader } from "@/components/ui/page";
 import { Spinner } from "@/components/ui/spinner";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
-import { quietLinkClasses } from "@/components/ui/link";
 import { Permission } from "@/lib/api/contracts";
 
 import { CreateTeamForm } from "./create-team-form";
 import { teamHref, useTeams } from "./team-scope";
+
+/**
+ * A row's way to its team: the accent's quiet fill, so it reads as the
+ * action without competing with the page's primary button.
+ */
+const VIEW_ACTION =
+  "inline-flex h-7 items-center gap-1 rounded-md border border-accent-line bg-accent-subtle px-2.5 text-sm font-medium text-accent-text transition-colors duration-(--duration-fast) hover:border-accent-rim focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus";
 
 /** `onCreate` is absent for those who may not manage teams. */
 function TeamList({ onCreate }: { onCreate?: () => void }) {
@@ -61,18 +68,15 @@ function TeamList({ onCreate }: { onCreate?: () => void }) {
           <TH>Name</TH>
           <TH align="end">Members</TH>
           <TH align="end">Services</TH>
+          <TH align="end">Action</TH>
         </TR>
       </THead>
       <TBody>
         {teams.data.map((team) => (
           <TR key={team.id}>
             <TD>
-              <Link
-                href={teamHref(organization.slug, team.id)}
-                className={`font-medium text-fg ${quietLinkClasses}`}
-              >
-                {team.name}
-              </Link>
+              {/* Plain text: the row's one way in is its View action. */}
+              <span className="font-medium text-fg">{team.name}</span>
               {/* What it is for, as the name's second line. */}
               {team.description && (
                 <span className="block max-w-xl truncate text-sm text-fg-subtle">
@@ -85,6 +89,16 @@ function TeamList({ onCreate }: { onCreate?: () => void }) {
             </TD>
             <TD kind="numeric" align="end">
               {team.serviceCount}
+            </TD>
+            <TD kind="actions">
+              <Link
+                href={teamHref(organization.slug, team.slug)}
+                aria-label={`View ${team.name}`}
+                className={VIEW_ACTION}
+              >
+                View
+                <ChevronRight aria-hidden="true" strokeWidth={2} className="size-3.5" />
+              </Link>
             </TD>
           </TR>
         ))}
