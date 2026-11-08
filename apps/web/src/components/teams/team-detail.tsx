@@ -11,7 +11,7 @@ import {
   useIncidentList,
 } from "@/components/incidents/incident-queries";
 import { IncidentTable } from "@/components/incidents/incident-table";
-import { SEVERITY_LEVELS } from "@/components/incidents/severity";
+import { countOf, worstOf } from "@/components/incidents/incident-figures";
 import { memberHref, membersHref } from "@/components/organizations/member-paths";
 import {
   useCan,
@@ -32,7 +32,6 @@ import { linkClasses, quietLinkClasses } from "@/components/ui/link";
 import { PageBody, PageHeader } from "@/components/ui/page";
 import { Spinner } from "@/components/ui/spinner";
 import { Permission } from "@/lib/api/contracts";
-import type { IncidentResponse } from "@/lib/api/contracts";
 import { lastUtcDays } from "@/lib/period/period";
 
 import { teamsHref, useTeam, useTeamMembers } from "./team-scope";
@@ -52,21 +51,6 @@ const RESOLVED_DAYS = 30;
  */
 const SCROLL_REGION =
   "sm:max-h-84 sm:overflow-y-auto sm:overscroll-contain focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus";
-
-/** A page's count, honest about a first page that is not the whole list. */
-const countOf = (items: readonly unknown[], hasMore: boolean) =>
-  hasMore ? `${items.length}+` : String(items.length);
-
-/** The most severe level among the active incidents, and how many have it. */
-const worstOf = (incidents: readonly IncidentResponse[]) => {
-  for (const { value } of SEVERITY_LEVELS) {
-    const count = incidents.filter((each) => each.severity === value).length;
-
-    if (count > 0) return `${count} × ${value}`;
-  }
-
-  return undefined;
-};
 
 function IncidentTiles({ teamId }: { teamId: string }) {
   const organization = useOrganization();

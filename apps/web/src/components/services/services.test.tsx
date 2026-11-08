@@ -575,7 +575,7 @@ describe("services", () => {
       navigation.params = { orgSlug: "acme-ops", serviceSlug: "payment-api" };
     });
 
-    it("shows its name, description, owner, and what its criticality means — nothing invented", async () => {
+    it("shows its name, description, a way back, and what its criticality means — nothing invented", async () => {
       api(READ);
 
       inService(<ServiceDetail />);
@@ -584,17 +584,33 @@ describe("services", () => {
         await screen.findByRole("heading", { level: 1, name: "Payment API" }),
       ).toBeDefined();
       expect(screen.getByText("Takes card payments.")).toBeDefined();
+
+      const breadcrumb = screen.getByRole("navigation", { name: "Breadcrumb" });
       expect(
-        screen.getByRole("link", { name: "Payments" }).getAttribute("href"),
+        within(breadcrumb).getByRole("link", { name: "Services" }).getAttribute("href"),
+      ).toBe("/orgs/acme-ops/services");
+
+      // Owner and criticality at a glance; no incident figures without
+      // incidents:read.
+      const glance = screen.getByLabelText("Payment API at a glance");
+      expect(within(glance).getByText("Owner team").nextSibling?.textContent).toBe(
+        "Payments",
+      );
+      expect(within(glance).getByText("Criticality").nextSibling?.textContent).toBe(
+        "Critical",
+      );
+      expect(within(glance).queryByText("Active incidents")).toBeNull();
+
+      const about = screen.getByRole("region", { name: "About" });
+      expect(
+        within(about).getByRole("link", { name: "Payments" }).getAttribute("href"),
       ).toBe("/orgs/acme-ops/teams/payments");
-      expect(screen.getByText("Critical")).toBeDefined();
       expect(
-        screen.getByText(/Failure stops the organization's core work/),
+        within(about).getByText(/Failure stops the organization's core work/),
       ).toBeDefined();
       expect(screen.queryByText("payment-api")).toBeNull();
-      expect(screen.queryByText(/incident/i)).toBeNull();
       expect(screen.queryByText("Archived")).toBeNull();
-      expect(screen.queryByRole("link", { name: "Settings" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Declare incident" })).toBeNull();
     });
 
     describe("its incidents", () => {
@@ -613,7 +629,7 @@ describe("services", () => {
                     anIncident(9, { title: "Slow refunds" }),
                   ]),
                 )
-              : route(request) === listed("resolved")
+              : route(request).startsWith(`GET ${base}/incidents?state=resolved`)
                 ? jsonResponse(
                     200,
                     incidentPage([7, 6, 5, 4, 3, 2, 1].map(resolvedIncident)),
@@ -630,15 +646,29 @@ describe("services", () => {
 
         expect(within(active).getByText("Card declines")).toBeDefined();
         expect(within(active).getByText("Slow refunds")).toBeDefined();
+        // Every row is this service's and its owner's: neither is a column.
+        expect(within(active).queryByRole("columnheader", { name: "Service" })).toBeNull();
+        expect(
+          within(active).queryByRole("columnheader", { name: "Responsible team" }),
+        ).toBeNull();
         // Only the five most recent resolved.
         expect(within(resolved).getAllByRole("row")).toHaveLength(1 + 5);
         expect(within(resolved).queryByText("Incident 2")).toBeNull();
-        // The worst active severity, and how many, beside the record.
-        expect(screen.getByText("2 active incidents")).toBeDefined();
-        expect(
-          screen.getByRole("link", { name: "View all in Incidents" }).getAttribute("href"),
-        ).toBe("/orgs/acme-ops/incidents?service=payment-api");
-        // One request per list, shared by the record and the section.
+
+        // The glance counts them, and names the worst.
+        const glance = screen.getByLabelText("Payment API at a glance");
+        await waitFor(() =>
+          expect(
+            within(glance).getByText("Active incidents").nextSibling?.textContent,
+          ).toBe("21 × SEV2"),
+        );
+
+        for (const link of screen.getAllByRole("link", { name: /View all in Incidents/ })) {
+          expect(link.getAttribute("href")).toBe(
+            "/orgs/acme-ops/incidents?service=payment-api",
+          );
+        }
+        // One request for the active list, shared by the glance and the card.
         expect(requests.filter((r) => route(r) === listed("active"))).toHaveLength(1);
       });
 
@@ -654,8 +684,68 @@ describe("services", () => {
 
         expect(await screen.findByText("No active incidents")).toBeDefined();
         expect(await screen.findByText("None resolved yet")).toBeDefined();
-        expect(screen.getByText("None")).toBeDefined();
       });
+    });
+
+    describe("who responds", () => {
+      const membersOfPayments = `GET ${base}/teams/${payments.id}/members`;
+
+      it("lists the owner team's members, read only", async () => {
+        api(READ, {
+          handler: (request) =>
+            route(request) === membersOfPayments
+              ? jsonResponse(200, [
+                  {
+                    membershipId: "0199a1b2-c3d4-7000-8000-0000000000a1",
+                    addedAt: "2026-09-18T12:00:00.000Z",
+                    user: {
+                      id: "0199a1b2-c3d4-7000-8000-0000000000b1",
+                      name: "Priya Shah",
+                      email: "priya@example.com",
+                    },
+                  },
+                ])
+              : undefined,
+        });
+
+        inService(<ServiceDetail />);
+
+        const list = await screen.findByRole("list", {
+          name: "Who responds to Payment API",
+        });
+
+        expect(within(list).getByText("Priya Shah")).toBeDefined();
+        expect(within(list).queryByRole("button")).toBeNull();
+        expect(screen.getByText(/which owns this service/)).toBeDefined();
+      });
+
+      it("names the owner team when its members cannot be read", async () => {
+        api(READ, {
+          handler: (request) =>
+            route(request) === membersOfPayments ? apiError(404) : undefined,
+        });
+
+        inService(<ServiceDetail />);
+
+        expect(
+          await screen.findByText(/Payments responds to this service/),
+        ).toBeDefined();
+      });
+    });
+
+    it("offers no way to declare an incident: that is the Incidents page's", async () => {
+      api([...READ, "incidents:read", "incidents:manage"], {
+        handler: (request) =>
+          route(request).startsWith(`GET ${base}/incidents?state=`)
+            ? jsonResponse(200, incidentPage([]))
+            : undefined,
+      });
+
+      inService(<ServiceDetail />);
+
+      await screen.findByRole("heading", { level: 1, name: "Payment API" });
+      expect(screen.queryByRole("button", { name: /Declare/ })).toBeNull();
+      expect(screen.queryByRole("link", { name: /Declare/ })).toBeNull();
     });
 
     it("says when it is archived", async () => {
@@ -664,7 +754,8 @@ describe("services", () => {
 
       inService(<ServiceDetail />);
 
-      expect(await screen.findByText("Archived")).toBeDefined();
+      // Said beside the name, and explained beneath it.
+      expect((await screen.findAllByText("Archived")).length).toBeGreaterThan(1);
       expect(
         screen.getByText(/no new incident can be declared against it/),
       ).toBeDefined();

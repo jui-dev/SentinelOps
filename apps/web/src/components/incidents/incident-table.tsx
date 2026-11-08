@@ -27,10 +27,12 @@ import { incidentKey, SeverityMark, StatusMark, statusOf } from "./severity";
 function IncidentRow({
   incident,
   state,
+  showService,
   showTeam,
 }: {
   incident: IncidentResponse;
   state: IncidentState;
+  showService: boolean;
   showTeam: boolean;
 }) {
   const organization = useOrganization();
@@ -78,11 +80,14 @@ function IncidentRow({
               {statusOf(incident.status).label} ·{" "}
             </span>
           )}
-          {incident.service.name}
-          {showTeam && ` · ${incident.team.name}`}
+          {[showService && incident.service.name, showTeam && incident.team.name]
+            .filter(Boolean)
+            .join(" · ")}
         </span>
       </TD>
-      <TD className="hidden truncate xl:table-cell">{incident.service.name}</TD>
+      {showService && (
+        <TD className="hidden truncate xl:table-cell">{incident.service.name}</TD>
+      )}
       {showTeam && (
         <TD kind="muted" className="hidden truncate xl:table-cell">
           {incident.team.name}
@@ -130,12 +135,15 @@ export function IncidentTable({
   state,
   label,
   stickyHeader = false,
+  showService = true,
   showTeam = true,
 }: {
   incidents: readonly IncidentResponse[];
   state: IncidentState;
   label: string;
   stickyHeader?: boolean;
+  /** False where every row is the same service — a service's own page. */
+  showService?: boolean;
   /**
    * False where every row's team is the same one — a team's own page — so
    * the column's room goes to the titles instead of repeating a name.
@@ -154,7 +162,7 @@ export function IncidentTable({
       <colgroup>
         <col className="w-21 sm:w-24" />
         <col />
-        <col className="hidden w-[16%] xl:table-column" />
+        {showService && <col className="hidden w-[16%] xl:table-column" />}
         {showTeam && <col className="hidden w-[14%] xl:table-column" />}
         <col className="hidden w-30 sm:table-column" />
         <col className="w-19 sm:w-22" />
@@ -163,7 +171,7 @@ export function IncidentTable({
         <TR>
           <TH>Severity</TH>
           <TH>Incident</TH>
-          <TH className="hidden xl:table-cell">Service</TH>
+          {showService && <TH className="hidden xl:table-cell">Service</TH>}
           {showTeam && (
             <TH className="hidden xl:table-cell">Responsible team</TH>
           )}
@@ -186,6 +194,7 @@ export function IncidentTable({
             key={incident.id}
             incident={incident}
             state={state}
+            showService={showService}
             showTeam={showTeam}
           />
         ))}
