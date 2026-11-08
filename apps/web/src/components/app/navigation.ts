@@ -1,5 +1,6 @@
 import {
   Boxes,
+  History,
   LayoutPanelTop,
   Network,
   Settings2,
@@ -14,7 +15,7 @@ import { Permission } from "@/lib/api/contracts";
  * The navigation rail, as data.
  *
  * Only what exists is listed. On-call and Activity are not here — not even
- * disabled — because neither exists; each joins the Operations section when
+ * disabled — because neither exists; each joins the Response section when
  * its routes ship.
  */
 export interface NavItem {
@@ -44,10 +45,17 @@ export interface NavSection {
 export const organizationPath = (slug: string) =>
   `/orgs/${encodeURIComponent(slug)}`;
 
+/**
+ * Home first, then how the organization is set up, then the work it does.
+ *
+ * Organization lists its pages in the order an organization is built:
+ * teams first, because every service needs an owner team; then the members
+ * placed on them; then the services those teams own. Response follows,
+ * because incidents are declared against those services.
+ */
 export const ORGANIZATION_NAVIGATION: NavSection[] = [
   {
-    id: "organization",
-    label: "Organization",
+    id: "home",
     placement: "main",
     items: [
       {
@@ -57,13 +65,13 @@ export const ORGANIZATION_NAVIGATION: NavSection[] = [
         href: organizationPath,
         match: "exact",
       },
-      {
-        id: "members",
-        label: "Members",
-        icon: Users,
-        href: (slug) => `${organizationPath(slug)}/members`,
-        match: "prefix",
-      },
+    ],
+  },
+  {
+    id: "organization",
+    label: "Organization",
+    placement: "main",
+    items: [
       {
         id: "teams",
         label: "Teams",
@@ -72,11 +80,26 @@ export const ORGANIZATION_NAVIGATION: NavSection[] = [
         match: "prefix",
         requires: Permission.TEAMS_READ,
       },
+      {
+        id: "members",
+        label: "Members",
+        icon: Users,
+        href: (slug) => `${organizationPath(slug)}/members`,
+        match: "prefix",
+      },
+      {
+        id: "services",
+        label: "Services",
+        icon: Boxes,
+        href: (slug) => `${organizationPath(slug)}/services`,
+        match: "prefix",
+        requires: Permission.SERVICES_READ,
+      },
     ],
   },
   {
-    id: "operations",
-    label: "Operations",
+    id: "response",
+    label: "Response",
     placement: "main",
     // On-call and Activity join this section as each ships.
     items: [
@@ -89,12 +112,13 @@ export const ORGANIZATION_NAVIGATION: NavSection[] = [
         requires: Permission.INCIDENTS_READ,
       },
       {
-        id: "services",
-        label: "Services",
-        icon: Boxes,
-        href: (slug) => `${organizationPath(slug)}/services`,
+        id: "history",
+        label: "Incident history",
+        icon: History,
+        href: (slug) => `${organizationPath(slug)}/incidents/history`,
         match: "prefix",
-        requires: Permission.SERVICES_READ,
+        // One reading of the whole organization, as the page itself requires.
+        requires: Permission.INCIDENTS_READ_ALL,
       },
     ],
   },
@@ -121,3 +145,38 @@ export const isCurrentPath = (
   pathname: string,
 ): boolean =>
   pathname === href || (match === "prefix" && pathname.startsWith(`${href}/`));
+
+/**
+ * The one item the rail marks current: of the items offered, the most
+ * specific one whose page `pathname` is or lies beneath.
+ *
+ * Items can nest — Incident history lives beneath Incidents — so matching
+ * each item on its own would mark both. The longest matching href wins, and
+ * only among the items offered: without Incident history, its page still
+ * belongs to Incidents.
+ */
+export const currentNavItemId = (
+  sections: NavSection[],
+  slug: string,
+  permissions: readonly string[],
+  pathname: string,
+): string | undefined => {
+  let best: { id: string; length: number } | undefined;
+
+  for (const section of sections) {
+    for (const item of section.items) {
+      if (item.requires && !permissions.includes(item.requires)) continue;
+
+      const href = item.href(slug);
+
+      if (
+        isCurrentPath(href, item.match, pathname) &&
+        (!best || href.length > best.length)
+      ) {
+        best = { id: item.id, length: href.length };
+      }
+    }
+  }
+
+  return best?.id;
+};

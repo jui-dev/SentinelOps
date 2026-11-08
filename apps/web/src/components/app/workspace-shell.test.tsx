@@ -80,6 +80,10 @@ const renderShell = () =>
 
 const primaryNav = () => screen.getByRole("navigation", { name: "Primary" });
 
+/** A rail section's list, found by the heading that labels it. */
+const sectionOf = (heading: string) =>
+  within(primaryNav()).getByRole("list", { name: heading });
+
 describe("WorkspaceShell", () => {
   beforeEach(() => {
     clearAccessToken();
@@ -145,7 +149,7 @@ describe("WorkspaceShell", () => {
       expect(within(primaryNav()).queryByRole("link", { name: "Teams" })).toBeNull();
     });
 
-    it("offers Services, under Operations, only when the API reports services:read", async () => {
+    it("offers Services, under Organization, only when the API reports services:read", async () => {
       at("/orgs/acme-ops/services/payment-api/settings", "acme-ops");
       api({ permissions: [...READ, "services:read"] });
 
@@ -157,10 +161,57 @@ describe("WorkspaceShell", () => {
 
       expect(services.getAttribute("href")).toBe("/orgs/acme-ops/services");
       expect(services.getAttribute("aria-current")).toBe("page");
-      expect(within(primaryNav()).getByText("Operations")).toBeDefined();
+      expect(
+        within(sectionOf("Organization"))
+          .getAllByRole("link")
+          .map((link) => link.textContent),
+      ).toContain("Services");
     });
 
-    it("offers Incidents first under Operations, only when the API reports incidents:read", async () => {
+    it("orders the rail as home, then Organization in setup order, then Response", async () => {
+      at("/orgs/acme-ops", "acme-ops");
+      api({
+        permissions: [
+          ...FULL,
+          "teams:read",
+          "services:read",
+          "incidents:read",
+          "incidents:read-all",
+        ],
+      });
+
+      renderShell();
+
+      await within(primaryNav()).findByRole("link", { name: "Incidents" });
+
+      // Teams before the members placed on them and the services they own.
+      expect(
+        within(sectionOf("Organization"))
+          .getAllByRole("link")
+          .map((link) => link.textContent),
+      ).toEqual(["Teams", "Members", "Services"]);
+      expect(
+        within(sectionOf("Response"))
+          .getAllByRole("link")
+          .map((link) => link.textContent),
+      ).toEqual(["Incidents", "Incident history"]);
+      // Overview, set up, then respond — top to bottom.
+      expect(
+        within(primaryNav())
+          .getAllByRole("link")
+          .map((link) => link.textContent),
+      ).toEqual([
+        "Overview",
+        "Teams",
+        "Members",
+        "Services",
+        "Incidents",
+        "Incident history",
+        "Settings",
+      ]);
+    });
+
+    it("offers Incidents under Response, only when the API reports incidents:read", async () => {
       at("/orgs/acme-ops/incidents/42", "acme-ops");
       api({ permissions: [...READ, "incidents:read", "services:read"] });
 
@@ -169,22 +220,58 @@ describe("WorkspaceShell", () => {
       const incidents = await within(primaryNav()).findByRole("link", {
         name: "Incidents",
       });
-      const operations = within(primaryNav())
-        .getByText("Operations")
-        .closest("div,section,li") as HTMLElement;
 
       expect(incidents.getAttribute("href")).toBe("/orgs/acme-ops/incidents");
       expect(incidents.getAttribute("aria-current")).toBe("page");
       expect(
-        within(operations)
+        within(sectionOf("Response"))
           .getAllByRole("link")
           .map((link) => link.textContent),
-      ).toEqual(["Incidents", "Services"]);
+      ).toEqual(["Incidents"]);
     });
 
-    it("keeps Incidents current on Incident history, without a rail item of its own", async () => {
+    it("offers Incident history with incidents:read-all, and marks it alone current there", async () => {
       at("/orgs/acme-ops/incidents/history", "acme-ops");
-      api({ permissions: [...READ, "incidents:read", "services:read"] });
+      api({ permissions: [...READ, "incidents:read", "incidents:read-all"] });
+
+      renderShell();
+
+      const history = await within(primaryNav()).findByRole("link", {
+        name: "Incident history",
+      });
+      const incidents = within(primaryNav()).getByRole("link", {
+        name: "Incidents",
+      });
+
+      expect(history.getAttribute("href")).toBe(
+        "/orgs/acme-ops/incidents/history",
+      );
+      // The most specific item wins: history lives beneath Incidents.
+      expect(history.getAttribute("aria-current")).toBe("page");
+      expect(incidents.getAttribute("aria-current")).toBeNull();
+    });
+
+    it("keeps Incidents current on an incident, not Incident history", async () => {
+      at("/orgs/acme-ops/incidents/42", "acme-ops");
+      api({ permissions: [...READ, "incidents:read", "incidents:read-all"] });
+
+      renderShell();
+
+      const history = await within(primaryNav()).findByRole("link", {
+        name: "Incident history",
+      });
+
+      expect(
+        within(primaryNav())
+          .getByRole("link", { name: "Incidents" })
+          .getAttribute("aria-current"),
+      ).toBe("page");
+      expect(history.getAttribute("aria-current")).toBeNull();
+    });
+
+    it("does not offer Incident history without incidents:read-all, and keeps Incidents current there", async () => {
+      at("/orgs/acme-ops/incidents/history", "acme-ops");
+      api({ permissions: [...READ, "incidents:read"] });
 
       renderShell();
 
@@ -192,7 +279,6 @@ describe("WorkspaceShell", () => {
         name: "Incidents",
       });
 
-      // History is part of the Incidents domain, so the rail says so.
       expect(incidents.getAttribute("aria-current")).toBe("page");
       expect(
         within(primaryNav()).queryByRole("link", { name: /history/i }),
@@ -225,7 +311,7 @@ describe("WorkspaceShell", () => {
         within(primaryNav()).queryByRole("link", { name: "Services" }),
       ).toBeNull();
       // A section with nothing to offer is not shown at all.
-      expect(within(primaryNav()).queryByText("Operations")).toBeNull();
+      expect(within(primaryNav()).queryByText("Response")).toBeNull();
     });
 
     it("does not offer Settings without organization:update", async () => {

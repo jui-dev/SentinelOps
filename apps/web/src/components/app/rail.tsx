@@ -22,7 +22,7 @@ import type { MembershipResponse } from "@/lib/api/contracts";
 import { useCurrentUser } from "@/lib/auth/session-provider";
 
 import {
-  isCurrentPath,
+  currentNavItemId,
   ORGANIZATION_NAVIGATION,
   organizationPath,
 } from "./navigation";
@@ -96,13 +96,14 @@ function SectionLinks({
   section,
   slug,
   permissions,
-  pathname,
+  currentId,
   counts,
 }: {
   section: NavSection;
   slug: string;
   permissions: string[];
-  pathname: string;
+  /** The one item marked current, across every section; see currentNavItemId. */
+  currentId: string | undefined;
   /** A count to show beside an item, by the item's id. */
   counts: Partial<Record<string, number>>;
 }) {
@@ -134,7 +135,7 @@ function SectionLinks({
                 href={href}
                 label={item.label}
                 icon={item.icon}
-                current={isCurrentPath(href, item.match, pathname)}
+                current={item.id === currentId}
                 count={counts[item.id]}
               />
             </li>
@@ -214,6 +215,10 @@ export function Rail() {
     incidents: attention.data ? attentionCount(attention.data) : 0,
   };
 
+  const currentId = slug
+    ? currentNavItemId(ORGANIZATION_NAVIGATION, slug, permissions, pathname)
+    : undefined;
+
   const sections = (placement: NavSection["placement"]) =>
     slug
       ? ORGANIZATION_NAVIGATION.filter(
@@ -224,7 +229,7 @@ export function Rail() {
             section={section}
             slug={slug}
             permissions={permissions}
-            pathname={pathname}
+            currentId={currentId}
             counts={counts}
           />
         ))
