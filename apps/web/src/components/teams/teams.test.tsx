@@ -164,14 +164,32 @@ describe("teams", () => {
       expect(screen.queryByText("platform")).toBeNull();
     });
 
-    it("offers no creation without teams:manage", async () => {
+    it("offers no creation without teams:manage, and says the list is theirs", async () => {
+      // The API answers with the teams this caller may see, so an empty list
+      // is about them, not about the organization.
       api(READ, { teams: [] });
 
       inOrganization(<TeamsView />);
 
-      expect(await screen.findByText("No teams yet")).toBeDefined();
-      expect(screen.getByText(/An owner or admin can create one/)).toBeDefined();
+      expect(await screen.findByText("You are not on a team")).toBeDefined();
+      expect(
+        screen.getByText(/The teams you are placed on appear here/),
+      ).toBeDefined();
+      expect(screen.getByText("The teams you are on.")).toBeDefined();
+      expect(screen.queryByText("No teams yet")).toBeNull();
       expect(screen.queryByRole("button", { name: "New team" })).toBeNull();
+    });
+
+    it("tells whoever manages teams that the organization has none", async () => {
+      api(MANAGE, { teams: [] });
+
+      inOrganization(<TeamsView />);
+
+      expect(await screen.findByText("No teams yet")).toBeDefined();
+      expect(
+        screen.getByText(/Teams group the members of this organization/),
+      ).toBeDefined();
+      expect(screen.queryByText("You are not on a team")).toBeNull();
     });
 
     it("offers New team from the header and the empty list, and closes on Cancel without creating", async () => {
@@ -181,7 +199,7 @@ describe("teams", () => {
       inOrganization(<TeamsView />);
 
       expect(await screen.findByText("No teams yet")).toBeDefined();
-      expect(screen.queryByText(/An owner or admin can create one/)).toBeNull();
+      expect(screen.queryByText("You are not on a team")).toBeNull();
       const buttons = screen.getAllByRole("button", { name: "New team" });
 
       expect(buttons).toHaveLength(2);

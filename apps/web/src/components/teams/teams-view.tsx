@@ -24,14 +24,19 @@ import { teamHref, useTeams } from "./team-scope";
 function TeamList({ onCreate }: { onCreate?: () => void }) {
   const organization = useOrganization();
   const teams = useTeams(organization.id);
+  const canManage = useCan(Permission.TEAMS_MANAGE);
 
   if (teams.isError) return <ErrorAlert error={teams.error} />;
   if (!teams.data) return <Spinner label="Loading teams…" />;
 
   if (teams.data.length === 0) {
+    // The API answers with the teams the caller may see, so an empty list
+    // means two different things. To whoever manages teams it is the
+    // organization's own answer — there are none. To everyone else it is
+    // about them: they are on none, whatever the organization has.
     return (
       <EmptyState
-        title="No teams yet"
+        title={canManage ? "No teams yet" : "You are not on a team"}
         action={
           onCreate && (
             <Button variant="secondary" onClick={onCreate}>
@@ -41,8 +46,9 @@ function TeamList({ onCreate }: { onCreate?: () => void }) {
         }
       >
         <p>
-          Teams group the members of this organization who work together.
-          {onCreate ? "" : " An owner or admin can create one."}
+          {canManage
+            ? "Teams group the members of this organization who work together."
+            : "The teams you are placed on appear here. An owner or admin can add you to one."}
         </p>
       </EmptyState>
     );
@@ -106,7 +112,11 @@ export function TeamsView() {
         width="list"
         title="Teams"
         meta={teams.data?.length}
-        description="Groups of this organization's members. Belonging to a team grants no extra access."
+        description={
+          canManage
+            ? "Groups of this organization's members. Belonging to a team grants no extra access."
+            : "The teams you are on."
+        }
         actions={
           canManage && <Button onClick={openCreate}>New team</Button>
         }
