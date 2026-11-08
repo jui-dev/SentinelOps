@@ -768,6 +768,19 @@ describe("accessibility", () => {
       await expectNoAxeViolations(container);
     });
 
+    it("Teams, with a row opened", async () => {
+      signedIn(ADMIN);
+      const { container } = inWorkspace(<TeamsView />);
+
+      (
+        await screen.findByRole("button", {
+          name: "Show members and services of Platform",
+        })
+      ).click();
+      await screen.findByRole("region", { name: "Members of Platform" });
+      await expectNoAxeViolations(container);
+    });
+
     it("Edit team, from the Teams list", async () => {
       signedIn(ADMIN);
       const { container } = inWorkspace(<TeamsView />);

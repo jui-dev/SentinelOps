@@ -2,7 +2,7 @@
 
 import { ChevronRight, Pencil } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 
 import {
   useCan,
@@ -10,6 +10,7 @@ import {
 } from "@/components/organizations/organization-scope";
 import { ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { cx } from "@/components/ui/cx";
 import { FormDialog } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageBody, PageHeader } from "@/components/ui/page";
@@ -20,6 +21,7 @@ import type { TeamResponse } from "@/lib/api/contracts";
 
 import { CreateTeamForm } from "./create-team-form";
 import { EditTeamDialog } from "./edit-team-dialog";
+import { TeamPeek } from "./team-peek";
 import { teamHref, useTeams } from "./team-scope";
 
 /**
@@ -48,6 +50,16 @@ function TeamList({
   const organization = useOrganization();
   const teams = useTeams(organization.id);
   const canManage = useCan(Permission.TEAMS_MANAGE);
+  // Any number open at once, so teams can be compared side by side.
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  const toggle = (teamId: string) =>
+    setExpanded((current) => {
+      const next = new Set(current);
+
+      if (!next.delete(teamId)) next.add(teamId);
+
+      return next;
+    });
 
   if (teams.isError) return <ErrorAlert error={teams.error} />;
   if (!teams.data) return <Spinner label="Loading teams…" />;
@@ -88,17 +100,50 @@ function TeamList({
         </TR>
       </THead>
       <TBody>
-        {teams.data.map((team) => (
-          <TR key={team.id}>
+        {teams.data.map((team) => {
+          const open = expanded.has(team.id);
+          const peekId = `team-peek-${team.id}`;
+
+          return (
+          <Fragment key={team.id}>
+          <TR
+            // A click anywhere on the row opens it, as the chevron does —
+            // but not one meant for View or Edit, or the chevron itself.
+            onClick={(event) => {
+              if ((event.target as Element).closest("a, button")) return;
+              toggle(team.id);
+            }}
+            className="cursor-pointer"
+          >
             <TD>
-              {/* Plain text: the row's one way in is its View action. */}
-              <span className="font-medium text-fg">{team.name}</span>
-              {/* What it is for, as the name's second line. */}
-              {team.description && (
-                <span className="block max-w-xl truncate text-sm text-fg-subtle">
-                  {team.description}
-                </span>
-              )}
+              <div className="flex items-start gap-2">
+                <button
+                  type="button"
+                  aria-expanded={open}
+                  aria-controls={open ? peekId : undefined}
+                  aria-label={`${open ? "Hide" : "Show"} members and services of ${team.name}`}
+                  onClick={() => toggle(team.id)}
+                  className="-ml-1 grid size-6 shrink-0 place-items-center rounded-sm text-fg-subtle hover:bg-hover hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+                >
+                  <ChevronRight
+                    aria-hidden="true"
+                    strokeWidth={2}
+                    className={cx(
+                      "size-4 transition-transform duration-(--duration-fast)",
+                      open && "rotate-90",
+                    )}
+                  />
+                </button>
+                <div className="min-w-0">
+                  <span className="font-medium text-fg">{team.name}</span>
+                  {/* What it is for, as the name's second line. */}
+                  {team.description && (
+                    <span className="block max-w-xl truncate text-sm text-fg-subtle">
+                      {team.description}
+                    </span>
+                  )}
+                </div>
+              </div>
             </TD>
             <TD kind="numeric" align="end">
               {team.memberCount}
@@ -131,7 +176,20 @@ function TeamList({
               </div>
             </TD>
           </TR>
-        ))}
+          {open && (
+            // A plain row, outside the table's hover: it is the row above, opened.
+            <tr id={peekId}>
+              <td
+                colSpan={4}
+                className="border-b border-line-subtle bg-sunken px-3 py-3 sm:px-4"
+              >
+                <TeamPeek team={team} />
+              </td>
+            </tr>
+          )}
+          </Fragment>
+          );
+        })}
       </TBody>
     </Table>
   );

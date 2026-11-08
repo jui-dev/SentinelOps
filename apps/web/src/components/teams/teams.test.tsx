@@ -285,6 +285,125 @@ describe("teams", () => {
     });
   });
 
+  describe("a row, opened", () => {
+    const chevron = (name = "Platform") =>
+      screen.findByRole("button", {
+        name: `Show members and services of ${name}`,
+      });
+
+    it("shows who is on the team and what it owns, asking for members only once opened", async () => {
+      const user = userEvent.setup();
+      const { requests } = api(READ_WITH_SERVICES);
+
+      inOrganization(<TeamsView />);
+
+      const toggle = await chevron();
+      const membersAsked = () =>
+        requests.filter(
+          (r) => route(r) === `GET ${base}/teams/${platform.id}/members`,
+        ).length;
+
+      expect(toggle.getAttribute("aria-expanded")).toBe("false");
+      expect(membersAsked()).toBe(0);
+
+      await user.click(toggle);
+
+      const members = await screen.findByRole("region", {
+        name: "Members of Platform",
+      });
+      const services = screen.getByRole("region", {
+        name: "Services owned by Platform",
+      });
+
+      expect(
+        screen
+          .getByRole("button", { name: "Hide members and services of Platform" })
+          .getAttribute("aria-expanded"),
+      ).toBe("true");
+      expect(await within(members).findByText("Ada Lovelace")).toBeDefined();
+      expect(
+        within(services)
+          .getByRole("link", { name: /Runtime API/ })
+          .getAttribute("href"),
+      ).toBe("/orgs/acme-ops/services/runtime-api");
+      expect(within(services).queryByText("Checkout")).toBeNull();
+      expect(membersAsked()).toBe(1);
+      // Read only: placement is changed on a member's own page.
+      expect(within(members).queryByRole("button")).toBeNull();
+    });
+
+    it("opens from a click anywhere on the row, but not from View or Edit", async () => {
+      const user = userEvent.setup();
+      api(MANAGE);
+
+      inOrganization(<TeamsView />);
+
+      await user.click(await screen.findByText("Owns the runtime."));
+      expect(
+        await screen.findByRole("region", { name: "Members of Platform" }),
+      ).toBeDefined();
+
+      // Again on the row: closed.
+      await user.click(screen.getByText("Owns the runtime."));
+      expect(screen.queryByRole("region", { name: "Members of Platform" })).toBeNull();
+
+      // Edit opens its dialog and leaves the row as it was.
+      await user.click(screen.getByRole("button", { name: "Edit Platform" }));
+      await screen.findByRole("dialog", { name: "Edit team" });
+      expect(screen.queryByRole("region", { name: "Members of Platform" })).toBeNull();
+    });
+
+    it("keeps every member in the opened row, scrolling past a handful", async () => {
+      const user = userEvent.setup();
+      const many = Array.from({ length: 8 }, (_, n) => ({
+        membershipId: `0199a1b2-c3d4-7000-8000-0000000003${n}0`,
+        addedAt: "2026-09-18T12:00:00.000Z",
+        user: {
+          id: `0199a1b2-c3d4-7000-8000-0000000004${n}0`,
+          name: `Person ${n}`,
+          email: `p${n}@example.com`,
+        },
+      }));
+      api(READ, {
+        handler: (request) =>
+          route(request) === `GET ${base}/teams/${platform.id}/members`
+            ? jsonResponse(200, many)
+            : undefined,
+      });
+
+      inOrganization(<TeamsView />);
+
+      await user.click(await chevron());
+
+      const members = await screen.findByRole("region", {
+        name: "Members of Platform",
+      });
+
+      await within(members).findByText("Person 7");
+      // All eight, none sent elsewhere: the list scrolls where it is.
+      expect(within(members).getAllByRole("listitem")).toHaveLength(8);
+      expect(within(members).queryByRole("link")).toBeNull();
+      expect(members.className).toContain("overflow-y-auto");
+      expect(members.getAttribute("tabindex")).toBe("0");
+    });
+
+    it("leaves services out without services:read", async () => {
+      const user = userEvent.setup();
+      api(READ);
+
+      inOrganization(<TeamsView />);
+
+      await user.click(await chevron());
+
+      expect(
+        await screen.findByRole("region", { name: "Members of Platform" }),
+      ).toBeDefined();
+      expect(
+        screen.queryByRole("region", { name: "Services owned by Platform" }),
+      ).toBeNull();
+    });
+  });
+
   describe("a team", () => {
     beforeEach(() => {
       navigation.params = { orgSlug: "acme-ops", teamId: platform.slug };
