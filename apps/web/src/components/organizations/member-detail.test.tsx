@@ -144,7 +144,7 @@ describe("a member's page", () => {
     navigation.membershipId = GRACE;
   });
 
-  it("is reached from the member's name in the Members table", async () => {
+  it("is reached from the member's View action in the Members table", async () => {
     api(ADMIN, []);
 
     renderWithSession(
@@ -154,9 +154,9 @@ describe("a member's page", () => {
     );
 
     expect(
-      (await screen.findByRole("link", { name: "Grace Hopper" })).getAttribute(
-        "href",
-      ),
+      (
+        await screen.findByRole("link", { name: "View Grace Hopper" })
+      ).getAttribute("href"),
     ).toBe(`/orgs/acme-ops/members/${GRACE}`);
   });
 

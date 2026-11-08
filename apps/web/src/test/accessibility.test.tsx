@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, it, vi } from "vitest";
 
@@ -704,6 +704,37 @@ describe("accessibility", () => {
 
       await screen.findByRole("heading", { level: 1, name: currentUser.name });
       await screen.findByRole("link", { name: team.name });
+      await expectNoAxeViolations(container);
+    });
+
+    it("Members, adding someone to a team", async () => {
+      signedIn(ADMIN);
+      const { container } = inWorkspace(<MembersView />);
+
+      (
+        await screen.findByRole("button", {
+          name: `Add ${currentUser.name} to a team`,
+        })
+      ).click();
+      await screen.findByRole("dialog", {
+        name: `Add ${currentUser.name} to a team`,
+      });
+      await expectNoAxeViolations(container);
+    });
+
+    it("Members, removing someone from a team", async () => {
+      signedIn(ADMIN);
+      const { container } = inWorkspace(<MembersView />);
+
+      (
+        await screen.findByRole("button", {
+          name: `Remove ${currentUser.name} from a team`,
+        })
+      ).click();
+      const dialog = await screen.findByRole("dialog", {
+        name: `Remove ${currentUser.name} from a team`,
+      });
+      await within(dialog).findByRole("radio");
       await expectNoAxeViolations(container);
     });
 

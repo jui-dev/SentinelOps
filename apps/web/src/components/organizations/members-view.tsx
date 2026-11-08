@@ -26,17 +26,17 @@ export function MembersView() {
   return (
     <>
       <PageHeader
-        width="list"
+        width="full"
         title="Members"
         meta={memberships.data?.length}
-        description="Everyone with access to this organization. The Admin sets it up — its members, teams, and services; Members do the operational work."
+        description="Everyone with access to this organization. Their teams decide which incidents they respond to."
         actions={
           canAddMembers && (
             <Button onClick={() => setAdding(true)}>Add member</Button>
           )
         }
       />
-      <PageBody width="list">
+      <PageBody width="full">
         <MembershipList />
       </PageBody>
       {canAddMembers && adding && (

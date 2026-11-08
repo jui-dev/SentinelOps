@@ -154,47 +154,289 @@ describe("the members overview", () => {
     expect(screen.queryByRole("button", { name: "Add member" })).toBeNull();
   });
 
-  it("shows each person's role, teams, and whether they have signed in yet", async () => {
-    api(READ_ONLY, [
-      ada,
-      { ...grace, teams: onTeams("Payments", "Platform") },
-      {
-        ...grace,
-        id: "0199a1b2-c3d4-7000-8000-0000000000cc",
-        user: {
-          ...grace.user,
-          id: "0199a1b2-c3d4-7000-8000-000000000003",
-          name: "Linus Torvalds",
-          email: "linus@example.com",
-          passwordChangeRequired: false,
-        },
-        teams: onTeams("Infrastructure", "Payments", "Platform"),
-      },
-    ]);
+  const linus = {
+    ...grace,
+    id: "0199a1b2-c3d4-7000-8000-0000000000cc",
+    user: {
+      ...grace.user,
+      id: "0199a1b2-c3d4-7000-8000-000000000003",
+      name: "Linus Torvalds",
+      email: "linus@example.com",
+      passwordChangeRequired: false,
+    },
+    teams: onTeams("Infrastructure", "Payments", "Platform"),
+  };
+
+  const rowOf = async (name: string) =>
+    (await screen.findByText(name)).closest("tr") as HTMLElement;
+
+  it("shows each person's role, teams, and status, with the one warning that matters", async () => {
+    api(READ_ONLY, [ada, grace, linus]);
+
+    renderMembers();
+
+    const adaRow = await rowOf("Ada Lovelace");
+    const graceRow = await rowOf("Grace Hopper");
+    const linusRow = await rowOf("Linus Torvalds");
+
+    expect(within(adaRow).getByText("Admin")).toBeDefined();
+    expect(within(adaRow).getByText("You")).toBeDefined();
+    expect(within(adaRow).getAllByText("Active").length).toBeGreaterThan(0);
+    // An Admin is not bound by teams: no team is no warning for them.
+    expect(within(adaRow).queryByText(/sees no incidents/)).toBeNull();
+
+    expect(within(graceRow).getByText("Member")).toBeDefined();
+    expect(
+      within(graceRow).getAllByText("Awaiting first sign-in").length,
+    ).toBeGreaterThan(0);
+    expect(
+      within(graceRow).getAllByText("No team · sees no incidents").length,
+    ).toBeGreaterThan(0);
+
+    // Three teams: two chips, the rest summarised, the full list still there
+    // for a screen reader and the tooltip.
+    expect(within(linusRow).getByText("+1")).toBeDefined();
+    expect(
+      within(linusRow).getByText("Infrastructure, Payments, Platform"),
+    ).toBeDefined();
+    expect(within(linusRow).queryByText(/sees no incidents/)).toBeNull();
+
+    // The name is text; the row's way in is View.
+    expect(screen.getByText("Linus Torvalds").closest("a")).toBeNull();
+    expect(
+      within(linusRow)
+        .getByRole("link", { name: "View Linus Torvalds" })
+        .getAttribute("href"),
+    ).toBe(`/orgs/acme-ops/members/${linus.id}`);
+  });
+
+  it("finds people by name or email, and narrows by role or by what wants attention", async () => {
+    const user = userEvent.setup();
+    api(READ_ONLY, [ada, grace, linus]);
 
     renderMembers();
 
     const table = await screen.findByRole("table", { name: "Members" });
-    const rows = within(table).getAllByRole("row").slice(1);
-    const [adaRow, graceRow, linusRow] = rows;
+    const names = () =>
+      within(table)
+        .queryAllByRole("row")
+        .slice(1)
+        .map((row) => row.querySelector(".font-medium")?.textContent);
 
-    expect(within(adaRow).getByText("Admin")).toBeDefined();
-    expect(within(adaRow).getAllByText("No team").length).toBeGreaterThan(0);
+    expect(names()).toEqual(["Ada Lovelace", "Grace Hopper", "Linus Torvalds"]);
 
-    expect(within(graceRow).getByText("Member")).toBeDefined();
+    // Each filter says how many it holds.
+    expect(screen.getByRole("button", { name: "All 3" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Awaiting sign-in 1" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "No team 1" })).toBeDefined();
+
+    await user.click(screen.getByRole("button", { name: "No team 1" }));
+    expect(names()).toEqual(["Grace Hopper"]);
     expect(
-      within(graceRow).getAllByText("Payments, Platform").length,
-    ).toBeGreaterThan(0);
-    expect(within(graceRow).getByText("Awaiting first sign-in")).toBeDefined();
+      screen.getByRole("button", { name: "No team 1" }).getAttribute("aria-pressed"),
+    ).toBe("true");
 
-    // Three teams: two shown, the rest summarised, the full list still there
-    // for a screen reader and the tooltip.
-    expect(within(linusRow).getAllByText("+1 more").length).toBeGreaterThan(0);
+    await user.click(screen.getByRole("button", { name: "Admins 1" }));
+    expect(names()).toEqual(["Ada Lovelace"]);
+
+    await user.click(screen.getByRole("button", { name: "All 3" }));
+    await user.type(screen.getByLabelText("Search members"), "LINUS@");
+    expect(names()).toEqual(["Linus Torvalds"]);
+
+    await user.clear(screen.getByLabelText("Search members"));
+    await user.type(screen.getByLabelText("Search members"), "nobody");
+    expect(screen.getByText(/No members match/)).toBeDefined();
+
+    await user.click(screen.getByRole("button", { name: "Show everyone" }));
+    expect(names()).toHaveLength(3);
+  });
+
+  it("offers only View without teams:manage", async () => {
+    api(READ_ONLY, [ada, linus]);
+
+    renderMembers();
+
+    await screen.findByRole("link", { name: "View Linus Torvalds" });
+    expect(screen.queryByRole("button", { name: /to a team/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /from a team/ })).toBeNull();
+  });
+});
+
+describe("placing members on teams, from the list", () => {
+  const PLACE = [...MANAGE, "teams:manage", "teams:read", "services:read"];
+  const PAYMENTS_REF = { id: PAYMENTS.id, name: "Payments", slug: "payments" };
+  const PLATFORM_REF = { id: PLATFORM.id, name: "Platform", slug: "platform" };
+  const sam = {
+    ...grace,
+    user: { ...grace.user, name: "Sam Okafor", passwordChangeRequired: false },
+    teams: [PAYMENTS_REF, PLATFORM_REF],
+  };
+  const services = [
+    {
+      id: "0199a1b2-c3d4-7000-8000-0000000000f1",
+      name: "Payment API",
+      slug: "payment-api",
+      description: null,
+      criticality: "CRITICAL",
+      ownerTeam: PAYMENTS_REF,
+      archivedAt: null,
+      createdAt: "2026-09-18T12:00:00.000Z",
+      updatedAt: "2026-09-18T12:00:00.000Z",
+    },
+  ];
+  const withServices = (handler: Handler = () => undefined): Handler => (request) =>
+    handler(request) ??
+    (route(request) === `GET ${base}/services`
+      ? jsonResponse(200, services)
+      : undefined);
+
+  beforeEach(() => {
+    clearAccessToken();
+  });
+
+  it("offers Add to team and Remove beside View, Remove only for someone on a team", async () => {
+    api(PLACE, [ada, sam], withServices());
+
+    renderMembers();
+
+    const add = await screen.findByRole("button", { name: "Add Sam Okafor to a team" });
+    const remove = screen.getByRole("button", { name: "Remove Sam Okafor from a team" });
+
+    expect(add.className).toContain("bg-info-subtle");
+    expect(remove.className).toContain("bg-danger-subtle");
+    expect((remove as HTMLButtonElement).disabled).toBe(false);
     expect(
-      within(linusRow).getAllByText("Infrastructure, Payments, Platform")
-        .length,
-    ).toBeGreaterThan(0);
-    expect(within(linusRow).queryByText("Awaiting first sign-in")).toBeNull();
+      (
+        screen.getByRole("button", {
+          name: "Remove Ada Lovelace from a team",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+  });
+
+  it("adds to a team they are not on yet, saying what each team owns", async () => {
+    const user = userEvent.setup();
+    const { requests } = api(
+      PLACE,
+      [ada, sam],
+      withServices((request) =>
+        route(request) === `POST ${base}/teams/${INFRASTRUCTURE.id}/members`
+          ? jsonResponse(201, {
+              membershipId: sam.id,
+              addedAt: "2026-09-19T12:00:00.000Z",
+              user: sam.user,
+            })
+          : undefined,
+      ),
+    );
+
+    renderMembers();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Add Sam Okafor to a team" }),
+    );
+
+    const dialog = screen.getByRole("dialog", { name: "Add Sam Okafor to a team" });
+    const choices = within(dialog).getAllByRole("radio");
+
+    // Only Infrastructure: Sam is on Payments and Platform already.
+    expect(choices).toHaveLength(1);
+    expect(within(dialog).getByText(/Already on Payments, Platform/)).toBeDefined();
+    expect(within(dialog).getByText(/Owns no services yet/)).toBeDefined();
+
+    await user.click(
+      within(dialog).getByRole("button", { name: "Add to Infrastructure" }),
+    );
+
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).toBeNull(),
+    );
+    expect(
+      requests.find(
+        (r) => route(r) === `POST ${base}/teams/${INFRASTRUCTURE.id}/members`,
+      )?.body,
+    ).toEqual({ membershipId: sam.id });
+    // The list, and the teams it shows, are read again.
+    expect(
+      requests.filter((r) => route(r) === `GET ${base}/memberships`).length,
+    ).toBeGreaterThan(1);
+  });
+
+  it("removes from the team chosen, saying what that changes", async () => {
+    const user = userEvent.setup();
+    const { requests } = api(
+      PLACE,
+      [ada, sam],
+      withServices((request) =>
+        route(request) === `DELETE ${base}/teams/${PAYMENTS.id}/members/${sam.id}`
+          ? jsonResponse(204)
+          : undefined,
+      ),
+    );
+
+    renderMembers();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Remove Sam Okafor from a team" }),
+    );
+
+    const dialog = screen.getByRole("dialog", {
+      name: "Remove Sam Okafor from a team",
+    });
+
+    expect(within(dialog).getAllByRole("radio")).toHaveLength(2);
+    expect(
+      await within(dialog).findByText(
+        /Sam will stop responding to Payment API incidents\. Still on Platform\./,
+      ),
+    ).toBeDefined();
+
+    await user.click(
+      within(dialog).getByRole("button", { name: "Remove from Payments" }),
+    );
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(
+      requests.some(
+        (r) =>
+          route(r) === `DELETE ${base}/teams/${PAYMENTS.id}/members/${sam.id}`,
+      ),
+    ).toBe(true);
+  });
+
+  it("warns when the last team goes, and explains a removal already made", async () => {
+    const user = userEvent.setup();
+    api(
+      PLACE,
+      [ada, { ...sam, teams: [PAYMENTS_REF] }],
+      withServices((request) =>
+        request.method === "DELETE"
+          ? apiError(404, "TEAM_MEMBER_NOT_FOUND")
+          : undefined,
+      ),
+    );
+
+    renderMembers();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Remove Sam Okafor from a team" }),
+    );
+
+    const dialog = screen.getByRole("dialog", {
+      name: "Remove Sam Okafor from a team",
+    });
+
+    expect(
+      await within(dialog).findByText(/will be on no team, and see no incidents/),
+    ).toBeDefined();
+
+    await user.click(
+      within(dialog).getByRole("button", { name: "Remove from Payments" }),
+    );
+
+    expect(
+      await within(dialog).findByText(/no longer on that team/),
+    ).toBeDefined();
   });
 });
 

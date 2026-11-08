@@ -14,6 +14,7 @@ import { cx } from "@/components/ui/cx";
 import { FormDialog } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageBody, PageHeader } from "@/components/ui/page";
+import { rowActionClasses } from "@/components/ui/row-action";
 import { Spinner } from "@/components/ui/spinner";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { Permission } from "@/lib/api/contracts";
@@ -24,17 +25,9 @@ import { EditTeamDialog } from "./edit-team-dialog";
 import { TeamPeek } from "./team-peek";
 import { teamHref, useTeams } from "./team-scope";
 
-/**
- * A row's way to its team: the accent's quiet fill, so it reads as the
- * action without competing with the page's primary button.
- */
-const ROW_ACTION =
-  "inline-flex h-7 items-center gap-1 rounded-md border px-2.5 text-sm font-medium transition-colors duration-(--duration-fast) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus";
-
-const VIEW_ACTION = `${ROW_ACTION} border-accent-line bg-accent-subtle text-accent-text hover:border-accent-rim`;
-
-/** Editing, in the info tone's quiet fill: as calm as View, told apart from it. */
-const EDIT_ACTION = `${ROW_ACTION} border-info-line bg-info-subtle text-info-text hover:border-info-solid`;
+/** View in the accent; Edit in the info tone — as calm, told apart from it. */
+const VIEW_ACTION = rowActionClasses("accent");
+const EDIT_ACTION = rowActionClasses("info");
 
 /**
  * `onCreate` and `onEdit` are absent for those who may not manage teams;
