@@ -19,6 +19,8 @@ import {
   teamOwnsServices,
 } from './teams.errors.js';
 import { toTeamMemberResponse, toTeamResponse } from './teams.responses.js';
+import { withinTeamScope } from './teams.scope.js';
+import type { TeamReader } from './teams.scope.js';
 import type {
   AddTeamMemberRequest,
   CreateTeamRequest,
@@ -117,6 +119,15 @@ export const fallbackTeamSlug = (): string => opaqueSlug('team');
  * takes the organization id as an explicit argument and every query filters
  * by it, so each is correct with no guard in front of it.
  *
+ * Visibility is a second, separate question, and only the reads ask it: which
+ * of the organization's teams this particular caller may see (teams.scope.ts).
+ * The two compose as conditions rather than one replacing the other, so
+ * `teams:read-all` widens a reader to the organization and never past it —
+ * which is why the tenant-isolation tests are written against a reader who
+ * holds it. The writes do not ask it at all: they are governed by
+ * `teams:manage`, and requireTeam, which they share, stays free of any
+ * reader's scope.
+ *
  * Tenant consistency of team membership does not rely on this service either:
  * the composite foreign keys on team_memberships make a team member from
  * another organization unrepresentable. The checks here exist to give the
@@ -131,10 +142,20 @@ export class TeamsService {
     private readonly notifications: NotificationsWriter,
   ) {}
 
-  /** Every team in the organization, by name. */
-  async list(organizationId: string): Promise<TeamResponse[]> {
+  /**
+   * The teams this reader may see in the organization, by name (see
+   * teams.scope.ts): every one of them for whoever oversees the
+   * organization, and for everyone else the ones they are on now.
+   *
+   * A reader on no team is answered with an empty list, which is the true
+   * answer to what they asked, not an error.
+   */
+  async list(
+    organizationId: string,
+    reader: TeamReader,
+  ): Promise<TeamResponse[]> {
     const teams = await this.prisma.team.findMany({
-      where: { organizationId, organization: { deletedAt: null } },
+      where: withinTeamScope(organizationId, reader),
       select: teamSelection,
       orderBy: [{ name: 'asc' }, { id: 'asc' }],
     });
@@ -142,18 +163,25 @@ export class TeamsService {
     return teams.map(toTeamResponse);
   }
 
-  /** One team, looked up by its id and the organization together. */
-  async get(organizationId: string, teamId: string): Promise<TeamResponse> {
+  /**
+   * One team, looked up by its id and the reader's scope together.
+   *
+   * A team outside that scope is 404 TEAM_NOT_FOUND, exactly as a malformed
+   * id, a nonexistent team, and one in another organization are: the four
+   * are indistinguishable, so the status cannot be asked which uuids name
+   * real teams.
+   */
+  async get(
+    organizationId: string,
+    reader: TeamReader,
+    teamId: string,
+  ): Promise<TeamResponse> {
     if (!isResourceId(teamId)) {
       throw teamNotFound();
     }
 
     const team = await this.prisma.team.findFirst({
-      where: {
-        id: teamId,
-        organizationId,
-        organization: { deletedAt: null },
-      },
+      where: withinTeamScope(organizationId, reader, { id: teamId }),
       select: teamSelection,
     });
 
@@ -324,12 +352,21 @@ export class TeamsService {
     this.logger.log('Team deleted', { teamId });
   }
 
-  /** The team's members whose accounts still exist, by name. */
+  /**
+   * The team's members whose accounts still exist, by name.
+   *
+   * The reader's own teams only, unless they oversee the organization. The
+   * team is established as visible *before* any placement is read, so a team
+   * outside the scope answers 404 TEAM_NOT_FOUND whether or not anyone is on
+   * it — never an empty roster, and never TEAM_MEMBER_NOT_FOUND, either of
+   * which would say the team exists.
+   */
   async listMembers(
     organizationId: string,
+    reader: TeamReader,
     teamId: string,
   ): Promise<TeamMemberResponse[]> {
-    await this.requireTeam(this.prisma, organizationId, teamId);
+    await this.requireVisibleTeam(organizationId, reader, teamId);
 
     const members = await this.prisma.teamMembership.findMany({
       where: { organizationId, teamId, ...visibleMember },
@@ -559,6 +596,33 @@ export class TeamsService {
     `;
 
     return rows.length === 1;
+  }
+
+  /**
+   * The team is one this reader may see, or 404.
+   *
+   * Deliberately separate from requireTeam, which the management paths
+   * share: those are governed by `teams:manage` and must not acquire a
+   * reader's scope. This one is for reads that reach past the team itself,
+   * and answers before they do.
+   */
+  private async requireVisibleTeam(
+    organizationId: string,
+    reader: TeamReader,
+    teamId: string,
+  ): Promise<void> {
+    if (!isResourceId(teamId)) {
+      throw teamNotFound();
+    }
+
+    const team = await this.prisma.team.findFirst({
+      where: withinTeamScope(organizationId, reader, { id: teamId }),
+      select: { id: true },
+    });
+
+    if (!team) {
+      throw teamNotFound();
+    }
   }
 
   /** The team exists in this organization, or 404. */

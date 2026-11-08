@@ -42,6 +42,17 @@ interface Fixture {
 
 type Role = 'ADMIN' | 'MEMBER';
 
+/**
+ * A reader who may see every team there is. Tenant isolation is proven
+ * against this one deliberately: the widest scope must still not reach
+ * another organization, because the organization is a separate condition
+ * from the reader's own.
+ */
+const OVERSIGHT = {
+  membershipId: '0199a1b2-c3d4-7000-8000-0000000000ff',
+  role: 'ADMIN' as const,
+};
+
 /** The error body with the per-request fields removed, for comparison. */
 const comparable = (body: Record<string, unknown>) => {
   const {
@@ -197,7 +208,7 @@ describe('teams (integration)', () => {
       const id = created.body.id as string;
 
       expect(
-        (await call('get', `${fx.orgA}/teams/${id}`, fx.dave)).body,
+        (await call('get', `${fx.orgA}/teams/${id}`, fx.alice)).body,
       ).toEqual(created.body);
 
       const renamed = await call('patch', `${fx.orgA}/teams/${id}`, fx.alice, {
@@ -227,7 +238,7 @@ describe('teams (integration)', () => {
       await aTeam(fx.orgA, 'Checkout');
       await aTeam(fx.orgB, 'Bravo Only');
 
-      const list = await call('get', `${fx.orgA}/teams`, fx.dave);
+      const list = await call('get', `${fx.orgA}/teams`, fx.alice);
 
       expect(list.status).toBe(200);
       expect(list.body.map((team: { name: string }) => team.name)).toEqual([
@@ -418,7 +429,7 @@ describe('teams (integration)', () => {
       await aService(fx.orgA, payments.id, 'Payment API');
       await aService(fx.orgA, payments.id, 'Settlement');
 
-      const counts = (await call('get', `${fx.orgA}/teams`, fx.dave)).body.map(
+      const counts = (await call('get', `${fx.orgA}/teams`, fx.alice)).body.map(
         (team: { name: string; serviceCount: number }) => [
           team.name,
           team.serviceCount,
@@ -430,7 +441,7 @@ describe('teams (integration)', () => {
         ['Platform', 0],
       ]);
       expect(
-        (await call('get', `${fx.orgA}/teams/${platform.id}`, fx.dave)).body
+        (await call('get', `${fx.orgA}/teams/${platform.id}`, fx.alice)).body
           .serviceCount,
       ).toBe(0);
     });
@@ -465,8 +476,9 @@ describe('teams (integration)', () => {
   });
 
   describe('authorization', () => {
-    it('should let a MEMBER read teams and members', async () => {
+    it('should let a MEMBER read the teams they are on', async () => {
       const { id } = await aTeam(fx.orgA, 'Platform');
+      await place(fx.orgA, id, fx.daveInA);
 
       for (const path of [
         `${fx.orgA}/teams`,
@@ -531,6 +543,230 @@ describe('teams (integration)', () => {
         404,
         'ORGANIZATION_NOT_FOUND',
       );
+    });
+  });
+
+  describe('member visibility', () => {
+    /**
+     * A team Dave is on, one he is not, and an incident against the second
+     * that he responded to and has since left behind. The state Boundary
+     * #3.2 exists to keep apart: the incident stays his to read, the team
+     * does not become his to see.
+     */
+    const aPastResponse = async () => {
+      const platform = await aTeam(fx.orgA, 'Platform');
+      const payments = await aTeam(fx.orgA, 'Payments');
+      await place(fx.orgA, platform.id, fx.daveInA);
+
+      const service = await prisma.service.create({
+        data: {
+          organizationId: fx.orgA,
+          name: 'Checkout',
+          slug: 'checkout',
+          ownerTeamId: payments.id,
+        },
+        select: { id: true },
+      });
+      const incident = await prisma.incident.create({
+        data: {
+          organizationId: fx.orgA,
+          number: 142,
+          title: 'Checkout failing',
+          serviceId: service.id,
+          teamId: payments.id,
+          severity: 'SEV2',
+          createdById: fx.alice,
+        },
+        select: { id: true, number: true },
+      });
+      await prisma.incidentResponder.create({
+        data: {
+          organizationId: fx.orgA,
+          incidentId: incident.id,
+          membershipId: fx.daveInA,
+          status: 'COMPLETED',
+          completedAt: new Date(),
+        },
+      });
+
+      return { platform, payments, incident };
+    };
+
+    it('should list only the teams the member is on', async () => {
+      const platform = await aTeam(fx.orgA, 'Platform');
+      await aTeam(fx.orgA, 'Payments');
+      await place(fx.orgA, platform.id, fx.daveInA);
+
+      const response = await call('get', `${fx.orgA}/teams`, fx.dave);
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual([
+        expect.objectContaining({ id: platform.id, name: 'Platform' }),
+      ]);
+    });
+
+    it('should list nothing for a member on no team', async () => {
+      await aTeam(fx.orgA, 'Platform');
+
+      const response = await call('get', `${fx.orgA}/teams`, fx.dave);
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual([]);
+    });
+
+    it('should let a member read their own team and its roster', async () => {
+      const { id } = await aTeam(fx.orgA, 'Platform');
+      await place(fx.orgA, id, fx.daveInA);
+      await place(fx.orgA, id, fx.carolInA);
+
+      const team = await call('get', `${fx.orgA}/teams/${id}`, fx.dave);
+      const roster = await call(
+        'get',
+        `${fx.orgA}/teams/${id}/members`,
+        fx.dave,
+      );
+
+      expect(team.body).toEqual(
+        expect.objectContaining({ id, name: 'Platform', memberCount: 2 }),
+      );
+      // A teammate, identity only — the projection B3.2 leaves untouched.
+      expect(roster.body).toEqual(
+        expect.arrayContaining([
+          {
+            membershipId: fx.carolInA,
+            addedAt: expect.any(String),
+            user: {
+              id: fx.carol,
+              name: 'Carol Chen',
+              email: 'carol@both.example',
+            },
+          },
+        ]),
+      );
+    });
+
+    it('should answer an unrelated team exactly as a nonexistent one', async () => {
+      const platform = await aTeam(fx.orgA, 'Platform');
+      const payments = await aTeam(fx.orgA, 'Payments');
+      await place(fx.orgA, platform.id, fx.daveInA);
+
+      const unrelated = await call(
+        'get',
+        `${fx.orgA}/teams/${payments.id}`,
+        fx.dave,
+      );
+      const missing = await call(
+        'get',
+        `${fx.orgA}/teams/${randomUUID()}`,
+        fx.dave,
+      );
+      const malformed = await call(
+        'get',
+        `${fx.orgA}/teams/not-a-uuid`,
+        fx.dave,
+      );
+
+      expectCode(unrelated, 404, 'TEAM_NOT_FOUND');
+      // Byte for byte the same answer: the status cannot be asked which
+      // uuids name real teams in this organization.
+      expect(comparable(unrelated.body)).toEqual(comparable(missing.body));
+      expect(comparable(unrelated.body)).toEqual(comparable(malformed.body));
+    });
+
+    it("should refuse an unrelated team's roster before reading placements", async () => {
+      const platform = await aTeam(fx.orgA, 'Platform');
+      const payments = await aTeam(fx.orgA, 'Payments');
+      await place(fx.orgA, platform.id, fx.daveInA);
+      // Payments has members. An empty roster, or TEAM_MEMBER_NOT_FOUND,
+      // would each say the team exists.
+      await place(fx.orgA, payments.id, fx.carolInA);
+
+      const populated = await call(
+        'get',
+        `${fx.orgA}/teams/${payments.id}/members`,
+        fx.dave,
+      );
+      const missing = await call(
+        'get',
+        `${fx.orgA}/teams/${randomUUID()}/members`,
+        fx.dave,
+      );
+
+      expectCode(populated, 404, 'TEAM_NOT_FOUND');
+      expect(comparable(populated.body)).toEqual(comparable(missing.body));
+    });
+
+    it('should keep a past response from widening team visibility', async () => {
+      const { payments, incident } = await aPastResponse();
+
+      // The incident is still Dave's to read: he responded to it.
+      expect(
+        (await call('get', `${fx.orgA}/incidents/${incident.number}`, fx.dave))
+          .status,
+      ).toBe(200);
+
+      // The team now responsible for it is not.
+      expectCode(
+        await call('get', `${fx.orgA}/teams/${payments.id}`, fx.dave),
+        404,
+        'TEAM_NOT_FOUND',
+      );
+      expectCode(
+        await call('get', `${fx.orgA}/teams/${payments.id}/members`, fx.dave),
+        404,
+        'TEAM_NOT_FOUND',
+      );
+      expect((await call('get', `${fx.orgA}/teams`, fx.dave)).body).toEqual([
+        expect.objectContaining({ name: 'Platform' }),
+      ]);
+    });
+
+    it('should not preserve visibility of a team the member has left', async () => {
+      const { id } = await aTeam(fx.orgA, 'Platform');
+      await place(fx.orgA, id, fx.daveInA);
+      expect(
+        (await call('get', `${fx.orgA}/teams`, fx.dave)).body,
+      ).toHaveLength(1);
+
+      await prisma.teamMembership.deleteMany({
+        where: { teamId: id, membershipId: fx.daveInA },
+      });
+
+      expect((await call('get', `${fx.orgA}/teams`, fx.dave)).body).toEqual([]);
+      expectCode(
+        await call('get', `${fx.orgA}/teams/${id}`, fx.dave),
+        404,
+        'TEAM_NOT_FOUND',
+      );
+      expectCode(
+        await call('get', `${fx.orgA}/teams/${id}/members`, fx.dave),
+        404,
+        'TEAM_NOT_FOUND',
+      );
+    });
+
+    it('should leave oversight organization-wide', async () => {
+      const platform = await aTeam(fx.orgA, 'Platform');
+      const payments = await aTeam(fx.orgA, 'Payments');
+      await place(fx.orgA, payments.id, fx.daveInA);
+
+      // Alice is on neither team and sees both, with every roster.
+      const list = await call('get', `${fx.orgA}/teams`, fx.alice);
+
+      expect(list.body).toEqual([
+        expect.objectContaining({ id: payments.id }),
+        expect.objectContaining({ id: platform.id }),
+      ]);
+
+      for (const { id } of [platform, payments]) {
+        expect(
+          (await call('get', `${fx.orgA}/teams/${id}`, fx.alice)).status,
+        ).toBe(200);
+        expect(
+          (await call('get', `${fx.orgA}/teams/${id}/members`, fx.alice))
+            .status,
+        ).toBe(200);
+      }
     });
   });
 
@@ -607,7 +843,8 @@ describe('teams (integration)', () => {
       const foreign = await aTeam(fx.orgB, 'Bravo Platform');
 
       for (const attempt of [
-        () => teams.get(fx.orgA, foreign.id),
+        () => teams.get(fx.orgA, OVERSIGHT, foreign.id),
+        () => teams.listMembers(fx.orgA, OVERSIGHT, foreign.id),
         () => teams.update(fx.orgA, foreign.id, { name: 'Hijacked' }),
         () => teams.delete(fx.orgA, foreign.id),
         () =>

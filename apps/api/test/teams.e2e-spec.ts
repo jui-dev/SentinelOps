@@ -12,9 +12,11 @@ import type { Role } from './../src/generated/prisma/enums.js';
 /**
  * Team routes wired through the real AppModule, with Prisma mocked.
  *
- * Proves the wiring: every route is admitted and authorized, a MEMBER may read
- * but is refused every write with 403 — before the body is validated — and a
- * non-member receives admission's 404. Behaviour against real rows, tenant
+ * Proves the wiring: every route is admitted and authorized, every role may
+ * reach the reads — carrying the scope its role earns, which is asserted on
+ * the predicate handed to Prisma — a MEMBER is refused every write with 403
+ * before the body is validated, and a non-member receives admission's 404.
+ * That a database honours the scope, behaviour against real rows, tenant
  * isolation, and the database invariants are proven in
  * teams.integration-spec.ts and schema.integration-spec.ts; who a placement
  * notifies, in team-notifications.integration-spec.ts, so the writer is
@@ -166,6 +168,71 @@ describe('Teams (e2e)', () => {
       admitAs(role);
 
       expect((await send('get', path)).status).toBe(200);
+    });
+  });
+
+  describe('the scope a read carries', () => {
+    const ISOLATION = {
+      organizationId: ORG_ID,
+      organization: { deletedAt: null },
+    };
+    const OWN_TEAMS = {
+      memberships: { some: { membershipId: MEMBERSHIP_ID } },
+    };
+
+    it('should narrow a MEMBER to their own teams on every read', async () => {
+      admitAs('MEMBER');
+
+      await send('get', base);
+      expect(prisma.team.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { AND: [ISOLATION, OWN_TEAMS, {}] } }),
+      );
+
+      await send('get', `${base}/${TEAM_ID}`);
+      expect(prisma.team.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { AND: [ISOLATION, OWN_TEAMS, { id: TEAM_ID }] },
+        }),
+      );
+
+      // The roster's own visibility check, before any placement is read.
+      await send('get', `${base}/${TEAM_ID}/members`);
+      expect(prisma.team.findFirst).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          where: { AND: [ISOLATION, OWN_TEAMS, { id: TEAM_ID }] },
+        }),
+      );
+    });
+
+    it('should narrow an ADMIN to the organization and nothing else', async () => {
+      admitAs('ADMIN');
+
+      await send('get', base);
+      expect(prisma.team.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { AND: [ISOLATION, {}] } }),
+      );
+
+      await send('get', `${base}/${TEAM_ID}`);
+      expect(prisma.team.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { AND: [ISOLATION, { id: TEAM_ID }] },
+        }),
+      );
+    });
+
+    it('should answer a team the scope does not match with 404', async () => {
+      admitAs('MEMBER');
+      prisma.team.findFirst.mockResolvedValue(null);
+
+      const team = await send('get', `${base}/${TEAM_ID}`);
+      const roster = await send('get', `${base}/${TEAM_ID}/members`);
+
+      expect(team.status).toBe(404);
+      expect(team.body.code).toBe('TEAM_NOT_FOUND');
+      expect(roster.status).toBe(404);
+      expect(roster.body.code).toBe('TEAM_NOT_FOUND');
+      // The roster's rows are never reached.
+      expect(prisma.teamMembership.findMany).not.toHaveBeenCalled();
     });
   });
 

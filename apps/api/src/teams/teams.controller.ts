@@ -25,7 +25,14 @@ import type {
   CreateTeamRequest,
   UpdateTeamRequest,
 } from './teams.schemas.js';
+import type { TeamReader } from './teams.scope.js';
 import { TeamsService } from './teams.service.js';
+
+/** Who is reading, for the scope the read services narrow to. */
+const reader = (membership: OrganizationContext): TeamReader => ({
+  membershipId: membership.membershipId,
+  role: membership.role,
+});
 
 /**
  * An organization's teams and who is on them.
@@ -34,6 +41,14 @@ import { TeamsService } from './teams.service.js';
  * `@OrganizationController()`, authorization by `@RequirePermission()`, and
  * isolation in the service. Every member may read; changing anything needs
  * `teams:manage`.
+ *
+ * What a read returns is narrowed by who is asking. The reads declare
+ * `teams:read`, which every role holds, and teams.scope.ts narrows it to the
+ * teams the caller is on now unless they also hold `teams:read-all` — a
+ * widening capability no route declares, as `incidents:read-all` is for one
+ * incident. A team outside that scope is therefore answered 404 rather than
+ * 403: the caller is not refused the route, and a team they may not see
+ * must be indistinguishable from one that does not exist.
  *
  * Path ids are validated in the service, so a malformed one answers 404 like
  * any other id this organization lacks.
@@ -47,7 +62,7 @@ export class TeamsController {
   list(
     @CurrentMembership() membership: OrganizationContext,
   ): Promise<TeamResponse[]> {
-    return this.teams.list(membership.organizationId);
+    return this.teams.list(membership.organizationId, reader(membership));
   }
 
   /** Creates a team. The slug is derived from the name, never supplied. */
@@ -66,7 +81,11 @@ export class TeamsController {
     @CurrentMembership() membership: OrganizationContext,
     @Param('teamId') teamId: string,
   ): Promise<TeamResponse> {
-    return this.teams.get(membership.organizationId, teamId);
+    return this.teams.get(
+      membership.organizationId,
+      reader(membership),
+      teamId,
+    );
   }
 
   /** Renames a team or changes its description. The slug never changes. */
@@ -97,7 +116,11 @@ export class TeamsController {
     @CurrentMembership() membership: OrganizationContext,
     @Param('teamId') teamId: string,
   ): Promise<TeamMemberResponse[]> {
-    return this.teams.listMembers(membership.organizationId, teamId);
+    return this.teams.listMembers(
+      membership.organizationId,
+      reader(membership),
+      teamId,
+    );
   }
 
   /**

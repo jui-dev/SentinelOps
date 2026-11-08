@@ -14,6 +14,11 @@ const MEMBERSHIP = '0199a1b2-c3d4-7000-8000-0000000000b1';
 /** The Admin placing or removing someone: another membership. */
 const ACTOR = { membershipId: '0199a1b2-c3d4-7000-8000-0000000000a1' };
 const ACTOR_USER = '0199a1b2-c3d4-7000-8000-000000000001';
+/** Who is reading: oversight sees every team, a member sees their own. */
+const OVERSEER = { membershipId: ACTOR.membershipId, role: 'ADMIN' as const };
+const READER = { membershipId: MEMBERSHIP, role: 'MEMBER' as const };
+const ISOLATION = { organizationId: ORG, organization: { deletedAt: null } };
+const OWN_TEAMS = { memberships: { some: { membershipId: MEMBERSHIP } } };
 const CREATED = new Date('2026-09-18T12:00:00.000Z');
 
 const teamRow = {
@@ -103,14 +108,26 @@ describe('TeamsService', () => {
     it('should scope by the organization and order by name', async () => {
       const { service, prisma } = serviceWith();
 
-      await expect(service.list(ORG)).resolves.toEqual([
+      await expect(service.list(ORG, OVERSEER)).resolves.toEqual([
         expect.objectContaining({ id: TEAM, memberCount: 0 }),
       ]);
 
       expect(prisma.team.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { organizationId: ORG, organization: { deletedAt: null } },
+          where: { AND: [ISOLATION, {}] },
           orderBy: [{ name: 'asc' }, { id: 'asc' }],
+        }),
+      );
+    });
+
+    it('should narrow a member to the teams they are on', async () => {
+      const { service, prisma } = serviceWith();
+
+      await service.list(ORG, READER);
+
+      expect(prisma.team.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { AND: [ISOLATION, OWN_TEAMS, {}] },
         }),
       );
     });
@@ -120,15 +137,23 @@ describe('TeamsService', () => {
     it('should look the team up by id and organization together', async () => {
       const { service, prisma } = serviceWith();
 
-      await service.get(ORG, TEAM);
+      await service.get(ORG, OVERSEER, TEAM);
 
       expect(prisma.team.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: {
-            id: TEAM,
-            organizationId: ORG,
-            organization: { deletedAt: null },
-          },
+          where: { AND: [ISOLATION, { id: TEAM }] },
+        }),
+      );
+    });
+
+    it("should look a member's team up within their own teams", async () => {
+      const { service, prisma } = serviceWith();
+
+      await service.get(ORG, READER, TEAM);
+
+      expect(prisma.team.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { AND: [ISOLATION, OWN_TEAMS, { id: TEAM }] },
         }),
       );
     });
@@ -137,7 +162,7 @@ describe('TeamsService', () => {
       const { service, prisma } = serviceWith();
 
       await expectCode(
-        service.get(ORG, 'not-a-uuid'),
+        service.get(ORG, OVERSEER, 'not-a-uuid'),
         404,
         TeamsErrorCode.TEAM_NOT_FOUND,
       );
@@ -149,7 +174,20 @@ describe('TeamsService', () => {
       prisma.team.findFirst.mockResolvedValue(null);
 
       await expectCode(
-        service.get(ORG, TEAM),
+        service.get(ORG, OVERSEER, TEAM),
+        404,
+        TeamsErrorCode.TEAM_NOT_FOUND,
+      );
+    });
+
+    it("should answer a team outside the reader's scope the same way", async () => {
+      // The scope leaves the row unmatched, so this is the very same 404 a
+      // nonexistent team gives — the reader cannot tell the two apart.
+      const { service, prisma } = serviceWith();
+      prisma.team.findFirst.mockResolvedValue(null);
+
+      await expectCode(
+        service.get(ORG, READER, TEAM),
         404,
         TeamsErrorCode.TEAM_NOT_FOUND,
       );
@@ -497,7 +535,7 @@ describe('TeamsService', () => {
     it('should list only visible members of a team in the organization', async () => {
       const { service, prisma } = serviceWith();
 
-      await service.listMembers(ORG, TEAM);
+      await service.listMembers(ORG, OVERSEER, TEAM);
 
       expect(prisma.teamMembership.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -515,9 +553,28 @@ describe('TeamsService', () => {
       prisma.team.findFirst.mockResolvedValue(null);
 
       await expectCode(
-        service.listMembers(ORG, TEAM),
+        service.listMembers(ORG, OVERSEER, TEAM),
         404,
         TeamsErrorCode.TEAM_NOT_FOUND,
+      );
+      expect(prisma.teamMembership.findMany).not.toHaveBeenCalled();
+    });
+
+    it("should establish the reader's team before reading any placement", async () => {
+      // The 404 lands before the roster query, so a team outside the scope
+      // cannot be told from a nonexistent one by whether it has members.
+      const { service, prisma } = serviceWith();
+      prisma.team.findFirst.mockResolvedValue(null);
+
+      await expectCode(
+        service.listMembers(ORG, READER, TEAM),
+        404,
+        TeamsErrorCode.TEAM_NOT_FOUND,
+      );
+      expect(prisma.team.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { AND: [ISOLATION, OWN_TEAMS, { id: TEAM }] },
+        }),
       );
       expect(prisma.teamMembership.findMany).not.toHaveBeenCalled();
     });
