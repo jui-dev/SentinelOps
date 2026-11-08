@@ -461,6 +461,115 @@ describe("services", () => {
     });
   });
 
+  describe("a row, opened", () => {
+    const WITH_INCIDENTS = [...READ, "incidents:read"];
+    const priya = {
+      membershipId: "0199a1b2-c3d4-7000-8000-0000000000a1",
+      addedAt: "2026-09-18T12:00:00.000Z",
+      user: {
+        id: "0199a1b2-c3d4-7000-8000-0000000000b1",
+        name: "Priya Shah",
+        email: "priya@example.com",
+      },
+    };
+    const membersOfPayments = `GET ${base}/teams/${payments.id}/members`;
+
+    it("shows the service's active incidents and who responds, asking for responders only once opened", async () => {
+      const user = userEvent.setup();
+      const other = anIncident(7, {
+        severity: "SEV1",
+        service: { ...anIncident(7).service, id: "0199a1b2-c3d4-7000-8000-0000000000e9" },
+      });
+      const { requests } = api(WITH_INCIDENTS, {
+        handler: (request) =>
+          route(request) === `GET ${base}/incidents?state=active`
+            ? jsonResponse(200, incidentPage([anIncident(9, { severity: "SEV2" }), other]))
+            : route(request) === membersOfPayments
+              ? jsonResponse(200, [priya])
+              : undefined,
+      });
+
+      inOrganization(<ServicesView />);
+
+      const toggle = await screen.findByRole("button", {
+        name: "Show incidents and responders of Payment API",
+      });
+
+      expect(count(requests, membersOfPayments)).toBe(0);
+
+      await user.click(toggle);
+
+      const incidents = await screen.findByRole("region", {
+        name: "Active incidents of Payment API",
+      });
+
+      // Its own incidents only, each opening the incident.
+      expect(within(incidents).getAllByRole("link")).toHaveLength(1);
+      expect(
+        within(incidents).getByRole("link", { name: /INC-9/ }).getAttribute("href"),
+      ).toBe("/orgs/acme-ops/incidents/9");
+
+      const responders = screen.getByRole("region", {
+        name: "Who responds to Payment API",
+      });
+
+      expect(await within(responders).findByText("Priya Shah")).toBeDefined();
+      expect(count(requests, membersOfPayments)).toBe(1);
+      // Read only.
+      expect(within(responders).queryByRole("button")).toBeNull();
+    });
+
+    it("names the owner team when its members cannot be read", async () => {
+      const user = userEvent.setup();
+      api(WITH_INCIDENTS, {
+        handler: (request) =>
+          route(request) === membersOfPayments ? apiError(404) : undefined,
+      });
+
+      inOrganization(<ServicesView />);
+
+      await user.click(
+        await screen.findByRole("button", {
+          name: "Show incidents and responders of Payment API",
+        }),
+      );
+
+      const responders = screen.getByRole("region", {
+        name: "Who responds to Payment API",
+      });
+
+      expect(
+        await within(responders).findByText(/which owns this service/),
+      ).toBeDefined();
+      expect(
+        within(responders).getByRole("link", { name: "Payments" }).getAttribute("href"),
+      ).toBe("/orgs/acme-ops/teams/payments");
+    });
+
+    it("opens from a click on the row, but not from its links or actions", async () => {
+      const user = userEvent.setup();
+      api([...MANAGE, "incidents:read"]);
+
+      inOrganization(<ServicesView />);
+
+      await user.click(await screen.findByText("Takes card payments."));
+      expect(
+        screen.getByRole("region", { name: "Active incidents of Payment API" }),
+      ).toBeDefined();
+
+      await user.click(screen.getByText("Takes card payments."));
+      expect(
+        screen.queryByRole("region", { name: "Active incidents of Payment API" }),
+      ).toBeNull();
+
+      await user.click(screen.getByRole("button", { name: "Edit Payment API" }));
+      await screen.findByRole("dialog", { name: "Edit service" });
+      expect(
+        screen.queryByRole("region", { name: "Active incidents of Payment API" }),
+      ).toBeNull();
+    });
+  });
+
   describe("a service", () => {
     beforeEach(() => {
       navigation.params = { orgSlug: "acme-ops", serviceSlug: "payment-api" };

@@ -3,7 +3,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ChevronRight, Pencil, Search } from "lucide-react";
 import Link from "next/link";
-import { useId, useState } from "react";
+import { Fragment, useId, useState } from "react";
 import type { FormEvent } from "react";
 
 import {
@@ -43,6 +43,7 @@ import { queryKeys } from "@/lib/api/query-keys";
 import { CRITICALITY_LEVELS, DEFAULT_CRITICALITY } from "./criticality";
 import { CriticalityMark } from "./criticality-mark";
 import { EditServiceDialog } from "./edit-service-dialog";
+import { ServicePeek } from "./service-peek";
 import {
   CriticalitySelect,
   OWNER_TEAM_GONE_MESSAGE,
@@ -442,6 +443,16 @@ function ServiceList({
   // By id, read from the list as it stands: a service deleted meanwhile
   // closes its dialog.
   const [editingId, setEditingId] = useState<string | null>(null);
+  // Any number open at once, so services can be compared side by side.
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  const toggle = (serviceId: string) =>
+    setExpanded((current) => {
+      const next = new Set(current);
+
+      if (!next.delete(serviceId)) next.add(serviceId);
+
+      return next;
+    });
 
   if (services.isError) return <ErrorAlert error={services.error} />;
   if (!services.data) return <Spinner label="Loading services…" />;
@@ -521,9 +532,41 @@ function ServiceList({
               </TD>
             </TR>
           ) : (
-            shown.map((service) => (
-              <TR key={service.id}>
+            shown.map((service) => {
+              const open = expanded.has(service.id);
+              const peekId = `service-peek-${service.id}`;
+
+              return (
+              <Fragment key={service.id}>
+              <TR
+                // A click anywhere on the row opens it, as the chevron does —
+                // but not one meant for a link or an action.
+                onClick={(event) => {
+                  if ((event.target as Element).closest("a, button")) return;
+                  toggle(service.id);
+                }}
+                className="cursor-pointer"
+              >
                 <TD>
+                  <div className="flex items-start gap-2">
+                    <button
+                      type="button"
+                      aria-expanded={open}
+                      aria-controls={open ? peekId : undefined}
+                      aria-label={`${open ? "Hide" : "Show"} incidents and responders of ${service.name}`}
+                      onClick={() => toggle(service.id)}
+                      className="-ml-1 grid size-6 shrink-0 place-items-center rounded-sm text-fg-subtle hover:bg-hover hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+                    >
+                      <ChevronRight
+                        aria-hidden="true"
+                        strokeWidth={2}
+                        className={cx(
+                          "size-4 transition-transform duration-(--duration-fast)",
+                          open && "rotate-90",
+                        )}
+                      />
+                    </button>
+                    <div className="min-w-0">
                   <span className="font-medium text-fg">{service.name}</span>
                   {service.archivedAt && (
                     <span className="ml-2 rounded-sm border border-line px-1.5 text-2xs text-fg-subtle">
@@ -540,6 +583,8 @@ function ServiceList({
                   <span className="block truncate text-xs text-fg-muted sm:hidden">
                     {service.ownerTeam.name}
                   </span>
+                    </div>
+                  </div>
                 </TD>
                 <TD className="hidden sm:table-cell">
                   <Link
@@ -595,7 +640,20 @@ function ServiceList({
                   </div>
                 </TD>
               </TR>
-            ))
+              {open && (
+                // A plain row, outside the table's hover: the row above, opened.
+                <tr id={peekId}>
+                  <td
+                    colSpan={withStatus ? 5 : 4}
+                    className="border-b border-line-subtle bg-sunken px-3 py-3 sm:px-4"
+                  >
+                    <ServicePeek service={service} />
+                  </td>
+                </tr>
+              )}
+              </Fragment>
+              );
+            })
           )}
         </TBody>
       </Table>

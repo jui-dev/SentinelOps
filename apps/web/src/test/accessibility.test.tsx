@@ -864,6 +864,7 @@ it("Members, About roles open", async () => {      signedIn(ADMIN);      const {
       await expectNoAxeViolations(container);
     });
 
+it("Services, with a row opened", async () => {      signedIn(ADMIN);      const { container } = inWorkspace(<ServicesView />);      (        await screen.findByRole("button", {          name: `Show incidents and responders of ${service.name}`,        })      ).click();      await screen.findByRole("region", { name: `Who responds to ${service.name}` });      await expectNoAxeViolations(container);    });
     it("Edit service, from the Services list", async () => {
       signedIn(ADMIN);
       const { container } = inWorkspace(<ServicesView />);
