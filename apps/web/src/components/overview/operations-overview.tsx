@@ -45,6 +45,7 @@ import { OperationalAttention } from "./operational-attention";
 import { OverviewPanel } from "./overview-panel";
 import { OverviewSummary } from "./overview-summary";
 import { RecentOperationalHealth } from "./recent-operational-health";
+import { SetupChecklist } from "./setup-checklist";
 import { useCurrentOperations } from "./use-current-operations";
 import type { CurrentOperationsState } from "./use-current-operations";
 
@@ -569,6 +570,7 @@ export function OperationsOverview() {
 
   return (
     <div className="flex flex-col gap-6">
+      <SetupChecklist />
       <OverviewSummary state={current} />
       <OperationalAttention />
       <CurrentOperations current={current} />
