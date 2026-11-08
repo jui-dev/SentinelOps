@@ -47,7 +47,13 @@ export function Select({
   const id = useId();
 
   return (
-    <FieldFrame id={id} label={label} hint={hint} error={error}>
+    <FieldFrame
+      id={id}
+      label={label}
+      required={select.required}
+      hint={hint}
+      error={error}
+    >
       <SelectControl
         id={id}
         aria-invalid={error ? true : undefined}

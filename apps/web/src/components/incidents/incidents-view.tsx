@@ -25,6 +25,11 @@ import { PageBody, PageHeader, Section } from "@/components/ui/page";
 import { Select } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { linkClasses } from "@/components/ui/link";
+import {
+  RequiredNote,
+  SubmitHint,
+  useRequiredFields,
+} from "@/components/ui/required";
 import { ApiErrorCode, Permission } from "@/lib/api/contracts";
 import type {
   CreateIncidentRequest,
@@ -79,6 +84,8 @@ export function SeveritySelect({
       onChange={(event) => onChange(event.target.value as IncidentSeverity)}
       hint={value ? severityOf(value).definition : undefined}
       error={error}
+      // With nothing chosen to start from — a declaration — choosing is required.
+      required={placeholder !== undefined}
     >
       {placeholder && (
         <option value="" disabled>
@@ -156,6 +163,7 @@ function DeclareIncidentForm({ onCancel }: { onCancel: () => void }) {
     (isApiError(declare.error, 409) &&
       declare.error.code === ApiErrorCode.SERVICE_ARCHIVED);
   const fields = fieldErrorsOf(declare.error);
+  const { attach: requiredRef, ...required } = useRequiredFields();
 
   if (services.isError) return <ErrorAlert error={services.error} />;
   if (!available) return <Spinner label="Loading services…" />;
@@ -190,7 +198,13 @@ function DeclareIncidentForm({ onCancel }: { onCancel: () => void }) {
   }
 
   return (
-    <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
+    <form
+      ref={requiredRef}
+      onSubmit={onSubmit}
+      noValidate
+      className="flex flex-col gap-4"
+    >
+      <RequiredNote />
       {declare.isError &&
         !serviceUnavailable &&
         Object.keys(fields).length === 0 && (
@@ -211,6 +225,7 @@ function DeclareIncidentForm({ onCancel }: { onCancel: () => void }) {
           name="serviceId"
           value={serviceId}
           onChange={(event) => setServiceId(event.target.value)}
+          required
           error={
             serviceUnavailable
               ? SERVICE_UNAVAILABLE_MESSAGE
@@ -249,10 +264,15 @@ function DeclareIncidentForm({ onCancel }: { onCancel: () => void }) {
         error={fields.summary}
       />
       <DialogActions>
+        <SubmitHint id={required.hintId} missing={required.missing} />
         <Button variant="secondary" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit" disabled={declare.isPending}>
+        <Button
+          type="submit"
+          disabled={declare.isPending || !required.ready}
+          aria-describedby={required.ready ? undefined : required.hintId}
+        >
           {declare.isPending ? "Declaring…" : "Declare incident"}
         </Button>
       </DialogActions>

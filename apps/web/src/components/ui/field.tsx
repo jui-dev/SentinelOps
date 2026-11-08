@@ -7,6 +7,7 @@ import type {
 } from "react";
 
 import { cx } from "./cx";
+import { RequiredMark } from "./required";
 
 export type ControlSize = "md" | "lg";
 
@@ -41,6 +42,7 @@ export function FieldFrame({
   id,
   label,
   optional,
+  required,
   hint,
   error,
   children,
@@ -48,21 +50,27 @@ export function FieldFrame({
   id: string;
   label: string;
   optional?: boolean;
+  /** Marks the label with the required asterisk; the control says `required`. */
+  required?: boolean;
   hint?: string;
   error?: string;
   children: ReactNode;
 }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <label
-        htmlFor={id}
-        className="flex items-baseline gap-2 text-sm font-medium text-fg"
-      >
-        {label}
-        {optional && (
-          <span className="text-xs font-normal text-fg-subtle">Optional</span>
-        )}
-      </label>
+      {/*
+       * The asterisk sits beside the label, not in it, so the label is the
+       * field's name exactly; the control's `required` says the rest.
+       */}
+      <div className="flex items-baseline gap-1 text-sm font-medium text-fg">
+        <label htmlFor={id} className="flex items-baseline gap-2">
+          {label}
+          {optional && (
+            <span className="text-xs font-normal text-fg-subtle">Optional</span>
+          )}
+        </label>
+        {required && <RequiredMark />}
+      </div>
       {children}
       {hint && (
         <p id={`${id}-hint`} className="text-xs text-fg-subtle">
@@ -116,6 +124,7 @@ export function TextArea({
       id={id}
       label={label}
       optional={optional}
+      required={textarea.required}
       hint={hint}
       error={error}
     >
@@ -155,6 +164,7 @@ export function Field({
       id={id}
       label={label}
       optional={optional}
+      required={input.required}
       hint={hint}
       error={error}
     >

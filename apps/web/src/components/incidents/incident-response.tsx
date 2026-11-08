@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { cx } from "@/components/ui/cx";
 import { TextArea } from "@/components/ui/field";
 import { Duration, LocalDateTime } from "@/components/ui/timestamp";
+import { SubmitHint, useRequiredFields } from "@/components/ui/required";
 import { ApiErrorCode } from "@/lib/api/contracts";
 import type {
   IncidentDetailResponse,
@@ -143,6 +144,7 @@ function Resolve({ incident }: { incident: IncidentResponse }) {
   const [confirming, setConfirming] = useState(false);
   const [note, setNote] = useState("");
   const [blank, setBlank] = useState(false);
+  const { attach: requiredRef, ...required } = useRequiredFields();
 
   if (!confirming) {
     return <Button onClick={() => setConfirming(true)}>Resolve incident</Button>;
@@ -183,10 +185,16 @@ function Resolve({ incident }: { incident: IncidentResponse }) {
           }
         />
       )}
-      <form onSubmit={onSubmit} noValidate className="flex flex-col gap-3 pt-3">
+      <form
+        ref={requiredRef}
+        onSubmit={onSubmit}
+        noValidate
+        className="flex flex-col gap-3 pt-3"
+      >
         <TextArea
           label="How was it resolved?"
           name="resolution"
+          required
           rows={3}
           maxLength={2000}
           value={note}
@@ -197,8 +205,13 @@ function Resolve({ incident }: { incident: IncidentResponse }) {
           hint="What fixed it, or why it no longer needs a response. Kept with the incident and on its timeline."
           error={fieldError}
         />
-        <div className="flex gap-2">
-          <Button type="submit" size="sm" disabled={update.isPending}>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="submit"
+            size="sm"
+            disabled={update.isPending || !required.ready}
+            aria-describedby={required.ready ? undefined : required.hintId}
+          >
             {update.isPending ? "Resolving…" : "Resolve incident"}
           </Button>
           <Button
@@ -212,6 +225,7 @@ function Resolve({ incident }: { incident: IncidentResponse }) {
           >
             Cancel
           </Button>
+          <SubmitHint id={required.hintId} missing={required.missing} />
         </div>
       </form>
     </Alert>

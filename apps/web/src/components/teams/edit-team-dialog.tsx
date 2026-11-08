@@ -12,6 +12,11 @@ import { Button } from "@/components/ui/button";
 import { FormDialog } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
 import { linkClasses } from "@/components/ui/link";
+import {
+  RequiredNote,
+  SubmitHint,
+  useRequiredFields,
+} from "@/components/ui/required";
 import { ApiErrorCode } from "@/lib/api/contracts";
 import type { TeamResponse, UpdateTeamRequest } from "@/lib/api/contracts";
 import { deleteTeam, updateTeam } from "@/lib/api/endpoints";
@@ -56,6 +61,7 @@ function EditTeamForm({
   const queryClient = useQueryClient();
   const invalidateIncidents = useInvalidateIncidents();
   const refreshTeams = useRefreshTeams();
+  const { attach: requiredRef, ...required } = useRequiredFields();
   const update = useMutation({
     mutationFn: (body: UpdateTeamRequest) =>
       updateTeam(organization.id, team.id, body),
@@ -96,7 +102,13 @@ function EditTeamForm({
   const fields = fieldErrorsOf(update.error);
 
   return (
-    <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
+    <form
+      ref={requiredRef}
+      onSubmit={onSubmit}
+      noValidate
+      className="flex flex-col gap-4"
+    >
+      <RequiredNote />
       {update.isError && !nameTaken && Object.keys(fields).length === 0 && (
         <ErrorAlert error={update.error} />
       )}
@@ -118,11 +130,16 @@ function EditTeamForm({
         autoComplete="off"
         error={fields.description}
       />
-      <div className="flex justify-end gap-2">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <SubmitHint id={required.hintId} missing={required.missing} />
         <Button variant="secondary" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit" disabled={update.isPending}>
+        <Button
+          type="submit"
+          disabled={update.isPending || !required.ready}
+          aria-describedby={required.ready ? undefined : required.hintId}
+        >
           {update.isPending ? "Saving…" : "Save changes"}
         </Button>
       </div>

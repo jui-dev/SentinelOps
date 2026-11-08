@@ -15,6 +15,11 @@ import { Field } from "@/components/ui/field";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs } from "@/components/ui/tabs";
 import { linkClasses } from "@/components/ui/link";
+import {
+  RequiredNote,
+  SubmitHint,
+  useRequiredFields,
+} from "@/components/ui/required";
 import { ApiErrorCode } from "@/lib/api/contracts";
 import type { InvitationLookupResponse } from "@/lib/api/contracts";
 import { acceptInvitation, lookupInvitation } from "@/lib/api/endpoints";
@@ -149,6 +154,7 @@ function CreateAccount({
   const { registerWithInvitation } = useSession();
   const [error, setError] = useState<unknown>(null);
   const [submitting, setSubmitting] = useState(false);
+  const { attach: requiredRef, ...required } = useRequiredFields();
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -184,7 +190,13 @@ function CreateAccount({
   const fields = fieldErrorsOf(error);
 
   return (
-    <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
+    <form
+      ref={requiredRef}
+      onSubmit={onSubmit}
+      noValidate
+      className="flex flex-col gap-4"
+    >
+      <RequiredNote />
       {error !== null && (
         <ErrorAlert
           error={error}
@@ -225,9 +237,17 @@ function CreateAccount({
         hint="At least 12 characters. A long passphrase is best."
         error={fields.password}
       />
-      <Button type="submit" size="lg" disabled={submitting}>
-        {submitting ? "Creating account…" : "Create account and join"}
-      </Button>
+      <div className="flex flex-col gap-2">
+        <Button
+          type="submit"
+          size="lg"
+          disabled={submitting || !required.ready}
+          aria-describedby={required.ready ? undefined : required.hintId}
+        >
+          {submitting ? "Creating account…" : "Create account and join"}
+        </Button>
+        <SubmitHint id={required.hintId} missing={required.missing} />
+      </div>
     </form>
   );
 }

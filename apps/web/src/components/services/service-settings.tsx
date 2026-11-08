@@ -18,6 +18,11 @@ import { PageBody, PageHeader } from "@/components/ui/page";
 import { Select } from "@/components/ui/select";
 import { SettingRow } from "@/components/ui/setting-row";
 import { Spinner } from "@/components/ui/spinner";
+import {
+  RequiredNote,
+  SubmitHint,
+  useRequiredFields,
+} from "@/components/ui/required";
 import { ApiErrorCode, Permission } from "@/lib/api/contracts";
 import type {
   ServiceCriticality,
@@ -105,6 +110,7 @@ function EditServiceForm() {
     isApiError(update.error, 409) &&
     update.error.code === ApiErrorCode.SERVICE_NAME_TAKEN;
   const fields = fieldErrorsOf(update.error);
+  const { attach: requiredRef, ...required } = useRequiredFields();
 
   return (
     <SettingRow
@@ -117,10 +123,12 @@ function EditServiceForm() {
       }
     >
       <form
+        ref={requiredRef}
         onSubmit={onSubmit}
         noValidate
         className="flex max-w-md flex-col gap-4"
       >
+        <RequiredNote />
         {update.isError && !nameTaken && Object.keys(fields).length === 0 && (
           <ErrorAlert error={update.error} />
         )}
@@ -148,10 +156,15 @@ function EditServiceForm() {
           onChange={setCriticality}
           error={fields.criticality}
         />
-        <div>
-          <Button type="submit" disabled={update.isPending}>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            type="submit"
+            disabled={update.isPending || !required.ready}
+            aria-describedby={required.ready ? undefined : required.hintId}
+          >
             {update.isPending ? "Saving…" : "Save"}
           </Button>
+          <SubmitHint id={required.hintId} missing={required.missing} />
         </div>
       </form>
     </SettingRow>

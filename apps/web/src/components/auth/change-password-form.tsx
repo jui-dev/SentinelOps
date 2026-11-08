@@ -9,6 +9,7 @@ import { ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { PageSpinner } from "@/components/ui/spinner";
+import { RequiredNote } from "@/components/ui/required";
 import { fieldErrorsOf, isApiError } from "@/lib/api/errors";
 import { useCurrentUser, useSession } from "@/lib/auth/session-provider";
 
@@ -90,6 +91,7 @@ export function ChangePasswordForm() {
             : "Every other device you are signed in on will be signed out."
         }
       />
+      <RequiredNote />
       {error !== null && (
         <ErrorAlert error={error} message={messageFor(error)} />
       )}

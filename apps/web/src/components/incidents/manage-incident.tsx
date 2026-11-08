@@ -12,6 +12,11 @@ import { Field, TextArea } from "@/components/ui/field";
 import { Section } from "@/components/ui/page";
 import { Select } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
+import {
+  RequiredNote,
+  SubmitHint,
+  useRequiredFields,
+} from "@/components/ui/required";
 import { ApiErrorCode } from "@/lib/api/contracts";
 import type {
   IncidentResponse,
@@ -143,10 +148,17 @@ function DetailsForm({ incident }: { incident: IncidentResponse }) {
   };
 
   const fields = fieldErrorsOf(update.error);
+  const { attach: requiredRef, ...required } = useRequiredFields();
 
   return (
     <Section id="details" title="Title and summary" level={3}>
-      <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
+      <form
+        ref={requiredRef}
+        onSubmit={onSubmit}
+        noValidate
+        className="flex flex-col gap-4"
+      >
+        <RequiredNote />
         {update.isError && Object.keys(fields).length === 0 && (
           <ErrorAlert
             error={update.error}
@@ -175,10 +187,15 @@ function DetailsForm({ incident }: { incident: IncidentResponse }) {
           maxLength={2000}
           error={fields.summary}
         />
-        <div>
-          <Button type="submit" disabled={update.isPending}>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            type="submit"
+            disabled={update.isPending || !required.ready}
+            aria-describedby={required.ready ? undefined : required.hintId}
+          >
             {update.isPending ? "Saving…" : "Save details"}
           </Button>
+          <SubmitHint id={required.hintId} missing={required.missing} />
         </div>
       </form>
     </Section>

@@ -10,6 +10,11 @@ import { CopyField } from "@/components/ui/copy-field";
 import { Field } from "@/components/ui/field";
 import { Section } from "@/components/ui/page";
 import { Select } from "@/components/ui/select";
+import {
+  RequiredNote,
+  SubmitHint,
+  useRequiredFields,
+} from "@/components/ui/required";
 import { ApiErrorCode, Permission } from "@/lib/api/contracts";
 import type {
   CreateInvitationRequest,
@@ -138,6 +143,8 @@ export function InviteMemberForm() {
   const create = useCreateInvitation(organizationId);
   const [issued, setIssued] = useState<IssuedLink | null>(null);
 
+  const { attach: requiredRef, ...required } = useRequiredFields();
+
   if (!canManage) return null;
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -173,10 +180,12 @@ export function InviteMemberForm() {
       description="You'll get a link to share with them. Inviting an email that already has an open invitation replaces it."
     >
       <form
+        ref={requiredRef}
         onSubmit={onSubmit}
         noValidate
         className="flex max-w-2xl flex-col gap-4"
       >
+        <RequiredNote />
         {create.isError && (
           <ErrorAlert error={create.error} message={messageFor(create.error)} />
         )}
@@ -205,10 +214,16 @@ export function InviteMemberForm() {
             </Select>
           </div>
           {/* Aligned with the controls, below their labels. */}
-          <Button type="submit" disabled={create.isPending} className="mt-6.5">
+          <Button
+            type="submit"
+            disabled={create.isPending || !required.ready}
+            aria-describedby={required.ready ? undefined : required.hintId}
+            className="mt-6.5"
+          >
             {create.isPending ? "Creating…" : "Create invitation"}
           </Button>
         </div>
+        <SubmitHint id={required.hintId} missing={required.missing} />
       </form>
     </Section>
   );

@@ -8,6 +8,11 @@ import { ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { DialogActions } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
+import {
+  RequiredNote,
+  SubmitHint,
+  useRequiredFields,
+} from "@/components/ui/required";
 import { ApiErrorCode } from "@/lib/api/contracts";
 import type { CreateTeamRequest, TeamResponse } from "@/lib/api/contracts";
 import { createTeam } from "@/lib/api/endpoints";
@@ -43,6 +48,7 @@ const useCreateTeam = (organizationId: string) => {
 export function CreateTeamForm({ onClose }: { onClose: () => void }) {
   const organization = useOrganization();
   const create = useCreateTeam(organization.id);
+  const { attach: requiredRef, ...required } = useRequiredFields();
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -63,7 +69,13 @@ export function CreateTeamForm({ onClose }: { onClose: () => void }) {
   const fields = fieldErrorsOf(create.error);
 
   return (
-    <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
+    <form
+      ref={requiredRef}
+      onSubmit={onSubmit}
+      noValidate
+      className="flex flex-col gap-4"
+    >
+      <RequiredNote />
       {create.isError && !nameTaken && Object.keys(fields).length === 0 && (
         <ErrorAlert error={create.error} />
       )}
@@ -85,10 +97,15 @@ export function CreateTeamForm({ onClose }: { onClose: () => void }) {
         error={fields.description}
       />
       <DialogActions>
+        <SubmitHint id={required.hintId} missing={required.missing} />
         <Button variant="secondary" onClick={onClose}>
           Cancel
         </Button>
-        <Button type="submit" disabled={create.isPending}>
+        <Button
+          type="submit"
+          disabled={create.isPending || !required.ready}
+          aria-describedby={required.ready ? undefined : required.hintId}
+        >
           {create.isPending ? "Creating…" : "Create team"}
         </Button>
       </DialogActions>

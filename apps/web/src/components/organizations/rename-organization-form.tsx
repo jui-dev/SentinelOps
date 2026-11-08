@@ -8,6 +8,11 @@ import { Alert, ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { SettingRow } from "@/components/ui/setting-row";
+import {
+  RequiredNote,
+  SubmitHint,
+  useRequiredFields,
+} from "@/components/ui/required";
 import { ApiErrorCode, Permission } from "@/lib/api/contracts";
 import type { OrganizationDetailResponse } from "@/lib/api/contracts";
 import { updateOrganization } from "@/lib/api/endpoints";
@@ -50,6 +55,8 @@ export function RenameOrganizationForm() {
   const rename = useRenameOrganization(organization.id);
   const [saved, setSaved] = useState(false);
 
+  const { attach: requiredRef, ...required } = useRequiredFields();
+
   if (!canUpdate) {
     return (
       <Alert tone="info">
@@ -84,10 +91,12 @@ export function RenameOrganizationForm() {
       }
     >
       <form
+        ref={requiredRef}
         onSubmit={onSubmit}
         noValidate
         className="flex max-w-md flex-col gap-4"
       >
+        <RequiredNote />
         {rename.isError && (
           <ErrorAlert
             error={rename.error}
@@ -107,10 +116,15 @@ export function RenameOrganizationForm() {
           maxLength={100}
           error={fields.name}
         />
-        <div>
-          <Button type="submit" disabled={rename.isPending}>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            type="submit"
+            disabled={rename.isPending || !required.ready}
+            aria-describedby={required.ready ? undefined : required.hintId}
+          >
             {rename.isPending ? "Saving…" : "Save"}
           </Button>
+          <SubmitHint id={required.hintId} missing={required.missing} />
         </div>
       </form>
     </SettingRow>

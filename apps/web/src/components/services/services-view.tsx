@@ -20,6 +20,11 @@ import { Select } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { linkClasses, quietLinkClasses } from "@/components/ui/link";
+import {
+  RequiredNote,
+  SubmitHint,
+  useRequiredFields,
+} from "@/components/ui/required";
 import { ApiErrorCode, Permission } from "@/lib/api/contracts";
 import type {
   CreateServiceRequest,
@@ -142,6 +147,7 @@ function CreateServiceForm({ onClose }: { onClose: () => void }) {
     isApiError(create.error, 404) &&
     create.error.code === ApiErrorCode.TEAM_NOT_FOUND;
   const fields = fieldErrorsOf(create.error);
+  const { attach: requiredRef, ...required } = useRequiredFields();
 
   if (teams.isError) return <ErrorAlert error={teams.error} />;
   if (!teams.data) return <Spinner label="Loading teams…" />;
@@ -175,7 +181,13 @@ function CreateServiceForm({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
+    <form
+      ref={requiredRef}
+      onSubmit={onSubmit}
+      noValidate
+      className="flex flex-col gap-4"
+    >
+      <RequiredNote />
       {create.isError &&
         !nameTaken &&
         !ownerGone &&
@@ -217,10 +229,15 @@ function CreateServiceForm({ onClose }: { onClose: () => void }) {
         error={fields.criticality}
       />
       <DialogActions>
+        <SubmitHint id={required.hintId} missing={required.missing} />
         <Button variant="secondary" onClick={onClose}>
           Cancel
         </Button>
-        <Button type="submit" disabled={create.isPending}>
+        <Button
+          type="submit"
+          disabled={create.isPending || !required.ready}
+          aria-describedby={required.ready ? undefined : required.hintId}
+        >
           {create.isPending ? "Creating…" : "Create service"}
         </Button>
       </DialogActions>

@@ -13,6 +13,11 @@ import { DialogActions, FormDialog } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
 import { linkClasses } from "@/components/ui/link";
 import { Spinner } from "@/components/ui/spinner";
+import {
+  RequiredNote,
+  SubmitHint,
+  useRequiredFields,
+} from "@/components/ui/required";
 import { teamsHref, useTeams } from "@/components/teams/team-scope";
 import { ApiErrorCode } from "@/lib/api/contracts";
 import type { CreateMemberRequest } from "@/lib/api/contracts";
@@ -231,6 +236,7 @@ function AddMemberForm({
   const organization = useOrganization();
   const create = useCreateMember(organization.id);
   const [password, setPassword] = useState("");
+  const { attach: requiredRef, ...required } = useRequiredFields(password);
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -257,7 +263,13 @@ function AddMemberForm({
   const fields = fieldErrorsOf(create.error);
 
   return (
-    <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
+    <form
+      ref={requiredRef}
+      onSubmit={onSubmit}
+      noValidate
+      className="flex flex-col gap-4"
+    >
+      <RequiredNote />
       {create.isError && (
         <ErrorAlert error={create.error} message={messageFor(create.error)} />
       )}
@@ -307,10 +319,15 @@ function AddMemberForm({
       </div>
       <TeamChoices disabled={create.isPending} />
       <DialogActions>
+        <SubmitHint id={required.hintId} missing={required.missing} />
         <Button variant="secondary" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit" disabled={create.isPending}>
+        <Button
+          type="submit"
+          disabled={create.isPending || !required.ready}
+          aria-describedby={required.ready ? undefined : required.hintId}
+        >
           {create.isPending ? "Adding…" : "Add member"}
         </Button>
       </DialogActions>

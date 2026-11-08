@@ -10,6 +10,11 @@ import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { PageSpinner } from "@/components/ui/spinner";
 import { linkClasses } from "@/components/ui/link";
+import {
+  RequiredNote,
+  SubmitHint,
+  useRequiredFields,
+} from "@/components/ui/required";
 import { ApiErrorCode } from "@/lib/api/contracts";
 import { fieldErrorsOf, isApiError } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session-provider";
@@ -35,6 +40,7 @@ export function RegisterForm() {
   const { status, next } = useAuthRedirect();
   const [error, setError] = useState<unknown>(null);
   const [submitting, setSubmitting] = useState(false);
+  const { attach: requiredRef, ...required } = useRequiredFields();
 
   if (status === "unavailable") return <SessionUnavailable />;
   if (status !== "unauthenticated") return <PageSpinner size="panel" />;
@@ -67,11 +73,17 @@ export function RegisterForm() {
   const loginHref = next ? `/login?next=${encodeURIComponent(next)}` : "/login";
 
   return (
-    <form onSubmit={onSubmit} noValidate className="flex flex-col gap-5">
+    <form
+      ref={requiredRef}
+      onSubmit={onSubmit}
+      noValidate
+      className="flex flex-col gap-5"
+    >
       <AuthHeading
         title="Create your organization"
         description="You'll be its owner, and can invite your team once you're in."
       />
+      <RequiredNote />
       {error !== null && (
         <ErrorAlert
           error={error}
@@ -128,9 +140,17 @@ export function RegisterForm() {
         maxLength={48}
         error={fields.organizationSlug}
       />
-      <Button type="submit" size="lg" disabled={submitting}>
-        {submitting ? "Creating…" : "Create organization"}
-      </Button>
+      <div className="flex flex-col gap-2">
+        <Button
+          type="submit"
+          size="lg"
+          disabled={submitting || !required.ready}
+          aria-describedby={required.ready ? undefined : required.hintId}
+        >
+          {submitting ? "Creating…" : "Create organization"}
+        </Button>
+        <SubmitHint id={required.hintId} missing={required.missing} />
+      </div>
       <p className="pt-2 text-sm text-fg-muted">
         Already have an account?{" "}
         <Link href={loginHref} className={linkClasses}>

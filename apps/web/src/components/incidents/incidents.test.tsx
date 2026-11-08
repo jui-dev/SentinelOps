@@ -658,12 +658,26 @@ describe("incidents", () => {
       inOrganization(<IncidentsView />);
 
       await user.click(await screen.findByRole("button", { name: "Declare incident" }));
-      await user.selectOptions(await screen.findByLabelText("Affected service"), paymentApi.id);
-      await user.click(
-        within(screen.getByRole("dialog", { name: "Declare an incident" })).getByRole("button", {
-          name: "Declare incident",
-        }),
-      );
+
+      const form = screen.getByRole("dialog", { name: "Declare an incident" });
+      const declare = within(form).getByRole("button", { name: "Declare incident" });
+
+      // Held back, and saying why, until every required field is filled.
+      expect((declare as HTMLButtonElement).disabled).toBe(true);
+      expect(
+        within(form).getByText(
+          "Fill in Title, Affected service and Severity to continue.",
+        ),
+      ).toBeDefined();
+
+      await user.type(within(form).getByLabelText("Title"), "Card payments failing");
+      await user.selectOptions(await within(form).findByLabelText("Affected service"), paymentApi.id);
+      await user.selectOptions(within(form).getByLabelText("Severity"), "SEV2");
+
+      await waitFor(() => expect((declare as HTMLButtonElement).disabled).toBe(false));
+      expect(within(form).queryByText(/to continue/)).toBeNull();
+
+      await user.click(declare);
 
       expect(await screen.findByText(/no longer available for new incidents/)).toBeDefined();
       await waitFor(() => expect(count(requests, `GET ${base}/services`)).toBeGreaterThan(1));
@@ -837,7 +851,7 @@ describe("incidents", () => {
         });
       });
 
-      it("asks how it was resolved before sending anything", async () => {
+      it("asks how it was resolved before it can be sent", async () => {
         const user = userEvent.setup();
         const { requests } = api(ADMIN, {
           detail: incident({ responders: [responder(daniel, "COMPLETED")] }),
@@ -846,13 +860,18 @@ describe("incidents", () => {
         inOrganization(<IncidentDetail />);
 
         await user.click(await screen.findByRole("button", { name: "Resolve incident" }));
+        // Blank, or only spaces: not an answer, so not sendable.
         await user.type(screen.getByLabelText("How was it resolved?"), "   ");
-        await user.click(screen.getByRole("button", { name: "Resolve incident" }));
 
-        expect(await screen.findByText("Say how the incident was resolved.")).toBeDefined();
+        const resolve = screen.getByRole("button", { name: "Resolve incident" });
+
+        await waitFor(() => expect((resolve as HTMLButtonElement).disabled).toBe(true));
         expect(
-          screen.getByLabelText("How was it resolved?").getAttribute("aria-invalid"),
-        ).toBe("true");
+          screen.getByText("Fill in How was it resolved? to continue."),
+        ).toBeDefined();
+        expect(resolve.getAttribute("aria-describedby")).toBeTruthy();
+
+        await user.click(resolve);
         expect(requests.some((r) => r.method === "PATCH")).toBe(false);
       });
 
