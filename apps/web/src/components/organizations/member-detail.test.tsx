@@ -354,8 +354,23 @@ describe("a member's page", () => {
 
       renderMember();
 
-      const list = await screen.findByRole("list", { name: "Recent responses" });
-      const rows = within(list).getAllByRole("listitem");
+      const table = await screen.findByRole("table", { name: "Recent responses" });
+
+      // Each column says what it holds.
+      expect(
+        within(table)
+          .getAllByRole("columnheader")
+          .map((header) => header.textContent),
+      ).toEqual([
+        "Severity",
+        "Incident",
+        "Service",
+        "Team",
+        "Their part",
+        "Incident status",
+      ]);
+
+      const rows = within(table).getAllByRole("row").slice(1);
 
       expect(rows).toHaveLength(2);
       expect(rows[0].textContent).toMatch(/INC-7.*Card declines 7.*Investigating for/);

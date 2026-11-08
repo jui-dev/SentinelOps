@@ -10,7 +10,15 @@ import { cx } from "@/components/ui/cx";
 import { DetailCard } from "@/components/ui/detail-layout";
 import { EmptyNote } from "@/components/ui/empty-state";
 import { Spinner } from "@/components/ui/spinner";
-import { stretchedLinkClasses } from "@/components/ui/table";
+import {
+  stretchedLinkClasses,
+  Table,
+  TBody,
+  TD,
+  TH,
+  THead,
+  TR,
+} from "@/components/ui/table";
 import { Duration } from "@/components/ui/timestamp";
 import type { MemberResponseResponse } from "@/lib/api/contracts";
 
@@ -50,21 +58,25 @@ function OwnPart({ response }: { response: MemberResponseResponse }) {
   );
 }
 
-/** One response: the incident first, then their part in it. */
+/**
+ * One response, as a row: the incident first, then where it happened, then
+ * their part in it and how the incident itself stands. The whole row opens
+ * the incident, through its one link.
+ */
 function ResponseRow({ response }: { response: MemberResponseResponse }) {
   const organization = useOrganization();
   const { incident } = response;
 
   return (
-    <li className="relative grid grid-cols-[4.75rem_minmax(0,1fr)] gap-x-3 px-4 py-2.5 hover:bg-hover sm:grid-cols-[5.5rem_minmax(0,1fr)] sm:px-5">
-      <span className="pt-px text-sm">
+    <TR interactive>
+      <TD>
         <SeverityMark severity={incident.severity} emphasis />
-      </span>
-      <div className="flex min-w-0 flex-col gap-1">
+      </TD>
+      <TD>
         <Link
           href={incidentHref(organization.slug, incident.number)}
           className={cx(
-            "group flex min-w-0 items-baseline gap-2 text-sm underline-offset-2",
+            "group flex min-w-0 items-baseline gap-2 underline-offset-2",
             stretchedLinkClasses,
           )}
         >
@@ -78,15 +90,22 @@ function ResponseRow({ response }: { response: MemberResponseResponse }) {
             {incident.title}
           </span>
         </Link>
-        <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-fg-muted">
-          <OwnPart response={response} />
-          <span>
-            {incident.service.name} · {incident.team.name}
-          </span>
-          <StatusMark status={incident.status} />
-        </p>
-      </div>
-    </li>
+        {/* Until there is room for their columns, where folds under the title. */}
+        <span className="block truncate text-xs text-fg-muted lg:hidden">
+          {incident.service.name} · {incident.team.name}
+        </span>
+      </TD>
+      <TD className="hidden truncate lg:table-cell">{incident.service.name}</TD>
+      <TD kind="muted" className="hidden truncate lg:table-cell">
+        {incident.team.name}
+      </TD>
+      <TD className="text-sm whitespace-nowrap">
+        <OwnPart response={response} />
+      </TD>
+      <TD className="hidden sm:table-cell">
+        <StatusMark status={incident.status} />
+      </TD>
+    </TR>
   );
 }
 
@@ -127,14 +146,31 @@ export function MemberResponses({
           Incidents {name} starts investigating appear here.
         </EmptyNote>
       ) : (
-        <ul
-          aria-label="Recent responses"
-          className="flex flex-col divide-y divide-line-subtle"
-        >
-          {items.map((response) => (
-            <ResponseRow key={response.incident.id} response={response} />
-          ))}
-        </ul>
+        <Table label="Recent responses" variant="operational" fixed>
+          <colgroup>
+            <col className="w-21 sm:w-24" />
+            <col />
+            <col className="hidden w-[16%] lg:table-column" />
+            <col className="hidden w-[13%] lg:table-column" />
+            <col className="w-44" />
+            <col className="hidden w-32 sm:table-column" />
+          </colgroup>
+          <THead>
+            <TR>
+              <TH>Severity</TH>
+              <TH>Incident</TH>
+              <TH className="hidden lg:table-cell">Service</TH>
+              <TH className="hidden lg:table-cell">Team</TH>
+              <TH>Their part</TH>
+              <TH className="hidden sm:table-cell">Incident status</TH>
+            </TR>
+          </THead>
+          <TBody>
+            {items.map((response) => (
+              <ResponseRow key={response.incident.id} response={response} />
+            ))}
+          </TBody>
+        </Table>
       );
     footer = responses.hasNextPage && (
       <Button
