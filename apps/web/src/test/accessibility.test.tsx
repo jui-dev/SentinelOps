@@ -671,6 +671,7 @@ describe("accessibility", () => {
       await expectNoAxeViolations(container);
     });
 
+it("Members, About roles open", async () => {      signedIn(ADMIN);      const { container } = inWorkspace(<MembersView />);      (await screen.findByRole("button", { name: "About roles" })).click();      await screen.findByRole("dialog", { name: "Roles in SentinelOps" });      await expectNoAxeViolations(container);    });
     it("Add member, choosing teams", async () => {
       signedIn(ADMIN);
       const { container } = inWorkspace(<MembersView />);

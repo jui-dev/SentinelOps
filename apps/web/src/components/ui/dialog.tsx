@@ -4,6 +4,8 @@ import { X } from "lucide-react";
 import { useEffect, useId, useRef } from "react";
 import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
 
+import { cx } from "./cx";
+
 /**
  * A form in a centred dialog over the page it belongs to — creating a
  * service, a team, a member, or declaring an incident.
@@ -19,6 +21,7 @@ export function FormDialog({
   description,
   onClose,
   closeOnBackdrop = true,
+  size = "md",
   children,
 }: {
   title: string;
@@ -26,6 +29,8 @@ export function FormDialog({
   onClose: () => void;
   /** Off while it shows something that must not be lost to a stray click. */
   closeOnBackdrop?: boolean;
+  /** `lg` for a form whose choices sit side by side. */
+  size?: "md" | "lg";
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -69,7 +74,12 @@ export function FormDialog({
         onClose();
       }}
       onClick={onClick}
-      className="m-auto max-h-[calc(100dvh-2rem)] w-[min(32rem,calc(100vw-2rem))] max-w-none overflow-y-auto rounded-lg border border-line bg-surface p-0 text-fg shadow-overlay backdrop:bg-scrim/40"
+      className={cx(
+        "m-auto max-h-[calc(100dvh-2rem)] max-w-none overflow-y-auto rounded-lg border border-line bg-surface p-0 text-fg shadow-overlay backdrop:bg-scrim/40",
+        size === "lg"
+          ? "w-[min(38rem,calc(100vw-2rem))]"
+          : "w-[min(32rem,calc(100vw-2rem))]",
+      )}
     >
       <div className="flex items-start justify-between gap-4 border-b border-line-subtle px-5 py-4">
         <div className="min-w-0">

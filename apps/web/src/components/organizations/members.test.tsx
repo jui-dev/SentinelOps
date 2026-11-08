@@ -574,6 +574,36 @@ describe("a member's row, opened", () => {
   });
 });
 
+describe("about roles", () => {
+  beforeEach(() => {
+    clearAccessToken();
+  });
+
+  it("explains the two fixed roles beside the page's description, to anyone", async () => {
+    const user = userEvent.setup();
+    api(READ_ONLY);
+
+    renderMembers();
+
+    const trigger = await screen.findByRole("button", { name: "About roles" });
+
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+
+    await user.click(trigger);
+
+    const panel = screen.getByRole("dialog", { name: "Roles in SentinelOps" });
+
+    expect(within(panel).getByRole("region", { name: "Admin" })).toBeDefined();
+    expect(
+      within(panel).getByText("Responds to incidents on their teams' services"),
+    ).toBeDefined();
+    expect(within(panel).getByText(/Each organization has one Admin/)).toBeDefined();
+
+    await user.click(within(panel).getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog", { name: "Roles in SentinelOps" })).toBeNull();
+  });
+});
+
 describe("adding a member", () => {
   beforeEach(() => {
     clearAccessToken();
@@ -747,12 +777,102 @@ describe("choosing teams when adding a member", () => {
     const teams = await within(dialog).findByRole("group", { name: /Teams/ });
     const boxes = await within(teams).findAllByRole("checkbox");
 
-    expect(boxes.map((box) => box.closest("label")?.textContent)).toEqual([
-      "Infrastructure",
-      "Payments",
-      "Platform",
-    ]);
+    // Each named by its team alone; what it owns and its size describe it.
+    expect(
+      boxes.map((box) =>
+        document.getElementById(box.getAttribute("aria-labelledby")!)?.textContent,
+      ),
+    ).toEqual(["Infrastructure", "Payments", "Platform"]);
+    expect(within(teams).getAllByText(/0 members/)).toHaveLength(3);
     expect(boxes.every((box) => !(box as HTMLInputElement).checked)).toBe(true);
+  });
+
+  it("shows the role as fixed, and warns until a team is chosen", async () => {
+    const user = userEvent.setup();
+    api(MANAGE);
+
+    const dialog = await renderAddMember();
+
+    // Not a choice: the role is said, not asked.
+    expect(within(dialog).getByText(/Each organization has one Admin/)).toBeDefined();
+    expect(within(dialog).queryByRole("combobox", { name: /Role/ })).toBeNull();
+
+    expect(
+      await within(dialog).findByText(/With no team, they.ll see no incidents/),
+    ).toBeDefined();
+
+    await user.type(within(dialog).getByLabelText("Name"), "Ada Nwosu");
+    await user.click(within(dialog).getByRole("checkbox", { name: "Payments" }));
+
+    expect(within(dialog).queryByText(/see no incidents/)).toBeNull();
+    expect(
+      within(dialog).getByText(/Ada will respond to Payments incidents/),
+    ).toBeDefined();
+  });
+
+  it("keeps many teams in a scrolling area, searchable, without losing a choice", async () => {
+    const user = userEvent.setup();
+    const many = [
+      "Billing", "Data", "Identity", "Mobile", "Payments", "Platform", "Risk", "Search", "Web",
+    ].map((name, n) => team(`0199a1b2-c3d4-7000-8000-0000000001${n}0`, name));
+    api(MANAGE, [ada], (request) =>
+      route(request) === `GET ${base}/teams` ? jsonResponse(200, many) : undefined,
+    );
+
+    const dialog = await renderAddMember();
+    const area = await within(dialog).findByRole("region", {
+      name: "Teams to choose from",
+    });
+
+    // Scrolls in place, and can be reached by keyboard to do so.
+    expect(area.className).toContain("overflow-y-auto");
+    expect(area.getAttribute("tabindex")).toBe("0");
+    expect(within(area).getAllByRole("checkbox")).toHaveLength(9);
+
+    await user.click(within(area).getByRole("checkbox", { name: "Risk" }));
+    expect(within(dialog).getByText(/1 selected/)).toBeDefined();
+
+    // Past six teams, a search narrows the cards.
+    await user.type(within(dialog).getByLabelText("Find a team"), "pay");
+    expect(
+      within(area).getAllByRole("checkbox").map((box) => box.getAttribute("aria-labelledby")),
+    ).toHaveLength(1);
+
+    // Risk is out of view, and still chosen.
+    expect(within(dialog).getByText(/1 selected/)).toBeDefined();
+
+    await user.clear(within(dialog).getByLabelText("Find a team"));
+    await user.type(within(dialog).getByLabelText("Find a team"), "zzz");
+    expect(within(area).getByText(/No team matches/)).toBeDefined();
+  });
+
+  it("offers no search for a handful of teams", async () => {
+    api(MANAGE);
+
+    const dialog = await renderAddMember();
+
+    await within(dialog).findByRole("region", { name: "Teams to choose from" });
+    expect(within(dialog).queryByLabelText("Find a team")).toBeNull();
+  });
+
+  it("shows, hides, and generates the one-time password", async () => {
+    const user = userEvent.setup();
+    api(MANAGE);
+
+    const dialog = await renderAddMember();
+    const password = within(dialog).getByLabelText(
+      "One-time password",
+    ) as HTMLInputElement;
+
+    await user.click(within(dialog).getByRole("button", { name: "Generate" }));
+    expect(password.value).toMatch(/^[a-z2-9]{4}(-[a-z2-9]{4}){3}$/);
+    expect(password.type).toBe("text");
+
+    await user.click(within(dialog).getByRole("button", { name: "Hide" }));
+    expect(password.type).toBe("password");
+    expect(
+      within(dialog).getByRole("button", { name: "Show" }).getAttribute("aria-pressed"),
+    ).toBe("true");
   });
 
   it("sends the chosen teams and says which the member is on", async () => {

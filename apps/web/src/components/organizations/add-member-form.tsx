@@ -1,32 +1,34 @@
 "use client";
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { KeyRound } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Check, Copy, Eye, EyeOff, KeyRound, Search } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
-import type { FormEvent } from "react";
+import { useEffect, useId, useState } from "react";
+import type { FormEvent, ReactNode } from "react";
 
 import { Alert, ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { CopyField } from "@/components/ui/copy-field";
+import { cx } from "@/components/ui/cx";
 import { DialogActions, FormDialog } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
 import { linkClasses } from "@/components/ui/link";
-import { Spinner } from "@/components/ui/spinner";
 import {
   RequiredNote,
   SubmitHint,
   useRequiredFields,
 } from "@/components/ui/required";
+import { Spinner } from "@/components/ui/spinner";
 import { teamsHref, useTeams } from "@/components/teams/team-scope";
-import { ApiErrorCode } from "@/lib/api/contracts";
+import { ApiErrorCode, Permission } from "@/lib/api/contracts";
 import type { CreateMemberRequest } from "@/lib/api/contracts";
-import { createMember } from "@/lib/api/endpoints";
+import { createMember, listServices } from "@/lib/api/endpoints";
 import { fieldErrorsOf, isApiError } from "@/lib/api/errors";
 import { queryKeys } from "@/lib/api/query-keys";
 
 import { formatRole } from "./format";
-import { useOrganization } from "./organization-scope";
+import { membersHref } from "./member-paths";
+import { useCan, useOrganization } from "./organization-scope";
 
 /**
  * 32 characters, so a random byte masked to five bits picks one without bias.
@@ -113,57 +115,205 @@ interface Added {
   teams: string[];
 }
 
+/** One labelled part of the form: Who, Sign-in, Teams. */
+function FormPart({
+  title,
+  aside,
+  first = false,
+  children,
+}: {
+  title: string;
+  aside?: string;
+  first?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <section
+      aria-label={title}
+      className={cx(
+        "flex flex-col gap-3",
+        !first && "border-t border-line-subtle pt-4",
+      )}
+    >
+      <h3 className="text-2xs font-semibold tracking-[0.08em] text-fg-subtle uppercase">
+        {title}
+        {aside && (
+          <span className="font-normal tracking-normal normal-case">
+            {" "}
+            · {aside}
+          </span>
+        )}
+      </h3>
+      {children}
+    </section>
+  );
+}
+
+/** Past this many teams, the cards can be searched. */
+const SEARCH_FROM = 7;
+
 /**
- * The organization's teams as checkboxes, all optional. Native inputs in the
- * design system's colours rather than a new control: a fieldset and a legend
- * are exactly the semantics a set of choices needs.
+ * The organization's teams as cards to tick, all optional, each saying what
+ * it owns — what choosing it means. Native checkboxes inside: a fieldset and
+ * a legend are exactly the semantics a set of choices needs.
+ *
+ * However many teams there are, the dialog keeps its size: about two rows of
+ * cards show, the rest scroll in place, and past six a search narrows them.
+ * A choice is the form's state, not the card's, so a team searched out of
+ * view stays chosen.
  */
-function TeamChoices({ disabled }: { disabled: boolean }) {
+function TeamChoices({
+  chosen,
+  onToggle,
+  disabled,
+}: {
+  chosen: ReadonlySet<string>;
+  onToggle: (teamId: string) => void;
+  disabled: boolean;
+}) {
   const organization = useOrganization();
   const teams = useTeams(organization.id);
+  const canReadServices = useCan(Permission.SERVICES_READ);
+  // The Services pages' own query, by key — asked only when it may be read.
+  const services = useQuery({
+    queryKey: queryKeys.services(organization.id),
+    queryFn: () => listServices(organization.id),
+    enabled: canReadServices,
+  });
+  const [query, setQuery] = useState("");
+  const searchId = useId();
+
+  if (teams.isError) return <ErrorAlert error={teams.error} />;
+  if (!teams.data) return <Spinner label="Loading teams…" />;
+
+  if (teams.data.length === 0) {
+    return (
+      <p className="text-sm text-fg-muted">
+        There are no teams yet.{" "}
+        <Link href={teamsHref(organization.slug)} className={linkClasses}>
+          Create one
+        </Link>{" "}
+        to give people operational responsibility.
+      </p>
+    );
+  }
+
+  const searchable = teams.data.length >= SEARCH_FROM;
+  const q = query.trim().toLowerCase();
+  const shown = searchable
+    ? teams.data.filter((team) => team.name.toLowerCase().includes(q))
+    : teams.data;
 
   return (
-    <fieldset className="flex flex-col gap-2" disabled={disabled}>
-      <legend className="mb-1 flex items-baseline gap-2 text-sm font-medium text-fg">
-        Teams
-        <span className="text-xs font-normal text-fg-subtle">Optional</span>
-      </legend>
-      {teams.isError ? (
-        <ErrorAlert error={teams.error} />
-      ) : !teams.data ? (
-        <Spinner label="Loading teams…" />
-      ) : teams.data.length === 0 ? (
-        <p className="text-sm text-fg-muted">
-          There are no teams yet.{" "}
-          <Link href={teamsHref(organization.slug)} className={linkClasses}>
-            Create one
-          </Link>{" "}
-          to give people operational responsibility.
-        </p>
-      ) : (
-        <>
-          <ul className="flex flex-col gap-1.5">
-            {teams.data.map((team) => (
-              <li key={team.id}>
-                <label className="inline-flex items-center gap-2 text-sm text-fg">
-                  <input
-                    type="checkbox"
-                    name="teamIds"
-                    value={team.id}
-                    className="size-4 accent-accent"
-                  />
-                  {team.name}
-                </label>
-              </li>
-            ))}
-          </ul>
-          <p className="text-xs text-fg-subtle">
-            The teams whose incidents they will respond to. You can change this
-            later.
-          </p>
-        </>
+    <fieldset disabled={disabled} className="flex min-w-0 flex-col gap-2">
+      <legend className="sr-only">Teams</legend>
+      {searchable && (
+        <div className="relative sm:w-72">
+          <label htmlFor={searchId} className="sr-only">
+            Find a team
+          </label>
+          <Search
+            aria-hidden="true"
+            className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-fg-subtle"
+          />
+          <input
+            id={searchId}
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Find a team"
+            className="h-8 w-full rounded-md border border-line-control bg-field pr-2.5 pl-8 text-sm text-fg placeholder:text-fg-subtle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+          />
+        </div>
       )}
+      {/* About two rows of cards; the rest scroll here, not the dialog. */}
+      <div
+        role="region"
+        aria-label="Teams to choose from"
+        tabIndex={0}
+        className="max-h-56 overflow-y-auto overscroll-contain rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus sm:max-h-34"
+      >
+        {shown.length === 0 ? (
+          <p className="px-1 py-2 text-sm text-fg-muted">
+            No team matches &ldquo;{query.trim()}&rdquo;.
+          </p>
+        ) : (
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        {shown.map((team) => {
+          const on = chosen.has(team.id);
+          const owned = services.data
+            ?.filter((service) => service.ownerTeam.id === team.id)
+            .map(({ name }) => name);
+          const members = `${team.memberCount} ${team.memberCount === 1 ? "member" : "members"}`;
+
+          return (
+            <label
+              key={team.id}
+              className={cx(
+                "flex cursor-pointer flex-col gap-1 rounded-md border px-3 py-2.5 transition-colors duration-(--duration-fast) has-focus-visible:outline-2 has-focus-visible:outline-focus",
+                on
+                  ? "border-accent-line bg-accent-subtle"
+                  : "border-line bg-field hover:bg-hover",
+              )}
+            >
+              <span className="flex items-center gap-2">
+                {/* Named by the team alone; what it owns describes it. */}
+                <input
+                  type="checkbox"
+                  name="teamIds"
+                  value={team.id}
+                  checked={on}
+                  onChange={() => onToggle(team.id)}
+                  aria-labelledby={`${team.id}-name`}
+                  aria-describedby={`${team.id}-detail`}
+                  className="size-4 shrink-0 accent-accent-mark"
+                />
+                <span
+                  id={`${team.id}-name`}
+                  className="truncate text-sm font-semibold text-fg"
+                >
+                  {team.name}
+                </span>
+              </span>
+              <span id={`${team.id}-detail`} className="text-xs text-fg-subtle">
+                {owned === undefined
+                  ? members
+                  : `${owned.length === 0 ? "Owns no services yet" : `Owns ${owned.join(", ")}`} · ${members}`}
+              </span>
+            </label>
+          );
+        })}
+      </div>
+        )}
+      </div>
     </fieldset>
+  );
+}
+
+/** Copies the password, and says so for a moment. */
+function CopyButton({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!copied) return;
+
+    const timer = setTimeout(() => setCopied(false), 2000);
+
+    return () => clearTimeout(timer);
+  }, [copied]);
+
+  return (
+    <Button
+      type="button"
+      variant="secondary"
+      icon={copied ? Check : Copy}
+      disabled={value === ""}
+      onClick={() => {
+        void navigator.clipboard?.writeText(value).then(() => setCopied(true));
+      }}
+    >
+      {copied ? "Copied" : "Copy"}
+    </Button>
   );
 }
 
@@ -235,8 +385,21 @@ function AddMemberForm({
 }) {
   const organization = useOrganization();
   const create = useCreateMember(organization.id);
+  const [name, setName] = useState("");
   const [password, setPassword] = useState("");
+  const [shown, setShown] = useState(true);
+  const [chosen, setChosen] = useState<ReadonlySet<string>>(new Set());
+  const teams = useTeams(organization.id);
   const { attach: requiredRef, ...required } = useRequiredFields(password);
+
+  const toggle = (teamId: string) =>
+    setChosen((current) => {
+      const next = new Set(current);
+
+      if (!next.delete(teamId)) next.add(teamId);
+
+      return next;
+    });
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -245,7 +408,10 @@ function AddMemberForm({
       name: String(data.get("name") ?? ""),
       email: String(data.get("email") ?? ""),
       temporaryPassword: password,
-      teamIds: data.getAll("teamIds").map(String),
+      // In the list's order, as they are shown, whatever order they were ticked.
+      teamIds:
+        teams.data?.filter(({ id }) => chosen.has(id)).map(({ id }) => id) ??
+        [...chosen],
     };
 
     create.mutate(body, {
@@ -261,6 +427,11 @@ function AddMemberForm({
   };
 
   const fields = fieldErrorsOf(create.error);
+  const who = name.trim().split(/\s+/)[0] || "They";
+  const chosenNames =
+    teams.data
+      ?.filter(({ id }) => chosen.has(id))
+      .map(({ name: teamName }) => teamName) ?? [];
 
   return (
     <form
@@ -273,51 +444,115 @@ function AddMemberForm({
       {create.isError && (
         <ErrorAlert error={create.error} message={messageFor(create.error)} />
       )}
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Field
-          label="Name"
-          name="name"
-          autoComplete="off"
-          required
-          error={fields.name}
-        />
-        <Field
-          label="Email"
-          name="email"
-          type="email"
-          autoComplete="off"
-          placeholder="name@company.com"
-          required
-          error={fields.email}
-        />
-      </div>
-      <div className="flex flex-wrap items-start gap-3">
-        <div className="min-w-56 flex-1">
+
+      <FormPart title="Who" first>
+        <div className="grid gap-3 sm:grid-cols-2">
           <Field
-            label="One-time password"
-            name="temporaryPassword"
+            label="Name"
+            name="name"
             autoComplete="off"
-            spellCheck={false}
-            className="data"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            hint="At least 12 characters."
+            placeholder="Full name"
             required
-            error={fields.temporaryPassword}
+            onChange={(event) => setName(event.target.value)}
+            error={fields.name}
+          />
+          <Field
+            label="Email"
+            name="email"
+            type="email"
+            autoComplete="off"
+            placeholder="name@company.com"
+            required
+            error={fields.email}
           />
         </div>
-        {/* Aligned with the controls, below their labels. */}
-        <Button
-          type="button"
-          variant="secondary"
-          icon={KeyRound}
-          className="mt-6.5"
-          onClick={() => setPassword(generateOneTimePassword())}
-        >
-          Generate
-        </Button>
-      </div>
-      <TeamChoices disabled={create.isPending} />
+        {/* Not a choice: each organization has one Admin, its creator. */}
+        <p className="flex flex-wrap items-center gap-x-2.5 gap-y-1 rounded-md border border-line-subtle bg-sunken px-3 py-2 text-xs text-fg-muted">
+          <span className="text-sm font-medium text-fg">Role</span>
+          <span className="rounded-sm border border-line-strong bg-hover px-2 py-px font-semibold text-fg-muted">
+            Member
+          </span>
+          Responds to incidents on their teams&apos; services. Each
+          organization has one Admin.
+        </p>
+      </FormPart>
+
+      <FormPart title="Sign-in">
+        <div className="flex flex-wrap items-start gap-2">
+          <div className="min-w-56 flex-1">
+            <Field
+              label="One-time password"
+              name="temporaryPassword"
+              type={shown ? "text" : "password"}
+              autoComplete="off"
+              spellCheck={false}
+              className="data"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              hint="At least 12 characters. They choose their own at first sign-in, so share this one privately."
+              required
+              error={fields.temporaryPassword}
+            />
+          </div>
+          {/* Aligned with the control, below its label. */}
+          <div className="mt-6.5 flex gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              icon={shown ? EyeOff : Eye}
+              aria-pressed={!shown}
+              onClick={() => setShown((value) => !value)}
+            >
+              {shown ? "Hide" : "Show"}
+            </Button>
+            <CopyButton value={password} />
+            <Button
+              type="button"
+              variant="secondary"
+              icon={KeyRound}
+              onClick={() => setPassword(generateOneTimePassword())}
+            >
+              Generate
+            </Button>
+          </div>
+        </div>
+      </FormPart>
+
+      <FormPart
+        title="Teams"
+        aside={
+          chosenNames.length > 0
+            ? `optional · ${chosenNames.length} selected`
+            : "optional"
+        }
+      >
+        <TeamChoices
+          chosen={chosen}
+          onToggle={toggle}
+          disabled={create.isPending}
+        />
+        {teams.data &&
+          teams.data.length > 0 &&
+          (chosenNames.length === 0 ? (
+            <Alert tone="warning">
+              With no team, {who === "They" ? "they" : who}&apos;ll see no
+              incidents. You can add one later from the{" "}
+              <Link
+                href={membersHref(organization.slug)}
+                className={linkClasses}
+              >
+                Members
+              </Link>{" "}
+              list.
+            </Alert>
+          ) : (
+            <p className="text-xs text-fg-subtle">
+              {who} will respond to {chosenNames.join(", ")} incidents. Change
+              teams later from the Members list.
+            </p>
+          ))}
+      </FormPart>
+
       <DialogActions>
         <SubmitHint id={required.hintId} missing={required.missing} />
         <Button variant="secondary" onClick={onCancel}>
@@ -336,10 +571,10 @@ function AddMemberForm({
 }
 
 /**
- * Adding a member, in a dialog over Members: identity, a one-time password,
- * and optionally their teams. Once added, their sign-in details replace the
- * form; a stray click on the backdrop then does not close it, since the
- * password is shown only this once.
+ * Adding a member, in a dialog over Members: who they are, a one-time
+ * password to hand them, and optionally their teams. Once added, their
+ * sign-in details replace the form; a stray click on the backdrop then does
+ * not close it, since the password is shown only this once.
  */
 export function AddMemberDialog({ onClose }: { onClose: () => void }) {
   const [added, setAdded] = useState<Added | null>(null);
@@ -349,9 +584,10 @@ export function AddMemberDialog({ onClose }: { onClose: () => void }) {
   return (
     <FormDialog
       title="Add member"
-      description="Create their account as a Member, with a one-time password to hand them. They choose their own when they first sign in."
+      description="Create their account and hand them a one-time password."
       onClose={onClose}
       closeOnBackdrop={!added}
+      size="lg"
     >
       {added ? (
         <AddedMember

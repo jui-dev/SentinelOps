@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { PageBody, PageHeader } from "@/components/ui/page";
 import { Permission } from "@/lib/api/contracts";
 
+import { AboutRoles } from "./about-roles";
 import { AddMemberDialog } from "./add-member-form";
 import { MembershipList, useMemberships } from "./membership-list";
 import { useCan, useOrganization } from "./organization-scope";
@@ -29,7 +30,13 @@ export function MembersView() {
         width="full"
         title="Members"
         meta={memberships.data?.length}
-        description="Everyone with access to this organization. Their teams decide which incidents they respond to."
+        description={
+          <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            Everyone with access to this organization. Their teams decide
+            which incidents they respond to.
+            <AboutRoles />
+          </span>
+        }
         actions={
           canAddMembers && (
             <Button onClick={() => setAdding(true)}>Add member</Button>
