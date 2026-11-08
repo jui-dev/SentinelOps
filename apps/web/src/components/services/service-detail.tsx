@@ -11,7 +11,6 @@ import { RelatedIncidents } from "@/components/incidents/related-incidents";
 import { SeverityMark } from "@/components/incidents/severity";
 import { teamHref } from "@/components/teams/team-scope";
 import { Alert } from "@/components/ui/alert";
-import { buttonClasses } from "@/components/ui/button";
 import { PageBody, PageHeader } from "@/components/ui/page";
 import { RecordList, RecordRow } from "@/components/ui/record";
 import { IsoDate } from "@/components/ui/timestamp";
@@ -20,7 +19,7 @@ import { Permission } from "@/lib/api/contracts";
 
 import { criticalityOf } from "./criticality";
 import { CriticalityMark } from "./criticality-mark";
-import { serviceHref, useService } from "./service-scope";
+import { useService } from "./service-scope";
 
 /**
  * Where the service stands now, from its active incidents: the most severe
@@ -79,7 +78,6 @@ function ActiveIncidents({ serviceId }: { serviceId: string }) {
 export function ServiceDetail() {
   const organization = useOrganization();
   const service = useService();
-  const canManage = useCan(Permission.SERVICES_MANAGE);
   const canReadIncidents = useCan(Permission.INCIDENTS_READ);
   const criticality = criticalityOf(service.criticality);
 
@@ -89,16 +87,6 @@ export function ServiceDetail() {
         width="list"
         title={service.name}
         description={service.description ?? undefined}
-        actions={
-          canManage && (
-            <Link
-              href={`${serviceHref(organization.slug, service.slug)}/settings`}
-              className={buttonClasses({ variant: "secondary" })}
-            >
-              Settings
-            </Link>
-          )
-        }
       />
       <PageBody width="list">
         {service.archivedAt && (

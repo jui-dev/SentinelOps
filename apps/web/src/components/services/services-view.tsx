@@ -1,21 +1,25 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { ChevronRight, Pencil, Search } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useId, useState } from "react";
 import type { FormEvent } from "react";
 
 import {
   useCan,
   useOrganization,
 } from "@/components/organizations/organization-scope";
+import { useIncidentList } from "@/components/incidents/incident-queries";
 import { teamHref, teamsHref, useTeams } from "@/components/teams/team-scope";
 import { ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { cx } from "@/components/ui/cx";
 import { DialogActions, FormDialog } from "@/components/ui/dialog";
 import { EmptyNote, EmptyState } from "@/components/ui/empty-state";
 import { Field } from "@/components/ui/field";
-import { PageBody, PageHeader, Section } from "@/components/ui/page";
+import { PageBody, PageHeader } from "@/components/ui/page";
+import { rowActionClasses } from "@/components/ui/row-action";
 import { Select } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
@@ -28,6 +32,7 @@ import {
 import { ApiErrorCode, Permission } from "@/lib/api/contracts";
 import type {
   CreateServiceRequest,
+  IncidentSeverity,
   ServiceCriticality,
   ServiceResponse,
 } from "@/lib/api/contracts";
@@ -35,50 +40,15 @@ import { createService } from "@/lib/api/endpoints";
 import { fieldErrorsOf, isApiError } from "@/lib/api/errors";
 import { queryKeys } from "@/lib/api/query-keys";
 
-import {
-  CRITICALITY_LEVELS,
-  criticalityOf,
-  DEFAULT_CRITICALITY,
-} from "./criticality";
+import { CRITICALITY_LEVELS, DEFAULT_CRITICALITY } from "./criticality";
 import { CriticalityMark } from "./criticality-mark";
+import { EditServiceDialog } from "./edit-service-dialog";
+import {
+  CriticalitySelect,
+  OWNER_TEAM_GONE_MESSAGE,
+  SERVICE_NAME_TAKEN_MESSAGE,
+} from "./service-form-parts";
 import { serviceHref, useServices } from "./service-scope";
-
-export const SERVICE_NAME_TAKEN_MESSAGE =
-  "A service with this name, or a very similar one, already exists.";
-
-export const OWNER_TEAM_GONE_MESSAGE =
-  "That team no longer exists. The list of teams has been refreshed.";
-
-/**
- * The criticality picker, with the chosen level's definition beneath it so
- * the words mean the same thing to everyone choosing them.
- */
-export function CriticalitySelect({
-  value,
-  onChange,
-  error,
-}: {
-  value: ServiceCriticality;
-  onChange: (value: ServiceCriticality) => void;
-  error?: string;
-}) {
-  return (
-    <Select
-      label="Criticality"
-      name="criticality"
-      value={value}
-      onChange={(event) => onChange(event.target.value as ServiceCriticality)}
-      hint={criticalityOf(value).definition}
-      error={error}
-    >
-      {CRITICALITY_LEVELS.map((level) => (
-        <option key={level.value} value={level.value}>
-          {level.label}
-        </option>
-      ))}
-    </Select>
-  );
-}
 
 /**
  * Creates a service. The new service is put into the cached list, so the
@@ -245,6 +215,213 @@ function CreateServiceForm({ onClose }: { onClose: () => void }) {
   );
 }
 
+
+// ── Status ─────────────────────────────────────────────────────────────────
+
+/** A service's active incidents: how many, and the most severe of them. */
+interface ServiceStatus {
+  count: number;
+  worst: IncidentSeverity;
+}
+
+/**
+ * Every service's active incidents, from the one active-incident list the
+ * Incidents page and the rail already read — grouped here, not asked for
+ * per service. Most severe first is the list's own order, so the first an
+ * incident seen for a service is its worst. Only with `incidents:read`.
+ */
+const useServiceStatuses = (enabled: boolean) => {
+  const organization = useOrganization();
+  const active = useIncidentList(
+    organization.id,
+    "active",
+    undefined,
+    {},
+    enabled,
+  );
+  const items = active.data?.pages[0]?.items;
+
+  if (!items) return undefined;
+
+  const statuses = new Map<string, ServiceStatus>();
+
+  for (const incident of items) {
+    const current = statuses.get(incident.service.id);
+
+    statuses.set(
+      incident.service.id,
+      current
+        ? { ...current, count: current.count + 1 }
+        : { count: 1, worst: incident.severity },
+    );
+  }
+
+  return statuses;
+};
+
+const STATUS_TONES: Record<IncidentSeverity, string> = {
+  SEV1: "border-danger-line bg-danger-subtle text-danger-text",
+  SEV2: "border-danger-line bg-danger-subtle text-danger-text",
+  SEV3: "border-warning-line bg-warning-subtle text-warning-text",
+  SEV4: "border-info-line bg-info-subtle text-info-text",
+};
+
+const BADGE =
+  "inline-flex items-center gap-1.5 whitespace-nowrap rounded-sm border px-2 py-0.5 text-xs font-semibold";
+
+/** Whether anything is wrong with a service now: what has been declared. */
+function StatusBadge({ status }: { status: ServiceStatus | undefined }) {
+  if (!status) {
+    return (
+      <span
+        className={cx(
+          BADGE,
+          "border-success-line bg-success-subtle text-success-text",
+        )}
+      >
+        <span aria-hidden="true" className="size-1.5 rounded-full bg-current" />
+        No active incidents
+      </span>
+    );
+  }
+
+  return (
+    <span className={cx(BADGE, STATUS_TONES[status.worst])}>
+      <span aria-hidden="true" className="size-1.5 rounded-full bg-current" />
+      {status.count} active · {status.worst}
+    </span>
+  );
+}
+
+// ── Filters ────────────────────────────────────────────────────────────────
+
+type FilterId =
+  | "all"
+  | ServiceCriticality
+  | "active-incidents"
+  | "archived";
+
+const FILTERS: {
+  id: FilterId;
+  label: string;
+  /** A count that wants attention when above nought. */
+  attention?: boolean;
+}[] = [
+  { id: "all", label: "All" },
+  ...CRITICALITY_LEVELS.map(({ value, label }) => ({ id: value, label })),
+  { id: "active-incidents", label: "With active incidents", attention: true },
+  { id: "archived", label: "Archived" },
+];
+
+/**
+ * Whether a service is shown under a filter. Every filter but Archived is
+ * of the services in use: an archived service has no active incidents and
+ * is looked for on purpose.
+ */
+const matches = (
+  filter: FilterId,
+  service: ServiceResponse,
+  statuses: Map<string, ServiceStatus> | undefined,
+) => {
+  if (filter === "archived") return service.archivedAt !== null;
+  if (service.archivedAt !== null) return false;
+  if (filter === "all") return true;
+  if (filter === "active-incidents") return statuses?.has(service.id) ?? false;
+
+  return service.criticality === filter;
+};
+
+function Toolbar({
+  services,
+  statuses,
+  withStatus,
+  query,
+  onQuery,
+  filter,
+  onFilter,
+}: {
+  services: ServiceResponse[];
+  statuses: Map<string, ServiceStatus> | undefined;
+  withStatus: boolean;
+  query: string;
+  onQuery: (value: string) => void;
+  filter: FilterId;
+  onFilter: (value: FilterId) => void;
+}) {
+  const searchId = useId();
+  const offered = FILTERS.filter(
+    ({ id }) => withStatus || id !== "active-incidents",
+  );
+
+  return (
+    // The ways to find services, in a band of the rail's own ground, as the
+    // Members page's are.
+    <div
+      role="search"
+      aria-label="Find services"
+      className="flex flex-wrap items-center gap-3 rounded-xl border border-line-subtle bg-linear-to-b from-rail-top to-rail-mid p-3"
+    >
+      <div className="relative w-full sm:w-80">
+        <label htmlFor={searchId} className="sr-only">
+          Search services
+        </label>
+        <Search
+          aria-hidden="true"
+          className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-fg-subtle"
+        />
+        <input
+          id={searchId}
+          type="search"
+          value={query}
+          onChange={(event) => onQuery(event.target.value)}
+          placeholder="Search by name or team"
+          className="h-9 w-full rounded-md border border-line-control bg-field pr-3 pl-9 text-sm text-fg placeholder:text-fg-subtle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+        />
+      </div>
+      <div role="group" aria-label="Show" className="flex flex-wrap gap-1.5">
+        {offered.map((each) => {
+          const count = services.filter((service) =>
+            matches(each.id, service, statuses),
+          ).length;
+          const on = each.id === filter;
+
+          return (
+            <button
+              key={each.id}
+              type="button"
+              aria-pressed={on}
+              onClick={() => onFilter(each.id)}
+              className={cx(
+                "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-sm transition-colors duration-(--duration-fast) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+                on
+                  ? "border-accent-rim bg-accent text-on-accent"
+                  : "border-line bg-surface text-fg-muted hover:bg-hover hover:text-fg",
+              )}
+            >
+              {/* The space is for the name ("All 3"); flex layout drops it. */}
+              {each.label}{" "}
+              <span
+                className={cx(
+                  "numeric text-xs",
+                  on
+                    ? "text-on-accent/80"
+                    : each.attention && count > 0
+                      ? "text-warning-text"
+                      : "text-fg-subtle",
+                )}
+              >
+                {count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── The list ───────────────────────────────────────────────────────────────
+
 /**
  * `onCreate` is absent for those who may not manage services; `canManage`
  * says whether to tell the reader someone else must add one.
@@ -258,6 +435,13 @@ function ServiceList({
 }) {
   const organization = useOrganization();
   const services = useServices(organization.id);
+  const withStatus = useCan(Permission.INCIDENTS_READ);
+  const statuses = useServiceStatuses(withStatus);
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<FilterId>("all");
+  // By id, read from the list as it stands: a service deleted meanwhile
+  // closes its dialog.
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   if (services.isError) return <ErrorAlert error={services.error} />;
   if (!services.data) return <Spinner label="Loading services…" />;
@@ -283,94 +467,155 @@ function ServiceList({
     );
   }
 
-  const inUse = services.data.filter((service) => !service.archivedAt);
-  const archived = services.data.filter((service) => service.archivedAt);
-
-  return (
-    <>
-      {inUse.length > 0 ? (
-        <ServiceTable label="Services" services={inUse} />
-      ) : (
-        <EmptyNote title="Every service is archived">
-          Archived services are listed below, kept for their incidents.
-        </EmptyNote>
-      )}
-      {archived.length > 0 && (
-        <Section
-          id="archived-services"
-          title="Archived"
-          meta={archived.length}
-          description="Retired services, kept because incidents were recorded against them or for reference. No new incident can be declared against them."
-        >
-          <ServiceTable label="Archived services" services={archived} />
-        </Section>
-      )}
-    </>
+  const q = query.trim().toLowerCase();
+  const shown = services.data.filter(
+    (service) =>
+      matches(filter, service, statuses) &&
+      (q === "" ||
+        service.name.toLowerCase().includes(q) ||
+        service.ownerTeam.name.toLowerCase().includes(q)),
   );
-}
-
-function ServiceTable({
-  label,
-  services,
-}: {
-  label: string;
-  services: ServiceResponse[];
-}) {
-  const organization = useOrganization();
+  const editing = services.data.find(({ id }) => id === editingId);
 
   return (
-    <Table label={label}>
-      <THead>
-        <TR>
-          <TH>Name</TH>
-          <TH className="hidden sm:table-cell">Owner team</TH>
-          <TH>Criticality</TH>
-        </TR>
-      </THead>
-      <TBody>
-        {services.map((service) => (
-          <TR key={service.id}>
-            <TD>
-              <Link
-                href={serviceHref(organization.slug, service.slug)}
-                className={`font-medium text-fg ${quietLinkClasses}`}
-              >
-                {service.name}
-              </Link>
-              {/* What it is, as the name's second line, not a column of its own. */}
-              {service.description && (
-                <span className="block max-w-xl truncate text-sm text-fg-subtle">
-                  {service.description}
-                </span>
-              )}
-              {/* On narrow screens the owner folds under the name. */}
-              <span className="block truncate text-xs text-fg-muted sm:hidden">
-                {service.ownerTeam.name}
-              </span>
-            </TD>
-            <TD className="hidden sm:table-cell">
-              <Link
-                href={teamHref(organization.slug, service.ownerTeam.slug)}
-                className={`text-fg-muted ${quietLinkClasses}`}
-              >
-                {service.ownerTeam.name}
-              </Link>
-            </TD>
-            <TD>
-              <CriticalityMark criticality={service.criticality} />
-            </TD>
+    <div className="flex flex-col gap-4">
+      <Toolbar
+        services={services.data}
+        statuses={statuses}
+        withStatus={withStatus}
+        query={query}
+        onQuery={setQuery}
+        filter={filter}
+        onFilter={setFilter}
+      />
+      <Table label={filter === "archived" ? "Archived services" : "Services"}>
+        <THead>
+          <TR>
+            <TH>Service</TH>
+            <TH className="hidden sm:table-cell">Owner team</TH>
+            <TH>Criticality</TH>
+            {withStatus && <TH className="hidden md:table-cell">Status</TH>}
+            <TH align="end">Action</TH>
           </TR>
-        ))}
-      </TBody>
-    </Table>
+        </THead>
+        <TBody>
+          {shown.length === 0 ? (
+            <TR>
+              <TD
+                colSpan={withStatus ? 5 : 4}
+                className="py-6 text-center text-sm text-fg-muted"
+              >
+                {filter === "archived" && q === ""
+                  ? "No service is archived."
+                  : "No services match."}{" "}
+                <Button
+                  variant="quiet"
+                  size="sm"
+                  onClick={() => {
+                    setQuery("");
+                    setFilter("all");
+                  }}
+                >
+                  Show every service
+                </Button>
+              </TD>
+            </TR>
+          ) : (
+            shown.map((service) => (
+              <TR key={service.id}>
+                <TD>
+                  <span className="font-medium text-fg">{service.name}</span>
+                  {service.archivedAt && (
+                    <span className="ml-2 rounded-sm border border-line px-1.5 text-2xs text-fg-subtle">
+                      Archived
+                    </span>
+                  )}
+                  {/* What it is, as the name's second line. */}
+                  {service.description && (
+                    <span className="block max-w-xl truncate text-sm text-fg-subtle">
+                      {service.description}
+                    </span>
+                  )}
+                  {/* On narrow screens the owner folds under the name. */}
+                  <span className="block truncate text-xs text-fg-muted sm:hidden">
+                    {service.ownerTeam.name}
+                  </span>
+                </TD>
+                <TD className="hidden sm:table-cell">
+                  <Link
+                    href={teamHref(organization.slug, service.ownerTeam.slug)}
+                    className="rounded-full border border-line bg-hover px-2.5 py-px text-xs text-fg-muted hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                  >
+                    {service.ownerTeam.name}
+                  </Link>
+                </TD>
+                <TD>
+                  <CriticalityMark criticality={service.criticality} />
+                </TD>
+                {withStatus && (
+                  <TD className="hidden md:table-cell">
+                    {service.archivedAt ? (
+                      <span className="text-sm text-fg-subtle">Retired</span>
+                    ) : statuses ? (
+                      <StatusBadge status={statuses.get(service.id)} />
+                    ) : (
+                      <span className="text-sm text-fg-subtle">…</span>
+                    )}
+                  </TD>
+                )}
+                <TD kind="actions">
+                  <div className="flex items-center justify-end gap-2">
+                    <Link
+                      href={serviceHref(organization.slug, service.slug)}
+                      aria-label={`View ${service.name}`}
+                      className={rowActionClasses("accent")}
+                    >
+                      View
+                      <ChevronRight
+                        aria-hidden="true"
+                        strokeWidth={2}
+                        className="size-3.5"
+                      />
+                    </Link>
+                    {canManage && (
+                      <button
+                        type="button"
+                        aria-label={`Edit ${service.name}`}
+                        onClick={() => setEditingId(service.id)}
+                        className={rowActionClasses("info")}
+                      >
+                        <Pencil
+                          aria-hidden="true"
+                          strokeWidth={2}
+                          className="size-3.5"
+                        />
+                        Edit
+                      </button>
+                    )}
+                  </div>
+                </TD>
+              </TR>
+            ))
+          )}
+        </TBody>
+      </Table>
+      {canManage && editing && (
+        <EditServiceDialog
+          key={editing.id}
+          service={editing}
+          onClose={() => setEditingId(null)}
+        />
+      )}
+    </div>
   );
 }
 
 /**
- * The Services page: every service, its owner and criticality, and — for
- * those the API says may manage services — a dialog to create one, opened
- * from the header. Creating closes it, and the new service is already in the
- * list beneath. A dialog rather than a `/services/new` route, which would
+ * The Services page: every service, who owns it, how much depends on it,
+ * and whether anything is wrong with it now — found by name or team and
+ * narrowed by criticality, by what has active incidents, or to the archived.
+ * Those who may manage services create one from the header and edit each
+ * from its row. A dialog rather than a `/services/new` route, which would
  * shadow a service whose derived slug is `new`.
  */
 export function ServicesView() {
@@ -379,19 +624,20 @@ export function ServicesView() {
   const canManage = useCan(Permission.SERVICES_MANAGE);
   const [creating, setCreating] = useState(false);
   const openCreate = () => setCreating(true);
+  const inUse = services.data?.filter((service) => !service.archivedAt);
 
   return (
     <>
       <PageHeader
-        width="list"
+        width="full"
         title="Services"
-        meta={services.data?.length}
-        description="The systems this organization runs, who owns each, and how much depends on it."
+        meta={inUse?.length}
+        description="The systems this organization runs, who owns each, and whether anything is wrong with it now."
         actions={
           canManage && <Button onClick={openCreate}>New service</Button>
         }
       />
-      <PageBody width="list">
+      <PageBody width="full">
         <ServiceList
           canManage={canManage}
           onCreate={canManage ? openCreate : undefined}

@@ -21,7 +21,6 @@ import { OrganizationScope } from "@/components/organizations/organization-scope
 import { OrganizationSettings } from "@/components/organizations/organization-settings";
 import { ServiceDetail } from "@/components/services/service-detail";
 import { ServiceScope } from "@/components/services/service-scope";
-import { ServiceSettings } from "@/components/services/service-settings";
 import { ServicesView } from "@/components/services/services-view";
 import { TeamDetail } from "@/components/teams/team-detail";
 import { TeamScope } from "@/components/teams/team-scope";
@@ -865,18 +864,14 @@ it("Members, About roles open", async () => {      signedIn(ADMIN);      const {
       await expectNoAxeViolations(container);
     });
 
-    it("Service settings", async () => {
-      navigation.params = {
-        orgSlug: organization.slug,
-        serviceSlug: service.slug,
-      };
+    it("Edit service, from the Services list", async () => {
       signedIn(ADMIN);
-      const { container } = inWorkspace(
-        <ServiceScope>
-          <ServiceSettings />
-        </ServiceScope>,
-      );
+      const { container } = inWorkspace(<ServicesView />);
 
+      (
+        await screen.findByRole("button", { name: `Edit ${service.name}` })
+      ).click();
+      await screen.findByRole("dialog", { name: "Edit service" });
       await screen.findByRole("combobox", { name: "Owner team" });
       await expectNoAxeViolations(container);
     });

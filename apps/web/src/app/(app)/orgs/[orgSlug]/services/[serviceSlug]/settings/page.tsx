@@ -1,9 +1,15 @@
-import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 
-import { ServiceSettings } from "@/components/services/service-settings";
+import { servicesHref } from "@/components/services/service-scope";
 
-export const metadata: Metadata = { title: "Service settings" };
+/**
+ * Where a service's settings used to be. A service is edited from the
+ * Services list now, so an old link or bookmark lands there.
+ */
+export default async function ServiceSettingsPage({
+  params,
+}: PageProps<"/orgs/[orgSlug]/services/[serviceSlug]/settings">) {
+  const { orgSlug } = await params;
 
-export default function ServiceSettingsPage() {
-  return <ServiceSettings />;
+  redirect(servicesHref(orgSlug));
 }

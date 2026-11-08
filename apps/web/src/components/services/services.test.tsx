@@ -20,7 +20,6 @@ import { renderWithSession } from "@/test/render";
 
 import { ServiceDetail } from "./service-detail";
 import { ServiceScope } from "./service-scope";
-import { ServiceSettings } from "./service-settings";
 import { ServicesView } from "./services-view";
 
 const navigation = vi.hoisted(() => ({
@@ -185,36 +184,108 @@ describe("services", () => {
   });
 
   describe("the list", () => {
-    it("lists services with their owner and criticality, without slugs or health", async () => {
+    it("lists services with their owner and criticality, opened from View — without slugs", async () => {
       api(READ);
 
       inOrganization(<ServicesView />);
 
-      const link = await screen.findByRole("link", { name: "Payment API" });
+      const view = await screen.findByRole("link", { name: "View Payment API" });
 
-      expect(link.getAttribute("href")).toBe(
+      expect(view.getAttribute("href")).toBe(
         "/orgs/acme-ops/services/payment-api",
       );
+      // The name is text, not a second way in.
+      expect(screen.getByText("Payment API").closest("a")).toBeNull();
       expect(
         screen.getByRole("link", { name: "Payments" }).getAttribute("href"),
       ).toBe("/orgs/acme-ops/teams/payments");
-      expect(screen.getByText("Critical")).toBeDefined();
+      expect(
+        within(screen.getByRole("table", { name: "Services" })).getByText("Critical"),
+      ).toBeDefined();
       expect(screen.getByText("Takes card payments.")).toBeDefined();
       expect(screen.queryByText("payment-api")).toBeNull();
-      expect(screen.queryByText(/healthy|degraded|outage/i)).toBeNull();
+      // Without incidents:read, no status is claimed either way.
+      expect(screen.queryByRole("columnheader", { name: "Status" })).toBeNull();
+      expect(screen.queryByText(/active incidents/i)).toBeNull();
     });
 
-    it("lists archived services apart from those in use", async () => {
+    it("keeps archived services under their own filter, not among those in use", async () => {
+      const user = userEvent.setup();
       api(READ, { services: [paymentApi, legacyPortal] });
 
       inOrganization(<ServicesView />);
 
-      const inUse = await screen.findByRole("table", { name: "Services" });
-      const archived = screen.getByRole("table", { name: "Archived services" });
+      await screen.findByText("Payment API");
+      expect(screen.queryByText("Legacy Portal")).toBeNull();
 
-      expect(within(inUse).getByText("Payment API")).toBeDefined();
-      expect(within(inUse).queryByText("Legacy Portal")).toBeNull();
-      expect(within(archived).getByText("Legacy Portal")).toBeDefined();
+      await user.click(screen.getByRole("button", { name: "Archived 1" }));
+
+      expect(screen.getByText("Legacy Portal")).toBeDefined();
+      expect(screen.queryByText("Payment API")).toBeNull();
+      expect(screen.getByRole("table", { name: "Archived services" })).toBeDefined();
+    });
+
+    it("says whether anything is wrong now, from the active incidents, worst first", async () => {
+      const user = userEvent.setup();
+      const authentication: ServiceResponse = {
+        ...paymentApi,
+        id: "0199a1b2-c3d4-7000-8000-0000000000e3",
+        name: "Authentication",
+        slug: "authentication",
+        description: null,
+        criticality: "HIGH",
+      };
+      const { requests } = api([...READ, "incidents:read"], {
+        services: [paymentApi, authentication],
+        handler: (request) =>
+          route(request) === `GET ${base}/incidents?state=active`
+            ? jsonResponse(
+                200,
+                incidentPage([
+                  anIncident(9, { severity: "SEV1" }),
+                  anIncident(8, { severity: "SEV3" }),
+                ]),
+              )
+            : undefined,
+      });
+
+      inOrganization(<ServicesView />);
+
+      expect(await screen.findByText("2 active · SEV1")).toBeDefined();
+      expect(screen.getByText("No active incidents")).toBeDefined();
+      // One list for every service, not one request each.
+      expect(count(requests, `GET ${base}/incidents?state=active`)).toBe(1);
+
+      await user.click(
+        screen.getByRole("button", { name: "With active incidents 1" }),
+      );
+      expect(screen.getByText("Payment API")).toBeDefined();
+      expect(screen.queryByText("Authentication")).toBeNull();
+
+      await user.click(screen.getByRole("button", { name: "High 1" }));
+      expect(screen.getByText("Authentication")).toBeDefined();
+      expect(screen.queryByText("Payment API")).toBeNull();
+    });
+
+    it("finds services by name or owner team", async () => {
+      const user = userEvent.setup();
+      api(READ, { services: [paymentApi, { ...legacyPortal, archivedAt: null }] });
+
+      inOrganization(<ServicesView />);
+
+      await screen.findByText("Legacy Portal");
+      await user.type(screen.getByLabelText("Search services"), "payments");
+      // Both are Payments', found by their team.
+      expect(screen.getByText("Payment API")).toBeDefined();
+      expect(screen.getByText("Legacy Portal")).toBeDefined();
+
+      await user.clear(screen.getByLabelText("Search services"));
+      await user.type(screen.getByLabelText("Search services"), "legacy");
+      expect(screen.queryByText("Payment API")).toBeNull();
+
+      await user.clear(screen.getByLabelText("Search services"));
+      await user.type(screen.getByLabelText("Search services"), "nothing");
+      expect(screen.getByText(/No services match/)).toBeDefined();
     });
 
     it("offers no creation without services:manage", async () => {
@@ -490,16 +561,13 @@ describe("services", () => {
       ).toBeDefined();
     });
 
-    it("offers settings to those who may manage services", async () => {
+    it("offers no Settings on the page: a service is edited from the list", async () => {
       api(MANAGE);
 
       inService(<ServiceDetail />);
 
-      expect(
-        (await screen.findByRole("link", { name: "Settings" })).getAttribute(
-          "href",
-        ),
-      ).toBe("/orgs/acme-ops/services/payment-api/settings");
+      await screen.findByRole("heading", { level: 1, name: "Payment API" });
+      expect(screen.queryByRole("link", { name: "Settings" })).toBeNull();
     });
 
     it("answers an unknown slug with a not-found page", async () => {
@@ -514,47 +582,30 @@ describe("services", () => {
     });
   });
 
-  describe("settings", () => {
-    beforeEach(() => {
-      navigation.params = { orgSlug: "acme-ops", serviceSlug: "payment-api" };
-    });
-
-    it("saves the name, description, and criticality", async () => {
-      const user = userEvent.setup();
-      const { requests } = api(MANAGE, {
-        handler: (request) =>
-          route(request) === `PATCH ${base}/services/${paymentApi.id}`
-            ? jsonResponse(200, { ...paymentApi, criticality: "HIGH" })
-            : undefined,
-      });
-
-      inService(<ServiceSettings />);
-
-      const details = (await screen.findByRole("heading", { name: "Details" }))
-        .closest("section") as HTMLElement;
-
-      await user.selectOptions(
-        within(details).getByLabelText("Criticality"),
-        "HIGH",
+  describe("editing, from the list", () => {
+    /** Opens Payment API's Edit dialog from the Services list. */
+    const openEdit = async (user: ReturnType<typeof userEvent.setup>) => {
+      await user.click(
+        await screen.findByRole("button", { name: "Edit Payment API" }),
       );
-      await user.click(within(details).getByRole("button", { name: "Save" }));
 
-      expect(await screen.findByText("Service updated.")).toBeDefined();
-      expect(
-        requests.find(
-          (r) => route(r) === `PATCH ${base}/services/${paymentApi.id}`,
-        )?.body,
-      ).toEqual({
-        name: "Payment API",
-        description: "Takes card payments.",
-        criticality: "HIGH",
-      });
+      return screen.findByRole("dialog", { name: "Edit service" });
+    };
+
+    it("is offered beside View only to those who may manage services", async () => {
+      api(READ);
+
+      inOrganization(<ServicesView />);
+
+      await screen.findByRole("link", { name: "View Payment API" });
+      expect(screen.queryByRole("button", { name: /Edit/ })).toBeNull();
     });
 
-    it("moves the service to another team and refreshes team counts", async () => {
+    it("saves the details and a new owner together, sending only what changed", async () => {
       const user = userEvent.setup();
       const moved = {
         ...paymentApi,
+        criticality: "HIGH" as const,
         ownerTeam: { id: platform.id, name: "Platform", slug: "platform" },
       };
       const { requests } = api(MANAGE, {
@@ -564,58 +615,63 @@ describe("services", () => {
             : undefined,
       });
 
-      inService(<ServiceSettings />);
+      inOrganization(<ServicesView />);
 
-      const select = await screen.findByRole("combobox", {
-        name: "Owner team",
-      });
+      const dialog = await openEdit(user);
+      const owner = (await within(dialog).findByLabelText(
+        "Owner team",
+      )) as HTMLSelectElement;
 
-      expect((select as HTMLSelectElement).value).toBe(payments.id);
+      expect(owner.value).toBe(payments.id);
 
-      await user.selectOptions(select, platform.id);
-      await user.click(screen.getByRole("button", { name: "Change owner" }));
+      await user.selectOptions(within(dialog).getByLabelText("Criticality"), "HIGH");
+      await user.selectOptions(owner, platform.id);
+      await user.click(within(dialog).getByRole("button", { name: "Save changes" }));
 
-      expect(await screen.findByText("Now owned by Platform.")).toBeDefined();
+      await waitFor(() =>
+        expect(screen.queryByRole("dialog", { name: "Edit service" })).toBeNull(),
+      );
       expect(
         requests.find(
           (r) => route(r) === `PATCH ${base}/services/${paymentApi.id}`,
         )?.body,
-      ).toEqual({ ownerTeamId: platform.id });
+      ).toEqual({
+        name: "Payment API",
+        description: "Takes card payments.",
+        criticality: "HIGH",
+        ownerTeamId: platform.id,
+      });
       await waitFor(() =>
         expect(count(requests, `GET ${base}/teams`)).toBeGreaterThan(1),
       );
     });
 
-    it("deletes only after confirmation, then returns to the list", async () => {
+    it("sends no owner when the owner is unchanged", async () => {
       const user = userEvent.setup();
       const { requests } = api(MANAGE, {
         handler: (request) =>
-          route(request) === `DELETE ${base}/services/${paymentApi.id}`
-            ? jsonResponse(204)
+          route(request) === `PATCH ${base}/services/${paymentApi.id}`
+            ? jsonResponse(200, paymentApi)
             : undefined,
       });
 
-      inService(<ServiceSettings />);
+      inOrganization(<ServicesView />);
 
-      await user.click(
-        await screen.findByRole("button", { name: "Delete service…" }),
-      );
+      const dialog = await openEdit(user);
 
-      expect(requests.some((r) => r.method === "DELETE")).toBe(false);
-
-      await user.click(screen.getByRole("button", { name: "Delete service" }));
+      await within(dialog).findByLabelText("Owner team");
+      await user.click(within(dialog).getByRole("button", { name: "Save changes" }));
 
       await waitFor(() =>
-        expect(navigation.push).toHaveBeenCalledWith("/orgs/acme-ops/services"),
+        expect(
+          requests.find(
+            (r) => route(r) === `PATCH ${base}/services/${paymentApi.id}`,
+          )?.body,
+        ).not.toHaveProperty("ownerTeamId"),
       );
-      expect(
-        requests.some(
-          (r) => route(r) === `DELETE ${base}/services/${paymentApi.id}`,
-        ),
-      ).toBe(true);
     });
 
-    it("archives the service, and refreshes incidents, which show it", async () => {
+    it("archives the service", async () => {
       const user = userEvent.setup();
       const { requests } = api(MANAGE, {
         handler: (request) =>
@@ -627,20 +683,53 @@ describe("services", () => {
             : undefined,
       });
 
-      inService(<ServiceSettings />);
+      inOrganization(<ServicesView />);
 
-      await user.click(
-        await screen.findByRole("button", { name: "Archive service" }),
-      );
+      const dialog = await openEdit(user);
+
+      await user.click(within(dialog).getByRole("button", { name: "Archive" }));
 
       expect(
-        await screen.findByRole("button", { name: "Unarchive service" }),
+        await within(dialog).findByRole("button", { name: "Unarchive" }),
       ).toBeDefined();
       expect(
         requests.find(
           (r) => route(r) === `PATCH ${base}/services/${paymentApi.id}`,
         )?.body,
       ).toEqual({ archived: true });
+    });
+
+    it("deletes only after confirmation, then closes on the refreshed list", async () => {
+      const user = userEvent.setup();
+      const { requests } = api(MANAGE, {
+        handler: (request) =>
+          route(request) === `DELETE ${base}/services/${paymentApi.id}`
+            ? jsonResponse(204)
+            : undefined,
+      });
+
+      inOrganization(<ServicesView />);
+
+      const dialog = await openEdit(user);
+
+      await user.click(
+        within(dialog).getByRole("button", { name: "Delete service…" }),
+      );
+      expect(requests.some((r) => r.method === "DELETE")).toBe(false);
+
+      await user.click(within(dialog).getByRole("button", { name: "Delete service" }));
+
+      await waitFor(() =>
+        expect(screen.queryByRole("dialog", { name: "Edit service" })).toBeNull(),
+      );
+      expect(
+        requests.some(
+          (r) => route(r) === `DELETE ${base}/services/${paymentApi.id}`,
+        ),
+      ).toBe(true);
+      await waitFor(() =>
+        expect(count(requests, `GET ${base}/services`)).toBeGreaterThan(1),
+      );
     });
 
     it("explains that a service with incidents is archived rather than deleted", async () => {
@@ -652,29 +741,20 @@ describe("services", () => {
             : undefined,
       });
 
-      inService(<ServiceSettings />);
+      inOrganization(<ServicesView />);
+
+      const dialog = await openEdit(user);
 
       await user.click(
-        await screen.findByRole("button", { name: "Delete service…" }),
+        within(dialog).getByRole("button", { name: "Delete service…" }),
       );
-      await user.click(screen.getByRole("button", { name: "Delete service" }));
+      await user.click(within(dialog).getByRole("button", { name: "Delete service" }));
 
       expect(
-        await screen.findByText("This service has incidents"),
+        await within(dialog).findByText("This service has incidents"),
       ).toBeDefined();
-      expect(screen.getByText(/Archive it to retire it/)).toBeDefined();
-      expect(navigation.push).not.toHaveBeenCalled();
-    });
-
-    it("offers nothing to change without services:manage", async () => {
-      api(READ);
-
-      inService(<ServiceSettings />);
-
-      expect(
-        await screen.findByText(/do not have permission to change this service/),
-      ).toBeDefined();
-      expect(screen.queryByLabelText("Name")).toBeNull();
+      expect(within(dialog).getByText(/Archive it instead/)).toBeDefined();
+      expect(screen.getByRole("dialog", { name: "Edit service" })).toBeDefined();
     });
   });
 });
