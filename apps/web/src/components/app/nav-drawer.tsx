@@ -6,6 +6,7 @@ import { useEffect, useRef } from "react";
 import type { MouseEvent } from "react";
 
 import { Rail } from "./rail";
+import { MODAL_BACKDROP } from "@/components/ui/modal";
 
 const DESKTOP = "(min-width: 64rem)";
 
@@ -62,7 +63,7 @@ export function NavDrawer({ onClose }: { onClose: () => void }) {
       aria-label="Navigation"
       onClose={onClose}
       onClick={onClick}
-      className="fixed inset-y-0 left-0 m-0 h-dvh max-h-none w-[min(18rem,85vw)] max-w-none bg-chrome p-0 text-fg shadow-overlay backdrop:bg-scrim"
+      className={`fixed inset-y-0 left-0 m-0 h-dvh max-h-none w-[min(18rem,85vw)] max-w-none bg-chrome p-0 text-fg shadow-overlay ${MODAL_BACKDROP}`}
     >
       <div className="flex h-full flex-col">
         <div className="flex h-strip shrink-0 items-center justify-between pr-2 pl-4">

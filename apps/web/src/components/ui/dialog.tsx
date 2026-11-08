@@ -5,6 +5,7 @@ import { useEffect, useId, useRef } from "react";
 import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
 
 import { cx } from "./cx";
+import { MODAL_BACKDROP } from "./modal";
 
 /**
  * A form in a centred dialog over the page it belongs to — creating a
@@ -75,7 +76,8 @@ export function FormDialog({
       }}
       onClick={onClick}
       className={cx(
-        "m-auto max-h-[calc(100dvh-2rem)] max-w-none overflow-y-auto rounded-lg border border-line bg-surface p-0 text-fg shadow-overlay backdrop:bg-scrim/40",
+        "m-auto max-h-[calc(100dvh-2rem)] max-w-none overflow-y-auto rounded-lg border border-line bg-surface p-0 text-fg shadow-overlay",
+        MODAL_BACKDROP,
         size === "lg"
           ? "w-[min(38rem,calc(100vw-2rem))]"
           : "w-[min(32rem,calc(100vw-2rem))]",

@@ -13,6 +13,7 @@ import { DayPicker } from "react-day-picker";
 import type { ClassNames, DateRange } from "react-day-picker";
 
 import { Button } from "@/components/ui/button";
+import { MODAL_BACKDROP } from "@/components/ui/modal";
 import type { IncidentPeriod } from "@/lib/api/contracts";
 import {
   MAX_PERIOD_DAYS,
@@ -182,9 +183,9 @@ export function CustomRangeDialog({
         onCancel();
       }}
       onClick={onClick}
-      // Centred by the browser. The backdrop is a light dim: a filter being
-      // set, not a workflow taking over the page.
-      className="m-auto max-h-[calc(100dvh-2rem)] w-fit max-w-[calc(100vw-2rem)] overflow-y-auto rounded-lg border border-line bg-surface p-0 text-fg shadow-overlay backdrop:bg-scrim/40"
+      // Centred by the browser, over the same dimmed, blurred page as every
+      // other modal.
+      className={`m-auto max-h-[calc(100dvh-2rem)] w-fit max-w-[calc(100vw-2rem)] overflow-y-auto rounded-lg border border-line bg-surface p-0 text-fg shadow-overlay ${MODAL_BACKDROP}`}
     >
       <div className="flex flex-col gap-4 p-4 sm:p-5">
         <h2 id={headingId} className="text-sm font-semibold text-fg">

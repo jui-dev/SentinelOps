@@ -12,6 +12,7 @@ import { Field, TextArea } from "@/components/ui/field";
 import { Section } from "@/components/ui/page";
 import { Select } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
+import { MODAL_BACKDROP } from "@/components/ui/modal";
 import {
   RequiredNote,
   SubmitHint,
@@ -258,7 +259,7 @@ function ManageIncidentDrawer({
         onClose();
       }}
       onClick={onClick}
-      className="fixed inset-y-0 right-0 left-auto m-0 h-dvh max-h-none w-[min(30rem,100vw)] max-w-none border-l border-line bg-surface p-0 text-fg shadow-overlay backdrop:bg-scrim/40"
+      className={`fixed inset-y-0 right-0 left-auto m-0 h-dvh max-h-none w-[min(30rem,100vw)] max-w-none border-l border-line bg-surface p-0 text-fg shadow-overlay ${MODAL_BACKDROP}`}
     >
       <div className="flex h-full flex-col">
         <div className="flex shrink-0 items-center justify-between gap-4 border-b border-line-subtle px-5 py-3">
