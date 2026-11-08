@@ -27,9 +27,11 @@ import { incidentKey, SeverityMark, StatusMark, statusOf } from "./severity";
 function IncidentRow({
   incident,
   state,
+  showTeam,
 }: {
   incident: IncidentResponse;
   state: IncidentState;
+  showTeam: boolean;
 }) {
   const organization = useOrganization();
   const active = state === "active";
@@ -76,13 +78,16 @@ function IncidentRow({
               {statusOf(incident.status).label} ·{" "}
             </span>
           )}
-          {incident.service.name} · {incident.team.name}
+          {incident.service.name}
+          {showTeam && ` · ${incident.team.name}`}
         </span>
       </TD>
       <TD className="hidden truncate xl:table-cell">{incident.service.name}</TD>
-      <TD kind="muted" className="hidden truncate xl:table-cell">
-        {incident.team.name}
-      </TD>
+      {showTeam && (
+        <TD kind="muted" className="hidden truncate xl:table-cell">
+          {incident.team.name}
+        </TD>
+      )}
       {active ? (
         <>
           {/* In body text, not muted: status is read down the column. */}
@@ -125,11 +130,17 @@ export function IncidentTable({
   state,
   label,
   stickyHeader = false,
+  showTeam = true,
 }: {
   incidents: readonly IncidentResponse[];
   state: IncidentState;
   label: string;
   stickyHeader?: boolean;
+  /**
+   * False where every row's team is the same one — a team's own page — so
+   * the column's room goes to the titles instead of repeating a name.
+   */
+  showTeam?: boolean;
 }) {
   const active = state === "active";
 
@@ -144,7 +155,7 @@ export function IncidentTable({
         <col className="w-21 sm:w-24" />
         <col />
         <col className="hidden w-[16%] xl:table-column" />
-        <col className="hidden w-[14%] xl:table-column" />
+        {showTeam && <col className="hidden w-[14%] xl:table-column" />}
         <col className="hidden w-30 sm:table-column" />
         <col className="w-19 sm:w-22" />
       </colgroup>
@@ -153,7 +164,9 @@ export function IncidentTable({
           <TH>Severity</TH>
           <TH>Incident</TH>
           <TH className="hidden xl:table-cell">Service</TH>
-          <TH className="hidden xl:table-cell">Responsible team</TH>
+          {showTeam && (
+            <TH className="hidden xl:table-cell">Responsible team</TH>
+          )}
           {active ? (
             <>
               <TH className="hidden sm:table-cell">Status</TH>
@@ -169,7 +182,12 @@ export function IncidentTable({
       </THead>
       <TBody>
         {incidents.map((incident) => (
-          <IncidentRow key={incident.id} incident={incident} state={state} />
+          <IncidentRow
+            key={incident.id}
+            incident={incident}
+            state={state}
+            showTeam={showTeam}
+          />
         ))}
       </TBody>
     </Table>

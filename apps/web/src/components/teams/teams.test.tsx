@@ -291,7 +291,7 @@ describe("teams", () => {
       navigation.params = { orgSlug: "acme-ops", teamId: platform.slug };
     });
 
-    it("shows its name, description, and members — no slug, no other sections", async () => {
+    it("shows its name, description, a way back to Teams, and a glance at it", async () => {
       api(READ);
 
       inTeam(<TeamDetail />);
@@ -300,104 +300,92 @@ describe("teams", () => {
         await screen.findByRole("heading", { level: 1, name: "Platform" }),
       ).toBeDefined();
       expect(screen.getByText("Owns the runtime.")).toBeDefined();
-      expect(await screen.findByText("Ada Lovelace")).toBeDefined();
       expect(screen.queryByText("platform")).toBeNull();
+
+      const breadcrumb = screen.getByRole("navigation", { name: "Breadcrumb" });
+      expect(
+        within(breadcrumb).getByRole("link", { name: "Teams" }).getAttribute("href"),
+      ).toBe("/orgs/acme-ops/teams");
+
+      // Size and ownership from the team itself; no incident figures
+      // without incidents:read.
+      const glance = screen.getByLabelText("Platform at a glance");
+      expect(within(glance).getByText("Members").nextSibling?.textContent).toBe("1");
+      expect(
+        within(glance).getByText("Services owned").nextSibling?.textContent,
+      ).toBe("0");
+      expect(within(glance).queryByText("Active incidents")).toBeNull();
+
+      expect(await screen.findByText("Ada Lovelace")).toBeDefined();
       expect(
         screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent),
-      ).toEqual(["Members"]);
-      expect(screen.queryByRole("button", { name: /Remove/ })).toBeNull();
+      ).toEqual(["Members1"]);
       expect(screen.queryByRole("link", { name: "Settings" })).toBeNull();
     });
 
-    it("offers only organization members not already on the team, and adds one", async () => {
-      const user = userEvent.setup();
-      const { requests } = api(MANAGE, {
-        handler: (request) =>
-          route(request) === `POST ${base}/teams/${platform.id}/members`
-            ? jsonResponse(201, {
-                membershipId: grace.id,
-                addedAt: "2026-09-18T13:00:00.000Z",
-                user: grace.user,
-              })
-            : undefined,
-      });
+    it("lists its members read only, each with their profile, and says where placement changes", async () => {
+      const { requests } = api(MANAGE);
 
       inTeam(<TeamDetail />);
 
-      const select = await screen.findByLabelText("Organization member");
-      const options = within(select).getAllByRole("option");
+      const list = await screen.findByRole("list", { name: "Members of Platform" });
 
-      expect(options.map((o) => o.textContent)).toEqual([
-        "Grace Hopper (grace@example.com)",
-      ]);
-
-      await user.click(screen.getByRole("button", { name: "Add to team" }));
-
-      await waitFor(() =>
-        expect(
-          requests.find(
-            (r) => route(r) === `POST ${base}/teams/${platform.id}/members`,
-          )?.body,
-        ).toEqual({ membershipId: grace.id }),
-      );
-    });
-
-    it("removes a member by their membership id", async () => {
-      const user = userEvent.setup();
-      const { requests } = api(MANAGE, {
-        handler: (request) =>
-          route(request) ===
-          `DELETE ${base}/teams/${platform.id}/members/${ada.id}`
-            ? jsonResponse(204)
-            : undefined,
-      });
-
-      inTeam(<TeamDetail />);
-
-      await user.click(
-        await screen.findByRole("button", {
-          name: "Remove Ada Lovelace from Platform",
-        }),
-      );
-
-      await waitFor(() =>
-        expect(
-          requests.some(
-            (r) =>
-              route(r) ===
-              `DELETE ${base}/teams/${platform.id}/members/${ada.id}`,
-          ),
-        ).toBe(true),
-      );
-    });
-
-    it("explains a removal that was already out of date, and refreshes", async () => {
-      const user = userEvent.setup();
-      const { requests } = api(MANAGE, {
-        handler: (request) =>
-          request.method === "DELETE"
-            ? apiError(404, "TEAM_MEMBER_NOT_FOUND")
-            : undefined,
-      });
-
-      inTeam(<TeamDetail />);
-
-      await user.click(
-        await screen.findByRole("button", {
-          name: "Remove Ada Lovelace from Platform",
-        }),
-      );
-
+      expect(within(list).getByText("ada@example.com")).toBeDefined();
       expect(
-        await screen.findByText(/was no longer on this team/),
-      ).toBeDefined();
-      await waitFor(() =>
-        expect(
-          requests.filter(
-            (r) => route(r) === `GET ${base}/teams/${platform.id}/members`,
-          ).length,
-        ).toBeGreaterThan(1),
-      );
+        within(list)
+          .getByRole("link", { name: "Ada Lovelace’s profile" })
+          .getAttribute("href"),
+      ).toBe(`/orgs/acme-ops/members/${ada.id}`);
+
+      // One place to change placement: the member's own page.
+      expect(screen.queryByRole("button", { name: /Remove/ })).toBeNull();
+      expect(screen.queryByRole("button", { name: /Add to team/ })).toBeNull();
+      expect(screen.queryByLabelText("Organization member")).toBeNull();
+      expect(screen.getByText(/To add or remove someone/)).toBeDefined();
+      expect(
+        screen.getByRole("link", { name: "Members" }).getAttribute("href"),
+      ).toBe("/orgs/acme-ops/members");
+      // Nor does it read the organization's member list to offer anyone.
+      expect(
+        requests.some((r) => route(r) === `GET ${base}/memberships`),
+      ).toBe(false);
+    });
+
+    it("shows six members until asked, then all of them in the card", async () => {
+      const user = userEvent.setup();
+      const many = Array.from({ length: 8 }, (_, n) => ({
+        membershipId: `0199a1b2-c3d4-7000-8000-0000000003${n}0`,
+        addedAt: "2026-09-18T12:00:00.000Z",
+        user: {
+          id: `0199a1b2-c3d4-7000-8000-0000000004${n}0`,
+          name: `Person ${n}`,
+          email: `p${n}@example.com`,
+        },
+      }));
+      api(READ, {
+        handler: (request) =>
+          route(request) === `GET ${base}/teams/${platform.id}/members`
+            ? jsonResponse(200, many)
+            : undefined,
+      });
+
+      inTeam(<TeamDetail />);
+
+      const list = await screen.findByRole("list", { name: "Members of Platform" });
+      const toggle = screen.getByRole("button", { name: "Show all 8" });
+
+      expect(within(list).getAllByRole("listitem")).toHaveLength(6);
+      expect(toggle.getAttribute("aria-expanded")).toBe("false");
+
+      await user.click(toggle);
+
+      expect(within(list).getAllByRole("listitem")).toHaveLength(8);
+      // The card keeps its height: the list scrolls, and can be focused to.
+      expect(list.getAttribute("tabindex")).toBe("0");
+      expect(list.className).toContain("overflow-y-auto");
+      expect(
+        screen.getByRole("button", { name: "Show fewer" }).getAttribute("aria-expanded"),
+      ).toBe("true");
     });
 
     it("shows the services it owns, and only those, with services:read", async () => {
@@ -405,24 +393,20 @@ describe("teams", () => {
 
       inTeam(<TeamDetail />);
 
-      const table = await screen.findByRole("table", {
-        name: "Services owned by this team",
+      const list = await screen.findByRole("list", {
+        name: "Services owned by Platform",
       });
+      const runtime = within(list).getByRole("link", { name: /Runtime API/ });
 
-      expect(
-        within(table).getByRole("link", { name: "Runtime API" }).getAttribute(
-          "href",
-        ),
-      ).toBe("/orgs/acme-ops/services/runtime-api");
-      expect(within(table).getByText("High")).toBeDefined();
+      expect(runtime.getAttribute("href")).toBe("/orgs/acme-ops/services/runtime-api");
+      expect(within(runtime).getByText("High")).toBeDefined();
       expect(screen.queryByText("Checkout")).toBeNull();
       expect(
-        screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent),
-      ).toEqual(["Members", "Services"]);
+        screen.getByText("Incidents on these services come to Platform."),
+      ).toBeDefined();
     });
 
     it("says plainly when it owns no services", async () => {
-      navigation.params = { orgSlug: "acme-ops", teamId: platform.slug };
       api(READ_WITH_SERVICES, {
         handler: (request) =>
           route(request) === `GET ${base}/services`
@@ -437,7 +421,7 @@ describe("teams", () => {
       ).toBeDefined();
     });
 
-    it("lists the incidents it is responsible for, linking to Incidents filtered by it", async () => {
+    it("lists the incidents it is responsible for, counts them at a glance, and links to Incidents filtered by it", async () => {
       const listed = (state: string) =>
         `GET ${base}/incidents?state=${state}&teamId=${platform.id}`;
       const incident = (number: number, status: string) => ({
@@ -465,11 +449,11 @@ describe("teams", () => {
         page: { cursor: null, hasMore: false },
       });
 
-      api([...READ, "incidents:read"], {
+      const { requests } = api([...READ, "incidents:read"], {
         handler: (request) =>
           route(request) === listed("active")
             ? jsonResponse(200, page([incident(4, "DECLARED")]))
-            : route(request) === listed("resolved")
+            : route(request).startsWith(`GET ${base}/incidents?state=resolved`)
               ? jsonResponse(200, page([incident(3, "RESOLVED")]))
               : undefined,
       });
@@ -486,12 +470,43 @@ describe("teams", () => {
           await screen.findByRole("table", { name: "Recently resolved incidents" }),
         ).getByText("Login failures 3"),
       ).toBeDefined();
+      expect(screen.getByText("Platform is responsible for these now")).toBeDefined();
+
+      // The glance counts them: the active list, and a 30-day resolved one.
+      const glance = screen.getByLabelText("Platform at a glance");
+      await waitFor(() =>
+        expect(
+          within(glance).getByText("Active incidents").nextSibling?.textContent,
+        ).toBe("11 × SEV2"),
+      );
+      expect(within(glance).getByText("last 30 days")).toBeDefined();
       expect(
-        screen.getByText(/responsible for, whichever service they affect/),
-      ).toBeDefined();
+        requests.some((r) =>
+          /state=resolved&from=\d{4}-\d{2}-\d{2}&to=\d{4}-\d{2}-\d{2}&teamId=/.test(
+            r.path,
+          ),
+        ),
+      ).toBe(true);
+
+      for (const link of screen.getAllByRole("link", { name: "View all in Incidents" })) {
+        expect(link.getAttribute("href")).toBe(
+          `/orgs/acme-ops/incidents?team=${platform.id}`,
+        );
+      }
+      // Every row is this team's: no column repeating its name, and none
+      // folded under the titles either.
       expect(
-        screen.getByRole("link", { name: "View all in Incidents" }).getAttribute("href"),
-      ).toBe(`/orgs/acme-ops/incidents?team=${platform.id}`);
+        screen.queryByRole("columnheader", { name: "Responsible team" }),
+      ).toBeNull();
+      expect(screen.queryByText(/· Platform/)).toBeNull();
+      expect(
+        screen.getAllByRole("columnheader", { name: "Service" }),
+      ).toHaveLength(2);
+
+      // Incidents and members on one row, resolved and services on the next.
+      expect(
+        screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent),
+      ).toEqual(["Active incidents1", "Members1", "Recently resolved"]);
     });
 
     it("answers an unknown slug with a not-found page", async () => {
@@ -602,7 +617,7 @@ describe("teams", () => {
         </>,
       );
 
-      await screen.findByRole("table", { name: "Services owned by this team" });
+      await screen.findByRole("list", { name: "Services owned by Platform" });
 
       const name = await screen.findByLabelText("Name");
 

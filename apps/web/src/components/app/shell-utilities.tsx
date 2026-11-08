@@ -131,7 +131,7 @@ export function AppearanceMenu() {
   );
 }
 
-function initialsOf(name: string): string {
+export function initialsOf(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
 
   return (
