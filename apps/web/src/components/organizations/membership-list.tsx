@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { ChevronRight, Plus, Search } from "lucide-react";
 import Link from "next/link";
-import { useId, useState } from "react";
+import { Fragment, useId, useState } from "react";
 
 import { initialsOf } from "@/components/app/shell-utilities";
 import { ErrorAlert } from "@/components/ui/alert";
@@ -20,6 +20,7 @@ import { queryKeys } from "@/lib/api/query-keys";
 import { useCurrentUser } from "@/lib/auth/session-provider";
 
 import { formatRole } from "./format";
+import { MemberPeek } from "./member-peek";
 import { AddToTeamDialog, RemoveFromTeamDialog } from "./member-placement";
 import { memberHref } from "./member-paths";
 import { useCan, useOrganization } from "./organization-scope";
@@ -259,6 +260,16 @@ export function MembershipList() {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<FilterId>("all");
   const [dialog, setDialog] = useState<Dialog>(null);
+  // Any number open at once, so people can be compared side by side.
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  const toggle = (memberId: string) =>
+    setExpanded((current) => {
+      const next = new Set(current);
+
+      if (!next.delete(memberId)) next.add(memberId);
+
+      return next;
+    });
 
   if (memberships.isError) return <ErrorAlert error={memberships.error} />;
   if (!memberships.data) return <Spinner label="Loading members…" />;
@@ -310,10 +321,40 @@ export function MembershipList() {
               </TD>
             </TR>
           ) : (
-            shown.map((member) => (
-              <TR key={member.id}>
+            shown.map((member) => {
+              const open = expanded.has(member.id);
+              const peekId = `member-peek-${member.id}`;
+
+              return (
+              <Fragment key={member.id}>
+              <TR
+                // A click anywhere on the row opens it, as the chevron does —
+                // but not one meant for an action, or the chevron itself.
+                onClick={(event) => {
+                  if ((event.target as Element).closest("a, button")) return;
+                  toggle(member.id);
+                }}
+                className="cursor-pointer"
+              >
                 <TD>
                   <div className="flex items-center gap-2.5">
+                    <button
+                      type="button"
+                      aria-expanded={open}
+                      aria-controls={open ? peekId : undefined}
+                      aria-label={`${open ? "Hide" : "Show"} teams of ${member.user.name}`}
+                      onClick={() => toggle(member.id)}
+                      className="-ml-1 grid size-6 shrink-0 place-items-center rounded-sm text-fg-subtle hover:bg-hover hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+                    >
+                      <ChevronRight
+                        aria-hidden="true"
+                        strokeWidth={2}
+                        className={cx(
+                          "size-4 transition-transform duration-(--duration-fast)",
+                          open && "rotate-90",
+                        )}
+                      />
+                    </button>
                     <span
                       aria-hidden="true"
                       className="grid size-8 shrink-0 place-items-center rounded-full border border-accent-line bg-accent-subtle text-xs font-semibold text-accent-text"
@@ -405,7 +446,20 @@ export function MembershipList() {
                   </div>
                 </TD>
               </TR>
-            ))
+              {open && (
+                // A plain row, outside the table's hover: the row above, opened.
+                <tr id={peekId}>
+                  <td
+                    colSpan={6}
+                    className="border-b border-line-subtle bg-sunken px-3 py-3 sm:px-4"
+                  >
+                    <MemberPeek member={member} />
+                  </td>
+                </tr>
+              )}
+              </Fragment>
+              );
+            })
           )}
         </TBody>
       </Table>

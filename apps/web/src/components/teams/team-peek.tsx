@@ -24,7 +24,7 @@ import { useTeamMembers } from "./team-scope";
 const SCROLL =
   "max-h-60 overflow-y-auto overscroll-contain focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus";
 
-function Column({
+export function PeekColumn({
   title,
   count,
   label,
@@ -53,7 +53,7 @@ function Column({
   );
 }
 
-const Empty = ({ children }: { children: ReactNode }) => (
+export const PeekEmpty = ({ children }: { children: ReactNode }) => (
   <p className="px-3.5 py-3 text-sm text-fg-subtle">{children}</p>
 );
 
@@ -63,7 +63,7 @@ function PeekMembers({ team }: { team: TeamResponse }) {
   const members = useTeamMembers(organization.id, team.id);
 
   return (
-    <Column
+    <PeekColumn
       title="Members"
       count={members.data?.length}
       label={`Members of ${team.name}`}
@@ -75,7 +75,7 @@ function PeekMembers({ team }: { team: TeamResponse }) {
       ) : !members.data ? (
         <Spinner label="Loading members…" />
       ) : members.data.length === 0 ? (
-        <Empty>No one is on this team yet.</Empty>
+        <PeekEmpty>No one is on this team yet.</PeekEmpty>
       ) : (
         <ul className="divide-y divide-line-subtle">
           {members.data.map((member) => (
@@ -99,7 +99,7 @@ function PeekMembers({ team }: { team: TeamResponse }) {
           ))}
         </ul>
       )}
-    </Column>
+    </PeekColumn>
   );
 }
 
@@ -112,7 +112,7 @@ function PeekServices({ team }: { team: TeamResponse }) {
   );
 
   return (
-    <Column
+    <PeekColumn
       title="Services owned"
       count={owned?.length}
       label={`Services owned by ${team.name}`}
@@ -124,7 +124,7 @@ function PeekServices({ team }: { team: TeamResponse }) {
       ) : !owned ? (
         <Spinner label="Loading services…" />
       ) : owned.length === 0 ? (
-        <Empty>This team owns no services.</Empty>
+        <PeekEmpty>This team owns no services.</PeekEmpty>
       ) : (
         <ul className="divide-y divide-line-subtle">
           {owned.map((service) => (
@@ -145,7 +145,7 @@ function PeekServices({ team }: { team: TeamResponse }) {
           ))}
         </ul>
       )}
-    </Column>
+    </PeekColumn>
   );
 }
 

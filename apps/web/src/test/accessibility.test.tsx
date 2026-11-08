@@ -707,6 +707,21 @@ describe("accessibility", () => {
       await expectNoAxeViolations(container);
     });
 
+    it("Members, with a row opened", async () => {
+      signedIn(ADMIN);
+      const { container } = inWorkspace(<MembersView />);
+
+      (
+        await screen.findByRole("button", {
+          name: `Show teams of ${currentUser.name}`,
+        })
+      ).click();
+      await screen.findByRole("region", {
+        name: `Teams of ${currentUser.name}`,
+      });
+      await expectNoAxeViolations(container);
+    });
+
     it("Members, adding someone to a team", async () => {
       signedIn(ADMIN);
       const { container } = inWorkspace(<MembersView />);

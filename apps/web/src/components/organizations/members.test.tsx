@@ -440,6 +440,140 @@ describe("placing members on teams, from the list", () => {
   });
 });
 
+describe("a member's row, opened", () => {
+  const PAYMENTS_REF = { id: PAYMENTS.id, name: "Payments", slug: "payments" };
+  const PLATFORM_REF = { id: PLATFORM.id, name: "Platform", slug: "platform" };
+  const service = (n: number, name: string, owner: typeof PAYMENTS_REF) => ({
+    id: `0199a1b2-c3d4-7000-8000-0000000000f${n}`,
+    name,
+    slug: name.toLowerCase().replace(/\s+/g, "-"),
+    description: null,
+    criticality: "CRITICAL",
+    ownerTeam: owner,
+    archivedAt: null,
+    createdAt: "2026-09-18T12:00:00.000Z",
+    updatedAt: "2026-09-18T12:00:00.000Z",
+  });
+  const sam = {
+    ...grace,
+    user: { ...grace.user, name: "Sam Okafor", passwordChangeRequired: false },
+    teams: [PAYMENTS_REF, PLATFORM_REF],
+  };
+  const withServices: Handler = (request) =>
+    route(request) === `GET ${base}/services`
+      ? jsonResponse(200, [
+          service(1, "Payment API", PAYMENTS_REF),
+          service(2, "Ledger", PAYMENTS_REF),
+          service(3, "Search", { id: INFRASTRUCTURE.id, name: "Infrastructure", slug: "infrastructure" }),
+        ])
+      : undefined;
+  const READ_SERVICES = [...READ_ONLY, "services:read"];
+
+  beforeEach(() => {
+    clearAccessToken();
+  });
+
+  it("shows their teams and what those own, and the services they respond to", async () => {
+    const user = userEvent.setup();
+    api(READ_SERVICES, [ada, sam], withServices);
+
+    renderMembers();
+
+    const toggle = await screen.findByRole("button", {
+      name: "Show teams of Sam Okafor",
+    });
+
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+
+    await user.click(toggle);
+
+    const teams = screen.getByRole("region", { name: "Teams of Sam Okafor" });
+    const covers = screen.getByRole("region", {
+      name: "Services Sam Okafor responds to",
+    });
+
+    expect(
+      within(teams).getByRole("link", { name: /Payments/ }).getAttribute("href"),
+    ).toBe("/orgs/acme-ops/teams/payments");
+    expect(
+      await within(teams).findByText("Owns Payment API, Ledger"),
+    ).toBeDefined();
+    expect(within(teams).getByText("Owns no services yet")).toBeDefined();
+
+    // What their teams own — and nothing another team owns.
+    expect(within(covers).getAllByRole("link")).toHaveLength(2);
+    expect(within(covers).getAllByText("via Payments")).toHaveLength(2);
+    expect(within(covers).queryByText("Search")).toBeNull();
+    expect(
+      screen
+        .getByRole("button", { name: "Hide teams of Sam Okafor" })
+        .getAttribute("aria-expanded"),
+    ).toBe("true");
+  });
+
+  it("opens from a click on the row, but not from its actions", async () => {
+    const user = userEvent.setup();
+    api([...READ_SERVICES, "teams:manage", "teams:read"], [ada, sam], withServices);
+
+    renderMembers();
+
+    await user.click(await screen.findByText("Sam Okafor"));
+    expect(
+      screen.getByRole("region", { name: "Teams of Sam Okafor" }),
+    ).toBeDefined();
+
+    await user.click(screen.getByText("Sam Okafor"));
+    expect(
+      screen.queryByRole("region", { name: "Teams of Sam Okafor" }),
+    ).toBeNull();
+
+    await user.click(
+      screen.getByRole("button", { name: "Add Sam Okafor to a team" }),
+    );
+    await screen.findByRole("dialog", { name: "Add Sam Okafor to a team" });
+    expect(
+      screen.queryByRole("region", { name: "Teams of Sam Okafor" }),
+    ).toBeNull();
+  });
+
+  it("says why a Member on no team responds to nothing", async () => {
+    const user = userEvent.setup();
+    api(READ_SERVICES, [ada, grace], withServices);
+
+    renderMembers();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Show teams of Grace Hopper" }),
+    );
+
+    expect(
+      screen.getByText("Grace is on no team, so sees no incidents."),
+    ).toBeDefined();
+    expect(
+      await screen.findByText("Nothing yet: people respond through their teams."),
+    ).toBeDefined();
+  });
+
+  it("leaves services out without services:read", async () => {
+    const user = userEvent.setup();
+    const { requests } = api(READ_ONLY, [ada, sam]);
+
+    renderMembers();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Show teams of Sam Okafor" }),
+    );
+
+    expect(
+      screen.getByRole("region", { name: "Teams of Sam Okafor" }),
+    ).toBeDefined();
+    expect(
+      screen.queryByRole("region", { name: /responds to/ }),
+    ).toBeNull();
+    expect(requests.some((r) => route(r) === `GET ${base}/services`)).toBe(false);
+  });
+});
+
 describe("adding a member", () => {
   beforeEach(() => {
     clearAccessToken();
