@@ -13,7 +13,15 @@ import { Permission } from './permissions.js';
  * a compile error rather than a role that silently holds nothing.
  *
  * Configuration — members, teams, services, invitations — is governed by
- * ADMIN. So is an incident's lifecycle (`incidents:manage`): declaring it,
+ * ADMIN. Reading teams (`teams:read`) is every role's, scoped by
+ * teams.scope.ts to the teams the caller is on now unless they also hold
+ * `teams:read-all`, which only ADMIN does: the Admin sees the organization's
+ * teams, a MEMBER sees the ones they belong to. That scope is current
+ * placement only — responding to an incident, or owning its analysis, does
+ * not make the team now responsible for it visible, and neither does a
+ * placement the member used to have.
+ *
+ * So is an incident's lifecycle (`incidents:manage`): declaring it,
  * changing its status, severity, or responsible team, and resolving it.
  * Taking part in the response (`incidents:respond`) is every role's work —
  * posting operational updates — but a MEMBER's is scoped to the incidents
@@ -50,6 +58,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, ReadonlySet<Permission>>> =
       Permission.INVITATIONS_READ,
       Permission.INVITATIONS_MANAGE,
       Permission.TEAMS_READ,
+      Permission.TEAMS_READ_ALL,
       Permission.TEAMS_MANAGE,
       Permission.SERVICES_READ,
       Permission.SERVICES_MANAGE,

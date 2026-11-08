@@ -18,7 +18,33 @@ export const Permission = {
   MEMBERS_MANAGE: 'members:manage',
   INVITATIONS_READ: 'invitations:read',
   INVITATIONS_MANAGE: 'invitations:manage',
+  /**
+   * Read teams: the list, one team, and who is on it.
+   *
+   * Scoped by teams.scope.ts to the caller's own teams — the ones they have
+   * a TeamMembership row on now — unless the caller also holds
+   * `teams:read-all`.
+   *
+   * Current placement only. An incident the caller responded to, or whose
+   * analysis they own, keeps that *incident* readable after a reassignment
+   * (see `incidents:read`) but says nothing about the team now responsible
+   * for it; nor does a placement they once had. Incident visibility and team
+   * visibility are separate questions, and this one is answered by the
+   * TeamMembership rows as they stand.
+   */
   TEAMS_READ: 'teams:read',
+  /**
+   * See every team in the organization, whoever is on it.
+   *
+   * A widening capability, as `incidents:read-all` is for one incident at a
+   * time: it widens `teams:read` from the caller's own teams to all of them,
+   * TeamsService consults it to decide the scope, and no route declares it.
+   * The read routes stay on `teams:read`, which both roles hold — a member
+   * is not refused the route, their teams are simply the ones they are on —
+   * so a team outside the scope is answered 404, exactly as a nonexistent
+   * one is, and its existence stays hidden.
+   */
+  TEAMS_READ_ALL: 'teams:read-all',
   TEAMS_MANAGE: 'teams:manage',
   SERVICES_READ: 'services:read',
   SERVICES_MANAGE: 'services:manage',
