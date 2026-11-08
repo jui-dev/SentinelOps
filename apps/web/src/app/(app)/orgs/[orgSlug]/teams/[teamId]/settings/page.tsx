@@ -1,9 +1,15 @@
-import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 
-import { TeamSettings } from "@/components/teams/team-settings";
+import { teamsHref } from "@/components/teams/team-scope";
 
-export const metadata: Metadata = { title: "Team settings" };
+/**
+ * Where a team's settings used to be. A team is edited from the Teams list
+ * now, so an old link or bookmark lands there.
+ */
+export default async function TeamSettingsPage({
+  params,
+}: PageProps<"/orgs/[orgSlug]/teams/[teamId]/settings">) {
+  const { orgSlug } = await params;
 
-export default function TeamSettingsPage() {
-  return <TeamSettings />;
+  redirect(teamsHref(orgSlug));
 }

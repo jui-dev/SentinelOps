@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Pencil } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
@@ -16,19 +16,35 @@ import { PageBody, PageHeader } from "@/components/ui/page";
 import { Spinner } from "@/components/ui/spinner";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { Permission } from "@/lib/api/contracts";
+import type { TeamResponse } from "@/lib/api/contracts";
 
 import { CreateTeamForm } from "./create-team-form";
+import { EditTeamDialog } from "./edit-team-dialog";
 import { teamHref, useTeams } from "./team-scope";
 
 /**
  * A row's way to its team: the accent's quiet fill, so it reads as the
  * action without competing with the page's primary button.
  */
-const VIEW_ACTION =
-  "inline-flex h-7 items-center gap-1 rounded-md border border-accent-line bg-accent-subtle px-2.5 text-sm font-medium text-accent-text transition-colors duration-(--duration-fast) hover:border-accent-rim focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus";
+const ROW_ACTION =
+  "inline-flex h-7 items-center gap-1 rounded-md border px-2.5 text-sm font-medium transition-colors duration-(--duration-fast) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus";
 
-/** `onCreate` is absent for those who may not manage teams. */
-function TeamList({ onCreate }: { onCreate?: () => void }) {
+const VIEW_ACTION = `${ROW_ACTION} border-accent-line bg-accent-subtle text-accent-text hover:border-accent-rim`;
+
+/** Editing, in the info tone's quiet fill: as calm as View, told apart from it. */
+const EDIT_ACTION = `${ROW_ACTION} border-info-line bg-info-subtle text-info-text hover:border-info-solid`;
+
+/**
+ * `onCreate` and `onEdit` are absent for those who may not manage teams;
+ * they are offered View alone.
+ */
+function TeamList({
+  onCreate,
+  onEdit,
+}: {
+  onCreate?: () => void;
+  onEdit?: (team: TeamResponse) => void;
+}) {
   const organization = useOrganization();
   const teams = useTeams(organization.id);
   const canManage = useCan(Permission.TEAMS_MANAGE);
@@ -91,14 +107,28 @@ function TeamList({ onCreate }: { onCreate?: () => void }) {
               {team.serviceCount}
             </TD>
             <TD kind="actions">
-              <Link
-                href={teamHref(organization.slug, team.slug)}
-                aria-label={`View ${team.name}`}
-                className={VIEW_ACTION}
-              >
-                View
-                <ChevronRight aria-hidden="true" strokeWidth={2} className="size-3.5" />
-              </Link>
+              {/* One flex line, so a link and a button sit on one centre. */}
+              <div className="flex items-center justify-end gap-2">
+                <Link
+                  href={teamHref(organization.slug, team.slug)}
+                  aria-label={`View ${team.name}`}
+                  className={VIEW_ACTION}
+                >
+                  View
+                  <ChevronRight aria-hidden="true" strokeWidth={2} className="size-3.5" />
+                </Link>
+                {onEdit && (
+                  <button
+                    type="button"
+                    aria-label={`Edit ${team.name}`}
+                    onClick={() => onEdit(team)}
+                    className={EDIT_ACTION}
+                  >
+                    <Pencil aria-hidden="true" strokeWidth={2} className="size-3.5" />
+                    Edit
+                  </button>
+                )}
+              </div>
             </TD>
           </TR>
         ))}
@@ -119,11 +149,15 @@ export function TeamsView() {
   const [creating, setCreating] = useState(false);
   const openCreate = () => setCreating(true);
   const close = () => setCreating(false);
+  // By id, read from the list as it stands: a team deleted meanwhile, or
+  // gone from the list, closes its dialog.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const editing = teams.data?.find((team) => team.id === editingId);
 
   return (
     <>
       <PageHeader
-        width="list"
+        width="full"
         title="Teams"
         meta={teams.data?.length}
         description={
@@ -135,9 +169,19 @@ export function TeamsView() {
           canManage && <Button onClick={openCreate}>New team</Button>
         }
       />
-      <PageBody width="list">
-        <TeamList onCreate={canManage ? openCreate : undefined} />
+      <PageBody width="full">
+        <TeamList
+          onCreate={canManage ? openCreate : undefined}
+          onEdit={canManage ? (team) => setEditingId(team.id) : undefined}
+        />
       </PageBody>
+      {canManage && editing && (
+        <EditTeamDialog
+          key={editing.id}
+          team={editing}
+          onClose={() => setEditingId(null)}
+        />
+      )}
       {canManage && creating && (
         <FormDialog
           title="New team"

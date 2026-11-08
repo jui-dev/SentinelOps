@@ -19,7 +19,6 @@ import { renderWithSession } from "@/test/render";
 
 import { TeamDetail } from "./team-detail";
 import { TeamScope } from "./team-scope";
-import { TeamSettings } from "./team-settings";
 import { TeamsView } from "./teams-view";
 
 const navigation = vi.hoisted(() => ({
@@ -542,12 +541,51 @@ describe("teams", () => {
     });
   });
 
-  describe("settings", () => {
-    beforeEach(() => {
-      navigation.params = { orgSlug: "acme-ops", teamId: platform.slug };
+  describe("editing, from the list", () => {
+    /** Opens Platform's Edit dialog from the Teams list. */
+    const openEdit = async (user: ReturnType<typeof userEvent.setup>) => {
+      await user.click(
+        await screen.findByRole("button", { name: "Edit Platform" }),
+      );
+
+      return screen.findByRole("dialog", { name: "Edit team" });
+    };
+
+    it("offers Edit beside View, in its own quiet tone, to whoever manages teams", async () => {
+      api(MANAGE);
+
+      inOrganization(<TeamsView />);
+
+      const edit = await screen.findByRole("button", { name: "Edit Platform" });
+      const view = screen.getByRole("link", { name: "View Platform" });
+
+      expect(edit.textContent).toBe("Edit");
+      expect(edit.closest("td")).toBe(view.closest("td"));
+      expect(edit.className).toContain("bg-info-subtle");
+      expect(view.className).toContain("bg-accent-subtle");
     });
 
-    it("saves the name and description", async () => {
+    it("offers View alone without teams:manage", async () => {
+      api(READ);
+
+      inOrganization(<TeamsView />);
+
+      await screen.findByRole("link", { name: "View Platform" });
+      expect(screen.queryByRole("button", { name: /Edit/ })).toBeNull();
+    });
+
+    it("is not offered on the team's own page", async () => {
+      navigation.params = { orgSlug: "acme-ops", teamId: platform.slug };
+      api(MANAGE);
+
+      inTeam(<TeamDetail />);
+
+      await screen.findByRole("heading", { level: 1, name: "Platform" });
+      expect(screen.queryByRole("link", { name: "Settings" })).toBeNull();
+      expect(screen.queryByRole("button", { name: /Edit/ })).toBeNull();
+    });
+
+    it("saves the name and description, then closes on the renamed list", async () => {
       const user = userEvent.setup();
       const { requests } = api(MANAGE, {
         handler: (request) =>
@@ -556,47 +594,37 @@ describe("teams", () => {
             : undefined,
       });
 
-      inTeam(<TeamSettings />);
+      inOrganization(<TeamsView />);
 
-      const name = await screen.findByLabelText("Name");
+      const dialog = await openEdit(user);
+      const name = within(dialog).getByLabelText("Name");
 
       await user.clear(name);
       await user.type(name, "Runtime");
-      await user.click(screen.getByRole("button", { name: "Save" }));
+      await user.click(within(dialog).getByRole("button", { name: "Save changes" }));
 
-      expect(await screen.findByText("Team updated.")).toBeDefined();
+      await waitFor(() =>
+        expect(screen.queryByRole("dialog", { name: "Edit team" })).toBeNull(),
+      );
       expect(
         requests.find((r) => route(r) === `PATCH ${base}/teams/${platform.id}`)
           ?.body,
       ).toEqual({ name: "Runtime", description: "Owns the runtime." });
+      expect(screen.getByRole("link", { name: "View Runtime" })).toBeDefined();
     });
 
-    it("deletes only after confirmation, then returns to the list", async () => {
+    it("closes on Cancel without saving", async () => {
       const user = userEvent.setup();
-      const { requests } = api(MANAGE, {
-        handler: (request) =>
-          route(request) === `DELETE ${base}/teams/${platform.id}`
-            ? jsonResponse(204)
-            : undefined,
-      });
+      const { requests } = api(MANAGE);
 
-      inTeam(<TeamSettings />);
+      inOrganization(<TeamsView />);
 
-      await user.click(
-        await screen.findByRole("button", { name: "Delete team…" }),
-      );
+      const dialog = await openEdit(user);
 
-      expect(requests.some((r) => r.method === "DELETE")).toBe(false);
-      expect(screen.getByText(/Its 1 member will be taken off it/)).toBeDefined();
+      await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
 
-      await user.click(screen.getByRole("button", { name: "Delete team" }));
-
-      await waitFor(() =>
-        expect(navigation.push).toHaveBeenCalledWith("/orgs/acme-ops/teams"),
-      );
-      expect(
-        requests.some((r) => route(r) === `DELETE ${base}/teams/${platform.id}`),
-      ).toBe(true);
+      expect(screen.queryByRole("dialog", { name: "Edit team" })).toBeNull();
+      expect(requests.some((r) => r.method === "PATCH")).toBe(false);
     });
 
     it("refreshes services after a rename, since each names its owner", async () => {
@@ -607,25 +635,26 @@ describe("teams", () => {
             ? jsonResponse(200, { ...platform, name: "Runtime" })
             : undefined,
       });
+      navigation.params = { orgSlug: "acme-ops", teamId: platform.slug };
 
       // The team's own page, rendered alongside, keeps the services query
       // live — so an invalidation shows up as a refetch.
       inTeam(
         <>
           <TeamDetail />
-          <TeamSettings />
+          <TeamsView />
         </>,
       );
 
       await screen.findByRole("list", { name: "Services owned by Platform" });
 
-      const name = await screen.findByLabelText("Name");
+      const dialog = await openEdit(user);
+      const name = within(dialog).getByLabelText("Name");
 
       await user.clear(name);
       await user.type(name, "Runtime");
-      await user.click(screen.getByRole("button", { name: "Save" }));
+      await user.click(within(dialog).getByRole("button", { name: "Save changes" }));
 
-      await screen.findByText("Team updated.");
       await waitFor(() =>
         expect(
           requests.filter((r) => route(r) === `GET ${base}/services`).length,
@@ -633,23 +662,61 @@ describe("teams", () => {
       );
     });
 
-    it("refuses to offer deletion while the team owns services, and says what to do", async () => {
-      api(MANAGE, {
-        teams: [{ ...platform, serviceCount: 2 }],
+    it("deletes only after confirmation, then closes on the refreshed list", async () => {
+      const user = userEvent.setup();
+      const { requests } = api(MANAGE, {
+        handler: (request) =>
+          route(request) === `DELETE ${base}/teams/${platform.id}`
+            ? jsonResponse(204)
+            : undefined,
       });
 
-      inTeam(<TeamSettings />);
+      inOrganization(<TeamsView />);
 
+      const dialog = await openEdit(user);
+
+      await user.click(
+        within(dialog).getByRole("button", { name: "Delete team…" }),
+      );
+
+      expect(requests.some((r) => r.method === "DELETE")).toBe(false);
       expect(
-        await screen.findByText("This team owns services"),
+        within(dialog).getByText(/Its 1 member will be taken off it/),
       ).toBeDefined();
-      expect(screen.getByText(/It owns 2 services/)).toBeDefined();
+
+      await user.click(within(dialog).getByRole("button", { name: "Delete team" }));
+
+      await waitFor(() =>
+        expect(screen.queryByRole("dialog", { name: "Edit team" })).toBeNull(),
+      );
       expect(
-        screen
+        requests.some((r) => route(r) === `DELETE ${base}/teams/${platform.id}`),
+      ).toBe(true);
+      await waitFor(() =>
+        expect(
+          requests.filter((r) => route(r) === `GET ${base}/teams`).length,
+        ).toBeGreaterThan(1),
+      );
+    });
+
+    it("refuses to offer deletion while the team owns services, and says what to do", async () => {
+      const user = userEvent.setup();
+      api(MANAGE, { teams: [{ ...platform, serviceCount: 2 }] });
+
+      inOrganization(<TeamsView />);
+
+      const dialog = await openEdit(user);
+
+      expect(within(dialog).getByText("This team owns services")).toBeDefined();
+      expect(within(dialog).getByText(/It owns 2 services/)).toBeDefined();
+      expect(
+        within(dialog)
           .getByRole("link", { name: "See its services" })
           .getAttribute("href"),
       ).toBe("/orgs/acme-ops/teams/platform");
-      expect(screen.queryByRole("button", { name: /Delete team/ })).toBeNull();
+      expect(
+        within(dialog).queryByRole("button", { name: /Delete team/ }),
+      ).toBeNull();
     });
 
     it("explains a delete refused because services were assigned meanwhile", async () => {
@@ -661,22 +728,24 @@ describe("teams", () => {
             : undefined,
       });
 
-      inTeam(<TeamSettings />);
+      inOrganization(<TeamsView />);
+
+      const dialog = await openEdit(user);
 
       await user.click(
-        await screen.findByRole("button", { name: "Delete team…" }),
+        within(dialog).getByRole("button", { name: "Delete team…" }),
       );
-      await user.click(screen.getByRole("button", { name: "Delete team" }));
+      await user.click(within(dialog).getByRole("button", { name: "Delete team" }));
 
       expect(
-        await screen.findByText(/This team now owns services/),
+        await within(dialog).findByText(/This team now owns services/),
       ).toBeDefined();
-      expect(navigation.push).not.toHaveBeenCalled();
       await waitFor(() =>
         expect(
           requests.filter((r) => route(r) === `GET ${base}/teams`).length,
         ).toBeGreaterThan(1),
       );
+      expect(screen.getByRole("dialog", { name: "Edit team" })).toBeDefined();
     });
 
     it("explains that a team with incident history cannot be deleted", async () => {
@@ -688,47 +757,41 @@ describe("teams", () => {
             : undefined,
       });
 
-      inTeam(<TeamSettings />);
+      inOrganization(<TeamsView />);
+
+      const dialog = await openEdit(user);
 
       await user.click(
-        await screen.findByRole("button", { name: "Delete team…" }),
+        within(dialog).getByRole("button", { name: "Delete team…" }),
       );
-      await user.click(screen.getByRole("button", { name: "Delete team" }));
+      await user.click(within(dialog).getByRole("button", { name: "Delete team" }));
 
       expect(
-        await screen.findByText("This team has incident history"),
+        await within(dialog).findByText("This team has incident history"),
       ).toBeDefined();
-      expect(screen.queryByRole("button", { name: /Delete team/ })).toBeNull();
-      expect(navigation.push).not.toHaveBeenCalled();
+      expect(
+        within(dialog).queryByRole("button", { name: /Delete team/ }),
+      ).toBeNull();
     });
 
-    it("stays put and says so when a delete fails", async () => {
+    it("stays open and says so when a delete fails", async () => {
       const user = userEvent.setup();
       api(MANAGE, {
         handler: (request) =>
           request.method === "DELETE" ? apiError(500) : undefined,
       });
 
-      inTeam(<TeamSettings />);
+      inOrganization(<TeamsView />);
+
+      const dialog = await openEdit(user);
 
       await user.click(
-        await screen.findByRole("button", { name: "Delete team…" }),
+        within(dialog).getByRole("button", { name: "Delete team…" }),
       );
-      await user.click(screen.getByRole("button", { name: "Delete team" }));
+      await user.click(within(dialog).getByRole("button", { name: "Delete team" }));
 
-      expect(await screen.findByText("Failed with 500")).toBeDefined();
-      expect(navigation.push).not.toHaveBeenCalled();
-    });
-
-    it("offers nothing to change without teams:manage", async () => {
-      api(READ);
-
-      inTeam(<TeamSettings />);
-
-      expect(
-        await screen.findByText(/do not have permission to change this team/),
-      ).toBeDefined();
-      expect(screen.queryByLabelText("Name")).toBeNull();
+      expect(await within(dialog).findByText("Failed with 500")).toBeDefined();
+      expect(screen.getByRole("dialog", { name: "Edit team" })).toBeDefined();
     });
   });
 });

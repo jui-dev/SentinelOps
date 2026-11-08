@@ -25,7 +25,6 @@ import { ServiceSettings } from "@/components/services/service-settings";
 import { ServicesView } from "@/components/services/services-view";
 import { TeamDetail } from "@/components/teams/team-detail";
 import { TeamScope } from "@/components/teams/team-scope";
-import { TeamSettings } from "@/components/teams/team-settings";
 import { TeamsView } from "@/components/teams/teams-view";
 import { clearAccessToken } from "@/lib/auth/token-store";
 
@@ -743,7 +742,7 @@ describe("accessibility", () => {
     });
 
     it("Team, as an owner", async () => {
-      navigation.params = { orgSlug: organization.slug, teamId: team.id };
+      navigation.params = { orgSlug: organization.slug, teamId: team.slug };
       signedIn(ADMIN);
       const { container } = inWorkspace(
         <TeamScope>
@@ -751,14 +750,13 @@ describe("accessibility", () => {
         </TeamScope>,
       );
 
-      await screen.findByRole("table", { name: "Team members" });
-      await screen.findByText("Everyone in this organization is on this team.");
-      await screen.findByRole("table", { name: "Services owned by this team" });
+      await screen.findByRole("list", { name: "Members of Platform" });
+      await screen.findByLabelText("Platform at a glance");
       await expectNoAxeViolations(container);
     });
 
     it("Team, as a member", async () => {
-      navigation.params = { orgSlug: organization.slug, teamId: team.id };
+      navigation.params = { orgSlug: organization.slug, teamId: team.slug };
       signedIn(MEMBER);
       const { container } = inWorkspace(
         <TeamScope>
@@ -766,19 +764,16 @@ describe("accessibility", () => {
         </TeamScope>,
       );
 
-      await screen.findByRole("table", { name: "Team members" });
+      await screen.findByRole("list", { name: "Members of Platform" });
       await expectNoAxeViolations(container);
     });
 
-    it("Team settings", async () => {
-      navigation.params = { orgSlug: organization.slug, teamId: team.id };
+    it("Edit team, from the Teams list", async () => {
       signedIn(ADMIN);
-      const { container } = inWorkspace(
-        <TeamScope>
-          <TeamSettings />
-        </TeamScope>,
-      );
+      const { container } = inWorkspace(<TeamsView />);
 
+      (await screen.findByRole("button", { name: "Edit Platform" })).click();
+      await screen.findByRole("dialog", { name: "Edit team" });
       // The team owns a service, so deletion is explained rather than offered.
       await screen.findByText("This team owns services");
       await expectNoAxeViolations(container);

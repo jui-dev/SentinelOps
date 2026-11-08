@@ -21,7 +21,6 @@ import {
 import { CriticalityMark } from "@/components/services/criticality-mark";
 import { serviceHref, useServices } from "@/components/services/service-scope";
 import { ErrorAlert } from "@/components/ui/alert";
-import { buttonClasses } from "@/components/ui/button";
 import { cx } from "@/components/ui/cx";
 import { EmptyNote } from "@/components/ui/empty-state";
 import { linkClasses, quietLinkClasses } from "@/components/ui/link";
@@ -31,7 +30,7 @@ import { Permission } from "@/lib/api/contracts";
 import type { IncidentResponse } from "@/lib/api/contracts";
 import { lastUtcDays } from "@/lib/period/period";
 
-import { teamHref, teamsHref, useTeam, useTeamMembers } from "./team-scope";
+import { teamsHref, useTeam, useTeamMembers } from "./team-scope";
 
 /** How many members, services, or resolved incidents a card shows at first. */
 const MEMBERS_SHOWN = 6;
@@ -91,34 +90,36 @@ function Tile({
   noteTone?: boolean;
 }) {
   return (
-    <div className="flex min-w-0 items-center gap-3.5 rounded-lg border border-line bg-surface px-4 py-3.5">
-      <span
-        aria-hidden="true"
-        className={cx(
-          "grid size-9.5 shrink-0 place-items-center rounded-lg border",
-          CHIPS[tone],
-        )}
-      >
-        <Icon strokeWidth={1.75} className="size-4.5" />
-      </span>
-      <div className="flex min-w-0 flex-col gap-0.5">
-        <dt className="text-sm text-fg-muted">{label}</dt>
-        <dd className="flex flex-wrap items-baseline gap-x-2">
-          <span className="numeric text-2xl leading-tight font-semibold text-fg">
-            {value}
-          </span>
-          {note && (
-            <span
-              className={cx(
-                "text-xs",
-                noteTone ? NOTE_TONES[tone] : "text-fg-subtle",
-              )}
-            >
-              {note}
-            </span>
+    // The term and its value are the group's own children, as a <dl> asks;
+    // the icon sits in the term, placed at the tile's leading edge.
+    <div className="relative flex min-w-0 flex-col justify-center gap-0.5 rounded-lg border border-line bg-surface py-3.5 pr-4 pl-17">
+      <dt className="text-sm text-fg-muted">
+        <span
+          aria-hidden="true"
+          className={cx(
+            "absolute top-1/2 left-4 grid size-9.5 -translate-y-1/2 place-items-center rounded-lg border",
+            CHIPS[tone],
           )}
-        </dd>
-      </div>
+        >
+          <Icon strokeWidth={1.75} className="size-4.5" />
+        </span>
+        {label}
+      </dt>
+      <dd className="flex flex-wrap items-baseline gap-x-2">
+        <span className="numeric text-2xl leading-tight font-semibold text-fg">
+          {value}
+        </span>
+        {note && (
+          <span
+            className={cx(
+              "text-xs",
+              noteTone ? NOTE_TONES[tone] : "text-fg-subtle",
+            )}
+          >
+            {note}
+          </span>
+        )}
+      </dd>
     </div>
   );
 }
@@ -581,12 +582,11 @@ function OwnedServices() {
  * A team: what it is for, a glance at its size and load, the incidents it
  * is responsible for, who is on it, and what it owns. Read here; changed
  * where each thing belongs — placement on a member's page, the team itself
- * from its settings.
+ * from the Teams list.
  */
 export function TeamDetail() {
   const organization = useOrganization();
   const team = useTeam();
-  const canManage = useCan(Permission.TEAMS_MANAGE);
   const canReadServices = useCan(Permission.SERVICES_READ);
   const canReadIncidents = useCan(Permission.INCIDENTS_READ);
 
@@ -617,16 +617,6 @@ export function TeamDetail() {
         }
         title={team.name}
         description={team.description ?? undefined}
-        actions={
-          canManage && (
-            <Link
-              href={`${teamHref(organization.slug, team.slug)}/settings`}
-              className={buttonClasses({ variant: "secondary" })}
-            >
-              Settings
-            </Link>
-          )
-        }
       />
       <PageBody width="full">
         <div className="flex flex-col gap-6">
