@@ -7,8 +7,8 @@ import { useOrganization } from "@/components/organizations/organization-scope";
 import { ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { cx } from "@/components/ui/cx";
+import { DetailCard } from "@/components/ui/detail-layout";
 import { EmptyNote } from "@/components/ui/empty-state";
-import { Section } from "@/components/ui/page";
 import { Spinner } from "@/components/ui/spinner";
 import { stretchedLinkClasses } from "@/components/ui/table";
 import { Duration } from "@/components/ui/timestamp";
@@ -56,7 +56,7 @@ function ResponseRow({ response }: { response: MemberResponseResponse }) {
   const { incident } = response;
 
   return (
-    <li className="relative grid grid-cols-[4.75rem_minmax(0,1fr)] gap-x-3 px-3 py-2.5 hover:bg-hover sm:grid-cols-[5.5rem_minmax(0,1fr)] sm:px-4">
+    <li className="relative grid grid-cols-[4.75rem_minmax(0,1fr)] gap-x-3 px-4 py-2.5 hover:bg-hover sm:grid-cols-[5.5rem_minmax(0,1fr)] sm:px-5">
       <span className="pt-px text-sm">
         <SeverityMark severity={incident.severity} emphasis />
       </span>
@@ -108,8 +108,14 @@ export function MemberResponses({
 
   let content;
 
+  let footer;
+
   if (responses.isError) {
-    content = <ErrorAlert error={responses.error} />;
+    content = (
+      <div className="p-4">
+        <ErrorAlert error={responses.error} />
+      </div>
+    );
   } else if (!responses.data) {
     content = <Spinner label="Loading responses…" />;
   } else {
@@ -121,38 +127,35 @@ export function MemberResponses({
           Incidents {name} starts investigating appear here.
         </EmptyNote>
       ) : (
-        <>
-          <ul
-            aria-label="Recent responses"
-            className="flex flex-col divide-y divide-line-subtle overflow-hidden rounded-md border border-line-subtle bg-surface"
-          >
-            {items.map((response) => (
-              <ResponseRow key={response.incident.id} response={response} />
-            ))}
-          </ul>
-          {responses.hasNextPage && (
-            <div>
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled={responses.isFetchingNextPage}
-                onClick={() => void responses.fetchNextPage()}
-              >
-                {responses.isFetchingNextPage ? "Loading…" : "Show more"}
-              </Button>
-            </div>
-          )}
-        </>
+        <ul
+          aria-label="Recent responses"
+          className="flex flex-col divide-y divide-line-subtle"
+        >
+          {items.map((response) => (
+            <ResponseRow key={response.incident.id} response={response} />
+          ))}
+        </ul>
       );
+    footer = responses.hasNextPage && (
+      <Button
+        variant="secondary"
+        size="sm"
+        disabled={responses.isFetchingNextPage}
+        onClick={() => void responses.fetchNextPage()}
+      >
+        {responses.isFetchingNextPage ? "Loading…" : "Show more"}
+      </Button>
+    );
   }
 
   return (
-    <Section
+    <DetailCard
       id="responses"
       title="Recent responses"
-      description="Incidents they started investigating, most recent first."
+      aside={`Incidents ${name} started investigating, most recent first`}
+      footer={footer || undefined}
     >
       {content}
-    </Section>
+    </DetailCard>
   );
 }

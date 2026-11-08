@@ -1,35 +1,48 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
+import {
+  BadgeCheck,
+  Boxes,
+  CalendarDays,
+  ChevronRight,
+  Network,
+} from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useState } from "react";
-import type { FormEvent } from "react";
 
+import { initialsOf } from "@/components/app/shell-utilities";
 import { MemberResponses } from "@/components/incidents/member-responses";
-import { teamHref, teamsHref, useTeams } from "@/components/teams/team-scope";
+import { CriticalityMark } from "@/components/services/criticality-mark";
+import { serviceHref } from "@/components/services/service-scope";
+import { teamHref } from "@/components/teams/team-scope";
 import { Alert, ErrorAlert } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
-import { EmptyState } from "@/components/ui/empty-state";
-import { linkClasses } from "@/components/ui/link";
-import { PageBody, PageHeader, Section } from "@/components/ui/page";
-import { Select } from "@/components/ui/select";
-import { PageSpinner, Spinner } from "@/components/ui/spinner";
-import { Status } from "@/components/ui/status";
-import { ApiErrorCode, Permission } from "@/lib/api/contracts";
-import type { OrganizationMembershipResponse } from "@/lib/api/contracts";
+import { cx } from "@/components/ui/cx";
 import {
-  addTeamMember,
-  getMembership,
-  removeTeamMember,
-} from "@/lib/api/endpoints";
+  CardRow,
+  DetailCard,
+  Glance,
+  GlanceTile,
+} from "@/components/ui/detail-layout";
+import { EmptyNote, EmptyState } from "@/components/ui/empty-state";
+import { linkClasses } from "@/components/ui/link";
+import { PageBody, PageHeader } from "@/components/ui/page";
+import { PageSpinner, Spinner } from "@/components/ui/spinner";
+import { Permission } from "@/lib/api/contracts";
+import type {
+  OrganizationMembershipResponse,
+  ServiceResponse,
+} from "@/lib/api/contracts";
+import { getMembership, listServices } from "@/lib/api/endpoints";
 import { isApiError } from "@/lib/api/errors";
 import { queryKeys } from "@/lib/api/query-keys";
 import { useCurrentUser } from "@/lib/auth/session-provider";
 
-import { formatRole } from "./format";
+import { formatDate, formatRole } from "./format";
 import { membersHref } from "./member-paths";
 import { useCan, useOrganization } from "./organization-scope";
+
+type Member = OrganizationMembershipResponse;
 
 const useMembership = (organizationId: string, membershipId: string) =>
   useQuery({
@@ -37,194 +50,11 @@ const useMembership = (organizationId: string, membershipId: string) =>
     queryFn: () => getMembership(organizationId, membershipId),
   });
 
-/**
- * After a placement changes, everything that shows it: this member's record,
- * the members list (its Teams column), and the teams — their member counts
- * and member lists, all beneath the `teams` prefix.
- */
-const useRefreshPlacements = (organizationId: string, membershipId: string) => {
-  const queryClient = useQueryClient();
+const BADGE =
+  "inline-flex items-center rounded-sm border px-2 py-0.5 text-xs font-semibold whitespace-nowrap";
 
-  return () => {
-    void queryClient.invalidateQueries({
-      queryKey: queryKeys.membership(organizationId, membershipId),
-      exact: true,
-    });
-    void queryClient.invalidateQueries({
-      queryKey: queryKeys.memberships(organizationId),
-      exact: true,
-    });
-    void queryClient.invalidateQueries({
-      queryKey: queryKeys.teams(organizationId),
-    });
-  };
-};
-
-/** A 404 or 409 means the page was out of date, not that something broke. */
-const isStale = (error: unknown) =>
-  isApiError(error, 404) || isApiError(error, 409);
-
-const addErrorMessage = (error: unknown): string | undefined => {
-  if (!isApiError(error)) return undefined;
-
-  switch (error.code) {
-    case ApiErrorCode.ALREADY_A_TEAM_MEMBER:
-      return "They are already on that team. The list has been refreshed.";
-    case ApiErrorCode.TEAM_NOT_FOUND:
-      return "That team no longer exists. The list has been refreshed.";
-    case ApiErrorCode.MEMBERSHIP_NOT_FOUND:
-      return "This person is no longer a member of the organization.";
-    case ApiErrorCode.PERMISSION_DENIED:
-      return "You do not have permission to change teams.";
-    default:
-      return undefined;
-  }
-};
-
-/** Places the member on one of the teams they are not on yet. */
-function AddToTeam({ member }: { member: OrganizationMembershipResponse }) {
-  const organization = useOrganization();
-  const teams = useTeams(organization.id);
-  const refresh = useRefreshPlacements(organization.id, member.id);
-  const add = useMutation({
-    mutationFn: (teamId: string) =>
-      addTeamMember(organization.id, teamId, member.id),
-    onSuccess: refresh,
-    onError: (error) => {
-      if (isStale(error)) refresh();
-    },
-  });
-
-  if (teams.isError) return <ErrorAlert error={teams.error} />;
-  if (!teams.data) return <Spinner label="Loading teams…" />;
-
-  if (teams.data.length === 0) {
-    return (
-      <p className="text-sm text-fg-muted">
-        There are no teams yet.{" "}
-        <Link href={teamsHref(organization.slug)} className={linkClasses}>
-          Create one
-        </Link>{" "}
-        to give people operational responsibility.
-      </p>
-    );
-  }
-
-  // Only teams they are not on: the same team cannot be offered twice.
-  const onTeam = new Set(member.teams.map(({ id }) => id));
-  const available = teams.data.filter(({ id }) => !onTeam.has(id));
-
-  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const teamId = String(new FormData(event.currentTarget).get("teamId") ?? "");
-
-    if (teamId) add.mutate(teamId);
-  };
-
-  return (
-    <div className="flex flex-col gap-3">
-      {add.isError && (
-        <ErrorAlert error={add.error} message={addErrorMessage(add.error)} />
-      )}
-      {available.length === 0 ? (
-        <p className="text-sm text-fg-muted">They are on every team.</p>
-      ) : (
-        <form
-          onSubmit={onSubmit}
-          className="flex max-w-xl flex-wrap items-end gap-3"
-        >
-          <div className="min-w-56 flex-1">
-            <Select label="Add to team" name="teamId">
-              {available.map((team) => (
-                <option key={team.id} value={team.id}>
-                  {team.name}
-                </option>
-              ))}
-            </Select>
-          </div>
-          <Button type="submit" disabled={add.isPending}>
-            {add.isPending ? "Adding…" : "Add to team"}
-          </Button>
-        </form>
-      )}
-    </div>
-  );
-}
-
-/** The teams the member is on, each removable by the Admin. */
-function Teams({
-  member,
-  canManage,
-}: {
-  member: OrganizationMembershipResponse;
-  canManage: boolean;
-}) {
-  const organization = useOrganization();
-  const refresh = useRefreshPlacements(organization.id, member.id);
-  const [removingId, setRemovingId] = useState<string | null>(null);
-  const remove = useMutation({
-    mutationFn: (teamId: string) =>
-      removeTeamMember(organization.id, teamId, member.id),
-    onSuccess: refresh,
-    onError: (error) => {
-      if (isStale(error)) refresh();
-    },
-  });
-
-  const onRemove = (teamId: string) => {
-    setRemovingId(teamId);
-    remove.mutate(teamId, { onSettled: () => setRemovingId(null) });
-  };
-
-  return (
-    <Section
-      id="teams"
-      title="Teams"
-      meta={member.teams.length}
-      description="The teams whose incidents they respond to."
-    >
-      {remove.isError &&
-        (isStale(remove.error) ? (
-          <Alert tone="info">
-            They were no longer on that team. The list has been refreshed.
-          </Alert>
-        ) : (
-          <ErrorAlert error={remove.error} />
-        ))}
-      {member.teams.length === 0 ? (
-        <p className="text-sm text-fg-muted">Not on any team yet.</p>
-      ) : (
-        <ul className="flex max-w-xl flex-col divide-y divide-line-subtle rounded-md border border-line-subtle">
-          {member.teams.map((team) => (
-            <li
-              key={team.id}
-              className="flex min-h-11 items-center justify-between gap-3 px-3 py-2"
-            >
-              <Link
-                href={teamHref(organization.slug, team.slug)}
-                className="truncate text-sm font-medium text-fg hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-              >
-                {team.name}
-              </Link>
-              {canManage && (
-                <Button
-                  variant="quiet"
-                  size="sm"
-                  disabled={removingId === team.id}
-                  onClick={() => onRemove(team.id)}
-                  aria-label={`Remove ${member.user.name} from ${team.name}`}
-                >
-                  {removingId === team.id ? "Removing…" : "Remove"}
-                </Button>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-      {canManage && <AddToTeam member={member} />}
-    </Section>
-  );
-}
+const LIST_ROW =
+  "flex min-h-12 items-center gap-3 px-4 py-2.5 text-sm transition-colors duration-(--duration-fast) hover:bg-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus sm:px-5";
 
 function MemberNotFound({ orgSlug }: { orgSlug: string }) {
   return (
@@ -245,14 +75,158 @@ function MemberNotFound({ orgSlug }: { orgSlug: string }) {
   );
 }
 
-function MemberPage({ member }: { member: OrganizationMembershipResponse }) {
+/**
+ * The teams they are on, each with what it owns. Read only: placement is
+ * changed from the Members list's Action column, and this card says so.
+ */
+function Teams({
+  member,
+  services,
+}: {
+  member: Member;
+  services: ServiceResponse[] | undefined;
+}) {
+  const organization = useOrganization();
+  const canPlace = useCan(Permission.TEAMS_MANAGE);
+  const first = member.user.name.split(/\s+/)[0];
+
+  return (
+    <DetailCard
+      id="teams"
+      title="Teams"
+      meta={member.teams.length}
+      footer={
+        canPlace ? (
+          <>
+            To add {first} to a team or take them off one, use the Action
+            column on{" "}
+            <Link href={membersHref(organization.slug)} className={linkClasses}>
+              Members
+            </Link>
+            .
+          </>
+        ) : (
+          "Teams are changed by an Admin."
+        )
+      }
+    >
+      {member.teams.length === 0 ? (
+        <EmptyNote title="Not on any team yet">
+          {member.role === "MEMBER"
+            ? `${first} responds to incidents through their teams.`
+            : "An Admin oversees every team without being on one."}
+        </EmptyNote>
+      ) : (
+        <ul aria-label={`Teams of ${member.user.name}`} className="divide-y divide-line-subtle">
+          {member.teams.map((team) => {
+            const owned = services
+              ?.filter((service) => service.ownerTeam.id === team.id)
+              .map(({ name }) => name);
+
+            return (
+              <li key={team.id}>
+                <Link href={teamHref(organization.slug, team.slug)} className={LIST_ROW}>
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className="truncate font-medium text-fg">
+                      {team.name}
+                    </span>
+                    {owned && (
+                      <span className="truncate text-xs text-fg-subtle">
+                        {owned.length === 0
+                          ? "Owns no services yet"
+                          : `Owns ${owned.join(", ")}`}
+                      </span>
+                    )}
+                  </span>
+                  <ChevronRight
+                    aria-hidden="true"
+                    className="size-4 shrink-0 text-fg-subtle"
+                  />
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </DetailCard>
+  );
+}
+
+/** What their teams own: the services whose incidents they respond to. */
+function RespondsTo({
+  member,
+  services,
+  error,
+}: {
+  member: Member;
+  services: ServiceResponse[] | undefined;
+  error: unknown;
+}) {
+  const organization = useOrganization();
+  const first = member.user.name.split(/\s+/)[0];
+  const teamIds = new Set(member.teams.map(({ id }) => id));
+  const covered = services?.filter((service) =>
+    teamIds.has(service.ownerTeam.id),
+  );
+
+  return (
+    <DetailCard
+      id="responds-to"
+      title="Responds to"
+      meta={covered && `${covered.length} ${covered.length === 1 ? "service" : "services"}`}
+      footer={`Follows from ${first}'s teams: change the teams to change this.`}
+    >
+      {error ? (
+        <div className="p-4">
+          <ErrorAlert error={error} />
+        </div>
+      ) : !covered ? (
+        <Spinner label="Loading services…" />
+      ) : covered.length === 0 ? (
+        <EmptyNote title="No services yet">
+          {member.teams.length === 0
+            ? "People respond through their teams."
+            : "Their teams own no services yet."}
+        </EmptyNote>
+      ) : (
+        <ul
+          aria-label={`Services ${member.user.name} responds to`}
+          className="divide-y divide-line-subtle"
+        >
+          {covered.map((service) => (
+            <li key={service.id}>
+              <Link href={serviceHref(organization.slug, service.slug)} className={LIST_ROW}>
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span className="truncate font-medium text-fg">
+                    {service.name}
+                  </span>
+                  <span className="truncate text-xs text-fg-subtle">
+                    via {service.ownerTeam.name}
+                  </span>
+                </span>
+                <CriticalityMark criticality={service.criticality} />
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </DetailCard>
+  );
+}
+
+function MemberPage({ member }: { member: Member }) {
   const organization = useOrganization();
   const me = useCurrentUser();
-  // Placing people on teams is team configuration: the Admin's, like the
-  // Team page's own controls. Advice only; the API checks regardless.
-  const canManage = useCan(Permission.TEAMS_MANAGE);
   const canReadIncidents = useCan(Permission.INCIDENTS_READ);
   const canOverseeIncidents = useCan(Permission.INCIDENTS_READ_ALL);
+  const canReadServices = useCan(Permission.SERVICES_READ);
+  const canPlace = useCan(Permission.TEAMS_MANAGE);
+  // The Services pages' own query, by key — asked only when it may be read.
+  const services = useQuery({
+    queryKey: queryKeys.services(organization.id),
+    queryFn: () => listServices(organization.id),
+    enabled: canReadServices,
+  });
   // A person's operational history is their own, or oversight's: the API
   // answers another member's only to `incidents:read-all`, and hides the rest
   // behind a 404. Advice, as every useCan is — but asked here so a member is
@@ -261,50 +235,159 @@ function MemberPage({ member }: { member: OrganizationMembershipResponse }) {
   const canReadTheirHistory =
     canReadIncidents && (isSelf || canOverseeIncidents);
   const isYou = member.user.id === me.data?.id;
+  const first = member.user.name.split(/\s+/)[0];
+  const teamIds = new Set(member.teams.map(({ id }) => id));
+  const covered = services.data?.filter((service) =>
+    teamIds.has(service.ownerTeam.id),
+  );
 
   return (
     <>
       <PageHeader
-        width="form"
+        width="full"
         eyebrow={
-          <Link
-            href={membersHref(organization.slug)}
-            className="rounded-sm hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-          >
-            ← Members
-          </Link>
+          <nav aria-label="Breadcrumb">
+            <ol className="flex items-center gap-2">
+              <li>
+                <Link
+                  href={membersHref(organization.slug)}
+                  className="rounded-sm hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                >
+                  Members
+                </Link>
+              </li>
+              <li aria-hidden="true" className="text-fg-subtle">
+                /
+              </li>
+              <li aria-current="page" className="text-fg-muted">
+                {member.user.name}
+              </li>
+            </ol>
+          </nav>
         }
-        title={member.user.name}
+        title={
+          <span className="flex items-center gap-3.5">
+            <span
+              aria-hidden="true"
+              className="grid size-12 shrink-0 place-items-center rounded-full border border-accent-line bg-accent-subtle text-base font-semibold text-accent-text"
+            >
+              {initialsOf(member.user.name)}
+            </span>
+            {member.user.name}
+          </span>
+        }
         meta={isYou ? "You" : undefined}
         description={
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="break-all">{member.user.email}</span>
             <span aria-hidden="true">·</span>
-            <span>{formatRole(member.role)}</span>
-            <span aria-hidden="true">·</span>
+            <span
+              className={cx(
+                BADGE,
+                member.role === "ADMIN"
+                  ? "border-accent-line bg-accent-subtle text-accent-text"
+                  : "border-line-strong bg-hover text-fg-muted",
+              )}
+            >
+              {formatRole(member.role)}
+            </span>
             {member.user.passwordChangeRequired ? (
-              <Status tone="warning">Awaiting first sign-in</Status>
+              <span
+                className={cx(
+                  BADGE,
+                  "border-warning-line bg-warning-subtle text-warning-text",
+                )}
+              >
+                Awaiting first sign-in
+              </span>
             ) : (
-              <Status tone="neutral">Active</Status>
+              <span
+                className={cx(
+                  BADGE,
+                  "border-success-line bg-success-subtle text-success-text",
+                )}
+              >
+                Active
+              </span>
             )}
           </span>
         }
       />
-      <PageBody width="form">
-        <Teams member={member} canManage={canManage} />
-        {canReadTheirHistory && (
-          <MemberResponses membershipId={member.id} name={member.user.name} />
-        )}
+      <PageBody width="full">
+        <div className="flex flex-col gap-6">
+          {member.role === "MEMBER" && member.teams.length === 0 && (
+            <Alert tone="warning" title={`${first} is on no team`}>
+              <p>
+                So {first} sees no incidents and can respond to none.
+                {canPlace && (
+                  <>
+                    {" "}
+                    Add them to a team from the Action column on{" "}
+                    <Link
+                      href={membersHref(organization.slug)}
+                      className={linkClasses}
+                    >
+                      Members
+                    </Link>
+                    .
+                  </>
+                )}
+              </p>
+            </Alert>
+          )}
+          {/* Facts about the person, never measures of them. */}
+          <Glance label={`${member.user.name} at a glance`} columns={4}>
+            <GlanceTile
+              label="Role"
+              icon={BadgeCheck}
+              tone="neutral"
+              value={formatRole(member.role)}
+            />
+            <GlanceTile
+              label="Teams"
+              icon={Network}
+              tone="accent"
+              value={member.teams.length}
+            />
+            <GlanceTile
+              label="Services covered"
+              icon={Boxes}
+              tone="info"
+              value={canReadServices ? (covered?.length ?? "–") : "–"}
+            />
+            <GlanceTile
+              label="Joined"
+              icon={CalendarDays}
+              tone="resolved"
+              value={formatDate(member.createdAt)}
+            />
+          </Glance>
+          <CardRow layout="halves">
+            <Teams member={member} services={services.data} />
+            {canReadServices ? (
+              <RespondsTo
+                member={member}
+                services={services.data}
+                error={services.isError ? services.error : null}
+              />
+            ) : (
+              <div />
+            )}
+          </CardRow>
+          {canReadTheirHistory && (
+            <MemberResponses membershipId={member.id} name={first} />
+          )}
+        </div>
       </PageBody>
     </>
   );
 }
 
 /**
- * One member: who they are, and the teams they are on. The Admin places
- * them on teams and takes them off, through the same team-membership routes
- * the Team page uses; everyone else reads. The Admin's own page is no
- * different: they can be on teams like anyone.
+ * One member, read only: who they are, the teams they are on, what those
+ * teams own, and — for themselves or oversight — the incidents they worked.
+ * Placement is changed from the Members list's Action column, one place for
+ * it; this page says where.
  */
 export function MemberDetail() {
   const organization = useOrganization();

@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -173,11 +173,28 @@ describe("a member's page", () => {
       await screen.findByRole("heading", { level: 1, name: "Grace Hopper" }),
     ).toBeDefined();
     expect(screen.getByText("grace@example.com")).toBeDefined();
-    expect(screen.getByText("Member")).toBeDefined();
     expect(screen.getByText("Awaiting first sign-in")).toBeDefined();
+
+    const breadcrumb = screen.getByRole("navigation", { name: "Breadcrumb" });
     expect(
-      screen.getByRole("link", { name: "← Members" }).getAttribute("href"),
+      within(breadcrumb).getByRole("link", { name: "Members" }).getAttribute("href"),
     ).toBe("/orgs/acme-ops/members");
+  });
+
+  it("gives facts about them at a glance, never measures", async () => {
+    api(ADMIN, [PAYMENTS, PLATFORM]);
+
+    renderMember();
+
+    const glance = await screen.findByLabelText("Grace Hopper at a glance");
+    const value = (term: string) =>
+      within(glance).getByText(term).nextSibling?.textContent;
+
+    expect(value("Role")).toBe("Member");
+    expect(value("Teams")).toBe("2");
+    expect(value("Joined")).toMatch(/2026/);
+    // Nothing that counts or compares their work.
+    expect(within(glance).queryByText(/respons|incident/i)).toBeNull();
   });
 
   it("lists their teams, each linking to the team", async () => {
@@ -185,8 +202,8 @@ describe("a member's page", () => {
 
     renderMember();
 
-    const teams = await screen.findByRole("region", { name: /Teams/ });
-    const links = await within(teams).findAllByRole("link");
+    const teams = await screen.findByRole("list", { name: "Teams of Grace Hopper" });
+    const links = within(teams).getAllByRole("link");
 
     expect(links.map((link) => [link.textContent, link.getAttribute("href")])).toEqual([
       ["Payments", "/orgs/acme-ops/teams/payments"],
@@ -194,99 +211,86 @@ describe("a member's page", () => {
     ]);
   });
 
-  it("says when they are on no team", async () => {
+  it("is read only, and says where placement is changed", async () => {
+    const { requests } = api(ADMIN, [PAYMENTS]);
+
+    renderMember();
+
+    await screen.findByRole("list", { name: "Teams of Grace Hopper" });
+
+    expect(screen.queryByRole("button", { name: /Remove/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Add to team/ })).toBeNull();
+    expect(screen.queryByLabelText("Add to team")).toBeNull();
+    expect(
+      screen.getByText(/To add Grace to a team or take them off one/),
+    ).toBeDefined();
+    expect(
+      within(screen.getByRole("region", { name: /^Teams/ }))
+        .getByRole("link", { name: "Members" })
+        .getAttribute("href"),
+    ).toBe("/orgs/acme-ops/members");
+    // It asks nothing that only placing would need.
+    expect(requests.some((r) => route(r) === `GET ${base}/teams`)).toBe(false);
+  });
+
+  it("warns that a Member on no team sees no incidents, and says where to fix it", async () => {
     api(ADMIN, []);
 
     renderMember();
 
-    expect(await screen.findByText("Not on any team yet.")).toBeDefined();
+    const alert = await screen.findByText("Grace is on no team");
+
+    expect(alert).toBeDefined();
+    expect(screen.getByText(/sees no incidents and can respond to none/)).toBeDefined();
+    expect(screen.getByText("Not on any team yet")).toBeDefined();
   });
 
-  it("lets the Admin place them on a team they are not on, and shows it at once", async () => {
-    const { requests } = api(ADMIN, [PAYMENTS]);
-    const user = userEvent.setup();
-
-    renderMember();
-
-    const select = (await screen.findByLabelText("Add to team")) as HTMLSelectElement;
-
-    // Only teams they are not on are offered: no duplicate placement.
-    expect([...select.options].map((option) => option.text)).toEqual([
-      "Platform",
-      "Risk",
-    ]);
-
-    await user.selectOptions(select, "Risk");
-    await user.click(screen.getByRole("button", { name: "Add to team" }));
-
-    const teams = screen.getByRole("region", { name: /Teams/ });
-    expect(await within(teams).findByRole("link", { name: "Risk" })).toBeDefined();
-    expect(
-      requests.find((r) => route(r) === `POST ${base}/teams/${RISK.id}/members`)
-        ?.body,
-    ).toEqual({ membershipId: GRACE });
-  });
-
-  it("lets the Admin take them off a team, and shows it at once", async () => {
-    const { requests } = api(ADMIN, [PAYMENTS, PLATFORM]);
-    const user = userEvent.setup();
-
-    renderMember();
-
-    await user.click(
-      await screen.findByRole("button", {
-        name: "Remove Grace Hopper from Payments",
-      }),
-    );
-
-    await waitFor(() =>
-      expect(screen.queryByRole("link", { name: "Payments" })).toBeNull(),
-    );
-    expect(screen.getByRole("link", { name: "Platform" })).toBeDefined();
-    expect(
-      requests.some(
-        (r) => route(r) === `DELETE ${base}/teams/${PAYMENTS.id}/members/${GRACE}`,
-      ),
-    ).toBe(true);
-  });
-
-  it("says when they are already on every team", async () => {
-    api(ADMIN, [PAYMENTS, PLATFORM, RISK]);
-
-    renderMember();
-
-    expect(await screen.findByText("They are on every team.")).toBeDefined();
-    expect(screen.queryByLabelText("Add to team")).toBeNull();
-  });
-
-  it("explains a placement someone else made first", async () => {
-    api(ADMIN, [], (request) =>
-      route(request) === `POST ${base}/teams/${PAYMENTS.id}/members`
-        ? apiError(409, "ALREADY_A_TEAM_MEMBER")
+  it("shows the services their teams own, as what they respond to", async () => {
+    const owned = (n: number, name: string, owner: typeof PAYMENTS) => ({
+      id: `0199a1b2-c3d4-7000-8000-0000000000f${n}`,
+      name,
+      slug: name.toLowerCase().replace(/\s+/g, "-"),
+      description: null,
+      criticality: "CRITICAL",
+      ownerTeam: ref(owner),
+      archivedAt: null,
+      createdAt: "2026-09-18T12:00:00.000Z",
+      updatedAt: "2026-09-18T12:00:00.000Z",
+    });
+    api([...ADMIN, "services:read"], [PAYMENTS], (request) =>
+      route(request) === `GET ${base}/services`
+        ? jsonResponse(200, [
+            owned(1, "Payment API", PAYMENTS),
+            owned(2, "Fraud Detection", RISK),
+          ])
         : undefined,
     );
-    const user = userEvent.setup();
 
     renderMember();
 
-    await user.selectOptions(await screen.findByLabelText("Add to team"), "Payments");
-    await user.click(screen.getByRole("button", { name: "Add to team" }));
+    const covers = await screen.findByRole("list", {
+      name: "Services Grace Hopper responds to",
+    });
 
     expect(
-      await screen.findByText(
-        "They are already on that team. The list has been refreshed.",
-      ),
-    ).toBeDefined();
+      within(covers).getByRole("link", { name: /Payment API/ }).getAttribute("href"),
+    ).toBe("/orgs/acme-ops/services/payment-api");
+    expect(within(covers).getByText("via Payments")).toBeDefined();
+    expect(within(covers).queryByText("Fraud Detection")).toBeNull();
+    // The team says what it owns, too.
+    expect(screen.getByText("Owns Payment API")).toBeDefined();
   });
 
-  it("offers a Member no team controls", async () => {
+  it("tells a Member that an Admin changes teams", async () => {
     api(MEMBER, [PAYMENTS]);
 
     renderMember();
 
-    expect(await screen.findByRole("link", { name: "Payments" })).toBeDefined();
+    expect(
+      await screen.findByRole("link", { name: "Payments" }),
+    ).toBeDefined();
+    expect(screen.getByText("Teams are changed by an Admin.")).toBeDefined();
     expect(screen.queryByRole("button", { name: /Remove/ })).toBeNull();
-    expect(screen.queryByLabelText("Add to team")).toBeNull();
   });
 
   it("answers a member that is not in this organization with a not-found page", async () => {
@@ -362,7 +366,7 @@ describe("a member's page", () => {
       // Descriptive history, not a measure.
       const heading = screen.getByRole("heading", { name: "Recent responses" });
 
-      expect(heading.parentElement?.textContent).toBe("Recent responses");
+      expect(heading.textContent).toBe("Recent responses");
     });
 
     it("loads more on request, by the API's cursor", async () => {
@@ -407,7 +411,7 @@ describe("a member's page", () => {
 
       renderMember();
 
-      expect(await screen.findByRole("heading", { name: "Teams" })).toBeDefined();
+      expect(await screen.findByRole("heading", { name: /^Teams/ })).toBeDefined();
       expect(screen.queryByRole("heading", { name: "Recent responses" })).toBeNull();
       expect(requests.some((r) => route(r).startsWith(responses))).toBe(false);
     });
@@ -417,7 +421,7 @@ describe("a member's page", () => {
 
       renderMember();
 
-      expect(await screen.findByRole("heading", { name: "Teams" })).toBeDefined();
+      expect(await screen.findByRole("heading", { name: /^Teams/ })).toBeDefined();
       expect(screen.queryByRole("heading", { name: "Recent responses" })).toBeNull();
       expect(requests.some((r) => route(r).startsWith(responses))).toBe(false);
     });

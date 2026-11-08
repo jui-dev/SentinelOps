@@ -1,7 +1,6 @@
 "use client";
 
 import { ArrowRight, Boxes, CircleCheck, Siren, Users } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { useId, useState } from "react";
 import type { ReactNode } from "react";
@@ -22,6 +21,12 @@ import { CriticalityMark } from "@/components/services/criticality-mark";
 import { serviceHref, useServices } from "@/components/services/service-scope";
 import { ErrorAlert } from "@/components/ui/alert";
 import { cx } from "@/components/ui/cx";
+import {
+  CardRow,
+  DetailCard,
+  Glance,
+  GlanceTile,
+} from "@/components/ui/detail-layout";
 import { EmptyNote } from "@/components/ui/empty-state";
 import { linkClasses, quietLinkClasses } from "@/components/ui/link";
 import { PageBody, PageHeader } from "@/components/ui/page";
@@ -52,78 +57,6 @@ const SCROLL_REGION =
 const countOf = (items: readonly unknown[], hasMore: boolean) =>
   hasMore ? `${items.length}+` : String(items.length);
 
-// ── The summary band ────────────────────────────────────────────────────────
-
-type Tone = "accent" | "info" | "warning" | "resolved";
-
-/** Each tile's icon square: a quiet fill in one of the system's own tones. */
-const CHIPS: Record<Tone, string> = {
-  accent: "border-accent-line bg-accent-subtle text-accent-text",
-  info: "border-info-line bg-info-subtle text-info-text",
-  warning: "border-warning-line bg-warning-subtle text-warning-text",
-  resolved:
-    "border-status-resolved-line bg-status-resolved-subtle text-status-resolved-text",
-};
-
-/** A tile's note in its tone, for a figure that wants noticing. */
-const NOTE_TONES: Record<Tone, string> = {
-  accent: "text-accent-text",
-  info: "text-info-text",
-  warning: "text-warning-text",
-  resolved: "text-status-resolved-text",
-};
-
-function Tile({
-  label,
-  value,
-  note,
-  icon: Icon,
-  tone,
-  noteTone = false,
-}: {
-  label: string;
-  value: ReactNode;
-  note?: string;
-  icon: LucideIcon;
-  tone: Tone;
-  /** Whether the note carries the tile's tone, for what wants noticing. */
-  noteTone?: boolean;
-}) {
-  return (
-    // The term and its value are the group's own children, as a <dl> asks;
-    // the icon sits in the term, placed at the tile's leading edge.
-    <div className="relative flex min-w-0 flex-col justify-center gap-0.5 rounded-lg border border-line bg-surface py-3.5 pr-4 pl-17">
-      <dt className="text-sm text-fg-muted">
-        <span
-          aria-hidden="true"
-          className={cx(
-            "absolute top-1/2 left-4 grid size-9.5 -translate-y-1/2 place-items-center rounded-lg border",
-            CHIPS[tone],
-          )}
-        >
-          <Icon strokeWidth={1.75} className="size-4.5" />
-        </span>
-        {label}
-      </dt>
-      <dd className="flex flex-wrap items-baseline gap-x-2">
-        <span className="numeric text-2xl leading-tight font-semibold text-fg">
-          {value}
-        </span>
-        {note && (
-          <span
-            className={cx(
-              "text-xs",
-              noteTone ? NOTE_TONES[tone] : "text-fg-subtle",
-            )}
-          >
-            {note}
-          </span>
-        )}
-      </dd>
-    </div>
-  );
-}
-
 /** The most severe level among the active incidents, and how many have it. */
 const worstOf = (incidents: readonly IncidentResponse[]) => {
   for (const { value } of SEVERITY_LEVELS) {
@@ -152,7 +85,7 @@ function IncidentTiles({ teamId }: { teamId: string }) {
 
   return (
     <>
-      <Tile
+      <GlanceTile
         label="Active incidents"
         icon={Siren}
         tone="warning"
@@ -160,7 +93,7 @@ function IncidentTiles({ teamId }: { teamId: string }) {
         value={activePage ? countOf(activePage.items, activePage.page.hasMore) : "–"}
         note={activePage && worstOf(activePage.items)}
       />
-      <Tile
+      <GlanceTile
         label="Resolved"
         icon={CircleCheck}
         tone="resolved"
@@ -183,91 +116,19 @@ function TeamGlance({ canReadIncidents }: { canReadIncidents: boolean }) {
   const team = useTeam();
 
   return (
-    <dl
-      aria-label={`${team.name} at a glance`}
-      className={cx(
-        "grid gap-3 rounded-xl border border-line-subtle bg-linear-to-b from-rail-top to-rail-mid p-3.5",
-        canReadIncidents
-          ? "grid-cols-1 sm:grid-cols-2 xl:grid-cols-4"
-          : "grid-cols-1 sm:grid-cols-2",
-      )}
+    <Glance
+      label={`${team.name} at a glance`}
+      columns={canReadIncidents ? 4 : 2}
     >
-      <Tile label="Members" icon={Users} tone="accent" value={team.memberCount} />
-      <Tile
+      <GlanceTile label="Members" icon={Users} tone="accent" value={team.memberCount} />
+      <GlanceTile
         label="Services owned"
         icon={Boxes}
         tone="info"
         value={team.serviceCount}
       />
       {canReadIncidents && <IncidentTiles teamId={team.id} />}
-    </dl>
-  );
-}
-
-// ── Cards ───────────────────────────────────────────────────────────────────
-
-/**
- * One of the page's cards: a header band of one height, its content, and a
- * note pinned to its foot — so two cards side by side line up top, header,
- * and bottom whatever each holds.
- */
-function Card({
-  id,
-  title,
-  meta,
-  aside,
-  action,
-  footer,
-  className,
-  children,
-}: {
-  id: string;
-  title: string;
-  meta?: ReactNode;
-  /** A short line beside the title: what the card covers. */
-  aside?: ReactNode;
-  action?: ReactNode;
-  footer?: ReactNode;
-  className?: string;
-  children: ReactNode;
-}) {
-  return (
-    <section
-      id={id}
-      aria-labelledby={`${id}-title`}
-      className={cx(
-        "flex min-w-0 flex-col overflow-hidden rounded-lg border border-line bg-surface",
-        className,
-      )}
-    >
-      <div className="flex min-h-13 flex-wrap items-center gap-x-4 gap-y-1 border-b border-line bg-thead px-4 py-2 sm:px-5">
-        <h2 id={`${id}-title`} className="text-base font-semibold text-fg">
-          {title}
-          {meta !== undefined && (
-            <span className="numeric ml-1.5 font-normal text-fg-subtle">
-              {meta}
-            </span>
-          )}
-        </h2>
-        {aside && <span className="text-sm text-fg-muted">{aside}</span>}
-        {action && <span className="ml-auto">{action}</span>}
-      </div>
-      <div className="flex-1">{children}</div>
-      {footer && (
-        <div className="border-t border-line-subtle px-4 py-2.5 text-xs leading-relaxed text-fg-subtle sm:px-5">
-          {footer}
-        </div>
-      )}
-    </section>
-  );
-}
-
-/** Two cards side by side, level with each other; stacked on a phone. */
-function CardRow({ children }: { children: ReactNode }) {
-  return (
-    <div className="grid grid-cols-1 items-stretch gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(20rem,26rem)]">
-      {children}
-    </div>
+    </Glance>
   );
 }
 
@@ -323,7 +184,7 @@ function ActiveIncidents() {
   const items = list.data?.pages[0]?.items;
 
   return (
-    <Card
+    <DetailCard
       id="active-incidents"
       title="Active incidents"
       meta={items?.length}
@@ -368,7 +229,7 @@ function ActiveIncidents() {
           />
         </div>
       )}
-    </Card>
+    </DetailCard>
   );
 }
 
@@ -381,7 +242,7 @@ function RecentlyResolved() {
   const items = list.data?.pages[0]?.items;
 
   return (
-    <Card
+    <DetailCard
       id="resolved-incidents"
       title="Recently resolved"
       aside="Most recent first"
@@ -411,13 +272,13 @@ function RecentlyResolved() {
           showTeam={false}
         />
       )}
-    </Card>
+    </DetailCard>
   );
 }
 
 /**
- * Who is on the team, read only. Placement is changed on each member's own
- * page, so there is one place to do it: this card says where.
+ * Who is on the team, read only. Placement is changed from the Members
+ * list's Action column, so there is one place to do it: this card says where.
  */
 function Members() {
   const organization = useOrganization();
@@ -429,7 +290,7 @@ function Members() {
   const shown = expanded ? all : all.slice(0, MEMBERS_SHOWN);
 
   return (
-    <Card
+    <DetailCard
       id="members"
       title="Members"
       meta={members.data?.length}
@@ -445,7 +306,7 @@ function Members() {
       }
       footer={
         <>
-          To add or remove someone, open their profile under{" "}
+          To add or remove someone, use the Action column on{" "}
           <Link href={membersHref(organization.slug)} className={linkClasses}>
             Members
           </Link>
@@ -461,7 +322,7 @@ function Members() {
         <Spinner label="Loading team members…" />
       ) : all.length === 0 ? (
         <EmptyNote title="No one is on this team yet">
-          People are placed on a team from their profile.
+          People are placed on a team from the Members list.
         </EmptyNote>
       ) : (
         <ul
@@ -500,7 +361,7 @@ function Members() {
           ))}
         </ul>
       )}
-    </Card>
+    </DetailCard>
   );
 }
 
@@ -520,7 +381,7 @@ function OwnedServices() {
   const shown = owned && (expanded ? owned : owned.slice(0, SERVICES_SHOWN));
 
   return (
-    <Card
+    <DetailCard
       id="services"
       title="Services owned"
       meta={owned?.length}
@@ -572,7 +433,7 @@ function OwnedServices() {
           ))}
         </ul>
       )}
-    </Card>
+    </DetailCard>
   );
 }
 
@@ -581,7 +442,7 @@ function OwnedServices() {
 /**
  * A team: what it is for, a glance at its size and load, the incidents it
  * is responsible for, who is on it, and what it owns. Read here; changed
- * where each thing belongs — placement on a member's page, the team itself
+ * where each thing belongs — placement on the Members list, the team itself
  * from the Teams list.
  */
 export function TeamDetail() {

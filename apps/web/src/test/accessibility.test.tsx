@@ -681,7 +681,7 @@ describe("accessibility", () => {
       await expectNoAxeViolations(container);
     });
 
-    it("Member, as the admin managing their teams", async () => {
+    it("Member, as the admin", async () => {
       signedIn(ADMIN);
       navigation.params = {
         orgSlug: organization.slug,
@@ -690,7 +690,7 @@ describe("accessibility", () => {
       const { container } = inWorkspace(<MemberDetail />);
 
       await screen.findByRole("heading", { level: 1, name: currentUser.name });
-      await screen.findByText("They are on every team.");
+      await screen.findByLabelText(`${currentUser.name} at a glance`);
       await expectNoAxeViolations(container);
     });
 
