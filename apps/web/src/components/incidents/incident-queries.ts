@@ -50,6 +50,14 @@ export const incidentHistoryHref = (
   }`;
 
 /**
+ * How often a page others are working on is asked again while it is open:
+ * the Incidents list, and an active incident with its timeline. Not while
+ * the tab is hidden (TanStack's default); returning to it refetches what is
+ * stale. Others' work changes these without anything happening in this tab.
+ */
+export const LIVE_POLL_MS = 15_000;
+
+/**
  * One state's incidents, a page at a time. `fetchNextPage` follows the API's
  * cursor; there is no page size or total here — both are the API's.
  */
@@ -62,9 +70,12 @@ export const useIncidentList = (
   filters: IncidentFilters = {},
   /** False asks nothing yet — while the filters are still being worked out. */
   enabled = true,
+  /** Asks again every `LIVE_POLL_MS`: for the one view that keeps it live. */
+  poll = false,
 ) =>
   useInfiniteQuery({
     queryKey: queryKeys.incidentList(organizationId, state, period, filters),
+    refetchInterval: poll ? LIVE_POLL_MS : false,
     queryFn: ({ pageParam }) =>
       listIncidents(
         organizationId,
@@ -98,10 +109,17 @@ export const useMemberResponses = (
  * One incident, fetched by number. Not read from a list: lists are paged, so
  * an incident deep in history is in no cached page.
  */
-export const useIncident = (organizationId: string, number: number) =>
+export const useIncident = (
+  organizationId: string,
+  number: number,
+  { live = false }: { live?: boolean } = {},
+) =>
   useQuery({
     queryKey: queryKeys.incident(organizationId, number),
     queryFn: () => getIncident(organizationId, number),
+    // Live while it is active: once resolved it no longer changes.
+    refetchInterval: (query) =>
+      live && query.state.data?.status !== "RESOLVED" ? LIVE_POLL_MS : false,
   });
 
 /** How often attention is asked again while something shows it. */
@@ -196,11 +214,16 @@ export const storeIncident = (
   });
 };
 
-/** One incident's timeline, oldest first. */
-export const useIncidentTimeline = (organizationId: string, number: number) =>
+/** One incident's timeline, oldest first; asked again while `live`. */
+export const useIncidentTimeline = (
+  organizationId: string,
+  number: number,
+  { live = false }: { live?: boolean } = {},
+) =>
   useQuery({
     queryKey: queryKeys.incidentTimeline(organizationId, number),
     queryFn: () => getIncidentTimeline(organizationId, number),
+    refetchInterval: live ? LIVE_POLL_MS : false,
   });
 
 /**

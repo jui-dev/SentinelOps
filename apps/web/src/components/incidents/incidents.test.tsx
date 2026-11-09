@@ -26,8 +26,9 @@ import type { SentRequest } from "@/test/api";
 import { renderWithSession } from "@/test/render";
 
 import { IncidentDetail } from "./incident-detail";
-import { storeIncident } from "./incident-queries";
+import { LIVE_POLL_MS, storeIncident } from "./incident-queries";
 import { IncidentsView } from "./incidents-view";
+import { formatAge } from "./live-status";
 
 const navigation = vi.hoisted(() => ({
   params: { orgSlug: "acme-ops" } as {
@@ -1379,6 +1380,101 @@ describe("incidents", () => {
       expect(entry.textContent).toMatch(/changed status Identified.*→.*Monitoring$/);
     });
 
+    describe("live", () => {
+      it("asks for an active incident and its timeline again while it is open", async () => {
+        vi.useFakeTimers({ shouldAdvanceTime: true });
+        try {
+          const { requests } = api(READ_ONLY);
+
+          inOrganization(<IncidentDetail />);
+
+          expect(await screen.findByText("Live · updated just now")).toBeDefined();
+          const incidentAsks = count(requests, `GET ${base}/incidents/42`);
+          const timelineAsks = count(requests, `GET ${base}/incidents/42/timeline`);
+
+          await vi.advanceTimersByTimeAsync(LIVE_POLL_MS);
+
+          await waitFor(() => {
+            expect(count(requests, `GET ${base}/incidents/42`)).toBeGreaterThan(incidentAsks);
+            expect(count(requests, `GET ${base}/incidents/42/timeline`)).toBeGreaterThan(
+              timelineAsks,
+            );
+          });
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+
+      it("leaves a resolved incident as it is: nothing asked again, nothing said to be live", async () => {
+        vi.useFakeTimers({ shouldAdvanceTime: true });
+        try {
+          const { requests } = api(READ_ONLY, {
+            detail: incident({ status: "RESOLVED", resolvedAt: "2026-09-18T13:00:00.000Z" }),
+          });
+
+          inOrganization(<IncidentDetail />);
+
+          await screen.findByRole("heading", { name: "Resolution" });
+          const asks = count(requests, `GET ${base}/incidents/42`);
+
+          await vi.advanceTimersByTimeAsync(LIVE_POLL_MS * 2);
+
+          expect(count(requests, `GET ${base}/incidents/42`)).toBe(asks);
+          expect(screen.queryByText(/Live · updated/)).toBeNull();
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+
+      it("marks what others added since the page opened, and not the caller's own", async () => {
+        const user = userEvent.setup();
+        let timeline: IncidentActivityResponse[] = [];
+        const { requests } = api(MEMBER, {
+          detail: incident({ status: "DECLARED" }),
+          handler: (request) => {
+            if (route(request) === `GET ${base}/incidents/42/timeline`) {
+              return jsonResponse(200, timeline);
+            }
+            if (route(request) === `POST ${base}/incidents/42/responders/me`) {
+              // Meanwhile Daniel posted; the caller's own start is theirs.
+              timeline = [
+                activity(),
+                activity({
+                  id: "0199a1b2-c3d4-7000-8000-000000000120",
+                  type: "RESPONSE_STARTED",
+                  message: null,
+                  actor: { id: currentUser.id, name: "Ada Lovelace" },
+                  createdAt: "2026-09-18T12:06:00.000Z",
+                }),
+              ];
+              return jsonResponse(200, incident({ responders: [responder(ada)] }));
+            }
+            return undefined;
+          },
+        });
+
+        inOrganization(<IncidentDetail />);
+
+        expect(await screen.findByText("No activity recorded yet.")).toBeDefined();
+        await user.click(await screen.findByRole("button", { name: "Start investigating" }));
+
+        const pill = await screen.findByRole("button", { name: "1 new update" });
+        const timelineCard = await sectionOf(/^Timeline/);
+
+        await waitFor(() =>
+          expect(count(requests, `GET ${base}/incidents/42/timeline`)).toBeGreaterThan(1),
+        );
+        // Only Daniel's entry is new.
+        expect(within(timelineCard).getAllByText("New")).toHaveLength(1);
+
+        await user.click(pill);
+
+        expect(screen.queryByRole("button", { name: /new update/ })).toBeNull();
+        // Still marked, so it can be found once scrolled to.
+        expect(within(timelineCard).getAllByText("New")).toHaveLength(1);
+      });
+    });
+
     it("answers an unknown number with a not-found page", async () => {
       navigation.params = { orgSlug: "acme-ops", incidentNumber: "999" };
       api(READ_ONLY);
@@ -1400,6 +1496,39 @@ describe("incidents", () => {
         await screen.findByRole("heading", { name: "Incident not found" }),
       ).toBeDefined();
       expect(requests.some((r) => r.path.includes("/incidents/"))).toBe(false);
+    });
+  });
+
+  describe("freshness", () => {
+    it("says how fresh a page is in seconds, then minutes, then hours", () => {
+      expect(formatAge(3_000)).toBe("just now");
+      expect(formatAge(42_000)).toBe("42s ago");
+      expect(formatAge(5 * 60_000 + 10_000)).toBe("5m ago");
+      expect(formatAge(2 * 3_600_000)).toBe("2h ago");
+      // A clock slightly ahead of the answer reads as just now.
+      expect(formatAge(-1_000)).toBe("just now");
+    });
+
+    it("keeps the Incidents list live, and says so", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        const { requests } = api(READ_ONLY);
+
+        inOrganization(<IncidentsView />);
+
+        expect(await screen.findByText("Live · updated just now")).toBeDefined();
+        const asks = count(requests, `GET ${base}/incidents?state=active`);
+
+        await vi.advanceTimersByTimeAsync(LIVE_POLL_MS);
+
+        await waitFor(() =>
+          expect(count(requests, `GET ${base}/incidents?state=active`)).toBeGreaterThan(
+            asks,
+          ),
+        );
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 

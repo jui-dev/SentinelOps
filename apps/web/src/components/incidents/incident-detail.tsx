@@ -45,6 +45,7 @@ import {
   YourResponse,
 } from "./incident-response";
 import { IncidentTimeline } from "./incident-timeline";
+import { LiveStatus } from "./live-status";
 import { ManageIncident } from "./manage-incident";
 import { incidentKey, SeverityMark, StatusMark } from "./severity";
 
@@ -160,9 +161,11 @@ function Chip({ children }: { children: ReactNode }) {
 function IncidentHeader({
   incident,
   canManage,
+  live,
 }: {
   incident: IncidentDetailResponse;
   canManage: boolean;
+  live: Live;
 }) {
   const organization = useOrganization();
   const resolved = incident.status === "RESOLVED";
@@ -229,7 +232,14 @@ function IncidentHeader({
           )}
         </div>
       }
-      actions={canManage && !resolved && <ManageIncident incident={incident} />}
+      actions={
+        !resolved && (
+          <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
+            <LiveStatus updatedAt={live.updatedAt} failed={live.failed} />
+            {canManage && <ManageIncident incident={incident} />}
+          </div>
+        )
+      }
     />
   );
 }
@@ -640,7 +650,16 @@ function Resolution({
   );
 }
 
-function IncidentPage({ incident }: { incident: IncidentDetailResponse }) {
+/** How fresh the incident on the page is, from its own query. */
+type Live = { updatedAt: number; failed: boolean };
+
+function IncidentPage({
+  incident,
+  live,
+}: {
+  incident: IncidentDetailResponse;
+  live: Live;
+}) {
   const { perspective, own } = usePerspective(incident);
   const actions = useOwnResponse(incident);
   const resolved = incident.status === "RESOLVED";
@@ -653,7 +672,7 @@ function IncidentPage({ incident }: { incident: IncidentDetailResponse }) {
 
   return (
     <>
-      <IncidentHeader incident={incident} canManage={canManage} />
+      <IncidentHeader incident={incident} canManage={canManage} live={live} />
       <PageBody width="full">
         <div className="flex flex-col gap-6">
           <Lifecycle incident={incident} />
@@ -733,13 +752,14 @@ function LoadedIncident({
   number: number;
   orgSlug: string;
 }) {
-  const incident = useIncident(organizationId, number);
+  const incident = useIncident(organizationId, number, { live: true });
 
   if (isApiError(incident.error, 404)) {
     return <IncidentNotFound orgSlug={orgSlug} />;
   }
 
-  if (incident.isError) {
+  // A refresh that failed keeps the incident on the page, marked stale.
+  if (incident.isError && !incident.data) {
     return (
       <PageBody width="form">
         <ErrorAlert error={incident.error} />
@@ -749,5 +769,13 @@ function LoadedIncident({
 
   if (!incident.data) return <PageSpinner />;
 
-  return <IncidentPage incident={incident.data} />;
+  return (
+    <IncidentPage
+      incident={incident.data}
+      live={{
+        updatedAt: incident.dataUpdatedAt,
+        failed: incident.isRefetchError,
+      }}
+    />
+  );
 }

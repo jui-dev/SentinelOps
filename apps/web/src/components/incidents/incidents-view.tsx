@@ -55,6 +55,7 @@ import {
 } from "./incident-queries";
 import { IncidentTable } from "./incident-table";
 import { SEVERITY_LEVELS, severityOf } from "./severity";
+import { LiveStatus } from "./live-status";
 
 export const SERVICE_UNAVAILABLE_MESSAGE =
   "That service is no longer available for new incidents. The list of services has been refreshed.";
@@ -300,6 +301,8 @@ function IncidentList({
     period,
     filters.filters,
     !filters.pending,
+    // This page keeps both lists live: others declare, respond, and resolve.
+    true,
   );
   const active = state === "active";
 
@@ -416,6 +419,15 @@ export function IncidentsView() {
     searchParams.get("to"),
   );
   const filters = useIncidentFilters();
+  // How fresh the page is: the active list's own answer, read from the
+  // cache its section polls — this reader adds no polling of its own.
+  const freshness = useIncidentList(
+    organization.id,
+    "active",
+    period,
+    filters.filters,
+    !filters.pending,
+  );
 
   // A range the API would refuse, or a filter that can never apply, is
   // taken out of the URL rather than quietly ignored, so the address and
@@ -443,6 +455,10 @@ export function IncidentsView() {
         actions={
           // A phone wraps the link above the button rather than crowding it.
           <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
+            <LiveStatus
+              updatedAt={freshness.dataUpdatedAt}
+              failed={freshness.isRefetchError}
+            />
             {canReadEveryIncident && (
               <OnwardLink href={incidentHistoryHref(organization.slug)}>
                 Incident history
