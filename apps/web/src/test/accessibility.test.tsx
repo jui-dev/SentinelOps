@@ -893,10 +893,10 @@ it("Services, with a row opened", async () => {      signedIn(ADMIN);      const
       signedIn(ADMIN);
       const { container } = inWorkspace(<IncidentDetail />);
 
-      await screen.findByRole("heading", { level: 1, name: "Card payments failing" });
+      await screen.findByRole("heading", { level: 1, name: /Card payments failing$/ });
       await screen.findByRole("heading", { name: "Response in progress" });
       await screen.findByRole("list", { name: "Responders" });
-      await screen.findByRole("group", { name: "Response counts" });
+      await screen.findByLabelText("INC-42 at a glance");
       await expectNoAxeViolations(container);
     });
 
@@ -927,7 +927,7 @@ it("Services, with a row opened", async () => {      signedIn(ADMIN);      const
       signedIn(ADMIN);
       const { container } = inWorkspace(<IncidentDetail />);
 
-      await screen.findByRole("heading", { level: 1, name: "Webhook retries backing up" });
+      await screen.findByRole("heading", { level: 1, name: /Webhook retries backing up$/ });
       await screen.findByRole("heading", { name: "Awaiting team response" });
       await expectNoAxeViolations(container);
     });
@@ -946,7 +946,7 @@ it("Services, with a row opened", async () => {      signedIn(ADMIN);      const
       signedIn(MEMBER);
       const { container } = inWorkspace(<IncidentDetail />);
 
-      await screen.findByRole("heading", { level: 1, name: "Card payments failing" });
+      await screen.findByRole("heading", { level: 1, name: /Card payments failing$/ });
       await screen.findByLabelText("Post an update");
       await screen.findByRole("button", { name: "Mark my response complete" });
       await expectNoAxeViolations(container);
@@ -957,7 +957,7 @@ it("Services, with a row opened", async () => {      signedIn(ADMIN);      const
       signedIn(MEMBER);
       const { container } = inWorkspace(<IncidentDetail />);
 
-      await screen.findByRole("heading", { level: 1, name: "Reports delayed" });
+      await screen.findByRole("heading", { level: 1, name: /Reports delayed$/ });
       await screen.findByRole("heading", { name: "Your response" });
       await expectNoAxeViolations(container);
     });

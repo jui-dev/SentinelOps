@@ -1,14 +1,15 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Circle, CircleCheck, Lock } from "lucide-react";
-import { useId, useState } from "react";
+import { CircleCheck, Lock } from "lucide-react";
+import { useState } from "react";
 import type { FormEvent } from "react";
 
 import { useOrganization } from "@/components/organizations/organization-scope";
 import { Alert, ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { cx } from "@/components/ui/cx";
+import { DetailCard } from "@/components/ui/detail-layout";
 import { TextArea } from "@/components/ui/field";
 import { Duration, LocalDateTime } from "@/components/ui/timestamp";
 import { SubmitHint, useRequiredFields } from "@/components/ui/required";
@@ -30,7 +31,6 @@ import {
   storeIncident,
   useUpdateIncident,
 } from "./incident-queries";
-import { UpdateComposer } from "./incident-timeline";
 import { incidentKey } from "./severity";
 
 /** Someone started investigating between the page loading and resolving. */
@@ -48,45 +48,49 @@ const nameList = (names: readonly string[]) =>
     ? names.join(" and ")
     : `${names.slice(0, -1).join(", ")}, and ${names.at(-1)}`;
 
+/** Up to two initials, for a person's avatar. */
+export const initials = (name: string) =>
+  name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("");
+
 /**
- * A responder's state as a glyph whose shape differs, not only its colour:
- * a filled dot while investigating, a check once complete — the lifecycle's
- * blue and green, as a status is drawn everywhere.
+ * A person's initials in a small circle, tinted by where their part stands:
+ * blue while investigating, teal once complete, quiet when they have not
+ * joined. Decoration: their name is written beside it.
  */
-function ResponderMark({
-  status,
-  className,
+export function Avatar({
+  name,
+  tone,
+  size = "md",
 }: {
-  status: IncidentResponderResponse["status"];
-  className?: string;
+  name: string;
+  tone: "investigating" | "complete" | "quiet";
+  size?: "sm" | "md";
 }) {
-  return status === "INVESTIGATING" ? (
+  return (
     <span
       aria-hidden="true"
       className={cx(
-        "grid size-4 shrink-0 place-items-center",
-        className,
+        "grid shrink-0 place-items-center rounded-full border font-semibold",
+        size === "md" ? "size-7.5 text-[0.6875rem]" : "size-6.5 text-[0.625rem]",
+        tone === "investigating" &&
+          "border-status-investigating-line bg-status-investigating-subtle text-status-investigating-text",
+        tone === "complete" &&
+          "border-status-resolved-line bg-status-resolved-subtle text-status-resolved-text",
+        tone === "quiet" && "border-line bg-sunken text-fg-subtle",
       )}
     >
-      <span className="size-2 rounded-full bg-status-investigating-text" />
+      {initials(name)}
     </span>
-  ) : (
-    <CircleCheck
-      aria-hidden="true"
-      strokeWidth={2}
-      className={cx("size-4 shrink-0 text-status-resolved-text", className)}
-    />
   );
 }
 
-/** Where one responder's own response stands, as ruled rows. */
-function ResponderRows({
-  list,
-  dense = false,
-}: {
-  list: readonly IncidentResponderResponse[];
-  dense?: boolean;
-}) {
+/** Where each responder's own part stands, as ruled rows. */
+function ResponderRows({ list }: { list: readonly IncidentResponderResponse[] }) {
   return (
     <ul aria-label="Responders" className="divide-y divide-line-subtle">
       {list.map((responder) => {
@@ -95,38 +99,39 @@ function ResponderRows({
         return (
           <li
             key={responder.membershipId}
-            className={cx(
-              "grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3",
-              dense ? "py-2" : "px-4 py-2.5 sm:px-5",
-            )}
+            className="flex items-center gap-3 px-4 py-2.5 sm:px-5"
           >
-            <ResponderMark status={responder.status} />
-            <span className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5">
-              <span className="truncate text-sm font-medium text-fg">
-                {responder.name}
-              </span>
-              <span
-                className={cx(
-                  "text-sm",
-                  investigating
-                    ? "text-status-investigating-text"
-                    : "text-status-resolved-text",
-                )}
-              >
-                {investigating ? "Investigating" : "Response complete"}
-              </span>
+            <Avatar
+              name={responder.name}
+              tone={investigating ? "investigating" : "complete"}
+            />
+            <span className="min-w-0 flex-1 truncate text-sm font-medium text-fg">
+              {responder.name}
             </span>
-            <span className="data text-xs whitespace-nowrap text-fg-muted">
-              {investigating ? (
-                <>
-                  for <Duration from={responder.startedAt} />
-                </>
-              ) : (
-                <LocalDateTime
-                  value={responder.completedAt ?? responder.startedAt}
+            {investigating ? (
+              <span className="flex items-center gap-1.5 text-sm whitespace-nowrap text-status-investigating-text">
+                <span
+                  aria-hidden="true"
+                  className="size-1.5 rounded-full bg-status-investigating-text"
                 />
-              )}
-            </span>
+                Investigating
+                <span className="data text-xs">
+                  for <Duration from={responder.startedAt} />
+                </span>
+              </span>
+            ) : (
+              <span className="flex items-center gap-1.5 text-sm whitespace-nowrap text-status-resolved-text">
+                <CircleCheck aria-hidden="true" strokeWidth={2} className="size-3.5" />
+                Response complete
+                <span className="data text-xs">
+                  after{" "}
+                  <Duration
+                    from={responder.startedAt}
+                    to={responder.completedAt ?? responder.startedAt}
+                  />
+                </span>
+              </span>
+            )}
           </li>
         );
       })}
@@ -135,20 +140,20 @@ function ResponderRows({
 }
 
 /**
- * Resolving, after an inline confirmation that asks how it ended: the note
- * is required, and is kept on the incident and its timeline. It cannot be
- * undone here.
+ * Resolving, confirmed inline with how it ended: the note is required, and
+ * is kept on the incident and its timeline. It cannot be undone here.
  */
-function Resolve({ incident }: { incident: IncidentResponse }) {
+function ResolveForm({
+  incident,
+  onCancel,
+}: {
+  incident: IncidentResponse;
+  onCancel: () => void;
+}) {
   const update = useUpdateIncident(incident);
-  const [confirming, setConfirming] = useState(false);
   const [note, setNote] = useState("");
   const [blank, setBlank] = useState(false);
   const { attach: requiredRef, ...required } = useRequiredFields();
-
-  if (!confirming) {
-    return <Button onClick={() => setConfirming(true)}>Resolve incident</Button>;
-  }
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -167,75 +172,74 @@ function Resolve({ incident }: { incident: IncidentResponse }) {
     : fieldErrorsOf(update.error).resolution;
 
   return (
-    <Alert tone="warning" title={`Resolve ${incidentKey(incident.number)}?`}>
-      <p>
-        A resolved incident is kept as it is and can no longer be changed or
-        responded to. If the problem returns, declare a new incident.
-      </p>
-      {update.isError && !fieldError && (
-        <ErrorAlert
-          className="mt-2"
-          error={update.error}
-          message={
-            resolvedMeanwhile(update.error)
-              ? "Someone else resolved this incident already."
-              : stillInvestigating(update.error)
-                ? "Someone started investigating meanwhile, so it cannot be resolved yet. The incident has been refreshed."
-                : undefined
-          }
-        />
-      )}
-      <form
-        ref={requiredRef}
-        onSubmit={onSubmit}
-        noValidate
-        className="flex flex-col gap-3 pt-3"
-      >
-        <TextArea
-          label="How was it resolved?"
-          name="resolution"
-          required
-          rows={3}
-          maxLength={2000}
-          value={note}
-          onChange={(event) => {
-            setNote(event.target.value);
-            setBlank(false);
-          }}
-          hint="What fixed it, or why it no longer needs a response. Kept with the incident and on its timeline."
-          error={fieldError}
-        />
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            type="submit"
-            size="sm"
-            disabled={update.isPending || !required.ready}
-            aria-describedby={required.ready ? undefined : required.hintId}
-          >
-            {update.isPending ? "Resolving…" : "Resolve incident"}
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={update.isPending}
-            onClick={() => {
-              setConfirming(false);
+    <div className="border-b border-line-subtle p-4 sm:px-5">
+      <Alert tone="warning" title={`Resolve ${incidentKey(incident.number)}?`}>
+        <p>
+          A resolved incident is kept as it is and can no longer be changed or
+          responded to. If the problem returns, declare a new incident.
+        </p>
+        {update.isError && !fieldError && (
+          <ErrorAlert
+            className="mt-2"
+            error={update.error}
+            message={
+              resolvedMeanwhile(update.error)
+                ? "Someone else resolved this incident already."
+                : stillInvestigating(update.error)
+                  ? "Someone started investigating meanwhile, so it cannot be resolved yet. The incident has been refreshed."
+                  : undefined
+            }
+          />
+        )}
+        <form
+          ref={requiredRef}
+          onSubmit={onSubmit}
+          noValidate
+          className="flex flex-col gap-3 pt-3"
+        >
+          <TextArea
+            label="How was it resolved?"
+            name="resolution"
+            required
+            rows={3}
+            maxLength={2000}
+            value={note}
+            onChange={(event) => {
+              setNote(event.target.value);
               setBlank(false);
             }}
-          >
-            Cancel
-          </Button>
-          <SubmitHint id={required.hintId} missing={required.missing} />
-        </div>
-      </form>
-    </Alert>
+            hint="What fixed it, or why it no longer needs a response. Kept with the incident and on its timeline."
+            error={fieldError}
+          />
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="submit"
+              size="sm"
+              disabled={update.isPending || !required.ready}
+              aria-describedby={required.ready ? undefined : required.hintId}
+            >
+              {update.isPending ? "Resolving…" : "Resolve incident"}
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={update.isPending}
+              onClick={onCancel}
+            >
+              Cancel
+            </Button>
+            <SubmitHint id={required.hintId} missing={required.missing} />
+          </div>
+        </form>
+      </Alert>
+    </div>
   );
 }
 
 type ResponseState = "awaiting" | "in-progress" | "complete" | "resolved";
 
-/** Where the response stands, and what it is called. */
-const responseStateOf = (incident: IncidentDetailResponse) => {
+/** Where the response stands, what it is called, and its counts. */
+export const responseStateOf = (incident: IncidentDetailResponse) => {
   const list = incident.responders;
   const investigating = list.filter(
     ({ status }) => status === "INVESTIGATING",
@@ -265,43 +269,28 @@ const responseStateOf = (incident: IncidentDetailResponse) => {
   };
 };
 
-/** One count, the number first: how many, then of what. */
-function Figure({ value, label }: { value: number; label: string }) {
-  return (
-    <div className="flex flex-col">
-      <dt className="order-2 text-xs text-fg-muted">{label}</dt>
-      <dd className="numeric order-1 text-2xl leading-8 font-semibold text-fg">
-        {value}
-      </dd>
-    </div>
-  );
-}
-
 /**
- * Where the response stands — the page's operational centre for the Admin,
- * and for anyone following the incident. One framed panel, its edge and
- * glyph following the state: awaiting the team, in progress, complete — the
- * milestone at which the Admin resolves — or resolved. Counts are figures,
- * and each responder is a row with their own state.
- *
- * For the Admin it is also where the incident is resolved, and says who it is
- * waiting for until then.
+ * Where the response stands, for everyone: its state as the card's title,
+ * a line beside it, and each responder as a row with their own part. For
+ * the Admin it is also where the incident is resolved — confirmed inline,
+ * with how it ended — and, until it can be, says who it is waiting for.
  */
-export function ResponsePanel({
+export function ResponseCard({
   incident,
   canManage,
 }: {
   incident: IncidentDetailResponse;
   canManage: boolean;
 }) {
-  const headingId = useId();
+  const [confirming, setConfirming] = useState(false);
   const { state, title, list, investigating, complete } =
     responseStateOf(incident);
-  const ready = canManage && incident.status === "INVESTIGATING" && investigating.length === 0;
+  const ready =
+    canManage && incident.status === "INVESTIGATING" && investigating.length === 0;
 
-  const summary = {
+  const aside = {
     awaiting: `${incident.team.name} has not started investigating yet.`,
-    "in-progress": `${incident.team.name} is working on it.`,
+    "in-progress": `${investigating.length} investigating · ${complete} complete`,
     complete: `${responders(list.length)} completed their response.`,
     resolved:
       list.length === 0
@@ -309,75 +298,40 @@ export function ResponsePanel({
         : `${responders(list.length)} responded to this incident.`,
   }[state];
 
-  const Glyph =
-    state === "complete" || state === "resolved" ? CircleCheck : Circle;
-
   return (
-    <section
-      aria-labelledby={headingId}
+    <DetailCard
+      id="response"
+      title={title}
+      aside={aside}
+      action={
+        ready &&
+        !confirming && (
+          <Button size="sm" onClick={() => setConfirming(true)}>
+            Resolve incident
+          </Button>
+        )
+      }
       className={cx(
-        "overflow-hidden rounded-md border bg-surface",
-        state === "in-progress" &&
-          "border-line border-l-[3px] border-l-status-investigating-text",
+        state === "in-progress" && "border-l-[3px] border-l-status-investigating-text",
         state === "complete" &&
           "border-status-resolved-line border-l-[3px] border-l-status-resolved-text",
-        (state === "awaiting" || state === "resolved") && "border-line",
       )}
     >
-      <div
-        className={cx(
-          "flex flex-wrap items-start justify-between gap-x-6 gap-y-3 px-4 py-4 sm:px-5",
-          state === "complete" && "bg-status-resolved-subtle",
-        )}
-      >
-        <div className="flex min-w-0 gap-3">
-          {state === "in-progress" ? (
-            <ResponderMark status="INVESTIGATING" className="mt-1" />
-          ) : (
-            <Glyph
-              aria-hidden="true"
-              strokeWidth={2}
-              className={cx(
-                "mt-1 size-4 shrink-0",
-                state === "complete" || state === "resolved"
-                  ? "text-status-resolved-text"
-                  : "text-fg-subtle",
-              )}
-            />
-          )}
-          <div className="min-w-0">
-            <h2 id={headingId} className="text-base font-semibold text-fg">
-              {title}
-            </h2>
-            <p className="mt-0.5 text-sm text-fg-muted">{summary}</p>
-          </div>
-        </div>
-        {ready && <Resolve incident={incident} />}
-      </div>
-      {list.length > 0 && state !== "resolved" && (
-        <div
-          role="group"
-          aria-label="Response counts"
-          className="border-t border-line-subtle px-4 py-3 sm:px-5"
-        >
-          <dl className="flex gap-10">
-            <Figure
-              value={list.length}
-              label={list.length === 1 ? "Responder" : "Responders"}
-            />
-            <Figure value={investigating.length} label="Investigating" />
-            <Figure value={complete} label="Complete" />
-          </dl>
-        </div>
+      {ready && confirming && (
+        <ResolveForm incident={incident} onCancel={() => setConfirming(false)} />
       )}
-      {list.length > 0 && (
-        <div className="border-t border-line-subtle">
-          <ResponderRows list={list} />
-        </div>
+      {list.length > 0 ? (
+        <ResponderRows list={list} />
+      ) : (
+        <p className="px-4 py-3 text-sm text-fg-muted sm:px-5">
+          {state === "resolved"
+            ? "No one responded."
+            : `Anyone on ${incident.team.name} can start investigating.`}
+        </p>
       )}
       {canManage && state === "in-progress" && (
-        <p className="flex items-start gap-2 border-t border-line-subtle px-4 py-3 text-sm text-fg-muted sm:px-5">
-          <Lock aria-hidden="true" className="mt-0.5 size-3.5 shrink-0" />
+        <p className="flex items-start gap-2 border-t border-line-subtle bg-sunken/40 px-4 py-2.5 text-sm text-fg-muted sm:px-5">
+          <Lock aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-warning-text" />
           <span>
             Resolve becomes available when{" "}
             {nameList(investigating.map(({ name }) => name))}{" "}
@@ -388,39 +342,7 @@ export function ResponsePanel({
           </span>
         </p>
       )}
-    </section>
-  );
-}
-
-/**
- * The team's response, secondary, beneath a member's own: where it stands
- * in a line, and who is doing what — without the Admin's figures or
- * resolution.
- */
-export function TeamResponse({ incident }: { incident: IncidentDetailResponse }) {
-  const headingId = useId();
-  const { title, list, investigating, complete } = responseStateOf(incident);
-
-  return (
-    <section aria-labelledby={headingId} className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <h2 id={headingId} className="text-sm font-semibold text-fg">
-          Team response
-        </h2>
-        <span className="text-sm text-fg-muted">
-          {title === "Response" ? "Ended" : title}
-          {list.length > 0 &&
-            ` · ${investigating.length} investigating · ${complete} complete`}
-        </span>
-      </div>
-      {list.length === 0 ? (
-        <p className="text-sm text-fg-muted">
-          No one on {incident.team.name} has started investigating yet.
-        </p>
-      ) : (
-        <ResponderRows list={list} dense />
-      )}
-    </section>
+    </DetailCard>
   );
 }
 
@@ -481,11 +403,10 @@ export const useOwnResponse = (incident: IncidentResponse) => {
 export type OwnResponse = ReturnType<typeof useOwnResponse>;
 
 /**
- * The caller's own part in the response — a member's working area. Before
+ * The caller's own part — a member's working area, above the team's. Before
  * they start: why it is theirs, and Start investigating. While
- * investigating: since when, the update composer, and Mark my response
- * complete. After: that their part is done. Once the incident is resolved,
- * only where their response ended.
+ * investigating: since when, and Mark my response complete; their updates
+ * go on the timeline beneath. After: that their part is done.
  */
 export function YourResponse({
   incident,
@@ -496,91 +417,46 @@ export function YourResponse({
   own: IncidentResponderResponse | undefined;
   actions: OwnResponse;
 }) {
-  const headingId = useId();
   const active = incident.status !== "RESOLVED";
   const pending = actions.start.isPending || actions.complete.isPending;
   const investigating = own?.status === "INVESTIGATING";
 
-  return (
-    <section
-      aria-labelledby={headingId}
-      className={cx(
-        "overflow-hidden rounded-md border bg-surface",
-        investigating &&
-          "border-line border-l-[3px] border-l-status-investigating-text",
-        own?.status === "COMPLETED" &&
-          "border-status-resolved-line border-l-[3px] border-l-status-resolved-text",
-        !own && "border-accent-line",
-      )}
-    >
-      <div className="flex flex-col gap-4 px-4 py-4 sm:px-5">
-        <h2 id={headingId} className="label-caps text-fg-subtle">
-          Your response
-        </h2>
-        {!own ? (
-          <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
-            <div className="min-w-0">
-              <p className="text-base font-semibold text-fg">
-                You are on {incident.team.name}, the team responsible for this
-                incident.
-              </p>
-              <p className="mt-0.5 text-sm text-fg-muted">
-                You have not started responding to this incident.
-              </p>
-            </div>
-            <Button disabled={pending} onClick={() => actions.start.mutate()}>
-              {actions.start.isPending ? "Starting…" : "Start investigating"}
-            </Button>
-          </div>
-        ) : investigating ? (
-          <div className="flex gap-3">
-            <ResponderMark status="INVESTIGATING" className="mt-1" />
-            <div>
-              <p className="text-base font-semibold text-fg">
-                You are investigating
-              </p>
-              <p className="text-sm text-fg-muted">
-                Started <LocalDateTime value={own.startedAt} /> ·{" "}
-                <span className="data">
-                  <Duration from={own.startedAt} />
-                </span>{" "}
-                ago
-              </p>
-            </div>
-          </div>
-        ) : (
-          <div className="flex gap-3">
-            <ResponderMark status="COMPLETED" className="mt-1" />
-            <div>
-              <p className="text-base font-semibold text-fg">
-                Response complete
-              </p>
-              <p className="text-sm text-fg-muted">
-                Your response work on this incident is complete
-                {own.completedAt && (
-                  <>
-                    {" "}
-                    (<LocalDateTime value={own.completedAt} />)
-                  </>
-                )}
-                .
-              </p>
-            </div>
-          </div>
-        )}
-        {investigating && active && (
-          <UpdateComposer
-            incident={incident}
-            hint="Updates go on the timeline, for your team and the Admin."
-          />
-        )}
-      </div>
-      {investigating && active && (
-        <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-t border-line-subtle bg-sunken/40 px-4 py-3 sm:px-5">
-          <p className="text-sm text-fg-muted">
-            Done with your part? Completing your response does not resolve the
+  let body;
+
+  if (!own) {
+    body = (
+      <>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-fg">
+            You are on {incident.team.name}, the team responsible for this
             incident.
           </p>
+          <p className="mt-0.5 text-sm text-fg-muted">
+            You have not started responding to this incident.
+          </p>
+        </div>
+        <Button disabled={pending} onClick={() => actions.start.mutate()}>
+          {actions.start.isPending ? "Starting…" : "Start investigating"}
+        </Button>
+      </>
+    );
+  } else if (investigating) {
+    body = (
+      <>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-status-investigating-text">
+            You are investigating
+          </p>
+          <p className="mt-0.5 text-sm text-fg-muted">
+            Started <LocalDateTime value={own.startedAt} /> ·{" "}
+            <span className="data">
+              <Duration from={own.startedAt} />
+            </span>{" "}
+            ago. Post what you find on the timeline; completing your part does
+            not resolve the incident.
+          </p>
+        </div>
+        {active && (
           <Button
             variant="secondary"
             disabled={pending}
@@ -590,8 +466,43 @@ export function YourResponse({
               ? "Completing…"
               : "Mark my response complete"}
           </Button>
-        </div>
+        )}
+      </>
+    );
+  } else {
+    body = (
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-semibold text-status-resolved-text">
+          Response complete
+        </p>
+        <p className="mt-0.5 text-sm text-fg-muted">
+          Your response work on this incident is complete
+          {own.completedAt && (
+            <>
+              {" "}
+              (<LocalDateTime value={own.completedAt} />)
+            </>
+          )}
+          .
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <DetailCard
+      id="your-response"
+      title="Your response"
+      className={cx(
+        investigating && "border-l-[3px] border-l-status-investigating-text",
+        own?.status === "COMPLETED" &&
+          "border-status-resolved-line border-l-[3px] border-l-status-resolved-text",
+        !own && "border-accent-line",
       )}
-    </section>
+    >
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-3 px-4 py-4 sm:px-5">
+        {body}
+      </div>
+    </DetailCard>
   );
 }

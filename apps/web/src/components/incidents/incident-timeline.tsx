@@ -8,10 +8,15 @@ import { useOrganization } from "@/components/organizations/organization-scope";
 import { ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { cx } from "@/components/ui/cx";
+import { DetailCard } from "@/components/ui/detail-layout";
 import { TextArea } from "@/components/ui/field";
-import { Section } from "@/components/ui/page";
+import { SubmitHint, useRequiredFields } from "@/components/ui/required";
 import { Spinner } from "@/components/ui/spinner";
-import { LocalDateTime } from "@/components/ui/timestamp";
+import {
+  formatDuration,
+  LocalTime,
+  useMinuteClock,
+} from "@/components/ui/timestamp";
 import { ApiErrorCode } from "@/lib/api/contracts";
 import type {
   IncidentActivityResponse,
@@ -47,7 +52,7 @@ function describe(entry: IncidentActivityResponse): ReactNode {
     case "DECLARED":
       return (
         <>
-          Declared the incident
+          declared the incident
           {entry.toValue && (
             <>
               {" at "}
@@ -59,7 +64,7 @@ function describe(entry: IncidentActivityResponse): ReactNode {
     case "SEVERITY_CHANGED":
       return (
         <>
-          Changed severity{" "}
+          changed severity{" "}
           <SeverityMark severity={entry.fromValue as IncidentSeverity} />
           <span aria-hidden="true"> → </span>
           <span className="sr-only"> to </span>
@@ -69,7 +74,7 @@ function describe(entry: IncidentActivityResponse): ReactNode {
     case "TEAM_CHANGED":
       return (
         <>
-          Reassigned the incident from{" "}
+          reassigned the incident from{" "}
           <span className="font-medium text-fg">{entry.fromValue}</span> to{" "}
           <span className="font-medium text-fg">{entry.toValue}</span>
         </>
@@ -93,7 +98,7 @@ function describe(entry: IncidentActivityResponse): ReactNode {
       if (entry.fromValue === "DECLARED" && entry.toValue === "INVESTIGATING") {
         return (
           <>
-            The incident is now{" "}
+            moved the incident to{" "}
             <StatusMark
               status="INVESTIGATING"
               variant="inline"
@@ -106,7 +111,7 @@ function describe(entry: IncidentActivityResponse): ReactNode {
       // and can name a retired status: shown as it was.
       return (
         <>
-          Changed status{" "}
+          changed status{" "}
           <StatusMark
             status={entry.fromValue as RecordedStatus}
             variant="inline"
@@ -120,25 +125,22 @@ function describe(entry: IncidentActivityResponse): ReactNode {
           />
         </>
       );
+    case "UPDATE":
+      return "posted an update";
+    case "RESPONSE_STARTED":
+      return "started investigating";
+    case "RESPONSE_COMPLETED":
+      return "completed their response";
     default:
       return null;
   }
 }
 
-/**
- * What the actor did, said after their name, for the entries whose whole
- * story that is: a response starting or completing. Updates say it too, and
- * carry their text beneath.
- */
-const ACTIONS: Partial<Record<IncidentActivityResponse["type"], string>> = {
-  UPDATE: "posted an update",
-  RESPONSE_STARTED: "started investigating",
-  RESPONSE_COMPLETED: "completed their response",
-};
-
-/** The rail's marker for a recorded event, from the shared vocabulary. */
-const eventMarker = (entry: IncidentActivityResponse): EventMarker => {
+/** The rail's marker for an entry, from the shared vocabulary. */
+const eventMarker = (entry: IncidentActivityResponse): EventMarker | undefined => {
   switch (entry.type) {
+    case "UPDATE":
+      return undefined;
     case "DECLARED":
       return EVENT_MARKERS.declared;
     case "SEVERITY_CHANGED":
@@ -156,82 +158,98 @@ const eventMarker = (entry: IncidentActivityResponse): EventMarker => {
   }
 };
 
-/** Up to two initials, for a person's marker on the rail. */
-const initials = (name: string) =>
-  name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join("");
+/** What people wrote: an update, or the note a resolution was made with. */
+const writtenText = (entry: IncidentActivityResponse) =>
+  entry.type === "UPDATE" ||
+  (entry.type === "STATUS_CHANGED" && entry.toValue === "RESOLVED")
+    ? entry.message
+    : null;
 
 /**
- * One entry. A person's update is the timeline's content: their initials on
- * the rail, and their words in a block of readable text. Everything the
- * server recorded — declaring, responses starting and completing, changes —
- * is a compact line with an icon, quieter than what people wrote.
+ * One entry, as a row on the rail: when, on the left — the time, and how
+ * long ago — then a dot in the event's colour, then who did what. What
+ * people wrote sits beneath in a quiet block: an update's text, or the note
+ * the incident was resolved with.
  */
-function TimelineEntry({ entry }: { entry: IncidentActivityResponse }) {
-  const update = entry.type === "UPDATE";
-  const action = ACTIONS[entry.type];
-
-  if (update) {
-    return (
-      <li className="relative pb-6 pl-8 last:pb-0">
-        <span
-          aria-hidden="true"
-          className="absolute top-0 -left-3 grid size-6 place-items-center rounded-full border border-accent-line bg-accent-subtle text-[0.625rem] font-semibold text-accent-text"
-        >
-          {initials(entry.actor.name)}
-        </span>
-        <p className="text-sm text-fg-muted">
-          <span className="font-semibold text-fg">{entry.actor.name}</span>
-          <span> {action}</span> ·{" "}
-          <span className="text-xs">
-            <LocalDateTime value={entry.createdAt} />
-          </span>
-        </p>
-        <p className="mt-1.5 max-w-2xl rounded-r-md border-l-2 border-accent-line bg-surface px-3.5 py-2.5 text-sm leading-6 whitespace-pre-line text-fg">
-          {entry.message}
-        </p>
-      </li>
-    );
-  }
-
-  const { Icon, colour } = eventMarker(entry);
-  // The resolution's note: kept with its entry, in the success rule that
-  // completion and resolution share.
-  const note =
-    entry.type === "STATUS_CHANGED" && entry.toValue === "RESOLVED"
-      ? entry.message
-      : null;
+function TimelineEntry({
+  entry,
+  now,
+}: {
+  entry: IncidentActivityResponse;
+  now: Date;
+}) {
+  const marker = eventMarker(entry);
+  const text = writtenText(entry);
+  const resolution = entry.type === "STATUS_CHANGED" && entry.toValue === "RESOLVED";
 
   return (
-    <li className="relative pb-4 pl-8 last:pb-0">
-      <span
-        aria-hidden="true"
-        className="absolute top-0 -left-2.5 grid size-5 place-items-center rounded-full border border-line-subtle bg-canvas"
-      >
-        <Icon strokeWidth={2} className={cx("size-3", colour)} />
+    <li className="grid grid-cols-[4.5rem_1.25rem_minmax(0,1fr)] gap-x-3">
+      <span className="flex flex-col pt-3 text-xs">
+        <span className="data text-fg-muted">
+          <LocalTime value={entry.createdAt} />
+        </span>
+        <span className="text-fg-subtle">
+          {formatDuration(now.getTime() - Date.parse(entry.createdAt))} ago
+        </span>
       </span>
-      <p className="text-xs text-fg-muted">
-        <span className="font-medium text-fg">{entry.actor.name}</span>
-        {action && <span className="text-fg"> {action}</span>} ·{" "}
-        <LocalDateTime value={entry.createdAt} />
-      </p>
-      {!action && (
-        <p className="mt-0.5 flex flex-wrap items-center gap-x-1 text-sm text-fg-muted">
+      <span aria-hidden="true" className="relative flex justify-center">
+        <span className="absolute inset-y-0 w-0.5 bg-line-subtle" />
+        <span
+          className={cx(
+            "relative mt-4 size-2.5 rounded-full bg-current ring-3 ring-surface",
+            marker ? marker.colour : "text-accent-text",
+          )}
+        />
+      </span>
+      <div className="flex min-w-0 flex-col gap-1.5 py-3">
+        <p className="flex flex-wrap items-center gap-x-1 text-sm text-fg-muted">
+          <span className="font-semibold text-fg">{entry.actor.name}</span>{" "}
           {describe(entry)}
         </p>
-      )}
-      {note && (
-        <p className="mt-1.5 max-w-2xl rounded-r-md border-l-2 border-status-resolved-line bg-surface px-3.5 py-2.5 text-sm leading-6 whitespace-pre-line text-fg">
-          {note}
-        </p>
-      )}
+        {text && (
+          <p
+            className={cx(
+              "max-w-3xl rounded-md border px-3 py-2 text-sm leading-6 whitespace-pre-line text-fg",
+              resolution
+                ? "border-status-resolved-line bg-status-resolved-subtle"
+                : "border-line-subtle bg-sunken/60",
+            )}
+          >
+            {text}
+          </p>
+        )}
+      </div>
     </li>
   );
 }
+
+/** "Today", "Yesterday", or the date: the heading over one day's entries. */
+const dayLabel = (iso: string, now: Date) => {
+  const day = new Date(iso);
+  const yesterday = new Date(now);
+
+  yesterday.setDate(now.getDate() - 1);
+
+  if (day.toDateString() === now.toDateString()) return "Today";
+  if (day.toDateString() === yesterday.toDateString()) return "Yesterday";
+
+  return day.toLocaleDateString(undefined, { dateStyle: "medium" });
+};
+
+/** Entries, newest first, in runs of one local day each. */
+const byDay = (entries: readonly IncidentActivityResponse[]) => {
+  const days: { key: string; entries: IncidentActivityResponse[] }[] = [];
+
+  for (const entry of [...entries].reverse()) {
+    const key = new Date(entry.createdAt).toDateString();
+    const last = days.at(-1);
+
+    if (last?.key === key) last.entries.push(entry);
+    else days.push({ key, entries: [entry] });
+  }
+
+  return days;
+};
 
 /** The caller's own response no longer allows posting. */
 const responseClosed = (error: unknown) =>
@@ -241,16 +259,11 @@ const responseClosed = (error: unknown) =>
     error.code === ApiErrorCode.RESPONSE_ALREADY_COMPLETED);
 
 /** Posting a short operational update. Cleared once it is on the timeline. */
-export function UpdateComposer({
-  incident,
-  hint = "What responders know now, and what they are doing about it.",
-}: {
-  incident: IncidentResponse;
-  hint?: string;
-}) {
+export function UpdateComposer({ incident }: { incident: IncidentResponse }) {
   const organization = useOrganization();
   const queryClient = useQueryClient();
   const [message, setMessage] = useState("");
+  const { attach: requiredRef, ...required } = useRequiredFields(message);
 
   const post = useMutation({
     mutationFn: (text: string) =>
@@ -280,6 +293,7 @@ export function UpdateComposer({
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (message.trim() === "" || post.isPending) return;
     post.mutate(message);
   };
 
@@ -294,26 +308,48 @@ export function UpdateComposer({
         ? RESPONSE_COMPLETE
         : NOT_INVESTIGATING
       : undefined;
+  const blank = message.trim() === "";
 
   return (
-    <form onSubmit={onSubmit} noValidate className="flex max-w-2xl flex-col gap-3">
+    <form
+      ref={requiredRef}
+      onSubmit={onSubmit}
+      noValidate
+      className="flex flex-col gap-2 border-b border-line-subtle px-4 py-4 sm:px-5"
+    >
       {post.isError && Object.keys(fields).length === 0 && (
         <ErrorAlert error={post.error} message={errorMessage} />
       )}
       <TextArea
         label="Post an update"
         name="message"
-        rows={3}
+        required
+        rows={2}
         maxLength={2000}
         value={message}
+        placeholder="What changed, what is being tried, what is next."
         onChange={(event) => setMessage(event.target.value)}
-        hint={hint}
+        onKeyDown={(event) => {
+          // Ctrl+Enter (or ⌘+Enter) posts, as in most chat and ticket tools.
+          if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+            event.preventDefault();
+            event.currentTarget.form?.requestSubmit();
+          }
+        }}
         error={fields.message}
       />
-      <div>
+      <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
+        <span className="mr-auto text-xs text-fg-subtle">
+          <kbd className="data rounded-sm border border-line px-1">Ctrl</kbd> +{" "}
+          <kbd className="data rounded-sm border border-line px-1">Enter</kbd>{" "}
+          to post
+        </span>
+        <SubmitHint id={required.hintId} missing={required.missing} />
         <Button
           type="submit"
-          disabled={message.trim() === "" || post.isPending}
+          size="sm"
+          disabled={blank || post.isPending}
+          aria-describedby={blank ? required.hintId : undefined}
         >
           {post.isPending ? "Posting…" : "Post update"}
         </Button>
@@ -322,13 +358,52 @@ export function UpdateComposer({
   );
 }
 
+type Show = "updates" | "everything";
+
+/** Updates only, or everything recorded: two pressed-state buttons. */
+function ShowToggle({
+  show,
+  onChange,
+  counts,
+}: {
+  show: Show;
+  onChange: (show: Show) => void;
+  counts: Record<Show, number>;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label="Show"
+      className="inline-flex overflow-hidden rounded-md border border-line-strong text-xs"
+    >
+      {(["updates", "everything"] as const).map((value) => (
+        <button
+          key={value}
+          type="button"
+          aria-pressed={show === value}
+          onClick={() => onChange(value)}
+          className={cx(
+            "px-2.5 py-1 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus",
+            show === value
+              ? "bg-accent font-semibold text-on-accent"
+              : "bg-surface text-fg-muted hover:text-fg",
+          )}
+        >
+          {value === "updates" ? "Updates" : "Everything"}{" "}
+          <span className="numeric opacity-70">{counts[value]}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /**
- * The operational story of the incident, oldest first: human updates,
- * responses starting and completing, and the declaration, severity, status,
- * and team changes the server recorded. History only — where the response
- * stands now is the incident's responders, shown above it. `canPost` puts the
- * update composer beneath it — for the Admin; a responder posts from their
- * own response panel instead.
+ * The operational story of the incident, newest first and by day: updates
+ * people posted, responses starting and completing, and the declaration,
+ * severity, status, and team changes the server recorded. History only —
+ * where the response stands now is the Response card above it. `canPost`
+ * puts the update composer at its head: for the Admin, and for a member
+ * while they are investigating.
  */
 export function IncidentTimeline({
   incident,
@@ -339,28 +414,64 @@ export function IncidentTimeline({
 }) {
   const organization = useOrganization();
   const timeline = useIncidentTimeline(organization.id, incident.number);
+  const now = useMinuteClock();
+  const [show, setShow] = useState<Show>("everything");
+
+  const all = timeline.data ?? [];
+  const updates = all.filter((entry) => entry.type === "UPDATE");
+  const shown = show === "updates" ? updates : all;
+
+  let content;
+
+  if (timeline.isError) {
+    content = (
+      <div className="p-4 sm:px-5">
+        <ErrorAlert error={timeline.error} />
+      </div>
+    );
+  } else if (!timeline.data) {
+    content = <Spinner label="Loading timeline…" />;
+  } else if (shown.length === 0) {
+    content = (
+      <p className="px-4 py-4 text-sm text-fg-muted sm:px-5">
+        {show === "updates" && all.length > 0
+          ? "No updates posted yet."
+          : "No activity recorded yet."}
+      </p>
+    );
+  } else {
+    content = byDay(shown).map((day) => (
+      <section key={day.key} aria-label={dayLabel(day.entries[0].createdAt, now)}>
+        <p className="label-caps border-b border-line-subtle bg-sunken/40 px-4 py-2 text-fg-subtle sm:px-5">
+          {dayLabel(day.entries[0].createdAt, now)}
+        </p>
+        <ol className="px-4 pb-2 sm:px-5">
+          {day.entries.map((entry) => (
+            <TimelineEntry key={entry.id} entry={entry} now={now} />
+          ))}
+        </ol>
+      </section>
+    ));
+  }
 
   return (
-    <Section
+    <DetailCard
       id="timeline"
       title="Timeline"
       meta={timeline.data?.length}
-      description="Updates from responders and changes to the incident, oldest first."
+      action={
+        timeline.data &&
+        timeline.data.length > 0 && (
+          <ShowToggle
+            show={show}
+            onChange={setShow}
+            counts={{ updates: updates.length, everything: all.length }}
+          />
+        )
+      }
     >
-      {timeline.isError ? (
-        <ErrorAlert error={timeline.error} />
-      ) : !timeline.data ? (
-        <Spinner label="Loading timeline…" />
-      ) : timeline.data.length === 0 ? (
-        <p className="text-sm text-fg-muted">No activity recorded yet.</p>
-      ) : (
-        <ol className="mt-1 ml-3 border-l border-line-subtle">
-          {timeline.data.map((entry) => (
-            <TimelineEntry key={entry.id} entry={entry} />
-          ))}
-        </ol>
-      )}
       {canPost && <UpdateComposer incident={incident} />}
-    </Section>
+      {content}
+    </DetailCard>
   );
 }

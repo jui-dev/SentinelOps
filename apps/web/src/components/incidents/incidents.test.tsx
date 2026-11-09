@@ -695,16 +695,11 @@ describe("incidents", () => {
         "section",
       ) as HTMLElement;
 
-    /** The response panel's counts, as { label: value }. */
-    const figures = (panel: HTMLElement) => {
-      const counts = within(panel).getByRole("group", { name: "Response counts" });
-
-      return Object.fromEntries(
-        within(counts)
-          .getAllByRole("definition")
-          .map((value) => [value.previousElementSibling?.textContent, value.textContent]),
-      );
-    };
+    /** A glance tile's figure and note, by its label. */
+    const tile = (label: string) =>
+      within(screen.getByLabelText("INC-42 at a glance"))
+        .getByText(label)
+        .nextElementSibling?.textContent;
 
     /** Opens the Admin's drawer, and answers it. */
     const openManage = async (user: ReturnType<typeof userEvent.setup>) => {
@@ -719,9 +714,11 @@ describe("incidents", () => {
       inOrganization(<IncidentDetail />);
 
       expect(
-        await screen.findByRole("heading", { level: 1, name: "Card payments failing" }),
+        await screen.findByRole("heading", { level: 1, name: "INC-42 Card payments failing" }),
       ).toBeDefined();
-      expect(screen.getByText(/INC-42/)).toBeDefined();
+      expect(
+        within(screen.getByRole("navigation", { name: "Breadcrumb" })).getByText("INC-42"),
+      ).toBeDefined();
       expect(screen.getByText("Card declines since 14:02.")).toBeDefined();
       expect(
         screen.getByRole("link", { name: "Payment API" }).getAttribute("href"),
@@ -763,18 +760,15 @@ describe("incidents", () => {
 
         const response = await sectionOf("Response in progress");
 
-        expect(figures(response)).toEqual({
-          Responders: "2",
-          Investigating: "2",
-          Complete: "0",
-        });
+        expect(within(response).getByText("2 investigating · 0 complete")).toBeDefined();
+        expect(tile("Responders")).toBe("22 investigating · 0 complete");
         expect(
           within(within(response).getByRole("list", { name: "Responders" }))
             .getAllByRole("listitem")
             .map((item) => item.textContent),
         ).toEqual([
-          expect.stringMatching(/^Daniel OkaforInvestigatingfor /),
-          expect.stringMatching(/^Sam OkaforInvestigatingfor /),
+          expect.stringMatching(/^DODaniel OkaforInvestigatingfor /),
+          expect.stringMatching(/^SOSam OkaforInvestigatingfor /),
         ]);
         expect(
           within(response).getByText(
@@ -793,11 +787,7 @@ describe("incidents", () => {
 
         const response = await sectionOf("Response in progress");
 
-        expect(figures(response)).toEqual({
-          Responders: "2",
-          Investigating: "1",
-          Complete: "1",
-        });
+        expect(within(response).getByText("1 investigating · 1 complete")).toBeDefined();
         expect(within(response).getByText("Response complete")).toBeDefined();
         expect(
           within(response).getByText(
@@ -997,12 +987,14 @@ describe("incidents", () => {
 
         expect(await within(yours).findByText("You are investigating")).toBeDefined();
         expect(within(yours).getByText(/^Started/)).toBeDefined();
-        // Where they post is their own panel.
-        expect(within(yours).getByLabelText("Post an update")).toBeDefined();
+        // Where they post is the timeline.
+        expect(
+          within(await sectionOf(/^Timeline/)).getByLabelText("Post an update"),
+        ).toBeDefined();
         expect(
           within(yours).getByRole("button", { name: "Mark my response complete" }),
         ).toBeDefined();
-        expect(within(await sectionOf("Team response")).getByText(/Response in progress/)).toBeDefined();
+        expect(await sectionOf("Response in progress")).toBeDefined();
         expect(count(requests, `POST ${base}/incidents/42/responders/me`)).toBe(1);
         // The timeline refetches: starting was recorded there.
         await waitFor(() =>
@@ -1039,7 +1031,7 @@ describe("incidents", () => {
         expect(screen.queryByRole("button", { name: "Mark my response complete" })).toBeNull();
         expect(screen.queryByRole("button", { name: "Start investigating" })).toBeNull();
         // Daniel is still investigating: the incident stays in progress.
-        expect(within(await sectionOf("Team response")).getByText(/Response in progress/)).toBeDefined();
+        expect(await sectionOf("Response in progress")).toBeDefined();
         expect(requests.some((r) => r.method === "PATCH")).toBe(false);
       });
 
@@ -1180,7 +1172,7 @@ describe("incidents", () => {
       expect(
         within(yours).getByRole("button", { name: "Mark my response complete" }),
       ).toBeDefined();
-      expect(within(yours).getByLabelText("Post an update")).toBeDefined();
+      expect(screen.getByLabelText("Post an update")).toBeDefined();
     });
 
     it("lets a member of another team follow the incident, with nothing to do", async () => {
@@ -1230,27 +1222,24 @@ describe("incidents", () => {
 
       inOrganization(<IncidentDetail />);
 
-      // The admin sees the response as a whole; a responder, their own part
-      // above the team's.
-      const response =
-        permissions === ADMIN
-          ? await sectionOf("Response")
-          : await sectionOf("Team response");
+      // Everyone sees the response as a whole; a responder, their own part
+      // above it.
+      const response = await sectionOf("Response");
 
-      if (permissions === ADMIN) {
-        expect(
-          within(response).getByText("2 responders responded to this incident."),
-        ).toBeDefined();
-      } else {
+      expect(
+        within(response).getByText("2 responders responded to this incident."),
+      ).toBeDefined();
+      if (permissions !== ADMIN) {
         expect(within(await sectionOf("Your response")).getByText("Response complete")).toBeDefined();
       }
       expect(within(response).getAllByText("Response complete")).toHaveLength(2);
-      expect(screen.getByText(/^Lasted/)).toBeDefined();
+      expect(tile("Lasted")).toBeTruthy();
 
-      const timeline = await sectionOf(/Timeline/);
+      const timeline = await sectionOf(/^Timeline/);
       const entries = await within(timeline).findAllByRole("listitem");
 
-      expect(entries.at(-1)?.textContent).toMatch(/Resolved the incident$/);
+      // Newest first: the resolution heads it.
+      expect(entries[0]?.textContent).toMatch(/Resolved the incident$/);
       // Resolved before notes were required: said, not left as a gap.
       expect(
         within(await sectionOf("Resolution")).getByText(
@@ -1294,15 +1283,15 @@ describe("incidents", () => {
 
       expect(within(await sectionOf("Resolution")).getByText(note)).toBeDefined();
 
-      const timeline = await sectionOf(/Timeline/);
+      const timeline = await sectionOf(/^Timeline/);
       const [entry] = await within(timeline).findAllByRole("listitem");
 
       expect(entry.textContent).toMatch(
-        /^Ada Lovelace · .*Resolved the incident.*Rolled back the 12:00 deploy/,
+        /ago\s*Ada Lovelace\s*Resolved the incident.*Rolled back the 12:00 deploy/,
       );
     });
 
-    it("tells the story on the timeline, oldest first, with nothing to post for a reader", async () => {
+    it("tells the story on the timeline, newest first, with nothing to post for a reader", async () => {
       api(READ_ONLY, {
         timeline: [
           activity({
@@ -1351,21 +1340,20 @@ describe("incidents", () => {
 
       inOrganization(<IncidentDetail />);
 
-      const timeline = await sectionOf(/Timeline/);
+      const timeline = await sectionOf(/^Timeline/);
       const entries = await within(timeline).findAllByRole("listitem");
+      // Who did what, without the time column before it.
+      const said = (entry: HTMLElement) =>
+        entry.lastElementChild?.textContent?.replace(/\s+/g, " ").trim();
 
-      expect(entries.map((entry) => entry.textContent)).toEqual([
-        expect.stringMatching(/^Ada Lovelace · .*Declared the incident at SEV2/),
-        expect.stringMatching(/^Daniel Okafor started investigating · [^·]*$/),
-        expect.stringMatching(/^Daniel Okafor · .*The incident is now Investigating$/),
-        expect.stringMatching(
-          /^DODaniel Okafor posted an update · .*Investigating elevated database latency\.$/,
-        ),
-        expect.stringMatching(/Changed severity SEV2.*→.*SEV1/),
-        expect.stringMatching(
-          /^Ada Lovelace · .*Reassigned the incident from Payments to Platform$/,
-        ),
-        expect.stringMatching(/^Daniel Okafor completed their response · [^·]*$/),
+      expect(entries.map(said)).toEqual([
+        "Daniel Okafor completed their response",
+        "Ada Lovelace reassigned the incident from Payments to Platform",
+        expect.stringMatching(/^Daniel Okafor changed severity SEV2.*→.*SEV1/),
+        "Daniel Okafor posted an updateInvestigating elevated database latency.",
+        "Daniel Okafor moved the incident to Investigating",
+        "Daniel Okafor started investigating",
+        expect.stringMatching(/^Ada Lovelace declared the incident at SEV2/),
       ]);
       expect(within(timeline).queryByLabelText("Post an update")).toBeNull();
     });
@@ -1385,10 +1373,10 @@ describe("incidents", () => {
 
       inOrganization(<IncidentDetail />);
 
-      const timeline = await sectionOf(/Timeline/);
+      const timeline = await sectionOf(/^Timeline/);
       const [entry] = await within(timeline).findAllByRole("listitem");
 
-      expect(entry.textContent).toMatch(/Changed status Identified.*→.*Monitoring$/);
+      expect(entry.textContent).toMatch(/changed status Identified.*→.*Monitoring$/);
     });
 
     it("answers an unknown number with a not-found page", async () => {
