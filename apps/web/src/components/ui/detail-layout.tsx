@@ -11,7 +11,13 @@ import { cx } from "./cx";
 
 // ── The glance band ─────────────────────────────────────────────────────────
 
-export type GlanceTone = "neutral" | "accent" | "info" | "warning" | "resolved";
+export type GlanceTone =
+  | "neutral"
+  | "accent"
+  | "info"
+  | "warning"
+  | "investigating"
+  | "resolved";
 
 /** Each tile's icon square: a quiet fill in one of the system's own tones. */
 const CHIPS: Record<GlanceTone, string> = {
@@ -19,6 +25,8 @@ const CHIPS: Record<GlanceTone, string> = {
   accent: "border-accent-line bg-accent-subtle text-accent-text",
   info: "border-info-line bg-info-subtle text-info-text",
   warning: "border-warning-line bg-warning-subtle text-warning-text",
+  investigating:
+    "border-status-investigating-line bg-status-investigating-subtle text-status-investigating-text",
   resolved:
     "border-status-resolved-line bg-status-resolved-subtle text-status-resolved-text",
 };
@@ -29,6 +37,7 @@ const NOTE_TONES: Record<GlanceTone, string> = {
   accent: "text-accent-text",
   info: "text-info-text",
   warning: "text-warning-text",
+  investigating: "text-status-investigating-text",
   resolved: "text-status-resolved-text",
 };
 
@@ -42,7 +51,7 @@ export function GlanceTile({
 }: {
   label: string;
   value: ReactNode;
-  note?: string;
+  note?: ReactNode;
   icon: LucideIcon;
   tone: GlanceTone;
   /** Whether the note carries the tile's tone, for what wants noticing. */
