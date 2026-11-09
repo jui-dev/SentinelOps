@@ -11,6 +11,7 @@
     "pnpm": ">=11"
   },
   "scripts": {
+    "dev": "pnpm --parallel --filter @sentinelops/api --filter @sentinelops/web run dev",
     "db:up": "docker compose -f docker/docker-compose.yml --env-file .env up -d",
     "db:down": "docker compose -f docker/docker-compose.yml --env-file .env down",
     "db:logs": "docker compose -f docker/docker-compose.yml --env-file .env logs -f postgres"
