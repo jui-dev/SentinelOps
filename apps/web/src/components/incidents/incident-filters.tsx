@@ -121,8 +121,8 @@ export const useReplaceParams = () => {
   };
 };
 
-/** One filter chip: pressed when it applies. */
-function Chip({
+/** One filter chip: pressed when it applies. Shared with Incident history. */
+export function FilterChip({
   pressed,
   onClick,
   children,
@@ -264,11 +264,11 @@ export function IncidentFilterBar({
       </div>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <div role="group" aria-label="Severity" className="flex flex-wrap gap-1.5">
-          <Chip pressed={severity === ""} onClick={() => set("severity", "")}>
+          <FilterChip pressed={severity === ""} onClick={() => set("severity", "")}>
             Any severity
-          </Chip>
+          </FilterChip>
           {SEVERITY_LEVELS.map((level) => (
-            <Chip
+            <FilterChip
               key={level.value}
               pressed={severity === level.value}
               onClick={() =>
@@ -279,13 +279,13 @@ export function IncidentFilterBar({
               {/* The space is for the name ("SEV1 Critical"); flex drops it. */}
               {level.value}{" "}
               <span className="sr-only">{level.label}</span>
-            </Chip>
+            </FilterChip>
           ))}
         </div>
         <span aria-hidden="true" className="hidden h-5 w-px bg-line sm:block" />
         <div role="group" aria-label="Response" className="flex flex-wrap gap-1.5">
           {RESPONSE_FILTERS.map((each) => (
-            <Chip
+            <FilterChip
               key={each.value}
               pressed={response === each.value}
               onClick={() =>
@@ -293,7 +293,7 @@ export function IncidentFilterBar({
               }
             >
               {each.label}
-            </Chip>
+            </FilterChip>
           ))}
         </div>
         {active && (

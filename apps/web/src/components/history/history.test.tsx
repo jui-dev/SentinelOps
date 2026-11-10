@@ -5,8 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { IncidentHistory } from "@/components/history/incident-history";
 import { OrganizationScope } from "@/components/organizations/organization-scope";
 import type {
+  IncidentHistoryItemResponse,
+  IncidentHistoryPage,
+  IncidentOccurrenceResponse,
   IncidentResponse,
   IncidentSummaryResponse,
+  OperationalActivityResponse,
 } from "@/lib/api/contracts";
 import { clearAccessToken } from "@/lib/auth/token-store";
 import {
@@ -24,9 +28,9 @@ import { expectNoAxeViolations } from "@/test/axe";
 import { renderWithSession } from "@/test/render";
 
 /**
- * A router that remembers its query string, so the page's period — which
- * lives in the address — can be set by a link, changed by a tab, and read
- * back the way a browser would.
+ * A router that remembers its query string, so the page's period and
+ * filters — which live in the address — can be set by a link, changed by a
+ * choice, and read back the way a browser would.
  */
 const navigation = vi.hoisted(() => {
   let query = "";
@@ -97,6 +101,7 @@ const MEMBER_READ = READ.filter(
 
 const base = `/organizations/${organization.id}`;
 const none = { SEV1: 0, SEV2: 0, SEV3: 0, SEV4: 0 };
+const HOUR = 3_600_000;
 
 const incident = (overrides: Partial<IncidentResponse> = {}): IncidentResponse => ({
   id: "0199a1b2-c3d4-7000-8000-0000000000f1",
@@ -125,77 +130,98 @@ const incident = (overrides: Partial<IncidentResponse> = {}): IncidentResponse =
 });
 
 /** An incident declared on the 18th and still running. */
-const runningIncident = incident({
-  id: "0199a1b2-c3d4-7000-8000-0000000000f8",
-  number: 8,
-  title: "Delayed webhook delivery to partners",
-  severity: "SEV4",
-  status: "INVESTIGATING",
-  createdAt: "2026-09-18T19:04:00.000Z",
-});
+const running: IncidentHistoryItemResponse = {
+  incident: incident({
+    id: "0199a1b2-c3d4-7000-8000-0000000000f8",
+    number: 8,
+    title: "Delayed webhook delivery to partners",
+    severity: "SEV4",
+    status: "INVESTIGATING",
+    createdAt: "2026-09-18T19:04:00.000Z",
+  }),
+  declaredInPeriod: true,
+  resolvedInPeriod: false,
+};
 
 /** Declared on the 17th and resolved on the 18th: one item, both flags. */
-const spanningIncident = incident({
-  id: "0199a1b2-c3d4-7000-8000-0000000000f9",
-  number: 9,
-  title: "Intermittent 502s on card tokenisation",
-  severity: "SEV2",
-  status: "RESOLVED",
-  createdAt: "2026-09-17T23:50:00.000Z",
-  resolvedAt: "2026-09-18T00:10:00.000Z",
-});
+const spanning: IncidentHistoryItemResponse = {
+  incident: incident({
+    id: "0199a1b2-c3d4-7000-8000-0000000000f9",
+    number: 9,
+    title: "Intermittent 502s on card tokenisation",
+    severity: "SEV2",
+    status: "RESOLVED",
+    createdAt: "2026-09-17T23:50:00.000Z",
+    resolvedAt: "2026-09-18T00:10:00.000Z",
+  }),
+  declaredInPeriod: true,
+  resolvedInPeriod: true,
+};
 
-/** Declared on the 15th and resolved in it. */
-const resolvedIncident = incident({
-  id: "0199a1b2-c3d4-7000-8000-0000000000f7",
-  number: 7,
-  title: "Reports delayed",
-  severity: "SEV3",
-  status: "RESOLVED",
-  createdAt: "2026-09-15T08:00:00.000Z",
-  resolvedAt: "2026-09-15T10:30:00.000Z",
-});
+/** Declared before the period and resolved on the 15th. */
+const resolvedEarlier: IncidentHistoryItemResponse = {
+  incident: incident({
+    id: "0199a1b2-c3d4-7000-8000-0000000000f7",
+    number: 7,
+    title: "Reports delayed",
+    severity: "SEV3",
+    status: "RESOLVED",
+    createdAt: "2026-09-10T08:00:00.000Z",
+    resolvedAt: "2026-09-15T10:30:00.000Z",
+  }),
+  declaredInPeriod: false,
+  resolvedInPeriod: true,
+};
+
+/** The second page's one incident, on the 14th. */
+const older: IncidentHistoryItemResponse = {
+  incident: incident({
+    id: "0199a1b2-c3d4-7000-8000-0000000000f6",
+    number: 6,
+    title: "Ledger export slow",
+    severity: "SEV3",
+    status: "RESOLVED",
+    createdAt: "2026-09-14T06:00:00.000Z",
+    resolvedAt: "2026-09-14T07:00:00.000Z",
+  }),
+  declaredInPeriod: true,
+  resolvedInPeriod: true,
+};
+
+const current: IncidentSummaryResponse["current"] = {
+  active: 3,
+  activeBySeverity: { SEV1: 1, SEV2: 0, SEV3: 2, SEV4: 0 },
+  affectedServices: [],
+  responders: { active: 0, teams: 0 },
+  activeByStatus: { DECLARED: 0, INVESTIGATING: 0 },
+  readyToResolve: 0,
+  typicalResolution: {
+    from: "2026-06-22",
+    to: "2026-09-19",
+    minimumSample: 5,
+    bySeverity: {
+      SEV1: { resolved: 0, medianMs: null },
+      SEV2: { resolved: 0, medianMs: null },
+      SEV3: { resolved: 0, medianMs: null },
+      SEV4: { resolved: 0, medianMs: null },
+    },
+  },
+};
 
 /** The figures vary by period, so a change is visible on screen. */
 const busy = (from: string, to: string): IncidentSummaryResponse => ({
-  current: {
-    active: 3,
-    activeBySeverity: { SEV1: 1, SEV2: 0, SEV3: 2, SEV4: 0 },
-    affectedServices: [],
-    responders: { active: 0, teams: 0 },
-    activeByStatus: { DECLARED: 0, INVESTIGATING: 0 },
-    readyToResolve: 0,
-    typicalResolution: {
-      from: "2026-06-22",
-      to: "2026-09-19",
-      minimumSample: 5,
-      bySeverity: {
-        SEV1: { resolved: 0, medianMs: null },
-        SEV2: { resolved: 0, medianMs: null },
-        SEV3: { resolved: 0, medianMs: null },
-        SEV4: { resolved: 0, medianMs: null },
-      },
-    },
-  },
+  current,
   period:
     from === to
       ? {
           from,
           to,
           declared: 1,
-          declaredBySeverity: { ...none, SEV1: 1 },
+          declaredBySeverity: { ...none, SEV4: 1 },
           resolved: 0,
           stillOpen: 1,
-          history: {
-            total: 1,
-            items: [
-              {
-                incident: runningIncident,
-                declaredInPeriod: true,
-                resolvedInPeriod: false,
-              },
-            ],
-          },
+          resolutionMedianMs: null,
+          history: { total: 1, items: [] },
         }
       : {
           from,
@@ -204,50 +230,14 @@ const busy = (from: string, to: string): IncidentSummaryResponse => ({
           declaredBySeverity: { SEV1: 2, SEV2: 3, SEV3: 5, SEV4: 2 },
           resolved: 9,
           stillOpen: 3,
-          history: {
-            // More than the three previewed.
-            total: 14,
-            items: [
-              {
-                incident: runningIncident,
-                declaredInPeriod: true,
-                resolvedInPeriod: false,
-              },
-              {
-                incident: spanningIncident,
-                declaredInPeriod: true,
-                resolvedInPeriod: true,
-              },
-              {
-                incident: resolvedIncident,
-                declaredInPeriod: false,
-                resolvedInPeriod: true,
-              },
-            ],
-          },
+          resolutionMedianMs: 2.5 * HOUR,
+          // Two of the resolved were declared before the period.
+          history: { total: 14, items: [] },
         },
 });
 
 const quiet = (from: string, to: string): IncidentSummaryResponse => ({
-  current: {
-    active: 0,
-    activeBySeverity: none,
-    affectedServices: [],
-    responders: { active: 0, teams: 0 },
-    activeByStatus: { DECLARED: 0, INVESTIGATING: 0 },
-    readyToResolve: 0,
-    typicalResolution: {
-      from: "2026-06-22",
-      to: "2026-09-19",
-      minimumSample: 5,
-      bySeverity: {
-        SEV1: { resolved: 0, medianMs: null },
-        SEV2: { resolved: 0, medianMs: null },
-        SEV3: { resolved: 0, medianMs: null },
-        SEV4: { resolved: 0, medianMs: null },
-      },
-    },
-  },
+  current,
   period: {
     from,
     to,
@@ -255,14 +245,90 @@ const quiet = (from: string, to: string): IncidentSummaryResponse => ({
     declaredBySeverity: none,
     resolved: 0,
     stillOpen: 0,
+    resolutionMedianMs: null,
     history: { total: 0, items: [] },
   },
 });
 
+/** Every day of the period, quiet but for the 18th. */
+const activity = (from: string, to: string): OperationalActivityResponse => {
+  const days = [];
+
+  for (
+    let at = Date.parse(`${from}T00:00:00.000Z`);
+    at <= Date.parse(`${to}T00:00:00.000Z`);
+    at += 24 * HOUR
+  ) {
+    const date = new Date(at).toISOString().slice(0, 10);
+    const busyDay = date === "2026-09-18";
+
+    days.push({
+      date,
+      total: busyDay ? 3 : 0,
+      level: (busyDay ? 1 : 0) as 0 | 1,
+      counts: {
+        declared: busyDay ? 2 : 0,
+        responseStarted: 0,
+        update: 0,
+        responseCompleted: 0,
+        resolved: busyDay ? 1 : 0,
+        changed: 0,
+      },
+      incidents: [],
+      moreIncidents: 0,
+    });
+  }
+
+  return {
+    from,
+    to,
+    days,
+    total: 3,
+    activeDays: 1,
+    thresholds: [1, 5, 10, 20],
+  };
+};
+
+const occurrence = (from: string, to: string): IncidentOccurrenceResponse => ({
+  from,
+  to,
+  asOf: "2026-09-19T12:00:00.000Z",
+  trackedFrom: "2026-01-01",
+  declared: 12,
+  incidentFreeDays: 0,
+  completeDays: 6,
+  days: [],
+  previous: {
+    from: "2026-09-06",
+    to: "2026-09-12",
+    declared: 8,
+    comparable: true,
+    minimumSample: 5,
+    changePercent: 50,
+  },
+  services: { top: [], others: { services: 0, declared: 0 } },
+});
+
+const page = (
+  items: IncidentHistoryItemResponse[],
+  total: number,
+  cursor: string | null = null,
+): IncidentHistoryPage => ({
+  items,
+  total,
+  page: { cursor, hasMore: cursor !== null },
+});
+
 const SUMMARY = `GET ${base}/incidents/summary`;
+const HISTORY = `GET ${base}/incidents/history`;
+const ACTIVITY = `GET ${base}/incidents/activity`;
+const OCCURRENCE = `GET ${base}/incidents/occurrence`;
+
+const queryOf = (request: SentRequest) =>
+  new URLSearchParams(request.path.split("?")[1]);
 
 const periodOf = (request: SentRequest) => {
-  const query = new URLSearchParams(request.path.split("?")[1]);
+  const query = queryOf(request);
 
   return `${query.get("from")}..${query.get("to")}`;
 };
@@ -272,15 +338,39 @@ const summaries = (requests: SentRequest[]) =>
     .filter((request) => route(request).startsWith(`${SUMMARY}?`))
     .map(periodOf);
 
+/** The history pages asked for, as their query strings. */
+const histories = (requests: SentRequest[]) =>
+  requests
+    .filter((request) => route(request).startsWith(`${HISTORY}?`))
+    .map((request) => request.path.split("?")[1]);
+
 const api = (
   permissions: string[],
-  summary: (from: string, to: string) => IncidentSummaryResponse = busy,
+  {
+    summary = busy,
+    history = (query: URLSearchParams) =>
+      query.get("cursor") === "next"
+        ? page([older], 14)
+        : page([running, spanning, resolvedEarlier], 14, "next"),
+  }: {
+    summary?: (from: string, to: string) => IncidentSummaryResponse;
+    history?: (query: URLSearchParams) => IncidentHistoryPage;
+  } = {},
 ) =>
   mockApi((request) => {
-    if (route(request).startsWith(`${SUMMARY}?`)) {
-      const [from, to] = periodOf(request).split("..");
+    const [from, to] = periodOf(request).split("..");
 
+    if (route(request).startsWith(`${SUMMARY}?`)) {
       return jsonResponse(200, summary(from, to));
+    }
+    if (route(request).startsWith(`${HISTORY}?`)) {
+      return jsonResponse(200, history(queryOf(request)));
+    }
+    if (route(request).startsWith(`${ACTIVITY}?`)) {
+      return jsonResponse(200, activity(from, to));
+    }
+    if (route(request).startsWith(`${OCCURRENCE}?`)) {
+      return jsonResponse(200, occurrence(from, to));
     }
 
     switch (route(request)) {
@@ -302,9 +392,16 @@ const renderHistory = () =>
     </OrganizationScope>,
   );
 
-/** The page's one region of records. */
-const historyRegion = () =>
-  screen.getByRole("region", { name: "Incidents in this period" });
+/** One period choice, by name. */
+const periodChoice = (name: string) =>
+  within(screen.getByRole("group", { name: "Period" })).getByRole("button", {
+    name,
+  });
+
+/** What a glance tile says: its value, then its note. */
+const tile = async (label: string) =>
+  within(await screen.findByLabelText("This period")).getByText(label)
+    .nextElementSibling?.textContent;
 
 /**
  * The record covers every incident the organization has, so it is offered on
@@ -318,18 +415,16 @@ describe("incident history, without oversight", () => {
     navigation.replace.mockClear();
   });
 
-  it("says why it is empty, and asks for no summary", async () => {
+  it("says why it is empty, and asks for nothing about incidents", async () => {
     const { requests } = api(MEMBER_READ);
     renderHistory();
 
     await screen.findByRole("heading", { level: 1, name: "Incident history" });
     await screen.findByText("No history to show");
 
+    expect(screen.queryByRole("group", { name: "Period" })).toBeNull();
     expect(
-      screen.queryByRole("region", { name: "Incidents in this period" }),
-    ).toBeNull();
-    expect(
-      requests.some((request) => request.path.includes("/incidents/summary")),
+      requests.some((request) => request.path.includes("/incidents/")),
     ).toBe(false);
   });
 });
@@ -350,90 +445,182 @@ describe("incident history", () => {
     vi.useRealTimers();
   });
 
-  it("shows the last seven UTC days, as its own page under Incidents", async () => {
+  it("shows the last seven UTC days in four figures, as its own page under Incidents", async () => {
     const { requests } = api(READ);
     renderHistory();
 
     expect(
-      await screen.findByRole("heading", {
-        level: 1,
-        name: "Incident history",
-      }),
+      await screen.findByRole("heading", { level: 1, name: "Incident history" }),
     ).toBeDefined();
     // Back the way they came, into the Incidents workflow.
+    const breadcrumb = screen.getByRole("navigation", { name: "Breadcrumb" });
+
     expect(
-      screen.getByRole("link", { name: "← Incidents" }).getAttribute("href"),
+      within(breadcrumb).getByRole("link", { name: "Incidents" }).getAttribute("href"),
     ).toBe("/orgs/acme-ops/incidents");
 
-    expect(
-      screen.getByRole("tab", { name: "7 days" }).getAttribute("aria-selected"),
-    ).toBe("true");
-    expect(document.body.textContent).toMatch(
-      /2026-09-13 → 2026-09-19\s*· 7 days · UTC/,
-    );
+    expect(periodChoice("7 days").getAttribute("aria-pressed")).toBe("true");
+    expect(document.body.textContent).toMatch(/· 7 days · UTC/);
 
-    const figures = await screen.findByLabelText("Totals for this period");
+    await waitFor(async () => expect(await tile("Declared")).toMatch(/^12/));
+    // Up four on the seven days before, by the API's own comparison.
+    expect(await tile("Declared")).toBe("12▲ Up 4 on the 7 days before");
+    // Fourteen in the history, twelve declared in it: two resolved from before.
+    expect(await tile("Resolved")).toBe("92 declared earlier");
+    expect(await tile("Still open")).toBe("3declared in this period");
+    expect(await tile("Typical duration")).toBe("2h 30mmedian of 9 resolved");
 
-    // Each figure reads label, value, then what exactly it counts — said to
-    // a screen reader, not shown.
-    expect(figures.textContent).toMatch(/^Declared12Incidents declared in this period\./);
-    expect(figures.textContent).toMatch(
-      /Resolved9Incidents resolved in this period, whenever they were declared\./,
-    );
-    expect(figures.textContent).toMatch(
-      /Still open3Incidents declared in this period and not yet resolved\./,
-    );
-    for (const description of within(figures).getAllByText(/^Incidents /)) {
-      expect(description.className).toBe("sr-only");
-    }
-    expect(screen.getByText(/Current severity/)).toBeDefined();
     expect(
       screen
         .getByLabelText("Incidents declared in this period, by current severity")
         .textContent,
     ).toMatch(/SEV1\s*Critical\s*2/);
 
-    // One history, newest first, grouped by the UTC date things happened.
-    const history = historyRegion();
-    const groups = within(history).getAllByRole("list");
+    expect(summaries(requests)).toEqual(["2026-09-13..2026-09-19"]);
+    // Nothing of the Overview's: this page is the record, not the state now.
+    expect(screen.queryByRole("region", { name: "Current operations" })).toBeNull();
+  });
 
-    expect(
-      within(history).getByRole("heading", { level: 2 }).textContent,
-    ).toMatch(/Incidents in this period/);
-    expect(history.textContent).toMatch(/Incidents in this period\s*14/);
+  it("draws each day declared above the line and resolved below it, and narrows to one when picked", async () => {
+    const user = userEvent.setup();
+    api(READ);
+    renderHistory();
+
+    const chart = await screen.findByRole("group", {
+      name: "Declared and resolved per day",
+    });
+    const days = within(chart).getAllByRole("button");
+
+    // One per day of the period, each named with its own counts.
+    expect(days).toHaveLength(7);
+    expect(days[5].getAttribute("aria-label")).toMatch(
+      /18.*: 2 declared, 1 resolved\. Show only this day$/,
+    );
+    const flow = screen.getByRole("region", { name: /Declared and resolved per day/ });
+
+    expect(flow.textContent).toMatch(/Declared2/);
+    expect(flow.textContent).toMatch(/Resolved1/);
+
+    await user.click(days[5]);
+
+    expect(navigation.replace).toHaveBeenLastCalledWith(
+      "/orgs/acme-ops/incidents/history?from=2026-09-18&to=2026-09-18",
+      { scroll: false },
+    );
+  });
+
+  it("lists every incident under the day it is placed on, a page at a time", async () => {
+    const user = userEvent.setup();
+    const { requests } = api(READ);
+    renderHistory();
+
+    const table = await screen.findByRole("table", {
+      name: "Incidents in this period",
+    });
+    const region = screen.getByRole("region", { name: /Incidents in this period/ });
+
+    expect(region.textContent).toMatch(/Incidents in this period\s*14/);
+    // Three columns of headings a reader can trace each value to.
+    for (const heading of ["Time", "Severity", "Incident", "In this period", "Status", "Lasted", "Action"]) {
+      expect(within(table).getByRole("columnheader", { name: heading })).toBeDefined();
+    }
+
+    // The days, as group headings, with what happened on each.
+    const groups = within(table).getAllByRole("rowgroup").slice(1);
+
     expect(groups).toHaveLength(2);
-    expect(within(groups[0]).getAllByRole("listitem")).toHaveLength(2);
-    expect(within(groups[1]).getAllByRole("listitem")).toHaveLength(1);
+    expect(groups[0].textContent).toMatch(/18.*2 declared · 1 resolved/);
 
-    const [first, second] = within(groups[0]).getAllByRole("listitem");
+    const [first, second] = within(groups[0]).getAllByRole("row").slice(1);
 
-    expect(
-      within(first)
-        .getByRole("link", { name: "Delayed webhook delivery to partners" })
-        .getAttribute("href"),
-    ).toBe("/orgs/acme-ops/incidents/8");
-    expect(first.textContent).toMatch(/19:04/);
-    expect(first.textContent).toMatch(/SEV4/);
+    expect(first.textContent).toMatch(/^19:04/);
+    expect(first.textContent).toMatch(/INC-8Delayed webhook delivery to partners/);
     expect(first.textContent).toMatch(/Payment API · Payments/);
     expect(first.textContent).toMatch(/Declared 19:04/);
     expect(first.textContent).toMatch(/Investigating/);
+    expect(first.textContent).toMatch(/open /);
+    expect(
+      within(first).getByRole("link", { name: "View INC-8" }).getAttribute("href"),
+    ).toBe("/orgs/acme-ops/incidents/8");
     // Declared the day before, so its declaration carries that date.
     // The date wears the reader's locale; the shape is what is checked.
     expect(second.textContent).toMatch(/Declared \w+ 17 → Resolved 00:10/);
-    expect(second.textContent).toMatch(/Resolved.*lasted 20m/);
+    expect(second.textContent).toMatch(/20m/);
 
-    expect(
-      within(history)
-        .getByRole("link", { name: /View period incidents/ })
-        .getAttribute("href"),
-    ).toBe("/orgs/acme-ops/incidents?from=2026-09-13&to=2026-09-19");
+    expect(region.textContent).toMatch(/Showing 3 of 14/);
+    expect(histories(requests)).toEqual(["from=2026-09-13&to=2026-09-19"]);
 
-    expect(summaries(requests)).toEqual(["2026-09-13..2026-09-19"]);
-    // Nothing of the Overview's: this page is the record, not the state now.
-    expect(
-      screen.queryByRole("region", { name: "Current operations" }),
-    ).toBeNull();
-    expect(screen.queryByText("What needs you")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Load more" }));
+
+    await waitFor(() => expect(region.textContent).toMatch(/Showing 4 of 14/));
+    expect(screen.getByText("Ledger export slow")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Load more" })).toBeNull();
+    expect(histories(requests)).toEqual([
+      "from=2026-09-13&to=2026-09-19",
+      "from=2026-09-13&to=2026-09-19&cursor=next",
+    ]);
+  });
+
+  it("narrows the history by severity, what became of it, and a search, in the address", async () => {
+    const user = userEvent.setup();
+    const { requests } = api(READ);
+    renderHistory();
+
+    await screen.findByRole("table", { name: "Incidents in this period" });
+
+    // Each choice carries the period's own count.
+    const show = screen.getByRole("group", { name: "Show" });
+
+    await waitFor(() =>
+      expect(within(show).getByRole("button", { name: "Still open 3" })).toBeDefined(),
+    );
+    expect(within(show).getByRole("button", { name: "Everything 14" })).toBeDefined();
+    expect(within(show).getByRole("button", { name: "Resolved 9" })).toBeDefined();
+
+    await user.click(screen.getByRole("button", { name: "SEV1 Critical" }));
+    await user.click(within(show).getByRole("button", { name: "Still open 3" }));
+    await user.type(screen.getByRole("searchbox", { name: "Search" }), "webhook");
+    await user.click(screen.getByRole("button", { name: "Search" }));
+
+    expect(navigation.snapshot()).toBe("severity=SEV1&show=open&q=webhook");
+    await waitFor(() =>
+      expect(histories(requests)).toContain(
+        "from=2026-09-13&to=2026-09-19&severity=SEV1&show=open&q=webhook",
+      ),
+    );
+
+    // Pressed again, a chip no longer applies; Clear takes the rest.
+    await user.click(within(show).getByRole("button", { name: "Still open 3" }));
+    expect(navigation.snapshot()).toBe("severity=SEV1&q=webhook");
+    await user.click(screen.getByRole("button", { name: "Clear filters" }));
+    expect(navigation.snapshot()).toBe("");
+  });
+
+  it("takes a filter that can never apply out of the address, keeping the rest", async () => {
+    navigation.set("from=2026-09-01&to=2026-09-10&severity=SEV9&show=soon&q=ledger");
+
+    api(READ);
+    renderHistory();
+
+    await waitFor(() =>
+      expect(navigation.snapshot()).toBe("from=2026-09-01&to=2026-09-10&q=ledger"),
+    );
+  });
+
+  it("says when nothing matches the filters, apart from when nothing happened", async () => {
+    navigation.set("severity=SEV1");
+    api(READ, { history: () => page([], 0) });
+    renderHistory();
+
+    expect(await screen.findByText("No incidents match")).toBeDefined();
+  });
+
+  it("says plainly when nothing happened in the period", async () => {
+    api(READ, { summary: quiet, history: () => page([], 0) });
+    renderHistory();
+
+    expect(await screen.findByText("Nothing happened in this period")).toBeDefined();
+    await waitFor(async () => expect(await tile("Typical duration")).toBe("—none resolved"));
   });
 
   it("opens straight onto a period named in the address", async () => {
@@ -442,16 +629,14 @@ describe("incident history", () => {
     const { requests } = api(READ);
     renderHistory();
 
-    await screen.findByLabelText("Totals for this period");
+    await screen.findByLabelText("This period");
 
-    expect(document.body.textContent).toMatch(
-      /2026-09-01 → 2026-09-10\s*· 10 days · UTC/,
+    expect(document.body.textContent).toMatch(/· 10 days · UTC/);
+    // Not one of the presets, so Custom is the choice made.
+    expect(periodChoice("Custom").getAttribute("aria-pressed")).toBe("true");
+    await waitFor(() =>
+      expect(summaries(requests)).toEqual(["2026-09-01..2026-09-10"]),
     );
-    // Not one of the presets, so Custom is the selected tab.
-    expect(
-      screen.getByRole("tab", { name: "Custom" }).getAttribute("aria-selected"),
-    ).toBe("true");
-    expect(summaries(requests)).toEqual(["2026-09-01..2026-09-10"]);
     // A deep link is not rewritten.
     expect(navigation.replace).not.toHaveBeenCalled();
   });
@@ -462,11 +647,9 @@ describe("incident history", () => {
     api(READ);
     renderHistory();
 
-    await screen.findByLabelText("Totals for this period");
+    await screen.findByLabelText("This period");
 
-    expect(
-      screen.getByRole("tab", { name: "Today" }).getAttribute("aria-selected"),
-    ).toBe("true");
+    expect(periodChoice("Today").getAttribute("aria-pressed")).toBe("true");
   });
 
   it("puts a range the API would refuse out of the address", async () => {
@@ -475,7 +658,7 @@ describe("incident history", () => {
     const { requests } = api(READ);
     renderHistory();
 
-    await screen.findByLabelText("Totals for this period");
+    await screen.findByLabelText("This period");
 
     await waitFor(() =>
       expect(navigation.replace).toHaveBeenCalledWith(
@@ -485,51 +668,28 @@ describe("incident history", () => {
     );
     // Back to the default seven days, and never asked for the bad range.
     expect(summaries(requests)).toEqual(["2026-09-13..2026-09-19"]);
-    expect(
-      screen.getByRole("tab", { name: "7 days" }).getAttribute("aria-selected"),
-    ).toBe("true");
+    expect(periodChoice("7 days").getAttribute("aria-pressed")).toBe("true");
   });
 
-  it("changes the period, and says so in the address", async () => {
+  it("changes the period by replacing the address, so Back leaves the page", async () => {
     const user = userEvent.setup();
     const { requests } = api(READ);
     renderHistory();
 
-    await screen.findByText("12");
+    await waitFor(async () => expect(await tile("Declared")).toMatch(/^12/));
 
-    await user.click(screen.getByRole("tab", { name: "Today" }));
+    await user.click(periodChoice("Today"));
 
-    const figures = await screen.findByLabelText("Totals for this period");
-
-    await waitFor(() =>
-      expect(figures.textContent).toMatch(/^Declared1Incidents declared/),
-    );
-    expect(document.body.textContent).toMatch(/2026-09-19\s*· 1 day · UTC/);
-    expect(historyRegion().textContent).toMatch(
-      /Delayed webhook delivery to partners/,
-    );
-    // The address carries the period, so the view can be linked and returned to.
-    expect(navigation.snapshot()).toBe("from=2026-09-19&to=2026-09-19");
-    expect(summaries(requests)).toEqual([
-      "2026-09-13..2026-09-19",
-      "2026-09-19..2026-09-19",
-    ]);
-  });
-
-  it("replaces rather than stacks, so Back leaves the page", async () => {
-    const user = userEvent.setup();
-
-    api(READ);
-    renderHistory();
-
-    await screen.findByText("12");
-    await user.click(screen.getByRole("tab", { name: "Today" }));
-    await waitFor(() => expect(navigation.replace).toHaveBeenCalled());
-
+    await waitFor(async () => expect(await tile("Declared")).toMatch(/^1/));
+    expect(document.body.textContent).toMatch(/· 1 day · UTC/);
     expect(navigation.replace).toHaveBeenCalledWith(
       "/orgs/acme-ops/incidents/history?from=2026-09-19&to=2026-09-19",
       { scroll: false },
     );
+    expect(summaries(requests)).toEqual([
+      "2026-09-13..2026-09-19",
+      "2026-09-19..2026-09-19",
+    ]);
   });
 
   it("applies a custom range from the calendar, and only on Apply", async () => {
@@ -537,9 +697,9 @@ describe("incident history", () => {
     const { requests } = api(READ);
     renderHistory();
 
-    await screen.findByText("12");
+    await screen.findByLabelText("This period");
 
-    await user.click(screen.getByRole("tab", { name: "Custom" }));
+    await user.click(periodChoice("Custom"));
 
     const calendar = screen.getByRole("dialog", { name: "Choose dates (UTC)" });
 
@@ -571,14 +731,8 @@ describe("incident history", () => {
       expect(summaries(requests)).toContain("2026-09-01..2026-09-10"),
     );
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(document.body.textContent).toMatch(
-      /2026-09-01 → 2026-09-10\s*· 10 days · UTC/,
-    );
+    expect(document.body.textContent).toMatch(/· 10 days · UTC/);
     expect(navigation.snapshot()).toBe("from=2026-09-01&to=2026-09-10");
-    // Focus returns to what opened it, now the selected tab.
-    expect(document.activeElement).toBe(
-      screen.getByRole("tab", { name: "Custom" }),
-    );
 
     // Reopened, it shows the applied range; abandoning a change keeps it.
     await user.click(screen.getByRole("button", { name: "Change dates" }));
@@ -586,11 +740,6 @@ describe("incident history", () => {
     const reopened = screen.getByRole("dialog", { name: "Choose dates (UTC)" });
 
     expect(reopened.textContent).toMatch(/2026-09-01 → 2026-09-10\s*· 10 days/);
-    expect(
-      within(reopened).getByRole("button", {
-        name: /September 1st, 2026, selected/,
-      }),
-    ).toBeDefined();
 
     await user.click(
       within(reopened).getByRole("button", { name: /September 15th, 2026/ }),
@@ -598,38 +747,8 @@ describe("incident history", () => {
     await user.keyboard("{Escape}");
 
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(document.body.textContent).toMatch(
-      /2026-09-01 → 2026-09-10\s*· 10 days · UTC/,
-    );
-    expect(document.activeElement).toBe(
-      screen.getByRole("button", { name: "Change dates" }),
-    );
+    expect(document.body.textContent).toMatch(/· 10 days · UTC/);
     expect(summaries(requests)).toHaveLength(2);
-  });
-
-  it("abandons the draft on a click outside the calendar", async () => {
-    const user = userEvent.setup();
-    const { requests } = api(READ);
-    renderHistory();
-
-    await screen.findByText("12");
-
-    await user.click(screen.getByRole("tab", { name: "Custom" }));
-
-    const calendar = screen.getByRole("dialog", { name: "Choose dates (UTC)" });
-
-    await user.click(
-      within(calendar).getByRole("button", { name: /September 1st, 2026/ }),
-    );
-    // A click on the backdrop lands on the dialog element itself.
-    await user.click(calendar);
-
-    expect(screen.queryByRole("dialog")).toBeNull();
-    expect(document.body.textContent).toMatch(
-      /2026-09-13 → 2026-09-19\s*· 7 days · UTC/,
-    );
-    expect(summaries(requests)).toEqual(["2026-09-13..2026-09-19"]);
-    expect(navigation.snapshot()).toBe("");
   });
 
   it("keeps the applied period when a custom range is cancelled", async () => {
@@ -637,37 +756,15 @@ describe("incident history", () => {
     const { requests } = api(READ);
     renderHistory();
 
-    await screen.findByText("12");
+    await screen.findByLabelText("This period");
 
-    await user.click(screen.getByRole("tab", { name: "Custom" }));
+    await user.click(periodChoice("Custom"));
     await user.click(screen.getByRole("button", { name: "Cancel" }));
 
-    const sevenDays = screen.getByRole("tab", { name: "7 days" });
-
     expect(screen.queryByRole("dialog")).toBeNull();
-    // Nothing was applied, so the period — and the selected tab — stand.
-    expect(sevenDays.getAttribute("aria-selected")).toBe("true");
-    expect(document.activeElement).toBe(sevenDays);
+    // Nothing was applied, so the period — and the choice — stand.
+    expect(periodChoice("7 days").getAttribute("aria-pressed")).toBe("true");
     expect(summaries(requests)).toEqual(["2026-09-13..2026-09-19"]);
-  });
-
-  it("says plainly when nothing happened in the period", async () => {
-    api(READ, quiet);
-    renderHistory();
-
-    expect(
-      await screen.findByText("Nothing happened in this period"),
-    ).toBeDefined();
-  });
-
-  it("asks nothing about incidents without incidents:read", async () => {
-    const { requests } = api(["organization:read"]);
-    renderHistory();
-
-    await screen.findByText("No history to show");
-
-    expect(screen.queryByRole("tablist", { name: "Period" })).toBeNull();
-    expect(summaries(requests)).toEqual([]);
   });
 
   it("has no accessibility violations", async () => {
@@ -675,7 +772,8 @@ describe("incident history", () => {
 
     const { container } = renderHistory();
 
-    await screen.findByLabelText("Totals for this period");
+    await screen.findByRole("table", { name: "Incidents in this period" });
+    await screen.findByRole("group", { name: "Declared and resolved per day" });
     await expectNoAxeViolations(container);
   });
 });

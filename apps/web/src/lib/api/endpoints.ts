@@ -27,6 +27,8 @@ import type {
   MemberResponseResponse,
   NotificationResponse,
   NotificationUnreadCountResponse,
+  IncidentHistoryFilters,
+  IncidentHistoryPage,
   IncidentSummaryResponse,
   InvitationLookupResponse,
   InvitationResponse,
@@ -277,6 +279,28 @@ export const listIncidents = (
 
   return authenticatedRequest<Page<IncidentListItemResponse>>(
     `${incidentsPath(organizationId)}?${query}`,
+  );
+};
+
+/**
+ * One page of everything declared or resolved in `period`, most recent
+ * first, narrowed by `filters`.
+ */
+export const listIncidentHistory = (
+  organizationId: string,
+  { from, to }: IncidentPeriod,
+  cursor?: string,
+  filters: IncidentHistoryFilters = {},
+) => {
+  const query = new URLSearchParams({ from, to });
+
+  if (filters.severity) query.set("severity", filters.severity);
+  if (filters.show) query.set("show", filters.show);
+  if (filters.q) query.set("q", filters.q);
+  if (cursor) query.set("cursor", cursor);
+
+  return authenticatedRequest<IncidentHistoryPage>(
+    `${incidentsPath(organizationId)}/history?${query}`,
   );
 };
 

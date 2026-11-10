@@ -1,13 +1,22 @@
 "use client";
 
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import {
+  CalendarDays,
+  CircleCheck,
+  CircleDashed,
+  Siren,
+  Timer,
+} from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
-import { useReplaceParams } from "@/components/incidents/incident-filters";
+import {
+  FilterChip,
+  useReplaceParams,
+} from "@/components/incidents/incident-filters";
 import { incidentsHref } from "@/components/incidents/incident-queries";
-import { SEVERITY_LEVELS, SeverityMark } from "@/components/incidents/severity";
 import {
   useCan,
   useOrganization,
@@ -15,22 +24,32 @@ import {
 import { ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { cx } from "@/components/ui/cx";
+import { CardRow, Glance, GlanceTile } from "@/components/ui/detail-layout";
 import { EmptyNote } from "@/components/ui/empty-state";
 import { PageBody, PageHeader } from "@/components/ui/page";
 import { Spinner } from "@/components/ui/spinner";
-import { Tabs } from "@/components/ui/tabs";
-import { useMinuteClock } from "@/components/ui/timestamp";
+import { formatDuration, useMinuteClock } from "@/components/ui/timestamp";
 import { Permission } from "@/lib/api/contracts";
 import type {
   IncidentPeriod,
   IncidentSummaryResponse,
-  SeverityCounts,
 } from "@/lib/api/contracts";
-import { getIncidentSummary } from "@/lib/api/endpoints";
+import {
+  getIncidentActivity,
+  getIncidentOccurrence,
+  getIncidentSummary,
+} from "@/lib/api/endpoints";
 import { queryKeys } from "@/lib/api/query-keys";
-import { periodDays, readPeriodParams, utcDay } from "@/lib/period/period";
+import {
+  formatPeriodRange,
+  periodDays,
+  readPeriodParams,
+  utcDay,
+} from "@/lib/period/period";
 
 import { CustomRangeDialog } from "./custom-range";
+import { FlowChart, SeverityCard } from "./history-chart";
+import { HistoryFilterBar, useHistoryFilters } from "./history-filters";
 import { PeriodHistory } from "./period-history";
 import {
   DEFAULT_PRESET,
@@ -42,123 +61,17 @@ import {
 import type { PeriodChoice } from "./period";
 
 /**
- * One count in the period's summary: the number, then its label. Its precise
- * meaning is spoken rather than shown — the history beneath shows each
- * incident's declaration and resolution, which is what it means on screen.
- */
-function Figure({
-  label,
-  value,
-  description,
-}: {
-  label: string;
-  value: number;
-  /** What exactly is counted, for screen readers. */
-  description: string;
-}) {
-  return (
-    // A phone stacks the number over its label; wider, they share a line.
-    <div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-2">
-      <dt className="text-sm text-fg-muted">{label}</dt>
-      <dd className="numeric order-first text-lg leading-7 font-semibold text-fg">
-        {value}
-      </dd>
-      <dd className="sr-only">{description}</dd>
-    </div>
-  );
-}
-
-/** The period's severities, in one quiet line: the marks and counts. */
-function SeverityMix({ counts }: { counts: SeverityCounts }) {
-  return (
-    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1.5">
-      {/* An h2: on its own page these sit directly under the page's title,
-          where they were once inside the Overview panel's heading. */}
-      <h2 className="text-sm text-fg-muted">
-        Current severity{" "}
-        {/* Only where the marks follow on the same line. */}
-        <span aria-hidden="true" className="hidden text-fg-subtle sm:inline">
-          ·
-        </span>
-      </h2>
-      <dl
-        aria-label="Incidents declared in this period, by current severity"
-        className="flex flex-wrap items-baseline gap-x-5 gap-y-1.5"
-      >
-        {SEVERITY_LEVELS.map(({ value }) => (
-          <div key={value} className="flex items-baseline gap-1.5 text-sm">
-            <dt>
-              <SeverityMark severity={value} />
-            </dt>
-            <dd
-              className={cx(
-                "numeric font-semibold",
-                counts[value] > 0 ? "text-fg" : "text-fg-subtle",
-              )}
-            >
-              {counts[value]}
-            </dd>
-          </div>
-        ))}
-      </dl>
-    </div>
-  );
-}
-
-/** What the period's figures say, once they have arrived. */
-function PeriodFigures({
-  period,
-}: {
-  period: IncidentSummaryResponse["period"];
-}) {
-  return (
-    <div className="flex flex-col gap-5">
-      {/*
-        A compact summary — three counts, then the severities beneath them —
-        ruled off from the history, which is what this page is for.
-      */}
-      <div className="flex flex-col gap-2 border-b border-line-subtle pb-4">
-        <dl
-          aria-label="Totals for this period"
-          className="grid grid-cols-3 sm:flex sm:flex-wrap sm:items-baseline [&>div+div]:border-l [&>div+div]:border-line-subtle [&>div+div]:pl-3 sm:[&>div+div]:pl-5 sm:[&>div]:pr-5"
-        >
-          <Figure
-            label="Declared"
-            value={period.declared}
-            description="Incidents declared in this period."
-          />
-          <Figure
-            label="Resolved"
-            value={period.resolved}
-            description="Incidents resolved in this period, whenever they were declared."
-          />
-          <Figure
-            label="Still open"
-            value={period.stillOpen}
-            description="Incidents declared in this period and not yet resolved."
-          />
-        </dl>
-        <SeverityMix counts={period.declaredBySeverity} />
-      </div>
-      <PeriodHistory
-        history={period.history}
-        period={{ from: period.from, to: period.to }}
-      />
-    </div>
-  );
-}
-
-/**
  * Which period the page reports on, kept in the address.
  *
  * The URL is the state: a period can be linked to, returned to, and shared,
- * and a day picked out of the Overview's activity arrives here as
- * `?from=…&to=…`. With neither parameter the page shows its default preset
- * without writing one, so the bare address is the plain way in.
+ * and a day picked out of the Overview's activity — or out of this page's
+ * own chart — arrives as `?from=…&to=…`. With neither parameter the page
+ * shows its default preset without writing one, so the bare address is the
+ * plain way in.
  *
  * Changes `replace` rather than `push`: the period is which days are shown,
  * not a place visited, so Back leaves the page instead of walking through
- * every tab clicked on the way. While a custom range is being chosen the
+ * every choice made on the way. While a custom range is being chosen the
  * period is still the applied one, so the figures stay on screen and say
  * which days they cover. Presets follow the UTC day: past midnight, "Today"
  * is the new day.
@@ -190,7 +103,7 @@ const usePeriodSelection = () => {
 
   const period = addressed ?? presetPeriod(DEFAULT_PRESET, now);
   // A period the address names is shown as its preset when it is one, so
-  // arriving by link selects the tab a person would have clicked.
+  // arriving by link selects the choice a person would have made.
   const choice: PeriodChoice = addressed
     ? (presetFor(addressed, now) ?? "custom")
     : DEFAULT_PRESET;
@@ -223,11 +136,64 @@ const usePeriodSelection = () => {
   };
 };
 
+type PeriodSelection = ReturnType<typeof usePeriodSelection>;
+
+/**
+ * The period: a choice of preset or custom range, and which days that is,
+ * in a band of the rail's own ground.
+ */
+function PeriodBand({ selection }: { selection: PeriodSelection }) {
+  const { choice, period, editing } = selection;
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-xl border border-line-subtle bg-linear-to-b from-rail-top to-rail-mid px-3.5 py-3">
+      <div role="group" aria-label="Period" className="flex flex-wrap gap-1.5">
+        {PERIOD_CHOICES.map((each) => (
+          <FilterChip
+            key={each.value}
+            pressed={choice === each.value}
+            onClick={() => selection.choose(each.value)}
+          >
+            {each.label}
+          </FilterChip>
+        ))}
+      </div>
+      <span aria-hidden="true" className="hidden h-5 w-px bg-line sm:block" />
+      <p className="flex flex-wrap items-center gap-x-2 text-sm text-fg-muted">
+        <CalendarDays
+          aria-hidden="true"
+          strokeWidth={1.75}
+          className="size-4 text-fg-subtle"
+        />
+        <span className="font-medium text-fg">{formatPeriodRange(period)}</span>
+        <span>
+          · {formatDays(periodDays(period))} · UTC
+        </span>
+      </p>
+      {/* Kept while the dialog is open: focus returns to it. */}
+      {choice === "custom" && (
+        <Button variant="quiet" size="sm" onClick={selection.edit}>
+          Change dates
+        </Button>
+      )}
+      {/* A modal dialog: shown above the page, never in its flow. */}
+      {editing && (
+        <CustomRangeDialog
+          initial={period}
+          today={selection.today}
+          onApply={selection.apply}
+          onCancel={selection.cancel}
+        />
+      )}
+    </div>
+  );
+}
+
 /**
  * The summary for one period. Changing the period keeps the last answer on
- * screen until the next arrives, so the history never blanks out.
+ * screen until the next arrives, so the page never blanks out.
  */
-const useHistory = (organizationId: string, period: IncidentPeriod) =>
+const usePeriodSummary = (organizationId: string, period: IncidentPeriod) =>
   useQuery({
     queryKey: queryKeys.incidentSummary(organizationId, period.from, period.to),
     queryFn: () => getIncidentSummary(organizationId, period),
@@ -235,91 +201,202 @@ const useHistory = (organizationId: string, period: IncidentPeriod) =>
     select: (summary: IncidentSummaryResponse) => summary.period,
   });
 
-/** The period's choice, its days, and what happened in them. */
+/** How much was declared and resolved on each day of the period. */
+const usePeriodActivity = (organizationId: string, period: IncidentPeriod) =>
+  useQuery({
+    queryKey: queryKeys.incidentActivity(organizationId, period.from, period.to),
+    queryFn: () => getIncidentActivity(organizationId, period),
+    placeholderData: keepPreviousData,
+    select: (activity) =>
+      activity.days.map((day) => ({
+        date: day.date,
+        declared: day.counts.declared,
+        resolved: day.counts.resolved,
+      })),
+  });
+
+/**
+ * How the period's declarations compare with the same time just before it,
+ * in the API's own judgement: none is offered where it says the comparison
+ * would not be honest.
+ */
+const usePreviousComparison = (
+  organizationId: string,
+  period: IncidentPeriod,
+) =>
+  useQuery({
+    queryKey: queryKeys.incidentOccurrence(
+      organizationId,
+      period.from,
+      period.to,
+    ),
+    queryFn: () => getIncidentOccurrence(organizationId, period),
+    select: (occurrence) =>
+      occurrence.previous.comparable
+        ? occurrence.declared - occurrence.previous.declared
+        : undefined,
+  });
+
+/** "▲ 6 on the 7 days before", in words a screen reader says plainly. */
+function Comparison({ change, days }: { change: number; days: number }) {
+  const before = days === 1 ? "the day before" : `the ${formatDays(days)} before`;
+
+  if (change === 0) return <>Same as {before}</>;
+
+  return (
+    <>
+      <span aria-hidden="true">{change > 0 ? "▲" : "▼"} </span>
+      <span className="sr-only">{change > 0 ? "Up" : "Down"} </span>
+      {Math.abs(change)} on {before}
+    </>
+  );
+}
+
+/** The period in four figures. */
+function PeriodGlance({
+  summary,
+  change,
+  days,
+}: {
+  summary?: IncidentSummaryResponse["period"];
+  change?: number;
+  days: number;
+}) {
+  const earlier = summary ? summary.history.total - summary.declared : 0;
+
+  return (
+    <Glance label="This period" columns={4}>
+      <GlanceTile
+        label="Declared"
+        value={summary?.declared ?? "—"}
+        note={
+          change === undefined ? undefined : (
+            <Comparison change={change} days={days} />
+          )
+        }
+        icon={Siren}
+        tone="accent"
+      />
+      <GlanceTile
+        label="Resolved"
+        value={summary?.resolved ?? "—"}
+        note={earlier > 0 ? `${earlier} declared earlier` : undefined}
+        icon={CircleCheck}
+        tone="resolved"
+      />
+      <GlanceTile
+        label="Still open"
+        value={summary?.stillOpen ?? "—"}
+        note="declared in this period"
+        icon={CircleDashed}
+        tone="warning"
+        noteTone={(summary?.stillOpen ?? 0) > 0}
+      />
+      <GlanceTile
+        label="Typical duration"
+        value={
+          summary?.resolutionMedianMs == null
+            ? "—"
+            : formatDuration(summary.resolutionMedianMs)
+        }
+        note={
+          summary
+            ? summary.resolved > 0
+              ? `median of ${summary.resolved} resolved`
+              : "none resolved"
+            : undefined
+        }
+        icon={Timer}
+        tone="neutral"
+      />
+    </Glance>
+  );
+}
+
+/** The period's choice, its figures, its days, and what happened in them. */
 function SelectedPeriod() {
   const organization = useOrganization();
   const selection = usePeriodSelection();
-  const history = useHistory(organization.id, selection.period);
-  const { choice, period, editing } = selection;
+  const { period } = selection;
+  const days = periodDays(period);
+  const { filters, active } = useHistoryFilters();
 
-  const shown = history.data;
-  const updating = history.isPlaceholderData || (history.isFetching && !shown);
+  const summary = usePeriodSummary(organization.id, period);
+  const activity = usePeriodActivity(organization.id, period);
+  const comparison = usePreviousComparison(organization.id, period);
+  const shown = summary.data;
 
-  let figures;
-
-  if (history.isError && !shown) {
-    figures = <ErrorAlert error={history.error} />;
-  } else if (!shown) {
-    figures = <Spinner label="Loading the period…" />;
-  } else {
-    figures = <PeriodFigures period={shown} />;
-  }
+  const dayCounts = activity.data
+    ? new Map(activity.data.map((day) => [day.date, day]))
+    : undefined;
 
   return (
-    <Tabs
-      label="Period"
-      tabs={PERIOD_CHOICES}
-      value={choice}
-      onChange={selection.choose}
-      trailing={
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          <p className="text-sm text-fg-muted">
-            <span className="data text-fg">
-              {period.from === period.to
-                ? period.from
-                : `${period.from} → ${period.to}`}
-            </span>{" "}
-            · {formatDays(periodDays(period))} · UTC
-          </p>
-          {/* Kept while the dialog is open: focus returns to it. */}
-          {choice === "custom" && (
-            <Button variant="quiet" size="sm" onClick={selection.edit}>
-              Change dates
-            </Button>
-          )}
-        </div>
-      }
-    >
-      <div className="flex flex-col gap-6">
-        {/* A modal dialog: shown above the page, never in its flow. */}
-        {editing && (
-          <CustomRangeDialog
-            initial={period}
-            today={selection.today}
-            onApply={selection.apply}
-            onCancel={selection.cancel}
-          />
+    <div className="flex flex-col gap-6">
+      <PeriodBand selection={selection} />
+      {summary.isError && !shown && <ErrorAlert error={summary.error} />}
+      <div
+        aria-busy={summary.isPlaceholderData}
+        className={cx(
+          "flex flex-col gap-6 transition-opacity duration-(--duration-fast)",
+          summary.isPlaceholderData && "opacity-60",
         )}
-        <div
-          aria-busy={updating}
-          className={cx(
-            "transition-opacity duration-(--duration-fast)",
-            history.isPlaceholderData && "opacity-60",
+      >
+        <PeriodGlance
+          summary={shown}
+          change={comparison.data}
+          days={days}
+        />
+        <CardRow>
+          {activity.data ? (
+            <FlowChart
+              days={activity.data}
+              onPick={(date) => selection.apply({ from: date, to: date })}
+            />
+          ) : activity.isError ? (
+            <ErrorAlert error={activity.error} />
+          ) : (
+            <Spinner label="Loading the period's days…" />
           )}
-        >
-          {figures}
-        </div>
+          {shown ? (
+            <SeverityCard counts={shown.declaredBySeverity} />
+          ) : (
+            <Spinner label="Loading the period…" />
+          )}
+        </CardRow>
       </div>
-    </Tabs>
+      <HistoryFilterBar
+        active={active}
+        counts={
+          shown && {
+            total: shown.history.total,
+            open: shown.stillOpen,
+            resolved: shown.resolved,
+          }
+        }
+      />
+      <PeriodHistory
+        period={period}
+        filters={filters}
+        filtered={active}
+        dayCounts={dayCounts}
+      />
+    </div>
   );
 }
 
 /**
  * Incident history: every incident declared or resolved in a period of the
- * viewer's choosing, as one chronological record.
+ * viewer's choosing, as one chronological record, with what the period
+ * amounted to above it.
  *
  * Historical records and how to find them, and nothing else. Where response
- * stands now, and when the organization has been operationally active, are
- * the Overview's; what one member did is their own page's. This page is the
- * record.
+ * stands now is the Incidents page's and the Overview's; what one member did
+ * is their own page's. This page is the record.
  *
- * The whole of it is one reading of the organization: the period's counts and
- * its history both come from the incident summary, which counts every
- * incident there is — including ones the viewer may not open. So it is
- * offered on `incidents:read-all`, as the Overview is, and not on
- * `incidents:read`, which every role holds. A member's own history is a
- * question this page does not answer and will not: it wants a record scoped
- * to them, which is My Operations' work rather than a narrowing of this.
+ * The whole of it is one reading of the organization: its counts, its days,
+ * and its history each count every incident there is — including ones the
+ * viewer may not open. So it is offered on `incidents:read-all`, as the
+ * Overview is, and not on `incidents:read`, which every role holds.
  */
 export function IncidentHistory() {
   const organization = useOrganization();
@@ -329,12 +406,24 @@ export function IncidentHistory() {
     <>
       <PageHeader
         eyebrow={
-          <Link
-            href={incidentsHref(organization.slug)}
-            className="rounded-sm hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-          >
-            ← Incidents
-          </Link>
+          <nav aria-label="Breadcrumb">
+            <ol className="flex items-center gap-2">
+              <li>
+                <Link
+                  href={incidentsHref(organization.slug)}
+                  className="rounded-sm hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                >
+                  Incidents
+                </Link>
+              </li>
+              <li aria-hidden="true" className="text-fg-subtle">
+                /
+              </li>
+              <li aria-current="page" className="text-fg-muted">
+                History
+              </li>
+            </ol>
+          </nav>
         }
         title="Incident history"
         description="Every incident declared or resolved in a period you choose, most recent first. Days are UTC."

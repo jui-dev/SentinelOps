@@ -207,6 +207,16 @@
   --color-service-mark: light-dark(#1b4965, #88b8da);
 
   /*
+   * Flow — a period's incidents, day by day: declared (blue) rising above
+   * the line, resolved (teal, the resolved family's hue) hanging below it.
+   * A pair checked for colour-vision separation against each theme's
+   * surface, so the two halves read apart, and never on colour alone: they
+   * sit either side of the line, and the key names each.
+   */
+  --color-flow-declared: light-dark(#2f6fd6, #5b8def);
+  --color-flow-resolved: light-dark(#008f7f, #1f9e8f);
+
+  /*
    * One analytical view's frame (Recent operational health): a step raised
    * from the section's surface, holding the view's header and its ink
    * panel, so the two views are parted by their frames rather than a rule.

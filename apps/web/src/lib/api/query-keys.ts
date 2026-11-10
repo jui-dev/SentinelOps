@@ -1,4 +1,4 @@
-import type { IncidentFilters } from "./contracts";
+import type { IncidentFilters, IncidentHistoryFilters } from "./contracts";
 
 /**
  * Query keys, in one place so an invalidation names exactly what it means.
@@ -101,6 +101,23 @@ export const queryKeys = {
     ] as const,
   incidentSummary: (organizationId: string, from: string, to: string) =>
     ["organization", organizationId, "incidents", "summary", from, to] as const,
+  incidentHistory: (
+    organizationId: string,
+    from: string,
+    to: string,
+    filters: IncidentHistoryFilters = {},
+  ) =>
+    [
+      "organization",
+      organizationId,
+      "incidents",
+      "history",
+      from,
+      to,
+      Object.fromEntries(
+        Object.entries(filters).filter(([, value]) => value !== undefined),
+      ),
+    ] as const,
   incidentActivity: (organizationId: string, from: string, to: string) =>
     ["organization", organizationId, "incidents", "activity", from, to] as const,
   incidentOccurrence: (organizationId: string, from: string, to: string) =>

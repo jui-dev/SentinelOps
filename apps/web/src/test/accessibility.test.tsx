@@ -267,6 +267,7 @@ const summary = (from: string, to: string) => ({
     declaredBySeverity: { SEV1: 1, SEV2: 1, SEV3: 1, SEV4: 0 },
     resolved: 1,
     stillOpen: 2,
+    resolutionMedianMs: null,
     history: {
       total: 2,
       items: [
@@ -427,6 +428,17 @@ const signedIn = (permissions: string[]) =>
       const query = new URLSearchParams(request.path.split("?")[1]);
 
       return jsonResponse(200, summary(query.get("from")!, query.get("to")!));
+    }
+
+    if (route(request).startsWith(`GET ${base}/incidents/history?`)) {
+      return jsonResponse(200, {
+        items: [
+          { incident: activeIncident, declaredInPeriod: true, resolvedInPeriod: false },
+          { incident: resolvedIncident, declaredInPeriod: true, resolvedInPeriod: true },
+        ],
+        total: 3,
+        page: { cursor: "next", hasMore: true },
+      });
     }
 
     if (route(request).startsWith(`GET ${base}/incidents/activity?`)) {
@@ -661,7 +673,9 @@ describe("accessibility", () => {
       const { container } = inWorkspace(<IncidentHistory />);
 
       await screen.findByRole("heading", { level: 1, name: "Incident history" });
-      await screen.findByRole("region", { name: "Incidents in this period" });
+      await screen.findByRole("table", { name: "Incidents in this period" });
+      await screen.findByRole("group", { name: "Declared and resolved per day" });
+      await screen.findByRole("button", { name: "Load more" });
       await expectNoAxeViolations(container);
     });
 
@@ -670,7 +684,7 @@ describe("accessibility", () => {
       signedIn(ADMIN);
       const { container } = inWorkspace(<IncidentHistory />);
 
-      await userEvent.click(await screen.findByRole("tab", { name: "Custom" }));
+      await userEvent.click(await screen.findByRole("button", { name: "Custom" }));
       await screen.findByRole("dialog", { name: "Choose dates (UTC)" });
       await expectNoAxeViolations(container);
     });

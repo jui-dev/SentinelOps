@@ -555,11 +555,37 @@ export interface IncidentSummaryResponse {
     declaredBySeverity: SeverityCounts;
     resolved: number;
     stillOpen: number;
+    /**
+     * The median time from declaration to resolution of the incidents
+     * resolved in the period, whenever declared; null when none was.
+     */
+    resolutionMedianMs: number | null;
     history: {
       total: number;
       items: IncidentHistoryItemResponse[];
     };
   };
+}
+
+/**
+ * `GET .../incidents/history`: one page of a period's history, most recent
+ * first, each incident at its resolution when that fell in the period and
+ * its declaration otherwise. `total` counts every incident the filters
+ * match, on every page.
+ */
+export interface IncidentHistoryPage {
+  items: IncidentHistoryItemResponse[];
+  total: number;
+  page: { cursor: string | null; hasMore: boolean };
+}
+
+/** Which of a period's incidents: still open, or resolved in it. */
+export type IncidentHistoryShow = "open" | "resolved";
+
+export interface IncidentHistoryFilters {
+  severity?: IncidentSeverity;
+  show?: IncidentHistoryShow;
+  q?: string;
 }
 
 /**

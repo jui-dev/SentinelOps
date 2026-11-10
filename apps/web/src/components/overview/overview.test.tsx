@@ -173,6 +173,7 @@ const busy = (from: string, to: string): IncidentSummaryResponse => ({
           declaredBySeverity: { ...none, SEV1: 1 },
           resolved: 0,
           stillOpen: 1,
+          resolutionMedianMs: null,
           history: {
             total: 1,
             items: [
@@ -191,6 +192,7 @@ const busy = (from: string, to: string): IncidentSummaryResponse => ({
           declaredBySeverity: { SEV1: 2, SEV2: 3, SEV3: 5, SEV4: 2 },
           resolved: 9,
           stillOpen: 3,
+          resolutionMedianMs: null,
           history: {
             // More than the three previewed.
             total: 14,
@@ -243,6 +245,7 @@ const quiet = (from: string, to: string): IncidentSummaryResponse => ({
     declaredBySeverity: none,
     resolved: 0,
     stillOpen: 0,
+    resolutionMedianMs: null,
     history: { total: 0, items: [] },
   },
 });
