@@ -73,6 +73,7 @@ const FULL_PERMISSIONS: readonly string[] = [
   'services:read',
   'teams:manage',
   'teams:read',
+  'teams:read-all',
 ];
 /**
  * What a MEMBER holds: every read, incident response, writing the incident

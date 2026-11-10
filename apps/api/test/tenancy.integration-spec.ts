@@ -210,6 +210,7 @@ describe('tenancy (integration)', () => {
             'services:read',
             'teams:manage',
             'teams:read',
+            'teams:read-all',
           ],
         },
       });

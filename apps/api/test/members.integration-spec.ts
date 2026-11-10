@@ -413,7 +413,11 @@ describe('members (integration)', () => {
 
       const onPlatform = await request(app.getHttpServer())
         .get(`/api/v1/organizations/${fx.orgA}/teams/${platform.id}/members`)
-        .set('Authorization', `Bearer ${await tokens.signAccessToken(fx.dave)}`)
+        // The admin: a member reads only the teams they are on.
+        .set(
+          'Authorization',
+          `Bearer ${await tokens.signAccessToken(fx.alice)}`,
+        )
         .expect(200);
 
       expect(
