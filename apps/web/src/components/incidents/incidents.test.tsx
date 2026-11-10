@@ -257,6 +257,7 @@ const summary = {
     declaredBySeverity: { SEV1: 1, SEV2: 3, SEV3: 4, SEV4: 1 },
     resolved: 9,
     stillOpen: 0,
+    resolutionMedianMs: null,
     history: { total: 0, items: [] },
   },
 };
@@ -410,33 +411,6 @@ describe("incidents", () => {
       // SEV1 is said in words, not only by its colour or its edge.
       expect(within(first).getByText("SEV1")).toBeDefined();
       expect(within(first).getByText("Critical")).toBeDefined();
-    });
-
-    it("offers an overseer the way on to Incident history", async () => {
-      api(ADMIN);
-
-      inOrganization(<IncidentsView />);
-
-      await screen.findByRole("table", { name: "Active incidents" });
-
-      expect(
-        screen
-          .getByRole("link", { name: /Incident history/ })
-          .getAttribute("href"),
-      ).toBe("/orgs/acme-ops/incidents/history");
-    });
-
-    // The record is the organization's, not the caller's, so it is offered
-    // only where it can be read. A link to a page that would say "nothing to
-    // show" is worse than no link.
-    it("offers no way on to Incident history without oversight", async () => {
-      api(READ_ONLY);
-
-      inOrganization(<IncidentsView />);
-
-      await screen.findByRole("table", { name: "Active incidents" });
-
-      expect(screen.queryByRole("link", { name: /Incident history/ })).toBeNull();
     });
 
     it("offers no declaration without incidents:manage", async () => {

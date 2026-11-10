@@ -23,7 +23,6 @@ import { Glance, GlanceTile } from "@/components/ui/detail-layout";
 import { DialogActions, FormDialog } from "@/components/ui/dialog";
 import { EmptyNote, EmptyState } from "@/components/ui/empty-state";
 import { Field, TextArea } from "@/components/ui/field";
-import { OnwardLink } from "@/components/ui/onward-link";
 import { PageBody, PageHeader } from "@/components/ui/page";
 import { Select } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
@@ -52,7 +51,6 @@ import {
   useReplaceParams,
 } from "./incident-filters";
 import {
-  incidentHistoryHref,
   incidentHref,
   storeIncident,
   useIncidentList,
@@ -444,9 +442,6 @@ const VIEWS = ["active", "resolved"] as const satisfies readonly IncidentState[]
 export function IncidentsView() {
   const organization = useOrganization();
   const canManage = useCan(Permission.INCIDENTS_MANAGE);
-  // Incident history reads the organization's whole record, so it is offered
-  // only to a caller who may see it — never a link to an empty page.
-  const canReadEveryIncident = useCan(Permission.INCIDENTS_READ_ALL);
   const [declaring, setDeclaring] = useState(false);
   const searchParams = useSearchParams();
   const replace = useReplaceParams();
@@ -515,17 +510,11 @@ export function IncidentsView() {
         title="Incidents"
         description="Operational problems affecting this organization's services: who is responsible, how serious each is, and where the response stands."
         actions={
-          // A phone wraps the link above the button rather than crowding it.
           <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
             <LiveStatus
               updatedAt={shown.dataUpdatedAt}
               failed={shown.isRefetchError}
             />
-            {canReadEveryIncident && (
-              <OnwardLink href={incidentHistoryHref(organization.slug)}>
-                Incident history
-              </OnwardLink>
-            )}
             {canManage && (
               <Button onClick={() => setDeclaring(true)}>
                 Declare incident
