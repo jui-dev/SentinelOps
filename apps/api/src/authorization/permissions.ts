@@ -13,7 +13,21 @@
 export const Permission = {
   ORGANIZATION_READ: 'organization:read',
   ORGANIZATION_UPDATE: 'organization:update',
+  /**
+   * Read the organization's members: the list, and one member.
+   *
+   * Scoped by OrganizationsService to the caller, their teammates — anyone
+   * on a team they are on now — and the organization's admins, unless the
+   * caller also holds `memberships:read-all`. A member outside the scope is
+   * answered 404, exactly as a nonexistent one is.
+   */
   MEMBERSHIPS_READ: 'memberships:read',
+  /**
+   * See every member of the organization. A widening capability, as
+   * `teams:read-all` is: no route declares it, and the service consults it
+   * to decide the scope of `memberships:read`.
+   */
+  MEMBERSHIPS_READ_ALL: 'memberships:read-all',
   /** Add a person to the organization, with a one-time password. */
   MEMBERS_MANAGE: 'members:manage',
   INVITATIONS_READ: 'invitations:read',

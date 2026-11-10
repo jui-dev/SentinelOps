@@ -54,6 +54,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, ReadonlySet<Permission>>> =
       Permission.ORGANIZATION_READ,
       Permission.ORGANIZATION_UPDATE,
       Permission.MEMBERSHIPS_READ,
+      Permission.MEMBERSHIPS_READ_ALL,
       Permission.MEMBERS_MANAGE,
       Permission.INVITATIONS_READ,
       Permission.INVITATIONS_MANAGE,

@@ -4,6 +4,8 @@ import type { OrganizationResponse } from '../auth/auth.contract.js';
 import { emailAlreadyRegistered } from '../auth/auth.errors.js';
 import { toOrganizationResponse } from '../auth/auth.responses.js';
 import { PasswordService } from '../auth/password.service.js';
+import { Permission } from '../authorization/permissions.js';
+import { hasPermission } from '../authorization/role-permissions.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { foreignKeyViolationHint } from '../database/foreign-key-violation.js';
 import { uniqueViolationHint } from '../database/unique-violation.js';
@@ -76,6 +78,40 @@ const membershipSelection = {
  * called with no guard in front of it. Admission answers "may this caller act
  * in this organization"; these queries answer "does this row belong to it".
  */
+/** Who is reading members: their own membership, and their role. */
+export interface MembershipReader {
+  membershipId: string;
+  role: Role;
+}
+
+/**
+ * Which members a reader may see. With `memberships:read-all`, all of them;
+ * otherwise themselves, anyone on a team they are on now, and the
+ * organization's admins — the people they respond with, and whom to ask.
+ * A condition joined to every read, so a member outside it is not found,
+ * the same as one that does not exist.
+ */
+export const membershipScope = (
+  reader: MembershipReader,
+): Prisma.MembershipWhereInput =>
+  hasPermission(reader.role, Permission.MEMBERSHIPS_READ_ALL)
+    ? {}
+    : {
+        OR: [
+          { id: reader.membershipId },
+          { role: 'ADMIN' },
+          {
+            teamMemberships: {
+              some: {
+                team: {
+                  memberships: { some: { membershipId: reader.membershipId } },
+                },
+              },
+            },
+          },
+        ],
+      };
+
 @Injectable()
 export class OrganizationsService {
   private readonly logger = new Logger(OrganizationsService.name);
@@ -154,18 +190,24 @@ export class OrganizationsService {
    */
   async listMemberships(
     organizationId: string,
+    reader: MembershipReader,
   ): Promise<OrganizationMembershipResponse[]> {
     const memberships = await this.prisma.membership.findMany({
       where: {
         organizationId,
         organization: { deletedAt: null },
         user: { deletedAt: null },
+        ...membershipScope(reader),
       },
       select: membershipSelection,
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
     });
 
-    return memberships.map(toOrganizationMembershipResponse);
+    const accountSetup = hasPermission(reader.role, Permission.MEMBERS_MANAGE);
+
+    return memberships.map((membership) =>
+      toOrganizationMembershipResponse(membership, { accountSetup }),
+    );
   }
 
   /**
@@ -179,6 +221,7 @@ export class OrganizationsService {
   async getMembership(
     organizationId: string,
     membershipId: string,
+    reader: MembershipReader,
   ): Promise<OrganizationMembershipResponse> {
     // A malformed id names nothing. Answered before the query, which would
     // otherwise fail casting it to uuid and surface as a 500.
@@ -192,6 +235,7 @@ export class OrganizationsService {
         organizationId,
         organization: { deletedAt: null },
         user: { deletedAt: null },
+        ...membershipScope(reader),
       },
       select: membershipSelection,
     });
@@ -200,7 +244,9 @@ export class OrganizationsService {
       throw membershipNotFound();
     }
 
-    return toOrganizationMembershipResponse(membership);
+    return toOrganizationMembershipResponse(membership, {
+      accountSetup: hasPermission(reader.role, Permission.MEMBERS_MANAGE),
+    });
   }
 
   /**
@@ -324,6 +370,7 @@ export class OrganizationsService {
       teamCount: membership.teamMemberships.length,
     });
 
-    return toOrganizationMembershipResponse(membership);
+    // Only whoever manages members adds one, so they are told its setup.
+    return toOrganizationMembershipResponse(membership, { accountSetup: true });
   }
 }

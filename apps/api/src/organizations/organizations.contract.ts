@@ -39,10 +39,14 @@ export interface MemberUserResponse {
   email: string;
   /**
    * True until the person replaces the one-time password an admin gave them.
-   * Tells the organization who has not signed in yet; says nothing about the
-   * password itself.
+   * Says nothing about the password itself.
+   *
+   * Account setup, and so only for whoever sets accounts up: present to a
+   * caller holding `members:manage`, and absent for everyone else — a member
+   * reading the directory sees who their colleagues are, not whose account
+   * is still being set up.
    */
-  passwordChangeRequired: boolean;
+  passwordChangeRequired?: boolean;
 }
 
 /** A team a member is on: identity only — never its members or services. */

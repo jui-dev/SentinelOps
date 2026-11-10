@@ -203,6 +203,7 @@ describe('tenancy (integration)', () => {
             'invitations:read',
             'members:manage',
             'memberships:read',
+            'memberships:read-all',
             'notifications:read',
             'organization:read',
             'organization:update',
@@ -377,18 +378,27 @@ describe('tenancy (integration)', () => {
 
       expect(getRequestOrganization()).toBeUndefined();
 
-      const listed = await organizations.listMemberships(fx.orgA.id);
+      const listed = await organizations.listMemberships(fx.orgA.id, {
+        membershipId: fx.aliceInA,
+        role: 'ADMIN',
+      });
 
       expect(listed.map((m) => m.id)).toEqual([fx.aliceInA, fx.carolInA]);
       expectNoTenantB(listed);
 
       await expect(
-        organizations.getMembership(fx.orgA.id, fx.carolInB),
+        organizations.getMembership(fx.orgA.id, fx.carolInB, {
+          membershipId: fx.aliceInA,
+          role: 'ADMIN',
+        }),
       ).rejects.toMatchObject({ errorCode: 'MEMBERSHIP_NOT_FOUND' });
 
       // The row exists: scoping, not absence, is what refused it.
       await expect(
-        organizations.getMembership(fx.orgB.id, fx.carolInB),
+        organizations.getMembership(fx.orgB.id, fx.carolInB, {
+          membershipId: fx.aliceInA,
+          role: 'ADMIN',
+        }),
       ).resolves.toMatchObject({ id: fx.carolInB, role: 'MEMBER' });
     });
   });

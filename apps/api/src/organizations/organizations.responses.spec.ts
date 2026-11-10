@@ -41,6 +41,7 @@ describe('organization response mappers', () => {
             'invitations:read',
             'members:manage',
             'memberships:read',
+            'memberships:read-all',
             'notifications:read',
             'organization:read',
             'organization:update',
@@ -115,7 +116,9 @@ describe('organization response mappers', () => {
         ],
       };
 
-      expect(toOrganizationMembershipResponse(row)).toStrictEqual({
+      expect(
+        toOrganizationMembershipResponse(row, { accountSetup: true }),
+      ).toStrictEqual({
         id: 'membership-1',
         role: 'MEMBER',
         createdAt: '2026-09-01T12:00:00.000Z',
@@ -127,6 +130,31 @@ describe('organization response mappers', () => {
         },
         teams: [{ id: 'team-1', name: 'Payments', slug: 'payments' }],
       });
+    });
+
+    it('should leave account setup out for a reader who does not set accounts up', () => {
+      const response = toOrganizationMembershipResponse(
+        {
+          id: 'membership-1',
+          role: 'MEMBER',
+          createdAt: CREATED,
+          user: {
+            id: 'user-1',
+            name: 'Ada Lovelace',
+            email: 'ada@example.com',
+            passwordChangeRequired: true,
+          },
+          teamMemberships: [],
+        },
+        { accountSetup: false },
+      );
+
+      expect(response.user).toStrictEqual({
+        id: 'user-1',
+        name: 'Ada Lovelace',
+        email: 'ada@example.com',
+      });
+      expect('passwordChangeRequired' in response.user).toBe(false);
     });
 
     const baseRow = {
@@ -142,13 +170,16 @@ describe('organization response mappers', () => {
     };
 
     it('should list every team, in the order selected', () => {
-      const response = toOrganizationMembershipResponse({
-        ...baseRow,
-        teamMemberships: [
-          { team: { id: 'team-1', name: 'Payments', slug: 'payments' } },
-          { team: { id: 'team-2', name: 'Platform', slug: 'platform' } },
-        ],
-      });
+      const response = toOrganizationMembershipResponse(
+        {
+          ...baseRow,
+          teamMemberships: [
+            { team: { id: 'team-1', name: 'Payments', slug: 'payments' } },
+            { team: { id: 'team-2', name: 'Platform', slug: 'platform' } },
+          ],
+        },
+        { accountSetup: true },
+      );
 
       expect(response.teams).toEqual([
         { id: 'team-1', name: 'Payments', slug: 'payments' },
@@ -157,10 +188,13 @@ describe('organization response mappers', () => {
     });
 
     it('should answer an empty array for a member on no team', () => {
-      const response = toOrganizationMembershipResponse({
-        ...baseRow,
-        teamMemberships: [],
-      });
+      const response = toOrganizationMembershipResponse(
+        {
+          ...baseRow,
+          teamMemberships: [],
+        },
+        { accountSetup: true },
+      );
 
       expect(response.teams).toEqual([]);
     });

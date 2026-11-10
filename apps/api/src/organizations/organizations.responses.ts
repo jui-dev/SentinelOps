@@ -57,6 +57,8 @@ export const toOrganizationDetailResponse = (
  */
 export const toOrganizationMembershipResponse = (
   membership: MembershipRow,
+  /** Whether the reader sets accounts up, and so is told how far each is. */
+  { accountSetup }: { accountSetup: boolean },
 ): OrganizationMembershipResponse => ({
   id: membership.id,
   role: membership.role,
@@ -65,7 +67,9 @@ export const toOrganizationMembershipResponse = (
     id: membership.user.id,
     name: membership.user.name,
     email: membership.user.email,
-    passwordChangeRequired: membership.user.passwordChangeRequired,
+    ...(accountSetup && {
+      passwordChangeRequired: membership.user.passwordChangeRequired,
+    }),
   },
   teams: membership.teamMemberships.map(({ team }) => ({
     id: team.id,

@@ -66,6 +66,7 @@ const FULL_PERMISSIONS: readonly string[] = [
   'invitations:read',
   'members:manage',
   'memberships:read',
+  'memberships:read-all',
   'notifications:read',
   'organization:read',
   'organization:update',

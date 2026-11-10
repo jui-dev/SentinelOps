@@ -12,6 +12,7 @@ import { OrganizationsService } from './organizations.service.js';
 
 const ORG_A = '0199a1b2-c3d4-7000-8000-00000000000a';
 const MEMBERSHIP_ID = '0199a1b2-c3d4-7000-8000-0000000000aa';
+const ADMIN_READER = { membershipId: MEMBERSHIP_ID, role: 'ADMIN' as const };
 const CREATED = new Date('2026-09-01T12:00:00.000Z');
 
 const organizationRow = {
@@ -130,6 +131,7 @@ describe('OrganizationsService', () => {
             'invitations:read',
             'members:manage',
             'memberships:read',
+            'memberships:read-all',
             'notifications:read',
             'organization:read',
             'organization:update',
@@ -249,7 +251,7 @@ describe('OrganizationsService', () => {
       const { service, prisma } = serviceWith();
       prisma.membership.findMany.mockResolvedValue([]);
 
-      await service.listMemberships(ORG_A);
+      await service.listMemberships(ORG_A, ADMIN_READER);
 
       const [args] = prisma.membership.findMany.mock.calls[0];
 
@@ -265,7 +267,7 @@ describe('OrganizationsService', () => {
       const { service, prisma } = serviceWith();
       prisma.membership.findMany.mockResolvedValue([]);
 
-      await service.listMemberships(ORG_A);
+      await service.listMemberships(ORG_A, ADMIN_READER);
 
       const [args] = prisma.membership.findMany.mock.calls[0];
 
@@ -292,7 +294,9 @@ describe('OrganizationsService', () => {
       const { service, prisma } = serviceWith();
       prisma.membership.findMany.mockResolvedValue([membershipRow]);
 
-      await expect(service.listMemberships(ORG_A)).resolves.toEqual([
+      await expect(
+        service.listMemberships(ORG_A, ADMIN_READER),
+      ).resolves.toEqual([
         {
           id: MEMBERSHIP_ID,
           role: 'ADMIN',
@@ -317,7 +321,7 @@ describe('OrganizationsService', () => {
       const { service, prisma } = serviceWith();
       prisma.membership.findFirst.mockResolvedValue(membershipRow);
 
-      await service.getMembership(ORG_A, MEMBERSHIP_ID);
+      await service.getMembership(ORG_A, MEMBERSHIP_ID, ADMIN_READER);
 
       const [args] = prisma.membership.findFirst.mock.calls[0];
 
@@ -333,7 +337,9 @@ describe('OrganizationsService', () => {
       const { service, prisma } = serviceWith();
       prisma.membership.findFirst.mockResolvedValue(null);
 
-      const error = await errorOf(service.getMembership(ORG_A, MEMBERSHIP_ID));
+      const error = await errorOf(
+        service.getMembership(ORG_A, MEMBERSHIP_ID, ADMIN_READER),
+      );
 
       expect(error).toBeInstanceOf(NotFoundException);
       expect(error.errorCode).toBe(OrganizationsErrorCode.MEMBERSHIP_NOT_FOUND);
@@ -345,7 +351,9 @@ describe('OrganizationsService', () => {
       async (membershipId) => {
         const { service, prisma } = serviceWith();
 
-        const error = await errorOf(service.getMembership(ORG_A, membershipId));
+        const error = await errorOf(
+          service.getMembership(ORG_A, membershipId, ADMIN_READER),
+        );
 
         expect(error.errorCode).toBe(
           OrganizationsErrorCode.MEMBERSHIP_NOT_FOUND,

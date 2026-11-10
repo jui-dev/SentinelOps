@@ -72,7 +72,10 @@ export class OrganizationsController {
   listMemberships(
     @CurrentMembership() membership: OrganizationContext,
   ): Promise<OrganizationMembershipResponse[]> {
-    return this.organizations.listMemberships(membership.organizationId);
+    return this.organizations.listMemberships(membership.organizationId, {
+      membershipId: membership.membershipId,
+      role: membership.role,
+    });
   }
 
   /**
@@ -105,6 +108,7 @@ export class OrganizationsController {
     return this.organizations.getMembership(
       membership.organizationId,
       membershipId,
+      { membershipId: membership.membershipId, role: membership.role },
     );
   }
 }

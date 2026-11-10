@@ -171,9 +171,10 @@ describe('members (integration)', () => {
   it('should list the new member, still awaiting their first sign-in', async () => {
     await addMember(fx.orgA, fx.alice, grace);
 
+    // Read as the admin: account setup is theirs to follow.
     const list = await request(app.getHttpServer())
       .get(`/api/v1/organizations/${fx.orgA}/memberships`)
-      .set('Authorization', `Bearer ${await tokens.signAccessToken(fx.dave)}`)
+      .set('Authorization', `Bearer ${await tokens.signAccessToken(fx.alice)}`)
       .expect(200);
 
     expect(
@@ -357,6 +358,117 @@ describe('members (integration)', () => {
       const one = await read(`${fx.orgA}/memberships/${daveInA}`, fx.alice);
 
       expect(one.body.teams).toEqual([]);
+    });
+  });
+
+  describe('who a member may see', () => {
+    const person = async (name: string) => {
+      const user = await prisma.user.create({
+        data: { email: `${name.toLowerCase()}@acme.example`, name },
+        select: { id: true },
+      });
+      const membership = await prisma.membership.create({
+        data: { organizationId: fx.orgA, userId: user.id, role: 'MEMBER' },
+        select: { id: true },
+      });
+
+      return { userId: user.id, membershipId: membership.id };
+    };
+    const membershipOf = async (userId: string) =>
+      (
+        await prisma.membership.findUniqueOrThrow({
+          where: { organizationId_userId: { organizationId: fx.orgA, userId } },
+          select: { id: true },
+        })
+      ).id;
+    const team = async (name: string, membershipIds: string[]) => {
+      const created = await prisma.team.create({
+        data: { organizationId: fx.orgA, name, slug: name.toLowerCase() },
+        select: { id: true },
+      });
+
+      await prisma.teamMembership.createMany({
+        data: membershipIds.map((membershipId) => ({
+          organizationId: fx.orgA,
+          teamId: created.id,
+          membershipId,
+        })),
+      });
+    };
+    const get = async (path: string, callerId: string) =>
+      request(app.getHttpServer())
+        .get(`/api/v1/organizations/${fx.orgA}/${path}`)
+        .set(
+          'Authorization',
+          `Bearer ${await tokens.signAccessToken(callerId)}`,
+        );
+    const emails = (body: { user: { email: string } }[]) =>
+      body.map(({ user }) => user.email).sort();
+
+    it('should show a member themselves, their teammates, and the admin, and no one else', async () => {
+      const dave = await membershipOf(fx.dave);
+      const erin = await person('Erin');
+      const frank = await person('Frank');
+      const gina = await person('Gina');
+      // Dave and Erin share Platform; Frank is on Payments; Gina is on none.
+      await team('Platform', [dave, erin.membershipId]);
+      await team('Payments', [frank.membershipId]);
+
+      const list = await get('memberships', fx.dave);
+
+      expect(list.status).toBe(200);
+      expect(emails(list.body)).toEqual([
+        'alice@acme.example',
+        'dave@acme.example',
+        'erin@acme.example',
+      ]);
+
+      // A teammate opens; anyone else is not found, as if they were not there.
+      expect(
+        (await get(`memberships/${erin.membershipId}`, fx.dave)).status,
+      ).toBe(200);
+      expect(
+        (await get(`memberships/${frank.membershipId}`, fx.dave)).status,
+      ).toBe(404);
+      expect(
+        (await get(`memberships/${gina.membershipId}`, fx.dave)).status,
+      ).toBe(404);
+
+      // On no team, Gina sees herself and the admin.
+      expect(emails((await get('memberships', gina.userId)).body)).toEqual([
+        'alice@acme.example',
+        'gina@acme.example',
+      ]);
+
+      // The admin sees everyone.
+      expect(emails((await get('memberships', fx.alice)).body)).toEqual([
+        'alice@acme.example',
+        'dave@acme.example',
+        'erin@acme.example',
+        'frank@acme.example',
+        'gina@acme.example',
+      ]);
+    });
+
+    it('should tell only whoever sets accounts up how far each account is', async () => {
+      const dave = await membershipOf(fx.dave);
+      const erin = await person('Erin');
+      await team('Platform', [dave, erin.membershipId]);
+
+      const asMember = await get(`memberships/${erin.membershipId}`, fx.dave);
+      const asAdmin = await get(`memberships/${erin.membershipId}`, fx.alice);
+
+      expect(asMember.body.user).toEqual({
+        id: erin.userId,
+        name: 'Erin',
+        email: 'erin@acme.example',
+      });
+      expect(asAdmin.body.user.passwordChangeRequired).toBe(false);
+      expect(
+        (await get('memberships', fx.dave)).body.every(
+          ({ user }: { user: object }) => !('passwordChangeRequired' in user),
+        ),
+      ).toBe(true);
     });
   });
 
