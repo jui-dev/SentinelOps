@@ -31,7 +31,23 @@ export interface NavItem {
    * `useCan`: the API authorizes the pages behind every item regardless.
    */
   requires?: string;
+  /**
+   * What the item is called for a caller without a permission, where the
+   * page behind it answers them differently: the organization's home is the
+   * Overview to whoever oversees every incident, and My Operations to
+   * everyone else (see organization-landing.tsx).
+   */
+  labelWithout?: { permission: string; label: string };
 }
+
+/** The item's name for a caller with these permissions. */
+export const navItemLabel = (
+  item: NavItem,
+  permissions: readonly string[],
+): string =>
+  item.labelWithout && !permissions.includes(item.labelWithout.permission)
+    ? item.labelWithout.label
+    : item.label;
 
 export interface NavSection {
   id: string;
@@ -64,6 +80,10 @@ export const ORGANIZATION_NAVIGATION: NavSection[] = [
         icon: LayoutPanelTop,
         href: organizationPath,
         match: "exact",
+        labelWithout: {
+          permission: Permission.INCIDENTS_READ_ALL,
+          label: "My Operations",
+        },
       },
     ],
   },

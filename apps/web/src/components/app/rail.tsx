@@ -23,6 +23,7 @@ import { useCurrentUser } from "@/lib/auth/session-provider";
 
 import {
   currentNavItemId,
+  navItemLabel,
   ORGANIZATION_NAVIGATION,
   organizationPath,
 } from "./navigation";
@@ -133,7 +134,7 @@ function SectionLinks({
             <li key={item.id}>
               <RailLink
                 href={href}
-                label={item.label}
+                label={navItemLabel(item, permissions)}
                 icon={item.icon}
                 current={item.id === currentId}
                 count={counts[item.id]}

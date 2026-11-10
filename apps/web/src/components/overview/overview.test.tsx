@@ -55,14 +55,6 @@ const MEMBER_READ = READ.filter(
   (permission) => permission !== "incidents:read-all",
 );
 
-/** The requests only the organization-wide Overview makes. */
-const OVERSIGHT_REQUESTS = [
-  "/incidents/summary",
-  "/incidents/occurrence",
-  "/incidents/activity",
-  "/incidents?state=active",
-];
-
 const base = `/organizations/${organization.id}`;
 
 const incident = (overrides: Partial<IncidentResponse> = {}): IncidentResponse => ({
@@ -559,6 +551,8 @@ const api = (
           : jsonResponse(200, attention);
       case `GET ${base}/memberships`:
         return jsonResponse(200, []);
+      case `GET ${base}/teams`:
+        return jsonResponse(200, []);
       case `GET ${base}/incidents?state=active`:
         return typeof active === "function"
           ? active()
@@ -619,21 +613,34 @@ describe("the organization landing", () => {
     // Never sent — not sent and refused, not sent and cancelled.
     const asked = requests.map((request) => request.path);
 
-    for (const oversight of OVERSIGHT_REQUESTS) {
+    for (const oversight of [
+      "/incidents/summary",
+      "/incidents/occurrence",
+      "/incidents/activity",
+    ]) {
       expect(asked.some((path) => path.includes(oversight))).toBe(false);
     }
 
-    // The only thing asked of the organization is who is asking.
-    expect(asked.filter((path) => path.startsWith(base))).toEqual([base]);
-  });
-
-  it("offers a member the way to the incidents that are theirs", async () => {
-    api(MEMBER_READ, { role: "MEMBER" });
-    renderOverview();
-
-    const onward = await screen.findByRole("link", { name: /Go to Incidents/ });
-
-    expect(onward.getAttribute("href")).toBe("/orgs/acme-ops/incidents");
+    // Only what the API scopes to the caller: who is asking, what waits on
+    // them, their teams, and the incidents they may see.
+    await waitFor(() =>
+      expect(
+        [
+          ...new Set(
+            requests
+              .map((request) => request.path)
+              .filter((path) => path.startsWith(base)),
+          ),
+        ].sort(),
+      ).toEqual(
+        [
+          base,
+          `${base}/incidents/attention`,
+          `${base}/incidents?state=active`,
+          `${base}/teams`,
+        ].sort(),
+      ),
+    );
   });
 
   it("borrows none of the Overview's panels to look populated", async () => {

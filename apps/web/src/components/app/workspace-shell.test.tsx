@@ -101,8 +101,9 @@ describe("WorkspaceShell", () => {
         name: "Settings",
       });
       const members = within(primaryNav()).getByRole("link", { name: "Members" });
+      // Not an overseer, so the home item is their own.
       const overview = within(primaryNav()).getByRole("link", {
-        name: "Overview",
+        name: "My Operations",
       });
 
       expect(members.getAttribute("aria-current")).toBe("page");
@@ -112,7 +113,7 @@ describe("WorkspaceShell", () => {
 
     it("marks Overview only on the overview itself", async () => {
       at("/orgs/acme-ops", "acme-ops");
-      api();
+      api({ permissions: [...READ, "incidents:read-all"] });
 
       renderShell();
 
@@ -121,6 +122,24 @@ describe("WorkspaceShell", () => {
       });
 
       expect(overview.getAttribute("aria-current")).toBe("page");
+      expect(overview.getAttribute("href")).toBe("/orgs/acme-ops");
+    });
+
+    // The same address answers a member with My Operations, so the rail
+    // names it for them.
+    it("names the home item My Operations for a caller who does not oversee", async () => {
+      at("/orgs/acme-ops", "acme-ops");
+      api();
+
+      renderShell();
+
+      const home = await within(primaryNav()).findByRole("link", {
+        name: "My Operations",
+      });
+
+      expect(home.getAttribute("aria-current")).toBe("page");
+      expect(home.getAttribute("href")).toBe("/orgs/acme-ops");
+      expect(within(primaryNav()).queryByRole("link", { name: "Overview" })).toBeNull();
     });
 
     it("offers Teams only when the API reports teams:read", async () => {

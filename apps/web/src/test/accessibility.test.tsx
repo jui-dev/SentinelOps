@@ -484,6 +484,15 @@ const signedIn = (permissions: string[]) =>
           });
       case `GET ${base}/teams`:
         return jsonResponse(200, [team]);
+      case `GET ${base}/incidents/attention`:
+        // What waits on a member: one incident nobody on their team started.
+        return jsonResponse(200, {
+          manage: null,
+          respond: {
+            needsYourTeam: [{ ...majorIncident, resolution: null, responders: [] }],
+            yourResponses: [],
+          },
+        });
       case `GET ${base}/services`:
         return jsonResponse(200, [service]);
       case `GET ${base}/incidents?state=active`:
@@ -648,12 +657,14 @@ describe("accessibility", () => {
     }, 30_000);
 
     // The same address as Overview, for a caller who does not oversee the
-    // organization. Nothing loads, so nothing is awaited but the heading.
+    // organization: what waits on their team, and their own work.
     it("My Operations", async () => {
       signedIn(MEMBER);
       const { container } = inWorkspace(<OrganizationLanding />);
 
       await screen.findByRole("heading", { level: 1, name: "My Operations" });
+      await screen.findByRole("table", { name: "Waiting on your team" });
+      await screen.findByText("Nothing under way");
       await expectNoAxeViolations(container);
     });
 
