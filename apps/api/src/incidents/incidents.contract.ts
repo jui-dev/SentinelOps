@@ -240,6 +240,11 @@ export interface IncidentSummaryResponse {
     };
     /** The active incidents by lifecycle status: declared, or investigating. */
     activeByStatus: ActiveStatusCounts;
+    /**
+     * Investigating incidents no one is still investigating: every response
+     * has completed, and the Admin may resolve them.
+     */
+    readyToResolve: number;
     /** What an active incident's duration can honestly be read against. */
     typicalResolution: TypicalResolutionResponse;
   };
@@ -453,9 +458,7 @@ export interface IncidentOccurrenceResponse {
  * member-activity.ts for what is deliberately not one.
  */
 export type MemberActivityCategory =
-  | 'responseStarted'
-  | 'update'
-  | 'responseCompleted';
+  'responseStarted' | 'update' | 'responseCompleted';
 
 /** One day of one member's response activity. */
 export interface MemberActivityDayResponse {
@@ -494,8 +497,19 @@ export interface MemberActivityResponse {
  * One page of a collection. `cursor` is opaque and asks for the page after
  * this one; it is null exactly when `hasMore` is false.
  */
+/**
+ * An incident as a list gives it: the incident, where its response stands
+ * — how many are investigating and how many have completed, counts only —
+ * and when the last update was posted, or null before any. Enough to scan a
+ * list by; the responders themselves are the incident's own route.
+ */
+export interface IncidentListItemResponse extends IncidentResponse {
+  response: { investigating: number; completed: number };
+  lastUpdateAt: string | null;
+}
+
 export interface IncidentPage {
-  items: IncidentResponse[];
+  items: IncidentListItemResponse[];
   page: {
     cursor: string | null;
     hasMore: boolean;

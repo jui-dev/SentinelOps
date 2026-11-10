@@ -439,7 +439,9 @@ describe('IncidentsService', () => {
         ADMIN_ACTOR,
       );
 
-      expect(prisma.incidentActivity.createManyAndReturn).not.toHaveBeenCalled();
+      expect(
+        prisma.incidentActivity.createManyAndReturn,
+      ).not.toHaveBeenCalled();
       expect(prisma.membership.findFirst).not.toHaveBeenCalled();
     });
 
@@ -492,7 +494,9 @@ describe('IncidentsService', () => {
       );
       expect(prisma.team.findFirst).not.toHaveBeenCalled();
       expect(prisma.incident.update).not.toHaveBeenCalled();
-      expect(prisma.incidentActivity.createManyAndReturn).not.toHaveBeenCalled();
+      expect(
+        prisma.incidentActivity.createManyAndReturn,
+      ).not.toHaveBeenCalled();
     });
 
     it('should not count responders for a change that is not a resolution', async () => {
@@ -521,7 +525,9 @@ describe('IncidentsService', () => {
       );
       expect(prisma.team.findFirst).not.toHaveBeenCalled();
       expect(prisma.incident.update).not.toHaveBeenCalled();
-      expect(prisma.incidentActivity.createManyAndReturn).not.toHaveBeenCalled();
+      expect(
+        prisma.incidentActivity.createManyAndReturn,
+      ).not.toHaveBeenCalled();
     });
 
     it('should refuse any change to a resolved incident with 409 and write nothing', async () => {
@@ -575,7 +581,9 @@ describe('IncidentsService', () => {
 
       await service.update(ORG, '1', { teamId: TEAM }, ADMIN_ACTOR);
 
-      expect(prisma.incidentActivity.createManyAndReturn).not.toHaveBeenCalled();
+      expect(
+        prisma.incidentActivity.createManyAndReturn,
+      ).not.toHaveBeenCalled();
       expect(prisma.membership.findFirst).not.toHaveBeenCalled();
     });
 
@@ -1364,8 +1372,77 @@ describe('IncidentsService', () => {
   describe('list', () => {
     const rows = (count: number) =>
       Array.from({ length: count }, (_, index) =>
-        incidentRow({ number: index + 1, severity: 'SEV2' }),
+        incidentRow({
+          number: index + 1,
+          severity: 'SEV2',
+          responders: [],
+          activity: [],
+        }),
       );
+
+    it('should give each item its response in counts, and when it was last updated', async () => {
+      const { service, prisma } = serviceWith();
+      prisma.incident.findMany.mockResolvedValue([
+        incidentRow({
+          responders: [
+            { status: 'INVESTIGATING' },
+            { status: 'COMPLETED' },
+            { status: 'COMPLETED' },
+          ],
+          activity: [{ createdAt: new Date('2026-09-18T12:30:00.000Z') }],
+        }),
+        incidentRow({
+          id: 'incident-2',
+          number: 2,
+          responders: [],
+          activity: [],
+        }),
+      ]);
+
+      const { items } = await service.list(ORG, ADMIN_ACTOR, {
+        state: 'active',
+      });
+
+      expect(
+        items.map(({ response, lastUpdateAt }) => ({ response, lastUpdateAt })),
+      ).toEqual([
+        {
+          response: { investigating: 1, completed: 2 },
+          lastUpdateAt: '2026-09-18T12:30:00.000Z',
+        },
+        { response: { investigating: 0, completed: 0 }, lastUpdateAt: null },
+      ]);
+      // Statuses and one update's time: never the responders themselves.
+      const { select } = prisma.incident.findMany.mock.calls[0][0];
+      expect(select.responders).toEqual({ select: { status: true } });
+      expect(select.activity).toEqual(
+        expect.objectContaining({ where: { type: 'UPDATE' }, take: 1 }),
+      );
+    });
+
+    it.each([
+      ['unclaimed', { status: 'DECLARED' }],
+      [
+        'ready',
+        {
+          status: 'INVESTIGATING',
+          responders: { none: { status: 'INVESTIGATING' } },
+        },
+      ],
+    ] as const)(
+      'should narrow by where the response stands: %s, beside the list status',
+      async (response, condition) => {
+        const { service, prisma } = serviceWith();
+
+        await service.list(ORG, ADMIN_ACTOR, { state: 'resolved', response });
+
+        const [, page] = prisma.incident.findMany.mock.calls[0][0].where.AND;
+
+        // The resolved list keeps its status: nothing can match both.
+        expect(page.status).toBe('RESOLVED');
+        expect(page.AND).toEqual([condition]);
+      },
+    );
 
     it('should order active incidents by severity, then number, within the organization', async () => {
       const { service, prisma } = serviceWith();
@@ -1514,10 +1591,13 @@ describe('IncidentsService', () => {
       // A date in another form than the one the server writes.
       '2026-09-18~0199a1b2-c3d4-7000-8000-0000000000f1',
       '2026-09-18T12:05:00.000Z~0199a1b2-c3d4-7000-8000-0000000000f1~x',
-    ])("should refuse the response cursor %j with 400 INVALID_CURSOR", (cursor) => {
-      expect(() => decodeResponseCursor(cursor)).toThrow(
-        expect.objectContaining({ status: 400 }),
-      );
-    });
+    ])(
+      'should refuse the response cursor %j with 400 INVALID_CURSOR',
+      (cursor) => {
+        expect(() => decodeResponseCursor(cursor)).toThrow(
+          expect.objectContaining({ status: 400 }),
+        );
+      },
+    );
   });
 });

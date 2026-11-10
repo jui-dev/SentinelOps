@@ -17,6 +17,7 @@ import type {
   IncidentActivityType,
   IncidentAttentionResponse,
   IncidentDetailResponse,
+  IncidentListItemResponse,
   IncidentOccurrenceResponse,
   IncidentResponderStatus,
   IncidentResponse,
@@ -84,6 +85,28 @@ export const toIncidentResponse = (
   createdAt: incident.createdAt.toISOString(),
   updatedAt: incident.updatedAt.toISOString(),
   resolvedAt: incident.resolvedAt?.toISOString() ?? null,
+});
+
+/**
+ * An incident as a list gives it: with its responders' statuses counted, and
+ * its latest update's time — the one row the list selects of each.
+ */
+export const toIncidentListItemResponse = (
+  incident: IncidentRow & {
+    responders: readonly { status: IncidentResponderStatus }[];
+    activity: readonly { createdAt: Date }[];
+  },
+): IncidentListItemResponse => ({
+  ...toIncidentResponse(incident),
+  response: {
+    investigating: incident.responders.filter(
+      ({ status }) => status === 'INVESTIGATING',
+    ).length,
+    completed: incident.responders.filter(
+      ({ status }) => status === 'COMPLETED',
+    ).length,
+  },
+  lastUpdateAt: incident.activity[0]?.createdAt.toISOString() ?? null,
 });
 
 /** One of a member's responses, with its incident as the lists give it. */
@@ -408,6 +431,7 @@ const toTypicalResolution = (
 /** One response still under way: who is on it, and whose incident it is. */
 interface ActiveResponderRow {
   membershipId: string;
+  incidentId: string;
   incident: { teamId: string };
 }
 
@@ -523,6 +547,12 @@ export const toIncidentSummaryResponse = ({
       affectedServices,
       responders: countResponders(responders),
       activeByStatus: countByStatus(statuses),
+      // Investigating, less those someone is still investigating.
+      readyToResolve: Math.max(
+        0,
+        countByStatus(statuses).INVESTIGATING -
+          new Set(responders.map((row) => row.incidentId)).size,
+      ),
       typicalResolution: toTypicalResolution(typical.rows, typical.window),
     },
     period: {

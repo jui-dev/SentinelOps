@@ -1,8 +1,5 @@
 import { buildActivityCalendar, LEVELS } from './incidents.activity.js';
-import {
-  buildOccurrence,
-  occurrenceWindows,
-} from './incidents.occurrence.js';
+import { buildOccurrence, occurrenceWindows } from './incidents.occurrence.js';
 import {
   toIncidentActivityResponse,
   toIncidentDetailResponse,
@@ -192,8 +189,14 @@ describe('incident responses', () => {
       _count: { _all: n },
     });
     /** One response still under way: the member, and whose incident it is. */
-    const responding = (membershipId: string, teamId: string) => ({
+    /** A response under way; one incident per team unless it says. */
+    const responding = (
+      membershipId: string,
+      teamId: string,
+      incidentId = `incident-of-${teamId}`,
+    ) => ({
       membershipId,
+      incidentId,
       incident: { teamId },
     });
 
@@ -349,6 +352,18 @@ describe('incident responses', () => {
           statuses: [{ status: 'RESOLVED', _count: { _all: 9 } }],
         }).current.activeByStatus,
       ).toEqual({ DECLARED: 0, INVESTIGATING: 0 });
+    });
+
+    /**
+     * Five investigating, and someone is still on two of them (Ada and Grace
+     * share Payments' incident; Ada is also on Risk's): three are ready.
+     */
+    it('should count investigating incidents no one is still investigating as ready', () => {
+      expect(summary.current.readyToResolve).toBe(3);
+      expect(
+        toIncidentSummaryResponse({ ...bare, responders: [] }).current
+          .readyToResolve,
+      ).toBe(0);
     });
 
     it('should give a typical time only where enough were resolved', () => {
@@ -607,10 +622,7 @@ describe('incident occurrence responses', () => {
       services: [
         { service: service('service-1', null), declared: 2 },
         {
-          service: service(
-            'service-2',
-            new Date('2026-09-10T09:30:00.000Z'),
-          ),
+          service: service('service-2', new Date('2026-09-10T09:30:00.000Z')),
           declared: 1,
         },
       ],

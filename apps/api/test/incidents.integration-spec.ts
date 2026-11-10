@@ -467,7 +467,10 @@ describe('incidents (integration)', () => {
         call('patch', path, fx.dave, { summary: 'Rewritten' }),
         call('patch', path, fx.dave, { severity: 'SEV3' }),
         call('patch', path, fx.dave, { status: 'INVESTIGATING' }),
-        call('patch', path, fx.dave, { status: 'RESOLVED', resolution: 'Rolled back.' }),
+        call('patch', path, fx.dave, {
+          status: 'RESOLVED',
+          resolution: 'Rolled back.',
+        }),
         call('patch', path, fx.dave, { teamId: fx.platformA }),
       ]) {
         expectCode(await refused, 403, 'PERMISSION_DENIED');
@@ -920,6 +923,79 @@ describe('incidents (integration)', () => {
         },
       );
 
+      it('should count each response, give the last update, and narrow by where the response stands', async () => {
+        // 1 waits on its team; Dave is on 2; Dave finished 3.
+        for (let n = 0; n < 3; n += 1) {
+          expect((await declare(fx.orgA, fx.alice, fx.apiA)).status).toBe(201);
+        }
+        expect((await startAs(fx.orgA, fx.dave, 2)).status).toBe(200);
+        expect((await startAs(fx.orgA, fx.dave, 3)).status).toBe(200);
+        expect((await completeAs(fx.orgA, fx.dave, 3)).status).toBe(200);
+        const posted = await call(
+          'post',
+          `${fx.orgA}/incidents/2/updates`,
+          fx.alice,
+          {
+            message: 'Rolled back the deploy.',
+          },
+        );
+        expect(posted.status).toBe(201);
+
+        const all = await call(
+          'get',
+          `${fx.orgA}/incidents?state=active`,
+          fx.alice,
+        );
+        const byNumber = new Map(
+          all.body.items.map(
+            (item: {
+              number: number;
+              response: unknown;
+              lastUpdateAt: unknown;
+            }) => [
+              item.number,
+              { response: item.response, lastUpdateAt: item.lastUpdateAt },
+            ],
+          ),
+        );
+
+        expect(byNumber.get(1)).toEqual({
+          response: { investigating: 0, completed: 0 },
+          lastUpdateAt: null,
+        });
+        expect(byNumber.get(2)).toEqual({
+          response: { investigating: 1, completed: 0 },
+          lastUpdateAt: posted.body.createdAt,
+        });
+        expect(byNumber.get(3)).toEqual({
+          response: { investigating: 0, completed: 1 },
+          lastUpdateAt: null,
+        });
+
+        const numbers = async (query: string) =>
+          (
+            await call('get', `${fx.orgA}/incidents?${query}`, fx.alice)
+          ).body.items.map(({ number }: { number: number }) => number);
+
+        expect(await numbers('state=active&response=unclaimed')).toEqual([1]);
+        expect(await numbers('state=active&response=ready')).toEqual([3]);
+        // A resolved list keeps to resolved incidents, whatever is asked.
+        expect(await numbers('state=resolved&response=unclaimed')).toEqual([]);
+
+        const today = new Date().toISOString().slice(0, 10);
+        const summary = await call(
+          'get',
+          `${fx.orgA}/incidents/summary?from=${today}&to=${today}`,
+          fx.alice,
+        );
+
+        expect(summary.body.current.readyToResolve).toBe(1);
+        expect(summary.body.current.activeByStatus).toEqual({
+          DECLARED: 1,
+          INVESTIGATING: 2,
+        });
+      });
+
       it('should search titles case-insensitively, taking % and _ literally, and find an incident by its number', async () => {
         for (const title of [
           'Checkout latency',
@@ -1014,7 +1090,9 @@ describe('incidents (integration)', () => {
 
     it('should list only the incidents a member started, most recently started first, with their own state', async () => {
       for (let number = 1; number <= 3; number += 1) {
-        await declare(fx.orgA, fx.alice, fx.apiA, { title: `Incident ${number}` });
+        await declare(fx.orgA, fx.alice, fx.apiA, {
+          title: `Incident ${number}`,
+        });
       }
 
       expect((await startAs(fx.orgA, fx.dave, 1)).status).toBe(200);
@@ -1538,7 +1616,9 @@ describe('incidents (integration)', () => {
         await resolvedAfter(new Date(Date.now() - 120 * DAY), 100 * HOUR, {
           severity: 'SEV2',
         });
-        await at(new Date(Date.now() - DAY).toISOString(), { severity: 'SEV2' });
+        await at(new Date(Date.now() - DAY).toISOString(), {
+          severity: 'SEV2',
+        });
         await resolvedAfter(twoDaysAgo, 100 * HOUR, {
           severity: 'SEV2',
           organizationId: fx.orgB,
@@ -1600,7 +1680,6 @@ describe('incidents (integration)', () => {
         organizationId: fx.orgB,
         resolvedAt: '2026-09-16T08:00:00Z',
       });
-
 
       const body = await summary('2026-09-13', '2026-09-19');
 
@@ -1747,9 +1826,17 @@ describe('incidents (integration)', () => {
           toValue: 'INVESTIGATING',
         },
         { type: 'UPDATE', at: '2026-09-15T10:00:00Z' },
-        { type: 'SEVERITY_CHANGED', at: '2026-09-15T10:30:00Z', toValue: 'SEV1' },
+        {
+          type: 'SEVERITY_CHANGED',
+          at: '2026-09-15T10:30:00Z',
+          toValue: 'SEV1',
+        },
         { type: 'RESPONSE_COMPLETED', at: '2026-09-15T11:00:00Z' },
-        { type: 'STATUS_CHANGED', at: '2026-09-15T11:30:00Z', toValue: 'RESOLVED' },
+        {
+          type: 'STATUS_CHANGED',
+          at: '2026-09-15T11:30:00Z',
+          toValue: 'RESOLVED',
+        },
       ]);
 
       const body = await activity('2026-09-15', '2026-09-15');
@@ -2229,7 +2316,9 @@ describe('incidents (integration)', () => {
 
     it('should count only the three acts of responding, each to their own author', async () => {
       for (let number = 1; number <= 3; number += 1) {
-        await declare(fx.orgA, fx.alice, fx.apiA, { title: `Incident ${number}` });
+        await declare(fx.orgA, fx.alice, fx.apiA, {
+          title: `Incident ${number}`,
+        });
       }
 
       // Dave, on Payments, works incident 1 from end to end.
@@ -2437,19 +2526,9 @@ describe('incidents (integration)', () => {
       const expected = { status: 404, code: 'MEMBERSHIP_NOT_FOUND' };
 
       // Carol's membership in B, asked for in A.
-      const foreign = await activityOf(
-        fx.orgA,
-        fx.carolInB,
-        fx.alice,
-        period,
-      );
+      const foreign = await activityOf(fx.orgA, fx.carolInB, fx.alice, period);
       // Well formed, and nobody's.
-      const missing = await activityOf(
-        fx.orgA,
-        randomUUID(),
-        fx.alice,
-        period,
-      );
+      const missing = await activityOf(fx.orgA, randomUUID(), fx.alice, period);
       // Not an id at all.
       const malformed = await activityOf(
         fx.orgA,
@@ -2783,8 +2862,14 @@ describe('incidents (integration)', () => {
       await completeAs(fx.orgA, fx.dave, 1);
 
       const responses = await Promise.all([
-        call('patch', path, fx.alice, { status: 'RESOLVED', resolution: 'Rolled back.' }),
-        call('patch', path, fx.carol, { status: 'RESOLVED', resolution: 'Rolled back.' }),
+        call('patch', path, fx.alice, {
+          status: 'RESOLVED',
+          resolution: 'Rolled back.',
+        }),
+        call('patch', path, fx.carol, {
+          status: 'RESOLVED',
+          resolution: 'Rolled back.',
+        }),
       ]);
       const statuses = responses.map((response) => response.status).sort();
 
@@ -3173,7 +3258,10 @@ describe('incidents (integration)', () => {
       expect((await post(fx.orgA, fx.dave, 'Handing over.')).status).toBe(201);
       await completeAs(fx.orgA, fx.erin, 1);
       expectCode(
-        await call('patch', path(fx.orgA), fx.alice, { status: 'RESOLVED', resolution: 'Rolled back.' }),
+        await call('patch', path(fx.orgA), fx.alice, {
+          status: 'RESOLVED',
+          resolution: 'Rolled back.',
+        }),
         409,
         'RESPONDERS_STILL_INVESTIGATING',
       );
@@ -4144,11 +4232,7 @@ describe('incidents (integration)', () => {
       'should refuse a member 403 PERMISSION_DENIED for %s',
       async (path) => {
         expectCode(
-          await call(
-            'get',
-            `${fx.orgA}/incidents/${path}?${PERIOD}`,
-            fx.dave,
-          ),
+          await call('get', `${fx.orgA}/incidents/${path}?${PERIOD}`, fx.dave),
           403,
           'PERMISSION_DENIED',
         );
@@ -4177,11 +4261,7 @@ describe('incidents (integration)', () => {
       // Bob belongs to orgB alone. He is not told these routes exist.
       for (const path of paths) {
         expectCode(
-          await call(
-            'get',
-            `${fx.orgA}/incidents/${path}?${PERIOD}`,
-            fx.bob,
-          ),
+          await call('get', `${fx.orgA}/incidents/${path}?${PERIOD}`, fx.bob),
           404,
           'ORGANIZATION_NOT_FOUND',
         );

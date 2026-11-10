@@ -18,10 +18,7 @@ import { organizationNotFound } from '../tenancy/tenancy.errors.js';
 import { isResourceId } from '../tenancy/tenancy.schemas.js';
 import { buildActivityCalendar } from './incidents.activity.js';
 import { classifyAttention, readyToResolve } from './incidents.attention.js';
-import {
-  buildOccurrence,
-  occurrenceWindows,
-} from './incidents.occurrence.js';
+import { buildOccurrence, occurrenceWindows } from './incidents.occurrence.js';
 import type { InstantRange } from './incidents.occurrence.js';
 import {
   mayReadMemberHistory,
@@ -58,6 +55,7 @@ import {
   toIncidentAttentionResponse,
   toIncidentDetailResponse,
   toIncidentOccurrenceResponse,
+  toIncidentListItemResponse,
   toIncidentResponse,
   toIncidentSummaryResponse,
   toMemberActivityResponse,
@@ -100,8 +98,7 @@ export const RESPONSE_PAGE_SIZE = 20;
 export const HISTORY_PREVIEW_LIMIT = 10;
 
 /** A LIKE pattern matching `text` literally: Postgres escapes with `\`. */
-const escapeLike = (text: string): string =>
-  text.replace(/[\\%_]/g, '\\$&');
+const escapeLike = (text: string): string => text.replace(/[\\%_]/g, '\\$&');
 
 /**
  * The list filters, as conditions on an incident. Each is an equality on a
@@ -115,25 +112,45 @@ const escapeLike = (text: string): string =>
  * means those four characters. It sits under AND, so it never meets the
  * active list's cursor OR.
  */
-const listFilters = (
-  query: ListIncidentsQuery,
-): Prisma.IncidentWhereInput => {
+const listFilters = (query: ListIncidentsQuery): Prisma.IncidentWhereInput => {
   const number = query.q ? searchedIncidentNumber(query.q) : undefined;
+
+  // Each condition its own entry under AND, so none can displace the
+  // state's own status — a resolved list asked for unclaimed ones is empty.
+  const and: Prisma.IncidentWhereInput[] = [
+    ...(query.response === 'unclaimed'
+      ? [{ status: 'DECLARED' as const }]
+      : []),
+    ...(query.response === 'ready'
+      ? [
+          {
+            status: 'INVESTIGATING' as const,
+            responders: { none: { status: 'INVESTIGATING' as const } },
+          },
+        ]
+      : []),
+    ...(query.q
+      ? [
+          {
+            OR: [
+              {
+                title: {
+                  contains: escapeLike(query.q),
+                  mode: 'insensitive' as const,
+                },
+              },
+              ...(number !== undefined ? [{ number }] : []),
+            ],
+          },
+        ]
+      : []),
+  ];
 
   return {
     ...(query.severity && { severity: query.severity }),
     ...(query.serviceId && { serviceId: query.serviceId }),
     ...(query.teamId && { teamId: query.teamId }),
-    ...(query.q && {
-      AND: [
-        {
-          OR: [
-            { title: { contains: escapeLike(query.q), mode: 'insensitive' } },
-            ...(number !== undefined ? [{ number }] : []),
-          ],
-        },
-      ],
-    }),
+    ...(and.length > 0 && { AND: and }),
   };
 };
 
@@ -232,6 +249,22 @@ const incidentSelection = {
   team: { select: { id: true, name: true, slug: true } },
   createdBy: { select: { id: true, name: true } },
 } as const;
+
+/**
+ * Columns a list item is built from: the incident's, its responders'
+ * statuses to count, and its latest update's time — two small joins, never
+ * the responders themselves.
+ */
+const incidentListSelection = {
+  ...incidentSelection,
+  responders: { select: { status: true } },
+  activity: {
+    where: { type: 'UPDATE' },
+    orderBy: { createdAt: 'desc' },
+    take: 1,
+    select: { createdAt: true },
+  },
+} as const satisfies Prisma.IncidentSelect;
 
 /** Responders in the order they started; UUIDv7 ids break a tie. */
 const responderOrder: Prisma.IncidentResponderOrderByWithRelationInput[] = [
@@ -465,7 +498,7 @@ export class IncidentsService {
             ],
           }),
         }),
-        select: incidentSelection,
+        select: incidentListSelection,
         orderBy: [{ severity: 'asc' }, { number: 'asc' }],
         take: INCIDENT_PAGE_SIZE + 1,
       });
@@ -481,7 +514,7 @@ export class IncidentsService {
           ...filters,
           ...(before !== undefined && { number: { lt: before } }),
         }),
-        select: incidentSelection,
+        select: incidentListSelection,
         orderBy: { number: 'desc' },
         take: INCIDENT_PAGE_SIZE + 1,
       });
@@ -492,7 +525,7 @@ export class IncidentsService {
     const last = items.at(-1);
 
     return {
-      items: items.map(toIncidentResponse),
+      items: items.map(toIncidentListItemResponse),
       page: {
         cursor:
           hasMore && last
@@ -550,9 +583,7 @@ export class IncidentsService {
       throw membershipNotFound();
     }
 
-    const after = query.cursor
-      ? decodeResponseCursor(query.cursor)
-      : undefined;
+    const after = query.cursor ? decodeResponseCursor(query.cursor) : undefined;
 
     const rows = await this.prisma.incidentResponder.findMany({
       where: {
@@ -671,6 +702,7 @@ export class IncidentsService {
           },
           select: {
             membershipId: true,
+            incidentId: true,
             incident: { select: { teamId: true } },
           },
         }),

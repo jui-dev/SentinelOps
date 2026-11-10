@@ -124,7 +124,9 @@ const periodDays = ({ from, to }: { from: string; to: string }): number =>
  *
  * The filters narrow either list further, and combine: one severity, one
  * affected service, one responsible team, and `q` — words from the title, or
- * an incident's number, as `42` or `INC-42`. A blank `q` is no search. A
+ * an incident's number, as `42` or `INC-42`. A blank `q` is no search.
+ * `response` narrows by where the response stands: `unclaimed`, no one has
+ * started (DECLARED); `ready`, investigating, and no one still is. A
  * service or team this organization lacks is a filter nothing matches, not
  * an error. A cursor belongs to the filters it was issued under; the client
  * sends the same ones with it.
@@ -138,6 +140,7 @@ export const listIncidentsQuerySchema = z
     severity: incidentSeveritySchema.optional(),
     serviceId: resourceIdSchema.optional(),
     teamId: resourceIdSchema.optional(),
+    response: z.enum(['unclaimed', 'ready']).optional(),
     q: z
       .string()
       .trim()
@@ -256,9 +259,7 @@ export type PostIncidentUpdateRequest = z.infer<
 >;
 export type ListIncidentsQuery = z.infer<typeof listIncidentsQuerySchema>;
 export type IncidentSummaryQuery = z.infer<typeof incidentSummaryQuerySchema>;
-export type IncidentActivityQuery = z.infer<
-  typeof incidentActivityQuerySchema
->;
+export type IncidentActivityQuery = z.infer<typeof incidentActivityQuerySchema>;
 export type IncidentOccurrenceQuery = z.infer<
   typeof incidentOccurrenceQuerySchema
 >;
