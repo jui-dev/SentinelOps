@@ -113,6 +113,17 @@ const periodDays = ({ from, to }: { from: string; to: string }): number =>
   (startOfUtcDay(to).getTime() - startOfUtcDay(from).getTime()) / DAY_MS + 1;
 
 /**
+ * Words from a title, or an incident's number, as `42` or `INC-42`. Trimmed;
+ * a blank search is no search.
+ */
+const searchSchema = z
+  .string()
+  .trim()
+  .max(200)
+  .transform((value) => (value === '' ? undefined : value))
+  .optional();
+
+/**
  * Which incidents to list. `state` is required: active and resolved
  * incidents are different questions, ordered differently. The cursor is
  * opaque here and decoded by the service, which knows each state's shape.
@@ -141,12 +152,7 @@ export const listIncidentsQuerySchema = z
     serviceId: resourceIdSchema.optional(),
     teamId: resourceIdSchema.optional(),
     response: z.enum(['unclaimed', 'ready']).optional(),
-    q: z
-      .string()
-      .trim()
-      .max(200)
-      .transform((value) => (value === '' ? undefined : value))
-      .optional(),
+    q: searchSchema,
   })
   .refine(({ from, to }) => (from === undefined) === (to === undefined), {
     message: 'Give both ends of a period, or neither',
@@ -196,6 +202,34 @@ export const incidentSummaryQuerySchema = z
  * days it means to draw, and the API answers in days.
  */
 export const incidentActivityQuerySchema = incidentSummaryQuerySchema;
+
+/**
+ * Which part of a period's history to page through: the summary's whole UTC
+ * days, both required, with the same limits.
+ *
+ * The filters combine: one severity, `q` as the lists take it, and `show` —
+ * `open`, the incidents not yet resolved; `resolved`, those resolved in the
+ * period. Without `show`, every incident something happened to in the
+ * period. A cursor belongs to the period and filters it was issued under;
+ * the client sends the same ones with it.
+ */
+export const incidentHistoryQuerySchema = z
+  .object({
+    from: z.iso.date(),
+    to: z.iso.date(),
+    cursor: z.string().min(1).max(64).optional(),
+    severity: incidentSeveritySchema.optional(),
+    show: z.enum(['open', 'resolved']).optional(),
+    q: searchSchema,
+  })
+  .refine(({ from, to }) => from <= to, {
+    message: 'The period must not end before it starts',
+    path: ['to'],
+  })
+  .refine(({ from, to }) => periodDays({ from, to }) <= MAX_SUMMARY_DAYS, {
+    message: `The period may cover at most ${MAX_SUMMARY_DAYS} days`,
+    path: ['to'],
+  });
 
 /**
  * The period an occurrence covers: the same whole UTC days a summary takes,
@@ -260,6 +294,7 @@ export type PostIncidentUpdateRequest = z.infer<
 export type ListIncidentsQuery = z.infer<typeof listIncidentsQuerySchema>;
 export type IncidentSummaryQuery = z.infer<typeof incidentSummaryQuerySchema>;
 export type IncidentActivityQuery = z.infer<typeof incidentActivityQuerySchema>;
+export type IncidentHistoryQuery = z.infer<typeof incidentHistoryQuerySchema>;
 export type IncidentOccurrenceQuery = z.infer<
   typeof incidentOccurrenceQuerySchema
 >;

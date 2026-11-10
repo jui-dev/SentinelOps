@@ -31,6 +31,7 @@ import type {
   IncidentActivityType,
   IncidentAttentionResponse,
   IncidentDetailResponse,
+  IncidentHistoryPage,
   IncidentOccurrenceResponse,
   IncidentPage,
   IncidentSeverity,
@@ -54,16 +55,16 @@ import {
   toIncidentActivityResponse,
   toIncidentAttentionResponse,
   toIncidentDetailResponse,
+  toIncidentHistoryItemResponse,
   toIncidentOccurrenceResponse,
   toIncidentListItemResponse,
-  toIncidentResponse,
   toIncidentSummaryResponse,
   toMemberActivityResponse,
   toMemberResponseResponse,
   toOperationalActivityResponse,
 } from './incidents.responses.js';
 import type { TypicalResolutionRow } from './incidents.responses.js';
-import { mergeHistory } from './incidents.history.js';
+import { mergeHistory, toHistoryEntry } from './incidents.history.js';
 import {
   parseIncidentNumber,
   searchedIncidentNumber,
@@ -73,6 +74,7 @@ import {
 import type {
   CreateIncidentRequest,
   IncidentActivityQuery,
+  IncidentHistoryQuery,
   IncidentOccurrenceQuery,
   IncidentSummaryQuery,
   ListIncidentsQuery,
@@ -96,6 +98,9 @@ export const RESPONSE_PAGE_SIZE = 20;
 
 /** How many of a period's incidents a summary previews. */
 export const HISTORY_PREVIEW_LIMIT = 10;
+
+/** A period's history per page. Not a client parameter. */
+export const HISTORY_PAGE_SIZE = 25;
 
 /** A LIKE pattern matching `text` literally: Postgres escapes with `\`. */
 const escapeLike = (text: string): string => text.replace(/[\\%_]/g, '\\$&');
@@ -375,6 +380,33 @@ export const decodeResolvedCursor = (cursor: string): number => {
   }
 
   return number;
+};
+
+/**
+ * Where the next page of a period's history starts: the last incident's
+ * anchor, and its number to break a tie. `2026-09-18T12:05:00.000Z~41`.
+ */
+type HistoryCursor = { at: Date; number: number };
+
+export const encodeHistoryCursor = ({ at, number }: HistoryCursor) =>
+  `${at.toISOString()}~${number}`;
+
+export const decodeHistoryCursor = (cursor: string): HistoryCursor => {
+  const [at, digits, ...rest] = cursor.split('~');
+  const moment = at === undefined ? undefined : new Date(at);
+  const number = digits === undefined ? undefined : parseIncidentNumber(digits);
+
+  if (
+    rest.length > 0 ||
+    number === undefined ||
+    moment === undefined ||
+    Number.isNaN(moment.getTime()) ||
+    moment.toISOString() !== at
+  ) {
+    throw invalidCursor();
+  }
+
+  return { at: moment, number };
 };
 
 /**
@@ -669,6 +701,7 @@ export class IncidentsService {
       bothInPeriod,
       declaredRecently,
       resolvedRecently,
+      resolution,
     ] = await this.prisma.$transaction(
       [
         this.prisma.incident.groupBy({
@@ -756,6 +789,20 @@ export class IncidentsService {
           orderBy: [{ resolvedAt: 'desc' }, { number: 'desc' }],
           take: HISTORY_PREVIEW_LIMIT,
         }),
+        // The period's median time to resolve, raw for the same reason as
+        // the typical one: a percentile has no query-builder form.
+        this.prisma.$queryRaw<{ median_ms: number | null }[]>`
+          SELECT percentile_cont(0.5) WITHIN GROUP (
+                   ORDER BY extract(epoch FROM (i.resolved_at - i.created_at)) * 1000
+                 )::float8 AS median_ms
+          FROM incidents i
+          JOIN organizations o ON o.id = i.organization_id
+          WHERE i.organization_id = ${organizationId}::uuid
+            AND o.deleted_at IS NULL
+            AND i.status = 'RESOLVED'
+            AND i.resolved_at >= ${period.gte}::timestamptz
+            AND i.resolved_at < ${period.lt}::timestamptz
+        `,
       ],
       { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
     );
@@ -769,6 +816,10 @@ export class IncidentsService {
       declared,
       resolved,
       stillOpen,
+      resolutionMedianMs:
+        resolution[0]?.median_ms == null
+          ? null
+          : Math.round(resolution[0].median_ms),
       period: { from: query.from, to: query.to },
       history: {
         // Declared plus resolved, less those that were both.
@@ -784,6 +835,121 @@ export class IncidentsService {
         ),
       },
     });
+  }
+
+  /**
+   * One page of a period's history: every incident declared or resolved in
+   * it, most recent first. Organization-wide, like the summary, and
+   * `incidents:read-all` for the same reason.
+   *
+   * An incident's place is its anchor — its resolution when that fell in
+   * the period, its declaration otherwise — with its number breaking a tie,
+   * keyset-paged on both. Raw, because the query builder cannot order by an
+   * expression; the organization is part of the predicate, and its soft
+   * deletion is checked, as in every read. The count, the order and the
+   * rows share one repeatable-read snapshot, so `total` agrees with what is
+   * listed.
+   *
+   * The filters narrow it: one severity, a search as the lists take it —
+   * `%`, `_` and the escape character taken literally — and `show`, the
+   * open incidents or those resolved in the period.
+   */
+  async history(
+    organizationId: string,
+    query: IncidentHistoryQuery,
+  ): Promise<IncidentHistoryPage> {
+    const period = summaryBounds(query);
+    const after = query.cursor ? decodeHistoryCursor(query.cursor) : undefined;
+    const number = query.q ? searchedIncidentNumber(query.q) : undefined;
+
+    const inPeriod = (column: Prisma.Sql) =>
+      Prisma.sql`(${column} >= ${period.gte}::timestamptz AND ${column} < ${period.lt}::timestamptz)`;
+    const anchor = Prisma.sql`CASE WHEN ${inPeriod(Prisma.sql`i.resolved_at`)} THEN i.resolved_at ELSE i.created_at END`;
+    const pattern = query.q ? `%${escapeLike(query.q)}%` : '';
+
+    const conditions = [
+      Prisma.sql`i.organization_id = ${organizationId}::uuid`,
+      Prisma.sql`o.deleted_at IS NULL`,
+      Prisma.sql`(${inPeriod(Prisma.sql`i.created_at`)} OR ${inPeriod(Prisma.sql`i.resolved_at`)})`,
+      ...(query.severity
+        ? [Prisma.sql`i.severity::text = ${query.severity}`]
+        : []),
+      ...(query.show === 'open' ? [Prisma.sql`i.status <> 'RESOLVED'`] : []),
+      ...(query.show === 'resolved'
+        ? [
+            Prisma.sql`i.status = 'RESOLVED'`,
+            inPeriod(Prisma.sql`i.resolved_at`),
+          ]
+        : []),
+      ...(query.q
+        ? [
+            number === undefined
+              ? Prisma.sql`i.title ILIKE ${pattern}`
+              : Prisma.sql`(i.title ILIKE ${pattern} OR i.number = ${number})`,
+          ]
+        : []),
+    ];
+    const where = Prisma.join(conditions, ' AND ');
+
+    const { total, rows, hasMore } = await this.prisma.$transaction(
+      async (tx) => {
+        const [counted] = await tx.$queryRaw<{ total: number }[]>`
+          SELECT count(*)::int AS total
+          FROM incidents i
+          JOIN organizations o ON o.id = i.organization_id
+          WHERE ${where}
+        `;
+        const ordered = await tx.$queryRaw<{ id: string }[]>`
+          SELECT i.id
+          FROM incidents i
+          JOIN organizations o ON o.id = i.organization_id
+          WHERE ${where}
+            ${
+              after
+                ? Prisma.sql`AND (${anchor}, i.number) < (${after.at}::timestamptz, ${after.number})`
+                : Prisma.empty
+            }
+          ORDER BY ${anchor} DESC, i.number DESC
+          LIMIT ${HISTORY_PAGE_SIZE + 1}
+        `;
+        const ids = ordered.slice(0, HISTORY_PAGE_SIZE).map(({ id }) => id);
+        const found = await tx.incident.findMany({
+          where: { organizationId, id: { in: ids } },
+          select: incidentSelection,
+        });
+        const byId = new Map(found.map((row) => [row.id, row]));
+
+        return {
+          total: counted?.total ?? 0,
+          rows: ids
+            .map((id) => byId.get(id))
+            .filter((row) => row !== undefined),
+          hasMore: ordered.length > HISTORY_PAGE_SIZE,
+        };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
+
+    const entries = rows.map((row) => toHistoryEntry(row, period));
+    const last = entries.at(-1);
+
+    return {
+      items: entries.map(toIncidentHistoryItemResponse),
+      total,
+      page: {
+        cursor:
+          hasMore && last
+            ? encodeHistoryCursor({
+                at:
+                  last.resolvedInPeriod && last.incident.resolvedAt
+                    ? last.incident.resolvedAt
+                    : last.incident.createdAt,
+                number: last.incident.number,
+              })
+            : null,
+        hasMore,
+      },
+    };
   }
 
   /**

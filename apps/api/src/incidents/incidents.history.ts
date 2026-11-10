@@ -29,6 +29,19 @@ const within = (moment: Date | null, period: { gte: Date; lt: Date }) =>
   moment !== null && moment >= period.gte && moment < period.lt;
 
 /**
+ * An incident as a history holds it, flagged by its own times: what of its
+ * declaration and resolution happened in the period.
+ */
+export const toHistoryEntry = <Row extends HistoryRow>(
+  incident: Row,
+  period: { gte: Date; lt: Date },
+): HistoryEntry<Row> => ({
+  incident,
+  declaredInPeriod: within(incident.createdAt, period),
+  resolvedInPeriod: within(incident.resolvedAt, period),
+});
+
+/**
  * The period's most recent `limit` incidents, from the most recently
  * declared and the most recently resolved in it.
  *
@@ -51,11 +64,7 @@ export const mergeHistory = <Row extends HistoryRow>(
   const entries = new Map<string, HistoryEntry<Row>>();
 
   for (const incident of [...declared, ...resolved]) {
-    entries.set(incident.id, {
-      incident,
-      declaredInPeriod: within(incident.createdAt, period),
-      resolvedInPeriod: within(incident.resolvedAt, period),
-    });
+    entries.set(incident.id, toHistoryEntry(incident, period));
   }
 
   return [...entries.values()]

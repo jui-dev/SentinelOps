@@ -18,6 +18,7 @@ import type {
   IncidentActivityResponse,
   IncidentAttentionResponse,
   IncidentDetailResponse,
+  IncidentHistoryPage,
   IncidentOccurrenceResponse,
   IncidentPage,
   IncidentSummaryResponse,
@@ -26,6 +27,7 @@ import type {
 import {
   createIncidentSchema,
   incidentActivityQuerySchema,
+  incidentHistoryQuerySchema,
   incidentOccurrenceQuerySchema,
   incidentSummaryQuerySchema,
   listIncidentsQuerySchema,
@@ -35,6 +37,7 @@ import {
 import type {
   CreateIncidentRequest,
   IncidentActivityQuery,
+  IncidentHistoryQuery,
   IncidentOccurrenceQuery,
   IncidentSummaryQuery,
   ListIncidentsQuery,
@@ -106,6 +109,20 @@ export class IncidentsController {
     @Query({ schema: incidentSummaryQuerySchema }) query: IncidentSummaryQuery,
   ): Promise<IncidentSummaryResponse> {
     return this.incidents.summary(membership.organizationId, query);
+  }
+
+  /**
+   * One page of a period's history: every incident declared or resolved in
+   * it, most recent first — oversight, so `incidents:read-all`. Declared
+   * before `:incidentNumber`, which would otherwise claim the path.
+   */
+  @Get('history')
+  @RequirePermission(Permission.INCIDENTS_READ_ALL)
+  history(
+    @CurrentMembership() membership: OrganizationContext,
+    @Query({ schema: incidentHistoryQuerySchema }) query: IncidentHistoryQuery,
+  ): Promise<IncidentHistoryPage> {
+    return this.incidents.history(membership.organizationId, query);
   }
 
   /**

@@ -10,9 +10,11 @@ import { IncidentsErrorCode } from './incidents.errors.js';
 import { incidentReadScope } from './incidents.scope.js';
 import {
   decodeActiveCursor,
+  decodeHistoryCursor,
   decodeResolvedCursor,
   decodeResponseCursor,
   encodeActiveCursor,
+  encodeHistoryCursor,
   encodeResponseCursor,
   INCIDENT_PAGE_SIZE,
   IncidentsService,
@@ -1583,6 +1585,29 @@ describe('IncidentsService', () => {
         response,
       );
     });
+
+    it('should round-trip a history cursor', () => {
+      const last = { at: new Date('2026-09-18T12:05:00.000Z'), number: 41 };
+
+      expect(encodeHistoryCursor(last)).toBe('2026-09-18T12:05:00.000Z~41');
+      expect(decodeHistoryCursor(encodeHistoryCursor(last))).toEqual(last);
+    });
+
+    it.each([
+      '2026-09-18T12:05:00.000Z',
+      '2026-09-18T12:05:00.000Z~0',
+      '2026-09-18T12:05:00.000Z~041',
+      'yesterday~41',
+      '2026-09-18~41',
+      '2026-09-18T12:05:00.000Z~41~x',
+    ])(
+      'should refuse the history cursor %j with 400 INVALID_CURSOR',
+      (cursor) => {
+        expect(() => decodeHistoryCursor(cursor)).toThrow(
+          expect.objectContaining({ status: 400 }),
+        );
+      },
+    );
 
     it.each([
       '2026-09-18T12:05:00.000Z',

@@ -27,6 +27,7 @@ import type {
   MemberResponseResponse,
   SeverityCounts,
   TypicalResolutionResponse,
+  IncidentHistoryItemResponse,
 } from './incidents.contract.js';
 
 /**
@@ -470,6 +471,17 @@ const countResponders = (
  * rather than in SQL, so the distinctness is tested with the rest of the
  * shaping.
  */
+/** One incident in a period's history, as a response. */
+export const toIncidentHistoryItemResponse = (item: {
+  incident: IncidentRow;
+  declaredInPeriod: boolean;
+  resolvedInPeriod: boolean;
+}): IncidentHistoryItemResponse => ({
+  incident: toIncidentResponse(item.incident),
+  declaredInPeriod: item.declaredInPeriod,
+  resolvedInPeriod: item.resolvedInPeriod,
+});
+
 export const toIncidentSummaryResponse = ({
   active,
   services,
@@ -479,6 +491,7 @@ export const toIncidentSummaryResponse = ({
   declared,
   resolved,
   stillOpen,
+  resolutionMedianMs,
   period,
   history,
 }: {
@@ -493,6 +506,7 @@ export const toIncidentSummaryResponse = ({
   declared: readonly SeverityCountRow[];
   resolved: number;
   stillOpen: number;
+  resolutionMedianMs: number | null;
   period: { from: string; to: string };
   history: {
     total: number;
@@ -562,13 +576,10 @@ export const toIncidentSummaryResponse = ({
       declaredBySeverity,
       resolved,
       stillOpen,
+      resolutionMedianMs,
       history: {
         total: history.total,
-        items: history.items.map((item) => ({
-          incident: toIncidentResponse(item.incident),
-          declaredInPeriod: item.declaredInPeriod,
-          resolvedInPeriod: item.resolvedInPeriod,
-        })),
+        items: history.items.map(toIncidentHistoryItemResponse),
       },
     },
   };

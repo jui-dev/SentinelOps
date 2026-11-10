@@ -214,6 +214,7 @@ describe('incident responses', () => {
       declared: [],
       resolved: 0,
       stillOpen: 0,
+      resolutionMedianMs: null,
       period: { from: '2026-09-13', to: '2026-09-19' },
       history: { total: 0, items: [] },
     };
@@ -253,6 +254,7 @@ describe('incident responses', () => {
       declared: [{ severity: 'SEV1', _count: { _all: 4 } }],
       resolved: 3,
       stillOpen: 1,
+      resolutionMedianMs: 5_400_000,
       period: { from: '2026-09-13', to: '2026-09-19' },
       history: {
         total: 5,
@@ -277,6 +279,7 @@ describe('incident responses', () => {
         declaredBySeverity: { SEV1: 4, SEV2: 0, SEV3: 0, SEV4: 0 },
         resolved: 3,
         stillOpen: 1,
+        resolutionMedianMs: 5_400_000,
       });
       expect(summary.period.history).toEqual({
         total: 5,

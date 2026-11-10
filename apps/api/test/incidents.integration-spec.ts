@@ -10,6 +10,7 @@ import { PrismaService } from './../src/database/prisma.service.js';
 import type { Prisma } from './../src/generated/prisma/client.js';
 import {
   declaredPerUtcDay,
+  HISTORY_PAGE_SIZE,
   HISTORY_PREVIEW_LIMIT,
   INCIDENT_PAGE_SIZE,
   IncidentsService,
@@ -1703,6 +1704,174 @@ describe('incidents (integration)', () => {
         [3, true, true],
         [2, true, false],
       ]);
+    });
+
+    it('should give the median time to resolve what was resolved in the period, whenever declared', async () => {
+      const HOUR = 3_600_000;
+      const resolvedAfter = (resolvedAt: string, hours: number) =>
+        at(new Date(Date.parse(resolvedAt) - hours * HOUR).toISOString(), {
+          resolvedAt,
+        });
+
+      // Resolved in the period: 1h, 3h, and 30h, declared before it.
+      await resolvedAfter('2026-09-14T10:00:00Z', 1);
+      await resolvedAfter('2026-09-15T10:00:00Z', 3);
+      await resolvedAfter('2026-09-13T06:00:00Z', 30);
+      // Resolved after it: not counted, however long it took.
+      await resolvedAfter('2026-09-20T10:00:00Z', 100);
+
+      expect(
+        (await summary('2026-09-13', '2026-09-19')).period.resolutionMedianMs,
+      ).toBe(3 * HOUR);
+      // None resolved: no median, rather than 0.
+      expect(
+        (await summary('2026-08-01', '2026-08-07')).period.resolutionMedianMs,
+      ).toBeNull();
+    });
+
+    describe('paged history', () => {
+      type HistoryBody = {
+        items: {
+          incident: { number: number };
+          declaredInPeriod: boolean;
+          resolvedInPeriod: boolean;
+        }[];
+        total: number;
+        page: { cursor: string | null; hasMore: boolean };
+      };
+
+      const page = async (query: string, caller = fx.alice) =>
+        call('get', `${fx.orgA}/incidents/history?${query}`, caller);
+
+      const rows = (body: HistoryBody) =>
+        body.items.map((item) => [
+          item.incident.number,
+          item.declaredInPeriod,
+          item.resolvedInPeriod,
+        ]);
+
+      const numbers = async (query: string) =>
+        ((await page(query)).body as HistoryBody).items.map(
+          (item) => item.incident.number,
+        );
+
+      it('should list every incident declared or resolved in the period, by what happened last, once each', async () => {
+        // 1: declared and resolved in the day.
+        await at('2026-09-19T09:15:00Z', {
+          resolvedAt: '2026-09-19T23:59:00Z',
+        });
+        // 2: declared in the day, still running.
+        await at('2026-09-19T09:45:00Z', { severity: 'SEV1' });
+        // 3: declared before the day, resolved in it.
+        await at('2026-09-01T12:00:00Z', {
+          resolvedAt: '2026-09-19T09:30:00Z',
+        });
+        // 4: declared before the day and resolved after it — no part of it.
+        await at('2026-09-01T12:00:00Z', {
+          resolvedAt: '2026-09-20T09:30:00Z',
+        });
+        // Another organization's, in the same day.
+        await at('2026-09-19T10:00:00Z', { organizationId: fx.orgB });
+
+        const response = await page('from=2026-09-19&to=2026-09-19');
+
+        expect(response.status).toBe(200);
+        expect(response.body.total).toBe(3);
+        expect(response.body.page).toEqual({ cursor: null, hasMore: false });
+        expect(rows(response.body)).toEqual([
+          [1, true, true],
+          [2, true, false],
+          [3, false, true],
+        ]);
+      });
+
+      it('should page past the summary preview by the cursor it gives, with the same total on every page', async () => {
+        const count = HISTORY_PAGE_SIZE + 5;
+        // Each declared an hour apart, but 5 and 6 at the same instant:
+        // they fall either side of the page boundary, where only the number
+        // breaks the tie.
+        for (let index = 0; index < count; index += 1) {
+          const hour = index === 5 ? 4 : index;
+          await at(
+            new Date(
+              Date.parse('2026-09-14T00:00:00Z') + hour * 3_600_000,
+            ).toISOString(),
+          );
+        }
+
+        const first = await page('from=2026-09-13&to=2026-09-19');
+
+        expect(first.status).toBe(200);
+        expect(first.body.total).toBe(count);
+        expect(first.body.items).toHaveLength(HISTORY_PAGE_SIZE);
+        expect(first.body.page.hasMore).toBe(true);
+
+        const second = await page(
+          `from=2026-09-13&to=2026-09-19&cursor=${encodeURIComponent(first.body.page.cursor)}`,
+        );
+
+        expect(second.body.total).toBe(count);
+        expect(second.body.page).toEqual({ cursor: null, hasMore: false });
+
+        const listed = [
+          ...(first.body as HistoryBody).items,
+          ...(second.body as HistoryBody).items,
+        ].map((item) => item.incident.number);
+
+        // Newest first, every incident once.
+        expect(listed).toEqual(
+          Array.from({ length: count }, (_, index) => count - index),
+        );
+      });
+
+      it('should narrow by severity, search, and whether it is open or was resolved', async () => {
+        // 1: resolved in the period.
+        await at('2026-09-14T08:00:00Z', {
+          resolvedAt: '2026-09-14T10:00:00Z',
+          severity: 'SEV1',
+        });
+        // 2: open.
+        await at('2026-09-15T08:00:00Z', { severity: 'SEV3' });
+        // 3: declared in the period, resolved after it — not open, and not
+        // resolved in the period.
+        await at('2026-09-16T08:00:00Z', {
+          resolvedAt: '2026-09-25T08:00:00Z',
+          severity: 'SEV1',
+        });
+        await prisma.incident.updateMany({
+          where: { organizationId: fx.orgA, number: 2 },
+          data: { title: 'Checkout 100% down' },
+        });
+
+        const period = 'from=2026-09-13&to=2026-09-19';
+
+        expect(await numbers(`${period}&severity=SEV1`)).toEqual([3, 1]);
+        expect(await numbers(`${period}&show=open`)).toEqual([2]);
+        expect(await numbers(`${period}&show=resolved`)).toEqual([1]);
+        // The search: words, taken literally, or a number.
+        expect(await numbers(`${period}&q=checkout`)).toEqual([2]);
+        expect(
+          await numbers(`${period}&q=${encodeURIComponent('100%')}`),
+        ).toEqual([2]);
+        expect(
+          await numbers(`${period}&q=${encodeURIComponent('1_0')}`),
+        ).toEqual([]);
+        expect(await numbers(`${period}&q=INC-3`)).toEqual([3]);
+
+        const narrowed = await page(`${period}&severity=SEV1&show=resolved`);
+
+        expect(narrowed.body.total).toBe(1);
+      });
+
+      it('should refuse a member, a broken cursor, and a period it cannot answer', async () => {
+        const period = 'from=2026-09-13&to=2026-09-19';
+
+        expect((await page(period, fx.dave)).status).toBe(403);
+        expect((await page(`${period}&cursor=nonsense`)).status).toBe(400);
+        expect((await page('from=2026-09-19&to=2026-09-13')).status).toBe(400);
+        expect((await page('from=2026-09-13')).status).toBe(400);
+        expect((await page(`${period}&show=everything`)).status).toBe(400);
+      });
     });
   });
 

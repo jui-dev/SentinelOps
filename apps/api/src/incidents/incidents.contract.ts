@@ -255,6 +255,12 @@ export interface IncidentSummaryResponse {
     declaredBySeverity: SeverityCounts;
     resolved: number;
     stillOpen: number;
+    /**
+     * The median time from declaration to resolution of the incidents
+     * resolved in the period, whenever they were declared; null when none
+     * was. Every resolution counts, however few: `resolved` says how many.
+     */
+    resolutionMedianMs: number | null;
     history: {
       total: number;
       items: IncidentHistoryItemResponse[];
@@ -506,6 +512,21 @@ export interface MemberActivityResponse {
 export interface IncidentListItemResponse extends IncidentResponse {
   response: { investigating: number; completed: number };
   lastUpdateAt: string | null;
+}
+
+/**
+ * `GET .../incidents/history`: one page of a period's history, every
+ * incident declared or resolved in it, most recent first — each placed at
+ * its resolution when that fell in the period, and its declaration
+ * otherwise. `total` counts every incident the filters match, on every page.
+ */
+export interface IncidentHistoryPage {
+  items: IncidentHistoryItemResponse[];
+  total: number;
+  page: {
+    cursor: string | null;
+    hasMore: boolean;
+  };
 }
 
 export interface IncidentPage {
