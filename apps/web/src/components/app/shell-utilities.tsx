@@ -7,7 +7,9 @@ import {
   Moon,
   Sun,
   User,
+  UserRound,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 
 import { stripIconButtonClasses } from "@/components/app/strip-button";
@@ -23,6 +25,7 @@ import {
 import { useMinuteClock } from "@/components/ui/timestamp";
 import { useRouteMembership } from "@/components/organizations/organization-scope";
 import { formatRole } from "@/components/organizations/format";
+import { memberHref } from "@/components/organizations/member-paths";
 import { useCurrentUser, useSession } from "@/lib/auth/session-provider";
 import { setThemePreference, useThemePreference } from "@/lib/theme/theme";
 import type { ThemePreference } from "@/lib/theme/theme";
@@ -139,8 +142,13 @@ export function initialsOf(name: string): string {
   ).toUpperCase();
 }
 
-/** Who is signed in, in what capacity here, and the way out. */
+/**
+ * Who is signed in, in what capacity here, the way to their own page, and
+ * the way out. Their page is their membership's, so it is offered only
+ * inside an organization: outside one there is no "you here" to open.
+ */
 export function AccountMenu() {
+  const router = useRouter();
   const { logout } = useSession();
   const me = useCurrentUser();
   const membership = useRouteMembership();
@@ -205,6 +213,16 @@ export function AccountMenu() {
           </MenuSection>
           <MenuSeparator />
         </>
+      )}
+      {membership && (
+        <MenuItem
+          icon={UserRound}
+          onSelect={() =>
+            router.push(memberHref(membership.organization.slug, membership.id))
+          }
+        >
+          Your profile
+        </MenuItem>
       )}
       <MenuItem icon={LogOut} onSelect={() => void onLogout()}>
         Log out

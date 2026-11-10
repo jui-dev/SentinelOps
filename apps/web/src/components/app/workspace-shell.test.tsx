@@ -475,6 +475,31 @@ describe("WorkspaceShell", () => {
 
       expect(menu.textContent).toContain("ada@example.com");
       expect(menu.textContent).not.toContain("Admin");
+      // No organization, so no membership of theirs to open.
+      expect(within(menu).queryByRole("menuitem", { name: "Your profile" })).toBeNull();
+    });
+
+    it("opens their own member page from the account menu", async () => {
+      const user = userEvent.setup();
+
+      at("/orgs/acme-ops", "acme-ops");
+      api();
+
+      renderShell();
+
+      await user.click(
+        await screen.findByRole("button", { name: "Account: Ada Lovelace" }),
+      );
+      await user.click(
+        within(screen.getByRole("menu", { name: "Account" })).getByRole("menuitem", {
+          name: "Your profile",
+        }),
+      );
+
+      expect(screen.queryByRole("menu")).toBeNull();
+      expect(navigation.push).toHaveBeenCalledWith(
+        "/orgs/acme-ops/members/0199a1b2-c3d4-7000-8000-0000000000aa",
+      );
     });
 
     it("offers the organization's notifications from the bell, and none outside it", async () => {
