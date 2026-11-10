@@ -1,0 +1,452 @@
+"use client";
+
+import { Search } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
+import type { FormEvent } from "react";
+
+import { useOrganization } from "@/components/organizations/organization-scope";
+import { useTeams } from "@/components/teams/team-scope";
+import { ErrorAlert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { cx } from "@/components/ui/cx";
+import { EmptyNote } from "@/components/ui/empty-state";
+import { PageBody, PageHeader } from "@/components/ui/page";
+import { Spinner } from "@/components/ui/spinner";
+import type {
+  IncidentPart,
+  IncidentPartCount,
+  IncidentState,
+} from "@/lib/api/contracts";
+
+import { IncidentBoard } from "./incident-board";
+import {
+  FilterChip,
+  useIncidentFilters,
+  useReplaceParams,
+} from "./incident-filters";
+import { useIncidentList, useIncidentParts } from "./incident-queries";
+import { LiveStatus } from "./live-status";
+import { SEVERITY_LEVELS, SeverityGlyph } from "./severity";
+
+/**
+ * The Incidents page as a member reads it: their teams' incidents, organised
+ * by their own part in each — what needs them, what they are investigating,
+ * what they have completed — then everything active, and what is resolved.
+ *
+ * The part is the page's first choice, held in its URL (`?view=`, needs-you
+ * when absent) like the filters beneath it: search, their own teams, and
+ * severity, each pill counting what its part holds. Nothing here acts on an
+ * incident: every row opens it, where starting, posting, and completing live.
+ *
+ * The organization-wide figures and the service and team pickers are the
+ * Admin's page; a member's teams are the only teams they need.
+ */
+
+type View = IncidentPart | "active" | "resolved";
+
+const VIEWS: readonly {
+  value: View;
+  label: string;
+  note: string;
+  tone: string;
+}[] = [
+  {
+    value: "needs-you",
+    label: "Needs you",
+    note: "your team's, not joined yet",
+    tone: "text-warning-text",
+  },
+  {
+    value: "investigating",
+    label: "You're investigating",
+    note: "post updates, then complete",
+    tone: "text-status-investigating-text",
+  },
+  {
+    value: "completed",
+    label: "You've completed",
+    note: "the Admin resolves",
+    tone: "text-status-resolved-text",
+  },
+  {
+    value: "active",
+    label: "All active",
+    note: "everything on your teams",
+    tone: "text-fg-muted",
+  },
+  {
+    value: "resolved",
+    label: "Resolved",
+    note: "your teams' history",
+    tone: "text-fg-muted",
+  },
+];
+
+const isView = (value: string): value is View =>
+  VIEWS.some((each) => each.value === value);
+
+/** What each list says when it is empty, unfiltered. */
+const EMPTY: Record<View, { title: string; body: string }> = {
+  "needs-you": {
+    title: "Nothing needs you",
+    body: "Every incident on your teams has someone on it, or is waiting to be resolved.",
+  },
+  investigating: {
+    title: "You're not investigating anything",
+    body: "Incidents you start appear here until you complete your part.",
+  },
+  completed: {
+    title: "Nothing completed and still open",
+    body: "Incidents you've finished on appear here until the Admin resolves them.",
+  },
+  active: {
+    title: "No active incidents",
+    body: "Nothing on your teams needs a response right now.",
+  },
+  resolved: {
+    title: "No resolved incidents",
+    body: "Your teams' incidents appear here once resolved, most recent first.",
+  },
+};
+
+/** Beneath a list: what its part means, so the tab is never a guess. */
+const FOOTNOTE: Partial<Record<View, string>> = {
+  "needs-you":
+    "Incidents your teams are responsible for that you haven't joined, while someone is still needed.",
+  investigating: "Post updates as you work, and complete your part when you're done.",
+  completed: "The Admin resolves an incident once no one is still investigating.",
+};
+
+/** "Payments", "Payments and Risk", "A, B, and C". */
+const nameList = (names: readonly string[]) =>
+  names.length <= 2
+    ? names.join(" and ")
+    : `${names.slice(0, -1).join(", ")}, and ${names.at(-1)}`;
+
+/** The five parts, each with its count and what it means. */
+function PartTabs({
+  view,
+  counts,
+  onChange,
+}: {
+  view: View;
+  counts: Partial<Record<View, number>>;
+  onChange: (next: View) => void;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label="Your part"
+      className="flex flex-wrap gap-3 rounded-2xl border border-line-subtle bg-linear-to-b from-rail-top to-rail-mid p-3 sm:p-4"
+    >
+      {VIEWS.map((each) => {
+        const pressed = view === each.value;
+        const count = counts[each.value];
+
+        return (
+          <button
+            key={each.value}
+            type="button"
+            aria-pressed={pressed}
+            onClick={() => onChange(each.value)}
+            className={cx(
+              "flex min-w-38 flex-1 flex-col items-start gap-0.5 rounded-lg border px-4 py-3 text-left transition-colors duration-(--duration-fast) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus sm:flex-none",
+              pressed
+                ? "border-status-resolved-line bg-status-resolved-subtle"
+                : "border-line bg-surface hover:bg-hover",
+            )}
+          >
+            <span className="text-sm font-semibold text-fg">
+              {each.label}
+              {count !== undefined && (
+                <span className={cx("numeric ml-1.5", each.tone)}>{count}</span>
+              )}
+            </span>
+            <span className="text-xs text-fg-muted">{each.note}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * Search, the member's own teams, and severity, in a bar of their own beneath
+ * the parts. Each pill counts what the chosen part holds, when it is one the
+ * counts cover; a choice applies at once, the search when it is submitted.
+ */
+function MemberFilterBar({
+  count,
+  active,
+  error,
+}: {
+  /** The chosen part's counts; none for the resolved list. */
+  count?: IncidentPartCount;
+  /** Whether any filter applies, which offers clearing them all. */
+  active: boolean;
+  error: unknown;
+}) {
+  const organization = useOrganization();
+  const searchParams = useSearchParams();
+  const teams = useTeams(organization.id);
+  const replace = useReplaceParams();
+
+  const q = searchParams.get("q") ?? "";
+  const [search, setSearch] = useState(q);
+  const [shownQ, setShownQ] = useState(q);
+
+  // The URL changed from elsewhere — cleared, or a link followed.
+  if (q !== shownQ) {
+    setShownQ(q);
+    setSearch(q);
+  }
+
+  const set = (name: "q" | "severity" | "team", value: string) =>
+    replace((params) => {
+      if (value) params.set(name, value);
+      else params.delete(name);
+    });
+
+  const onSearch = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    set("q", search.trim());
+  };
+
+  const severity = searchParams.get("severity") ?? "";
+  const team = searchParams.get("team") ?? "";
+  const ofTeam = (teamId: string) =>
+    count?.byTeam.find((each) => each.teamId === teamId)?.count ?? 0;
+  const tally = (value: number | undefined, pressed: boolean) =>
+    value === undefined ? null : (
+      <span className={cx("numeric", pressed ? "text-on-accent" : "text-fg-subtle")}>
+        {value}
+      </span>
+    );
+
+  return (
+    <div
+      role="search"
+      aria-label="Filter incidents"
+      className="flex flex-col gap-3 rounded-xl border border-line-subtle bg-rail-top p-3"
+    >
+      {error ? <ErrorAlert error={error} /> : null}
+      <div className="flex flex-wrap items-center gap-2">
+        <form onSubmit={onSearch} className="w-full sm:mr-1 sm:w-64 xl:w-72">
+          <div className="relative">
+            <label htmlFor="incident-search" className="sr-only">
+              Search
+            </label>
+            <Search
+              aria-hidden="true"
+              className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-fg-subtle"
+            />
+            <input
+              id="incident-search"
+              name="q"
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search by title or INC-42"
+              maxLength={200}
+              autoComplete="off"
+              className="h-9 w-full rounded-md border border-line-control bg-field pr-3 pl-9 text-sm text-fg placeholder:text-fg-subtle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+            />
+          </div>
+        </form>
+        {teams.data && teams.data.length > 1 && (
+          <>
+            <div role="group" aria-label="Team" className="flex flex-wrap gap-1.5">
+              <FilterChip pressed={team === ""} onClick={() => set("team", "")}>
+                All your teams {tally(count?.total, team === "")}
+              </FilterChip>
+              {teams.data.map((each) => (
+                <FilterChip
+                  key={each.id}
+                  pressed={team === each.id}
+                  onClick={() => set("team", team === each.id ? "" : each.id)}
+                >
+                  {each.name} {tally(count && ofTeam(each.id), team === each.id)}
+                </FilterChip>
+              ))}
+            </div>
+            <span aria-hidden="true" className="mx-1 hidden h-5 w-px bg-line sm:block" />
+          </>
+        )}
+        <div role="group" aria-label="Severity" className="flex flex-wrap gap-1.5">
+          <FilterChip pressed={severity === ""} onClick={() => set("severity", "")}>
+            Any severity {tally(count?.total, severity === "")}
+          </FilterChip>
+          {SEVERITY_LEVELS.map((level) => (
+            <FilterChip
+              key={level.value}
+              pressed={severity === level.value}
+              onClick={() =>
+                set("severity", severity === level.value ? "" : level.value)
+              }
+            >
+              <SeverityGlyph severity={level.value} />
+              {/* The space is for the name ("SEV1 Critical"); flex drops it. */}
+              {level.value}{" "}
+              <span className="sr-only">{level.label}</span>
+              {tally(count?.bySeverity[level.value], severity === level.value)}
+            </FilterChip>
+          ))}
+        </div>
+        {active && (
+          <span className="ml-auto">
+            <Button
+              variant="quiet"
+              size="sm"
+              onClick={() =>
+                replace((params) =>
+                  ["q", "severity", "team"].forEach((name) => params.delete(name)),
+                )
+              }
+            >
+              Clear filters
+            </Button>
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function MemberIncidentsView() {
+  const organization = useOrganization();
+  const searchParams = useSearchParams();
+  const replace = useReplaceParams();
+  const teams = useTeams(organization.id);
+  const filters = useIncidentFilters();
+  const parts = useIncidentParts(organization.id);
+
+  const asked = searchParams.get("view");
+  const view: View = asked && isView(asked) ? asked : "needs-you";
+  const state: IncidentState = view === "resolved" ? "resolved" : "active";
+  const part = view === "active" || view === "resolved" ? undefined : view;
+
+  // A member's page offers no service or response filter, and no period:
+  // taken out of the URL like any other that cannot apply here.
+  const filtersHere = {
+    ...(filters.filters.q && { q: filters.filters.q }),
+    ...(filters.filters.severity && { severity: filters.filters.severity }),
+    ...(filters.filters.teamId && { teamId: filters.filters.teamId }),
+  };
+  const list = useIncidentList(
+    organization.id,
+    state,
+    undefined,
+    { ...filtersHere, ...(part && { part }) },
+    !filters.pending,
+    true,
+  );
+
+  const drop = [
+    ...filters.invalid,
+    ...["service", "response", "from", "to"].filter((name) => searchParams.has(name)),
+    ...(asked !== null && !isView(asked) ? ["view"] : []),
+  ].join(",");
+
+  useEffect(() => {
+    if (drop) replace((params) => drop.split(",").forEach((name) => params.delete(name)));
+    // `replace` is rebuilt every render; which parameters to drop is what
+    // decides whether anything happens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drop]);
+
+  const counts: Partial<Record<View, number>> = parts.data
+    ? {
+        "needs-you": parts.data["needs-you"].total,
+        investigating: parts.data.investigating.total,
+        completed: parts.data.completed.total,
+        active: parts.data.active.total,
+      }
+    : {};
+  const filtered = Object.keys(filtersHere).length > 0;
+  const yourTeamIds = new Set(teams.data?.map(({ id }) => id));
+  const teamNames = teams.data?.map(({ name }) => name) ?? [];
+  const chosen = VIEWS.find((each) => each.value === view)!;
+
+  const incidents = list.data?.pages.flatMap((page) => page.items);
+
+  return (
+    <>
+      <PageHeader
+        width="full"
+        title="Incidents"
+        description={
+          !teams.data
+            ? "Your teams' incidents, and where your part in each stands."
+            : teamNames.length === 0
+              ? "You're on no team yet, so nothing waits on you. Incidents you responded to are still here."
+              : `Incidents on your ${teamNames.length === 1 ? "team" : "teams"}, ${nameList(teamNames)}, and where your part in each stands.`
+        }
+        actions={
+          <LiveStatus updatedAt={list.dataUpdatedAt} failed={list.isRefetchError} />
+        }
+      />
+      <PageBody width="full">
+        <div className="flex flex-col gap-4">
+          {parts.isError && <ErrorAlert error={parts.error} />}
+          <PartTabs
+            view={view}
+            counts={counts}
+            onChange={(next) =>
+              replace((params) => {
+                if (next === "needs-you") params.delete("view");
+                else params.set("view", next);
+              })
+            }
+          />
+          <MemberFilterBar
+            count={view === "resolved" ? undefined : parts.data?.[part ?? "active"]}
+            active={filtered}
+            error={filters.error ?? teams.error}
+          />
+          <section aria-label={chosen.label} className="mt-2 flex flex-col gap-3">
+            {list.isError ? (
+              <ErrorAlert error={list.error} />
+            ) : !incidents ? (
+              <Spinner label="Loading incidents…" />
+            ) : incidents.length === 0 ? (
+              filtered ? (
+                <EmptyNote title="Nothing matches">
+                  Nothing in {chosen.label} matches the filters. Clear them to see
+                  everything.
+                </EmptyNote>
+              ) : (
+                <EmptyNote title={EMPTY[view].title}>{EMPTY[view].body}</EmptyNote>
+              )
+            ) : (
+              <>
+                <IncidentBoard
+                  incidents={incidents}
+                  state={state}
+                  label={chosen.label}
+                  perspective="member"
+                  yourTeamIds={yourTeamIds}
+                />
+                {list.hasNextPage && (
+                  <div>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      disabled={list.isFetchingNextPage}
+                      onClick={() => void list.fetchNextPage()}
+                    >
+                      {list.isFetchingNextPage ? "Loading…" : "Show more"}
+                    </Button>
+                  </div>
+                )}
+              </>
+            )}
+            {FOOTNOTE[view] && incidents && incidents.length > 0 && (
+              <p className="text-xs text-fg-muted">{FOOTNOTE[view]}</p>
+            )}
+          </section>
+        </div>
+      </PageBody>
+    </>
+  );
+}

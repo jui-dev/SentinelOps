@@ -18,6 +18,7 @@ import type {
   IncidentActivityResponse,
   IncidentAnalysisResponse,
   IncidentAttentionResponse,
+  IncidentPartsResponse,
   IncidentDetailResponse,
   IncidentFilters,
   IncidentOccurrenceResponse,
@@ -275,6 +276,7 @@ export const listIncidents = (
   if (filters.serviceId) query.set("serviceId", filters.serviceId);
   if (filters.teamId) query.set("teamId", filters.teamId);
   if (filters.response) query.set("response", filters.response);
+  if (filters.part) query.set("part", filters.part);
   if (filters.q) query.set("q", filters.q);
   // Last, so a page request reads as the list's own query plus where it starts.
   if (cursor) query.set("cursor", cursor);
@@ -356,6 +358,12 @@ export const getIncidentOccurrence = (
 export const getIncidentAttention = (organizationId: string) =>
   authenticatedRequest<IncidentAttentionResponse>(
     `${incidentsPath(organizationId)}/attention`,
+  );
+
+/** The caller's active incidents counted by their own part in each. */
+export const getIncidentParts = (organizationId: string) =>
+  authenticatedRequest<IncidentPartsResponse>(
+    `${incidentsPath(organizationId)}/parts`,
   );
 
 export const getIncident = (organizationId: string, number: number) =>

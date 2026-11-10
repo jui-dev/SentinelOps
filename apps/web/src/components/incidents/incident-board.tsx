@@ -39,7 +39,14 @@ export const STALE_UPDATE_MS = 2 * 60 * 60_000;
  * (amber, while it waits on someone), ready to resolve (teal), or how many
  * are investigating and how many are done.
  */
-function ResponseCell({ incident }: { incident: IncidentListItemResponse }) {
+function ResponseCell({
+  incident,
+  showWait = false,
+}: {
+  incident: IncidentListItemResponse;
+  /** Say how long it has waited, beneath "No one yet". */
+  showWait?: boolean;
+}) {
   const { investigating, completed } = incident.response;
   const resolved = incident.status === "RESOLVED";
 
@@ -47,9 +54,16 @@ function ResponseCell({ incident }: { incident: IncidentListItemResponse }) {
     return resolved ? (
       <span className="text-fg-subtle">No one responded</span>
     ) : (
-      <span className="inline-flex items-center gap-1.5 text-warning-text">
-        <span aria-hidden="true" className="size-1.5 rounded-full bg-warning-text" />
-        No one yet
+      <span className="flex flex-col">
+        <span className="inline-flex items-center gap-1.5 text-warning-text">
+          <span aria-hidden="true" className="size-1.5 rounded-full bg-warning-text" />
+          No one yet
+        </span>
+        {showWait && (
+          <span className="data text-xs text-fg-subtle">
+            waiting <Duration from={incident.createdAt} />
+          </span>
+        )}
       </span>
     );
   }
@@ -75,12 +89,15 @@ function ResponseCell({ incident }: { incident: IncidentListItemResponse }) {
     <span className="inline-flex items-center gap-1.5 text-status-investigating-text">
       <span
         aria-hidden="true"
-        className="size-1.5 rounded-full bg-status-investigating-text"
+        className="size-1.5 shrink-0 rounded-full bg-status-investigating-text"
       />
-      {investigating} investigating
-      {completed > 0 && (
-        <span className="text-fg-subtle"> · {completed} done</span>
-      )}
+      {/* One run of words, so it wraps as words rather than as flex items. */}
+      <span>
+        {investigating} investigating
+        {completed > 0 && (
+          <span className="text-fg-subtle"> · {completed} done</span>
+        )}
+      </span>
     </span>
   );
 }
@@ -224,23 +241,87 @@ function CanRespond({ incident }: { incident: IncidentListItemResponse }) {
 }
 
 /**
+ * Whether an incident waits on the caller: their team's, active, not started
+ * by them, and still wanting someone — nobody on it yet, or someone still
+ * investigating. The API's `needs-you`, judged from one row.
+ */
+export const needsYou = (
+  incident: IncidentListItemResponse,
+  yourTeamIds: ReadonlySet<string>,
+) =>
+  incident.status !== "RESOLVED" &&
+  !incident.yourResponse &&
+  yourTeamIds.has(incident.team.id) &&
+  (incident.status === "DECLARED" || incident.response.investigating > 0);
+
+/**
+ * A member's own part in a row, beside the service and team: how long they
+ * have been investigating, or when they completed.
+ */
+function YourPart({ incident }: { incident: IncidentListItemResponse }) {
+  const now = useMinuteClock();
+  const yours = incident.yourResponse;
+
+  if (!yours) return null;
+
+  return yours.status === "INVESTIGATING" ? (
+    <span className="text-status-investigating-text">
+      {" "}
+      · you&apos;re investigating, <Duration from={yours.startedAt} />
+    </span>
+  ) : (
+    <span className="text-status-resolved-text">
+      {" "}
+      · you completed
+      {yours.completedAt &&
+        ` ${formatDuration(now.getTime() - Date.parse(yours.completedAt))} ago`}
+    </span>
+  );
+}
+
+/** What a member's row offers: to respond, to post, or to look. */
+const memberAction = (
+  incident: IncidentListItemResponse,
+  yourTeamIds: ReadonlySet<string>,
+) =>
+  needsYou(incident, yourTeamIds)
+    ? { label: "Respond", tone: "primary" as const }
+    : incident.status !== "RESOLVED" &&
+        incident.yourResponse?.status === "INVESTIGATING"
+      ? { label: "Post update", tone: "accent" as const }
+      : { label: "View", tone: "accent" as const };
+
+/**
  * The Incidents page's table: each incident with where its response stands
  * and how recently it was updated, a View action, and a row that opens in
  * place to show the latest update and who can respond — scanned, compared,
  * and only then opened. A team's or service's own page keeps the plainer
  * shared table.
+ *
+ * A member reads it as their work: no status column (the team's response
+ * says it), their own part beside the service and team, an amber edge on
+ * what nobody has started, and an action that follows their part — Respond,
+ * Post update, or View. Each only opens the incident, where those actions
+ * live.
  */
 export function IncidentBoard({
   incidents,
   state,
   label,
+  perspective = "oversight",
+  yourTeamIds = new Set(),
 }: {
   incidents: readonly IncidentListItemResponse[];
   state: IncidentState;
   label: string;
+  /** Whose reading: the whole organization's, or one member's work. */
+  perspective?: "oversight" | "member";
+  /** The member's teams, for what waits on them. */
+  yourTeamIds?: ReadonlySet<string>;
 }) {
   const organization = useOrganization();
   const active = state === "active";
+  const member = perspective === "member";
   // Any number open at once, so incidents can be compared side by side.
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const toggle = (id: string) =>
@@ -251,27 +332,35 @@ export function IncidentBoard({
 
       return next;
     });
-  const columns = 7;
+  // A member's active list has no status column: the team's response says it.
+  const showStatus = !(member && active);
+  const columns = showStatus ? 7 : 6;
 
   return (
     <Table label={label} variant="operational" stickyHeader fixed>
       <colgroup>
         <col className="w-27 sm:w-30" />
         <col />
-        <col className={cx("hidden w-34", active ? "sm:table-column" : "lg:table-column")} />
-        <col className="hidden w-40 md:table-column" />
+        {showStatus && (
+          <col className={cx("hidden w-34", active ? "sm:table-column" : "lg:table-column")} />
+        )}
+        <col className={cx("hidden md:table-column", member ? "w-44" : "w-40")} />
         <col className="hidden w-28 lg:table-column" />
         <col className="w-19 sm:w-22" />
-        <col className="w-22" />
+        <col className={member ? "w-30" : "w-22"} />
       </colgroup>
       <THead>
         <TR>
           <TH>Severity</TH>
           <TH>Incident</TH>
-          <TH className={cx("hidden", active ? "sm:table-cell" : "lg:table-cell")}>
-            {active ? "Status" : "Resolved"}
+          {showStatus && (
+            <TH className={cx("hidden", active ? "sm:table-cell" : "lg:table-cell")}>
+              {active ? "Status" : "Resolved"}
+            </TH>
+          )}
+          <TH className="hidden md:table-cell">
+            {member ? "Team response" : "Responders"}
           </TH>
-          <TH className="hidden md:table-cell">Responders</TH>
           <TH className="hidden lg:table-cell">Last update</TH>
           <TH align="end">{active ? "Open for" : "Lasted"}</TH>
           <TH align="end">Action</TH>
@@ -283,6 +372,14 @@ export function IncidentBoard({
           const key = incidentKey(incident.number);
           const peekId = `incident-peek-${incident.id}`;
           const critical = incident.severity === "SEV1";
+          // A member's eye goes first to what nobody has started.
+          const unstarted =
+            member &&
+            incident.status !== "RESOLVED" &&
+            incident.response.investigating + incident.response.completed === 0;
+          const action = member
+            ? memberAction(incident, yourTeamIds)
+            : { label: "View", tone: "accent" as const };
 
           return (
             <Fragment key={incident.id}>
@@ -298,8 +395,11 @@ export function IncidentBoard({
                 <TD
                   className={cx(
                     "relative",
-                    critical &&
-                      "before:absolute before:inset-y-1 before:left-0 before:w-[3px] before:rounded-full before:bg-signal-critical",
+                    (critical || unstarted) &&
+                      "before:absolute before:inset-y-1 before:left-0 before:w-[3px] before:rounded-full",
+                    unstarted
+                      ? "before:bg-warning-text"
+                      : critical && "before:bg-signal-critical",
                   )}
                 >
                   <div className="flex items-center gap-1.5">
@@ -332,19 +432,22 @@ export function IncidentBoard({
                   </span>
                   <span className="block truncate text-xs text-fg-muted">
                     {incident.service.name} · {incident.team.name}
+                    {member && <YourPart incident={incident} />}
                   </span>
                 </TD>
-                <TD className={cx("hidden", active ? "sm:table-cell" : "lg:table-cell")}>
-                  {active ? (
-                    <StatusMark status={incident.status} />
-                  ) : (
-                    <span className="data text-fg-muted">
-                      {incident.resolvedAt && <IsoDate value={incident.resolvedAt} />}
-                    </span>
-                  )}
-                </TD>
+                {showStatus && (
+                  <TD className={cx("hidden", active ? "sm:table-cell" : "lg:table-cell")}>
+                    {active ? (
+                      <StatusMark status={incident.status} />
+                    ) : (
+                      <span className="data text-fg-muted">
+                        {incident.resolvedAt && <IsoDate value={incident.resolvedAt} />}
+                      </span>
+                    )}
+                  </TD>
+                )}
                 <TD className="hidden text-sm md:table-cell">
-                  <ResponseCell incident={incident} />
+                  <ResponseCell incident={incident} showWait={member} />
                 </TD>
                 <TD className="hidden text-sm lg:table-cell">
                   <LastUpdateCell incident={incident} />
@@ -362,10 +465,10 @@ export function IncidentBoard({
                   <div className="flex justify-end">
                     <Link
                       href={incidentHref(organization.slug, incident.number)}
-                      aria-label={`View ${key}`}
-                      className={rowActionClasses("accent")}
+                      aria-label={`${action.label} ${key}`}
+                      className={rowActionClasses(action.tone)}
                     >
-                      View
+                      {action.label}
                       <ChevronRight aria-hidden="true" strokeWidth={2} className="size-3.5" />
                     </Link>
                   </div>

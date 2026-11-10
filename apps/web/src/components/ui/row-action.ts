@@ -6,9 +6,12 @@ import { cx } from "./cx";
  * actions without competing with the page's primary button. Each tone
  * keeps an action told apart from its neighbours.
  */
-export type RowActionTone = "accent" | "info" | "danger";
+export type RowActionTone = "primary" | "accent" | "info" | "danger";
 
 const TONES: Record<RowActionTone, string> = {
+  // The one row action that is the row's point: solid, as a primary button.
+  primary:
+    "border-accent-rim bg-accent text-on-accent hover:bg-accent-hover",
   accent:
     "border-accent-line bg-accent-subtle text-accent-text hover:border-accent-rim",
   info: "border-info-line bg-info-subtle text-info-text hover:border-info-solid",

@@ -595,6 +595,38 @@ const signedIn = (permissions: string[]) =>
           ],
           page: { cursor: null, hasMore: false },
         });
+      // A member's page opens on what needs them, counted by part.
+      case `GET ${base}/incidents?state=active&part=needs-you`:
+        return jsonResponse(200, {
+          items: [
+            {
+              ...majorIncident,
+              response: { investigating: 0, completed: 0 },
+              lastUpdateAt: null,
+              yourResponse: null,
+            },
+          ],
+          page: { cursor: null, hasMore: false },
+        });
+      case `GET ${base}/incidents/parts`: {
+        const none = {
+          total: 0,
+          byTeam: [],
+          bySeverity: { SEV1: 0, SEV2: 0, SEV3: 0, SEV4: 0 },
+        };
+        const one = {
+          total: 1,
+          byTeam: [{ teamId: majorIncident.team.id, count: 1 }],
+          bySeverity: { ...none.bySeverity, [majorIncident.severity]: 1 },
+        };
+
+        return jsonResponse(200, {
+          "needs-you": one,
+          investigating: none,
+          completed: none,
+          active: one,
+        });
+      }
       case `GET ${base}/incidents?state=resolved`:
         return jsonResponse(200, {
           items: [
@@ -1017,6 +1049,15 @@ it("Services, with a row opened", async () => {      signedIn(ADMIN);      const
       await screen.findByRole("table", { name: "Active incidents" });
       (await screen.findByRole("button", { name: "Declare incident" })).click();
       await screen.findByLabelText("Affected service");
+      await expectNoAxeViolations(container);
+    });
+
+    it("Incidents, as a member", async () => {
+      signedIn(MEMBER);
+      const { container } = inWorkspace(<IncidentsView />);
+
+      await screen.findByRole("table", { name: "Needs you" });
+      await screen.findByRole("button", { name: /Needs you\s*1/ });
       await expectNoAxeViolations(container);
     });
 

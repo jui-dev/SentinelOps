@@ -284,7 +284,37 @@ export interface IncidentResponse {
 export interface IncidentListItemResponse extends IncidentResponse {
   response: { investigating: number; completed: number };
   lastUpdateAt: string | null;
+  /** The caller's own response, or null before they start. Never anyone else's. */
+  yourResponse: {
+    status: IncidentResponderStatus;
+    startedAt: string;
+    completedAt: string | null;
+  } | null;
 }
+
+/**
+ * The caller's own part in an incident, as the list filters by it:
+ * `needs-you`, their team's and not started by them while it still wants
+ * someone; `investigating`; `completed`.
+ */
+export type IncidentPart = "needs-you" | "investigating" | "completed";
+
+/** How many incidents one part holds, in all and by team and severity. */
+export interface IncidentPartCount {
+  total: number;
+  byTeam: { teamId: string; count: number }[];
+  bySeverity: Record<IncidentSeverity, number>;
+}
+
+/**
+ * `GET /organizations/:organizationId/incidents/parts`: the caller's active
+ * incidents counted by their part in each, and all of them. Ignores the
+ * list's search and other filters.
+ */
+export type IncidentPartsResponse = Record<
+  IncidentPart | "active",
+  IncidentPartCount
+>;
 
 /**
  * Where one responder's own part of the response stands. Someone who has not
@@ -911,6 +941,8 @@ export interface IncidentFilters {
   serviceId?: string;
   teamId?: string;
   response?: IncidentResponseFilter;
+  /** The caller's own part: see IncidentPart. */
+  part?: IncidentPart;
   q?: string;
 }
 

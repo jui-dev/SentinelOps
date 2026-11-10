@@ -57,6 +57,7 @@ import {
 } from "./incident-queries";
 import { IncidentBoard } from "./incident-board";
 import { LiveStatus } from "./live-status";
+import { MemberIncidentsView } from "./member-incidents-view";
 import { SEVERITY_LEVELS, severityOf } from "./severity";
 
 export const SERVICE_UNAVAILABLE_MESSAGE =
@@ -432,14 +433,26 @@ function NowBand() {
 const VIEWS = ["active", "resolved"] as const satisfies readonly IncidentState[];
 
 /**
- * The Incidents page: where response stands now, the ways to narrow the
- * lists, and active and resolved incidents in tabs — the tab, like the
- * filters, held in the URL (`?view=resolved`). The active list stays live,
- * and the resolved one while it is shown. For those the API says may
- * declare, a dialog opened from the header; declaring opens the new
- * incident. The one place incidents are declared.
+ * The Incidents page, read by who is reading it. Oversight — every incident
+ * in the organization, with `incidents:read-all` — gets the organization's
+ * page; a member gets their teams' incidents by their own part in each
+ * (member-incidents-view.tsx). The same route either way.
  */
 export function IncidentsView() {
+  const oversees = useCan(Permission.INCIDENTS_READ_ALL);
+
+  return oversees ? <OrganizationIncidentsView /> : <MemberIncidentsView />;
+}
+
+/**
+ * The organization's Incidents page: where response stands now, the ways to
+ * narrow the lists, and active and resolved incidents in tabs — the tab,
+ * like the filters, held in the URL (`?view=resolved`). The active list
+ * stays live, and the resolved one while it is shown. For those the API
+ * says may declare, a dialog opened from the header; declaring opens the
+ * new incident. The one place incidents are declared.
+ */
+function OrganizationIncidentsView() {
   const organization = useOrganization();
   const canManage = useCan(Permission.INCIDENTS_MANAGE);
   const [declaring, setDeclaring] = useState(false);

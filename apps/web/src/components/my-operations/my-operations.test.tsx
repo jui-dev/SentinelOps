@@ -109,11 +109,22 @@ const mine = detail(74, {
   ],
 });
 
-const listItem = (incident: IncidentDetailResponse): IncidentListItemResponse => ({
-  ...incident,
-  response: { investigating: 0, completed: 0 },
-  lastUpdateAt: null,
-});
+const listItem = (incident: IncidentDetailResponse): IncidentListItemResponse => {
+  const yours = incident.responders.find(({ membershipId }) => membershipId === ME);
+
+  return {
+    ...incident,
+    response: { investigating: 0, completed: 0 },
+    lastUpdateAt: null,
+    yourResponse: yours
+      ? {
+          status: yours.status,
+          startedAt: yours.startedAt,
+          completedAt: yours.completedAt,
+        }
+      : null,
+  };
+};
 
 /** A Platform incident the member responded to: visible, but not their team's. */
 const elsewhere = detail(80, {

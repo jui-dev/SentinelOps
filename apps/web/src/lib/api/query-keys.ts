@@ -46,6 +46,9 @@ import type { IncidentFilters, IncidentHistoryFilters } from "./contracts";
  *   and against which services, beneath the prefix — so a service rename or
  *   archival, which it names, stales it too. Declaring or changing an
  *   incident stales every period's.
+ * - `incidentParts`: the caller's active incidents counted by their own
+ *   part, beneath the prefix, so whatever stales every incident stales it;
+ *   others' work reaches it by polling.
  * - `incidentAttention`: the active incidents waiting on the caller, beneath
  *   the prefix. Declaring, changing, or responding to an incident stales it;
  *   what others do reaches it by polling.
@@ -141,6 +144,8 @@ export const queryKeys = {
     ["organization", organizationId, "incidents", "occurrence", from, to] as const,
   incidentAttention: (organizationId: string) =>
     ["organization", organizationId, "incidents", "attention"] as const,
+  incidentParts: (organizationId: string) =>
+    ["organization", organizationId, "incidents", "parts"] as const,
   incident: (organizationId: string, number: number) =>
     ["organization", organizationId, "incidents", "detail", number] as const,
   memberResponses: (organizationId: string, membershipId: string) =>

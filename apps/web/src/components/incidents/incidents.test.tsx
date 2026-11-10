@@ -82,6 +82,13 @@ const READ_ONLY = [
   "teams:read",
 ];
 
+/**
+ * Read-only oversight: every incident, and nothing to change. Whoever holds
+ * incidents:read-all reads the organization's Incidents page; without it, a
+ * member's (see "a member's incidents").
+ */
+const OVERSIGHT = [...READ_ONLY, "incidents:read-all"];
+
 const base = `/organizations/${organization.id}`;
 
 const payments = {
@@ -208,21 +215,39 @@ const activity = (
   ...overrides,
 });
 
+/** The signed-in caller's membership, as organizationDetail gives it. */
+const CALLER = "0199a1b2-c3d4-7000-8000-0000000000aa";
+
 /**
- * An incident as a list gives it: its responders counted, and when it was
- * last updated — by default never.
+ * An incident as a list gives it: its responders counted, the caller's own
+ * response among them, and when it was last updated — by default never.
  */
 const listItem = (
   item: IncidentResponse & Partial<IncidentDetailResponse & IncidentListItemResponse>,
-): IncidentListItemResponse => ({
-  response: {
-    investigating: (item.responders ?? []).filter(({ status }) => status === "INVESTIGATING")
-      .length,
-    completed: (item.responders ?? []).filter(({ status }) => status === "COMPLETED").length,
-  },
-  lastUpdateAt: null,
-  ...item,
-});
+): IncidentListItemResponse => {
+  const yours = (item.responders ?? []).find(
+    ({ membershipId }) => membershipId === CALLER,
+  );
+
+  return {
+    response: {
+      investigating: (item.responders ?? []).filter(
+        ({ status }) => status === "INVESTIGATING",
+      ).length,
+      completed: (item.responders ?? []).filter(({ status }) => status === "COMPLETED")
+        .length,
+    },
+    lastUpdateAt: null,
+    yourResponse: yours
+      ? {
+          status: yours.status,
+          startedAt: yours.startedAt,
+          completedAt: yours.completedAt,
+        }
+      : null,
+    ...item,
+  };
+};
 
 const page = (items: IncidentResponse[], cursor: string | null = null) => ({
   items: items.map(listItem),
@@ -342,7 +367,7 @@ describe("incidents", () => {
 
   describe("the list", () => {
     it("shows what is happening: severity in words, the incident, where, who, status, and how long", async () => {
-      api(READ_ONLY, {
+      api(OVERSIGHT, {
         active: [incident(), incident({ number: 7, severity: "SEV3", title: "Reports delayed", status: "DECLARED" })],
       });
 
@@ -369,7 +394,7 @@ describe("incidents", () => {
 
     it("gives each row one way in, View, and opens it in place to show the latest update and who can respond", async () => {
       const user = userEvent.setup();
-      api(READ_ONLY, {
+      api(OVERSIGHT, {
         active: [incident(), incident({ number: 7, severity: "SEV3", title: "Reports delayed", status: "DECLARED" })],
         detail: incident({ responders: [responder(daniel)] }),
         timeline: [activity()],
@@ -414,7 +439,7 @@ describe("incidents", () => {
     });
 
     it("offers no declaration without incidents:manage", async () => {
-      api(READ_ONLY);
+      api(OVERSIGHT);
 
       inOrganization(<IncidentsView />);
 
@@ -438,7 +463,7 @@ describe("incidents", () => {
 
       inOrganization(<IncidentsView />);
 
-      await screen.findByRole("table", { name: "Active incidents" });
+      await screen.findByRole("group", { name: "Your part" });
 
       expect(screen.queryByRole("button", { name: "Declare incident" })).toBeNull();
     });
@@ -446,7 +471,7 @@ describe("incidents", () => {
     it("narrows each list to the range in the URL, by the moment that defines it", async () => {
       navigation.search = "from=2026-09-12&to=2026-09-18";
       const range = "from=2026-09-12&to=2026-09-18";
-      const { requests } = api(READ_ONLY, {
+      const { requests } = api(OVERSIGHT, {
         handler: (request) => {
           if (route(request) === `GET ${base}/incidents?state=active&${range}`) {
             return jsonResponse(200, page([incident()]));
@@ -486,7 +511,7 @@ describe("incidents", () => {
       "from=2025-01-01&to=2026-09-18",
     ])("puts the URL right when its range (%s) cannot be applied", async (search) => {
       navigation.search = search;
-      const { requests } = api(READ_ONLY);
+      const { requests } = api(OVERSIGHT);
 
       inOrganization(<IncidentsView />);
 
@@ -506,7 +531,7 @@ describe("incidents", () => {
 
       it("sends the URL's filters to both lists, the service and team by id, and nothing unfiltered first", async () => {
         navigation.search = `q=checkout&severity=SEV2&service=payment-api&team=${payments.id}`;
-        const { requests } = api(READ_ONLY, {
+        const { requests } = api(OVERSIGHT, {
           handler: (request) =>
             route(request) === filtered("active")
               ? jsonResponse(200, page([incident({ severity: "SEV2", title: "Checkout failing" })]))
@@ -539,7 +564,7 @@ describe("incidents", () => {
       it("applies a choice at once, keeping the period and the other filters", async () => {
         const user = userEvent.setup();
         navigation.search = "from=2026-09-12&to=2026-09-18&q=checkout";
-        api(READ_ONLY, {
+        api(OVERSIGHT, {
           handler: (request) =>
             route(request).startsWith(`GET ${base}/incidents?state=`)
               ? jsonResponse(200, page([]))
@@ -569,7 +594,7 @@ describe("incidents", () => {
 
       it("searches when the search is submitted, not at every keystroke", async () => {
         const user = userEvent.setup();
-        api(READ_ONLY);
+        api(OVERSIGHT);
 
         inOrganization(<IncidentsView />);
 
@@ -587,7 +612,7 @@ describe("incidents", () => {
       it("narrows by where the response stands, one choice at a time", async () => {
         const user = userEvent.setup();
         navigation.search = "response=unclaimed";
-        const { requests } = api(READ_ONLY, {
+        const { requests } = api(OVERSIGHT, {
           handler: (request) =>
             route(request) === `GET ${base}/incidents?state=active&response=unclaimed`
               ? jsonResponse(200, page([incident({ status: "DECLARED" })]))
@@ -618,7 +643,7 @@ describe("incidents", () => {
 
       it("takes a filter that can never apply out of the URL, keeping the rest", async () => {
         navigation.search = `q=checkout&severity=SEV9&response=soon&service=no-such-service&team=${platform.id}`;
-        api(READ_ONLY, {
+        api(OVERSIGHT, {
           handler: (request) =>
             route(request).startsWith(`GET ${base}/incidents?state=`)
               ? jsonResponse(200, page([]))
@@ -637,7 +662,7 @@ describe("incidents", () => {
     });
 
     it("says where response stands now, from the summary the Overview shares", async () => {
-      api(READ_ONLY);
+      api(OVERSIGHT);
 
       inOrganization(<IncidentsView />);
 
@@ -654,7 +679,7 @@ describe("incidents", () => {
     it("opens the resolved tab into the URL, keeping the filters", async () => {
       const user = userEvent.setup();
       navigation.search = "q=checkout";
-      api(READ_ONLY);
+      api(OVERSIGHT);
 
       inOrganization(<IncidentsView />);
 
@@ -669,7 +694,7 @@ describe("incidents", () => {
     it("loads the next page of resolved incidents on request, by the API's cursor", async () => {
       const user = userEvent.setup();
       navigation.search = "view=resolved";
-      const { requests } = api(READ_ONLY, {
+      const { requests } = api(OVERSIGHT, {
         handler: (request) => {
           if (route(request) === `GET ${base}/incidents?state=resolved`) {
             return jsonResponse(
@@ -1615,6 +1640,190 @@ describe("incidents", () => {
     });
   });
 
+  describe("a member's incidents", () => {
+    /** Counts for one part: by team and severity, as the API sums them. */
+    const tally = (
+      byTeam: { teamId: string; count: number }[],
+      bySeverity: Partial<Record<"SEV1" | "SEV2" | "SEV3" | "SEV4", number>> = {},
+    ) => ({
+      total: byTeam.reduce((sum, { count }) => sum + count, 0),
+      byTeam,
+      bySeverity: { SEV1: 0, SEV2: 0, SEV3: 0, SEV4: 0, ...bySeverity },
+    });
+
+    const parts = {
+      "needs-you": tally(
+        [
+          { teamId: payments.id, count: 1 },
+          { teamId: platform.id, count: 1 },
+        ],
+        { SEV1: 1, SEV3: 1 },
+      ),
+      investigating: tally([{ teamId: payments.id, count: 1 }], { SEV2: 1 }),
+      completed: tally([]),
+      active: tally([{ teamId: payments.id, count: 3 }], { SEV1: 1, SEV2: 1, SEV3: 1 }),
+    };
+
+    /** Daniel is on it; the caller has not started. */
+    const waiting = incident({ responders: [responder(daniel)] });
+    /** The caller is investigating. */
+    const mine = incident({
+      id: "0199a1b2-c3d4-7000-8000-0000000000f2",
+      number: 43,
+      title: "Refunds delayed",
+      severity: "SEV2",
+      responders: [responder(ada)],
+    });
+
+    /** The member's API: their parts, and each list by the part it asks for. */
+    const memberApi = (lists: Partial<Record<string, IncidentResponse[]>> = {}) =>
+      api(MEMBER, {
+        handler: (request) => {
+          if (route(request) === `GET ${base}/incidents/parts`) {
+            return jsonResponse(200, parts);
+          }
+          const [path, query] = request.path.split("?");
+
+          if (request.method === "GET" && path === `${base}/incidents` && query) {
+            const params = new URLSearchParams(query);
+            const key = params.get("part") ?? params.get("state") ?? "";
+
+            return jsonResponse(200, page(lists[key] ?? []));
+          }
+
+          return undefined;
+        },
+      });
+
+    it("opens on what needs them, counted by part, with no organization-wide figures or pickers", async () => {
+      const { requests } = memberApi({ "needs-you": [waiting] });
+
+      inOrganization(<IncidentsView />);
+
+      const table = await screen.findByRole("table", { name: "Needs you" });
+      const parts = screen.getByRole("group", { name: "Your part" });
+
+      expect(
+        within(parts).getByRole("button", { name: /Needs you\s*2/, pressed: true }),
+      ).toBeDefined();
+      expect(within(parts).getByRole("button", { name: /You're investigating\s*1/ })).toBeDefined();
+      expect(within(parts).getByRole("button", { name: /All active\s*3/ })).toBeDefined();
+      // The member's row waits on them: Respond opens it, where starting lives.
+      expect(
+        within(table).getByRole("link", { name: "Respond INC-42" }).getAttribute("href"),
+      ).toBe("/orgs/acme-ops/incidents/42");
+      expect(within(table).queryByRole("columnheader", { name: "Status" })).toBeNull();
+      expect(within(table).getByRole("columnheader", { name: "Team response" })).toBeDefined();
+
+      expect(
+        requests.some(
+          (request) => request.path === `${base}/incidents?state=active&part=needs-you`,
+        ),
+      ).toBe(true);
+      // The Admin's figures and pickers are not a member's: nothing refused.
+      expect(requests.some((request) => request.path.includes("/incidents/summary"))).toBe(
+        false,
+      );
+      expect(screen.queryByLabelText("Incidents now")).toBeNull();
+      expect(screen.queryByRole("combobox", { name: "Service" })).toBeNull();
+      expect(screen.queryByRole("combobox", { name: "Responsible team" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Declare incident" })).toBeNull();
+    });
+
+    it("counts each team and severity pill for the chosen part, and filters by one at once", async () => {
+      const user = userEvent.setup();
+      memberApi({ "needs-you": [waiting] });
+
+      inOrganization(<IncidentsView />);
+
+      await screen.findByRole("table", { name: "Needs you" });
+      const teams = screen.getByRole("group", { name: "Team" });
+      const severities = screen.getByRole("group", { name: "Severity" });
+
+      expect(
+        within(teams).getByRole("button", { name: /All your teams\s*2/, pressed: true }),
+      ).toBeDefined();
+      expect(within(teams).getByRole("button", { name: /Platform\s*1/ })).toBeDefined();
+      expect(within(severities).getByRole("button", { name: /SEV3.*1/ })).toBeDefined();
+      expect(within(severities).getByRole("button", { name: /SEV2.*0/ })).toBeDefined();
+
+      await user.click(within(teams).getByRole("button", { name: /Platform/ }));
+
+      expect(navigation.replace).toHaveBeenLastCalledWith(
+        `/orgs/acme-ops/incidents?team=${platform.id}`,
+        { scroll: false },
+      );
+    });
+
+    it("moves between parts in the URL, and offers what each row needs from them", async () => {
+      const user = userEvent.setup();
+      navigation.search = "view=investigating";
+      const { requests } = memberApi({ investigating: [mine] });
+
+      inOrganization(<IncidentsView />);
+
+      const table = await screen.findByRole("table", { name: "You're investigating" });
+
+      expect(
+        requests.some(
+          (request) => request.path === `${base}/incidents?state=active&part=investigating`,
+        ),
+      ).toBe(true);
+      expect(within(table).getByRole("link", { name: "Post update INC-43" })).toBeDefined();
+      expect(within(table).getByText(/you're investigating/)).toBeDefined();
+      // The pills count the chosen part.
+      expect(
+        within(screen.getByRole("group", { name: "Severity" })).getByRole("button", {
+          name: /SEV2.*1/,
+        }),
+      ).toBeDefined();
+
+      await user.click(screen.getByRole("button", { name: /Needs you/ }));
+
+      // Needs you is where the page starts, so it takes no parameter.
+      expect(navigation.replace).toHaveBeenLastCalledWith("/orgs/acme-ops/incidents", {
+        scroll: false,
+      });
+    });
+
+    it("reads the resolved list with no part, and every row a View", async () => {
+      navigation.search = "view=resolved";
+      const { requests } = memberApi({
+        resolved: [incident({ status: "RESOLVED", resolvedAt: "2026-09-18T14:00:00.000Z" })],
+      });
+
+      inOrganization(<IncidentsView />);
+
+      const table = await screen.findByRole("table", { name: "Resolved" });
+
+      expect(within(table).getByRole("link", { name: "View INC-42" })).toBeDefined();
+      expect(
+        requests.some((request) => request.path === `${base}/incidents?state=resolved`),
+      ).toBe(true);
+    });
+
+    it("says when nothing needs them", async () => {
+      memberApi();
+
+      inOrganization(<IncidentsView />);
+
+      expect(await screen.findByText("Nothing needs you")).toBeDefined();
+    });
+
+    it("takes out of the URL what a member's page cannot apply", async () => {
+      navigation.search = "view=everything&service=payment-api&response=ready&from=2026-09-12&to=2026-09-18&q=card";
+      memberApi();
+
+      inOrganization(<IncidentsView />);
+
+      await waitFor(() =>
+        expect(navigation.replace).toHaveBeenCalledWith("/orgs/acme-ops/incidents?q=card", {
+          scroll: false,
+        }),
+      );
+    });
+  });
+
   describe("freshness", () => {
     it("says how fresh a page is in seconds, then minutes, then hours", () => {
       expect(formatAge(3_000)).toBe("just now");
@@ -1628,7 +1837,7 @@ describe("incidents", () => {
     it("keeps the Incidents list live, and says so", async () => {
       vi.useFakeTimers({ shouldAdvanceTime: true });
       try {
-        const { requests } = api(READ_ONLY);
+        const { requests } = api(OVERSIGHT);
 
         inOrganization(<IncidentsView />);
 

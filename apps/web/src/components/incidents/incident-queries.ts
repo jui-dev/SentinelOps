@@ -23,6 +23,7 @@ import type {
 import {
   getIncident,
   getIncidentAttention,
+  getIncidentParts,
   getIncidentTimeline,
   listIncidents,
   listMemberResponses,
@@ -141,6 +142,18 @@ export const ATTENTION_POLL_MS = 30_000;
  * `enabled: false` asks nothing: for chrome outside the organization scope,
  * until it knows the organization and that the caller reads incidents.
  */
+/**
+ * The caller's active incidents counted by their own part in each, kept
+ * live as the Incidents page's lists are: it sizes that page's tabs and pills.
+ */
+export const useIncidentParts = (organizationId: string, enabled = true) =>
+  useQuery({
+    queryKey: queryKeys.incidentParts(organizationId),
+    queryFn: () => getIncidentParts(organizationId),
+    refetchInterval: LIVE_POLL_MS,
+    enabled,
+  });
+
 export const useIncidentAttention = (
   organizationId: string,
   { enabled = true, poll = false }: { enabled?: boolean; poll?: boolean } = {},
