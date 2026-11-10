@@ -106,6 +106,9 @@ export const ORGANIZATION_NAVIGATION: NavSection[] = [
         icon: Users,
         href: (slug) => `${organizationPath(slug)}/members`,
         match: "prefix",
+        // The whole organization's people, for whoever oversees them. A
+        // member finds their teammates on each of their teams' pages.
+        requires: Permission.MEMBERSHIPS_READ_ALL,
       },
       {
         id: "services",

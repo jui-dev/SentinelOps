@@ -26,8 +26,16 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
 }));
 
-const MANAGE = ["members:manage", "memberships:read", "organization:read"];
-const READ_ONLY = ["memberships:read", "organization:read"];
+const MANAGE = [
+  "members:manage",
+  "memberships:read",
+  "memberships:read-all",
+  "organization:read",
+];
+/** Reads the whole directory without managing it. */
+const READ_ONLY = ["memberships:read", "memberships:read-all", "organization:read"];
+/** A member: reads members only as teammates, so not this page. */
+const MEMBER = ["memberships:read", "organization:read"];
 
 const base = `/organizations/${organization.id}`;
 
@@ -171,7 +179,7 @@ describe("the members overview", () => {
     (await screen.findByText(name)).closest("tr") as HTMLElement;
 
   it("shows each person's role, teams, and status, with the one warning that matters", async () => {
-    api(READ_ONLY, [ada, grace, linus]);
+    api(MANAGE, [ada, grace, linus]);
 
     renderMembers();
 
@@ -210,9 +218,24 @@ describe("the members overview", () => {
     ).toBe(`/orgs/acme-ops/members/${linus.id}`);
   });
 
+  it("points a member to their teams, and asks for no one", async () => {
+    const { requests } = api(MEMBER, [ada, grace, linus]);
+
+    renderMembers();
+
+    expect(
+      await screen.findByText("Your teammates are on your teams' pages"),
+    ).toBeDefined();
+    expect(screen.getByRole("link", { name: "Go to Teams" }).getAttribute("href")).toBe(
+      "/orgs/acme-ops/teams",
+    );
+    expect(screen.queryByRole("table", { name: "Members" })).toBeNull();
+    expect(requests.some((request) => request.path.endsWith("/memberships"))).toBe(false);
+  });
+
   it("finds people by name or email, and narrows by role or by what wants attention", async () => {
     const user = userEvent.setup();
-    api(READ_ONLY, [ada, grace, linus]);
+    api(MANAGE, [ada, grace, linus]);
 
     renderMembers();
 

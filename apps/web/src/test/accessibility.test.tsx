@@ -69,6 +69,7 @@ const ADMIN = [
   "invitations:read",
   "members:manage",
   "memberships:read",
+  "memberships:read-all",
   "organization:read",
   "organization:update",
   "services:manage",
@@ -888,7 +889,8 @@ it("Members, About roles open", async () => {      signedIn(ADMIN);      const {
       signedIn(MEMBER);
       const { container } = inWorkspace(<MembersView />);
 
-      await screen.findByRole("table", { name: "Members" });
+      // Pointed to their teams: the directory is the Admin's.
+      await screen.findByText("Your teammates are on your teams' pages");
       await expectNoAxeViolations(container);
     });
 

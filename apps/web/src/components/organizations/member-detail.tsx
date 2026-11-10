@@ -15,7 +15,7 @@ import { initialsOf } from "@/components/app/shell-utilities";
 import { MemberResponses } from "@/components/incidents/member-responses";
 import { CriticalityMark } from "@/components/services/criticality-mark";
 import { serviceHref } from "@/components/services/service-scope";
-import { teamHref } from "@/components/teams/team-scope";
+import { teamHref, teamsHref } from "@/components/teams/team-scope";
 import { Alert, ErrorAlert } from "@/components/ui/alert";
 import { cx } from "@/components/ui/cx";
 import {
@@ -57,6 +57,8 @@ const LIST_ROW =
   "flex min-h-12 items-center gap-3 px-4 py-2.5 text-sm transition-colors duration-(--duration-fast) hover:bg-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus sm:px-5";
 
 function MemberNotFound({ orgSlug }: { orgSlug: string }) {
+  const canReadEveryone = useCan(Permission.MEMBERSHIPS_READ_ALL);
+
   return (
     <PageBody width="form">
       <EmptyState
@@ -64,9 +66,15 @@ function MemberNotFound({ orgSlug }: { orgSlug: string }) {
         headingLevel={1}
         title="Member not found"
         action={
-          <Link href={membersHref(orgSlug)} className={`text-sm ${linkClasses}`}>
-            All members
-          </Link>
+          canReadEveryone ? (
+            <Link href={membersHref(orgSlug)} className={`text-sm ${linkClasses}`}>
+              All members
+            </Link>
+          ) : (
+            <Link href={teamsHref(orgSlug)} className={`text-sm ${linkClasses}`}>
+              Your teams
+            </Link>
+          )
         }
       >
         <p>There is no such member in this organization.</p>
@@ -221,6 +229,12 @@ function MemberPage({ member }: { member: Member }) {
   const canOverseeIncidents = useCan(Permission.INCIDENTS_READ_ALL);
   const canReadServices = useCan(Permission.SERVICES_READ);
   const canPlace = useCan(Permission.TEAMS_MANAGE);
+  // Account setup is for whoever sets accounts up; the API sends no one
+  // else the status, and nothing here suggests it.
+  const canManageMembers = useCan(Permission.MEMBERS_MANAGE);
+  const canReadEveryone = useCan(Permission.MEMBERSHIPS_READ_ALL);
+  // Whether their account is still waiting on its first sign-in, when told.
+  const setup = member.user.passwordChangeRequired;
   // The Services pages' own query, by key — asked only when it may be read.
   const services = useQuery({
     queryKey: queryKeys.services(organization.id),
@@ -249,11 +263,16 @@ function MemberPage({ member }: { member: Member }) {
           <nav aria-label="Breadcrumb">
             <ol className="flex items-center gap-2">
               <li>
+                {/* Where they came from: the directory, or a member's teams. */}
                 <Link
-                  href={membersHref(organization.slug)}
+                  href={
+                    canReadEveryone
+                      ? membersHref(organization.slug)
+                      : teamsHref(organization.slug)
+                  }
                   className="rounded-sm hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
                 >
-                  Members
+                  {canReadEveryone ? "Members" : "Teams"}
                 </Link>
               </li>
               <li aria-hidden="true" className="text-fg-subtle">
@@ -291,7 +310,8 @@ function MemberPage({ member }: { member: Member }) {
             >
               {formatRole(member.role)}
             </span>
-            {member.user.passwordChangeRequired ? (
+            {/* Only whoever sets accounts up is sent this. */}
+            {setup === undefined ? null : setup ? (
               <span
                 className={cx(
                   BADGE,
@@ -315,7 +335,9 @@ function MemberPage({ member }: { member: Member }) {
       />
       <PageBody width="full">
         <div className="flex flex-col gap-6">
-          {member.role === "MEMBER" && member.teams.length === 0 && (
+          {canManageMembers &&
+            member.role === "MEMBER" &&
+            member.teams.length === 0 && (
             <Alert tone="warning" title={`${first} is on no team`}>
               <p>
                 So {first} sees no incidents and can respond to none.

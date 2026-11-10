@@ -38,6 +38,7 @@ vi.mock("next/navigation", () => ({
 const ADMIN = [
   "members:manage",
   "memberships:read",
+  "memberships:read-all",
   "organization:read",
   "teams:manage",
   "teams:read",
@@ -279,6 +280,37 @@ describe("a member's page", () => {
     expect(within(covers).queryByText("Fraud Detection")).toBeNull();
     // The team says what it owns, too.
     expect(screen.getByText("Owns Payment API")).toBeDefined();
+  });
+
+  it("shows a member a colleague without account setup or a placement warning", async () => {
+    // As the API answers a member: the colleague with no setup status.
+    api(MEMBER, [], (request) => {
+      if (route(request) !== `GET ${base}/memberships/${GRACE}`) return undefined;
+
+      const colleague = grace([], true);
+      const user: Partial<typeof colleague.user> = { ...colleague.user };
+
+      delete user.passwordChangeRequired;
+
+      return jsonResponse(200, { ...colleague, user });
+    });
+
+    renderMember();
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Grace Hopper" }),
+    ).toBeDefined();
+    expect(screen.queryByText("Awaiting first sign-in")).toBeNull();
+    expect(screen.queryByText("Active")).toBeNull();
+    // Placement is the Admin's to fix, so the warning is theirs too.
+    expect(screen.queryByText("Grace is on no team")).toBeNull();
+    // Reached from a team's page, so the way back is Teams, not Members.
+    const breadcrumb = screen.getByRole("navigation", { name: "Breadcrumb" });
+
+    expect(
+      within(breadcrumb).getByRole("link", { name: "Teams" }).getAttribute("href"),
+    ).toBe("/orgs/acme-ops/teams");
+    expect(within(breadcrumb).queryByRole("link", { name: "Members" })).toBeNull();
   });
 
   it("tells a Member that an Admin changes teams", async () => {

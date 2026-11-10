@@ -268,6 +268,8 @@ function Members() {
   const organization = useOrganization();
   const team = useTeam();
   const members = useTeamMembers(organization.id, team.id);
+  // Placement is changed on the Members list, which is the Admin's.
+  const canPlace = useCan(Permission.TEAMS_MANAGE);
   const [expanded, setExpanded] = useState(false);
   const listId = useId();
   const all = members.data ?? [];
@@ -289,13 +291,17 @@ function Members() {
         )
       }
       footer={
-        <>
-          To add or remove someone, use the Action column on{" "}
-          <Link href={membersHref(organization.slug)} className={linkClasses}>
-            Members
-          </Link>
-          .
-        </>
+        canPlace ? (
+          <>
+            To add or remove someone, use the Action column on{" "}
+            <Link href={membersHref(organization.slug)} className={linkClasses}>
+              Members
+            </Link>
+            .
+          </>
+        ) : (
+          "Teams are changed by an Admin."
+        )
       }
     >
       {members.isError ? (

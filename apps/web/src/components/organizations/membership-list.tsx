@@ -54,6 +54,8 @@ const FILTERS: {
   matches: (member: Member) => boolean;
   /** A count that wants attention when above nought. */
   attention?: boolean;
+  /** About account setup and placement: offered to whoever manages members. */
+  setup?: boolean;
 }[] = [
   { id: "all", label: "All", matches: () => true },
   { id: "admins", label: "Admins", matches: (m) => m.role === "ADMIN" },
@@ -61,10 +63,17 @@ const FILTERS: {
   {
     id: "awaiting",
     label: "Awaiting sign-in",
-    matches: (m) => m.user.passwordChangeRequired,
+    matches: (m) => m.user.passwordChangeRequired === true,
     attention: true,
+    setup: true,
   },
-  { id: "unplaced", label: "No team", matches: isUnplaced, attention: true },
+  {
+    id: "unplaced",
+    label: "No team",
+    matches: isUnplaced,
+    attention: true,
+    setup: true,
+  },
 ];
 
 const matchesSearch = (member: Member, query: string) => {
@@ -83,12 +92,15 @@ function Toolbar({
   onQuery,
   filter,
   onFilter,
+  setup,
 }: {
   members: Member[];
   query: string;
   onQuery: (value: string) => void;
   filter: FilterId;
   onFilter: (value: FilterId) => void;
+  /** Whether to offer the account-setup and placement filters. */
+  setup: boolean;
 }) {
   const searchId = useId();
 
@@ -118,7 +130,7 @@ function Toolbar({
         />
       </div>
       <div role="group" aria-label="Show" className="flex flex-wrap gap-1.5">
-        {FILTERS.map((each) => {
+        {FILTERS.filter((each) => setup || !each.setup).map((each) => {
           const count = members.filter(each.matches).length;
           const on = each.id === filter;
 
@@ -257,6 +269,11 @@ export function MembershipList() {
   const me = useCurrentUser();
   // Placing people on teams is team configuration: whoever manages teams.
   const canPlace = useCan(Permission.TEAMS_MANAGE);
+  // Account setup — who has signed in, who is on no team — is for whoever
+  // sets accounts up. A member reading the directory sees their colleagues,
+  // and the API sends them no setup to show.
+  const canManage = useCan(Permission.MEMBERS_MANAGE);
+  const columns = canManage ? 6 : 5;
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<FilterId>("all");
   const [dialog, setDialog] = useState<Dialog>(null);
@@ -291,6 +308,7 @@ export function MembershipList() {
         onQuery={setQuery}
         filter={filter}
         onFilter={setFilter}
+        setup={canManage}
       />
       <Table label="Members">
         <THead>
@@ -298,7 +316,7 @@ export function MembershipList() {
             <TH>Person</TH>
             <TH>Role</TH>
             <TH className="hidden md:table-cell">Teams</TH>
-            <TH className="hidden sm:table-cell">Status</TH>
+            {canManage && <TH className="hidden sm:table-cell">Status</TH>}
             <TH className="hidden lg:table-cell">Joined</TH>
             <TH align="end">Action</TH>
           </TR>
@@ -306,7 +324,7 @@ export function MembershipList() {
         <TBody>
           {shown.length === 0 ? (
             <TR>
-              <TD colSpan={6} className="py-6 text-center text-sm text-fg-muted">
+              <TD colSpan={columns} className="py-6 text-center text-sm text-fg-muted">
                 No members match.{" "}
                 <Button
                   variant="quiet"
@@ -376,9 +394,11 @@ export function MembershipList() {
                         {member.user.email}
                       </span>
                       {/* On a phone the status folds under the person. */}
-                      <span className="pt-1 sm:hidden">
-                        <MemberStatus member={member} />
-                      </span>
+                      {canManage && (
+                        <span className="pt-1 sm:hidden">
+                          <MemberStatus member={member} />
+                        </span>
+                      )}
                     </span>
                   </div>
                 </TD>
@@ -388,9 +408,11 @@ export function MembershipList() {
                 <TD className="hidden md:table-cell">
                   <TeamChips teams={member.teams} />
                 </TD>
-                <TD className="hidden sm:table-cell">
-                  <MemberStatus member={member} />
-                </TD>
+                {canManage && (
+                  <TD className="hidden sm:table-cell">
+                    <MemberStatus member={member} />
+                  </TD>
+                )}
                 <TD kind="data" className="hidden lg:table-cell">
                   <IsoDate value={member.createdAt} />
                 </TD>
@@ -450,7 +472,7 @@ export function MembershipList() {
                 // A plain row, outside the table's hover: the row above, opened.
                 <tr id={peekId}>
                   <td
-                    colSpan={6}
+                    colSpan={columns}
                     className="border-b border-line-subtle bg-sunken px-3 py-3 sm:px-4"
                   >
                     <MemberPeek member={member} />

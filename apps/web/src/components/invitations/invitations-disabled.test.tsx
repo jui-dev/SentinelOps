@@ -53,6 +53,7 @@ describe("invitations, switched off", () => {
               "invitations:read",
               "members:manage",
               "memberships:read",
+              "memberships:read-all",
               "organization:read",
             ]),
           );

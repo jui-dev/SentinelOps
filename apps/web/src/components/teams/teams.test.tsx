@@ -441,6 +441,17 @@ describe("teams", () => {
       expect(screen.queryByRole("link", { name: "Settings" })).toBeNull();
     });
 
+    it("tells a member an Admin changes the team, with no way to the Members list", async () => {
+      api(READ);
+
+      inTeam(<TeamDetail />);
+
+      await screen.findByRole("list", { name: "Members of Platform" });
+
+      expect(screen.getByText("Teams are changed by an Admin.")).toBeDefined();
+      expect(screen.queryByText(/To add or remove someone/)).toBeNull();
+    });
+
     it("lists its members read only, each with their profile, and says where placement changes", async () => {
       const { requests } = api(MANAGE);
 

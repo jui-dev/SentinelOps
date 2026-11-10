@@ -39,8 +39,13 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace: vi.fn(), push: navigation.push }),
 }));
 
-const FULL = ["memberships:read", "organization:read", "organization:update"];
-const READ = ["memberships:read", "organization:read"];
+const FULL = [
+  "memberships:read",
+  "memberships:read-all",
+  "organization:read",
+  "organization:update",
+];
+const READ = ["memberships:read", "memberships:read-all", "organization:read"];
 
 const other = {
   id: "0199a1b2-c3d4-7000-8000-00000000000b",
@@ -331,6 +336,17 @@ describe("WorkspaceShell", () => {
       ).toBeNull();
       // A section with nothing to offer is not shown at all.
       expect(within(primaryNav()).queryByText("Response")).toBeNull();
+    });
+
+    it("does not offer Members without memberships:read-all", async () => {
+      at("/orgs/acme-ops", "acme-ops");
+      api({ permissions: ["memberships:read", "organization:read", "teams:read"] });
+
+      renderShell();
+
+      // Their teammates are on their teams' pages.
+      expect(await within(primaryNav()).findByRole("link", { name: "Teams" })).toBeDefined();
+      expect(within(primaryNav()).queryByRole("link", { name: "Members" })).toBeNull();
     });
 
     it("does not offer Settings without organization:update", async () => {

@@ -73,8 +73,11 @@ export interface OrganizationMembershipResponse {
     id: string;
     name: string;
     email: string;
-    /** True until they replace the one-time password they were given. */
-    passwordChangeRequired: boolean;
+    /**
+     * True until they replace their one-time password. Account setup, so
+     * sent only to whoever manages members; absent for everyone else.
+     */
+    passwordChangeRequired?: boolean;
   };
   /** Every team in this organization they are on, by name; empty for none. */
   teams: { id: string; name: string; slug: string }[];
@@ -947,6 +950,8 @@ export const Permission = {
   ORGANIZATION_READ: "organization:read",
   ORGANIZATION_UPDATE: "organization:update",
   MEMBERSHIPS_READ: "memberships:read",
+  /** Every member of the organization; without it, teammates and admins. */
+  MEMBERSHIPS_READ_ALL: "memberships:read-all",
   MEMBERS_MANAGE: "members:manage",
   INVITATIONS_READ: "invitations:read",
   INVITATIONS_MANAGE: "invitations:manage",
