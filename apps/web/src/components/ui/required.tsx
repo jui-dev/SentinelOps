@@ -96,7 +96,17 @@ export function useRequiredFields(watched?: unknown) {
     // would put a controlled field back to its old value before React's
     // onChange had read the new one. A reset, too, clears values only after
     // its event.
-    const afterEvent = () => queueMicrotask(update);
+    //
+    // A whole task later, not a microtask: a <select> fires `input` and then
+    // `change` in one task, and a microtask runs between the two. Reading
+    // there re-rendered the form after `input`, React put the select back
+    // to its old value, and `change` — which React's onChange reads for a
+    // select — saw nothing chosen: no choice ever stuck.
+    let pending: ReturnType<typeof setTimeout> | undefined;
+    const afterEvent = () => {
+      clearTimeout(pending);
+      pending = setTimeout(update, 0);
+    };
 
     update();
     form.addEventListener("input", afterEvent);
@@ -112,6 +122,7 @@ export function useRequiredFields(watched?: unknown) {
     });
 
     return () => {
+      clearTimeout(pending);
       form.removeEventListener("input", afterEvent);
       form.removeEventListener("change", afterEvent);
       form.removeEventListener("reset", afterEvent);
