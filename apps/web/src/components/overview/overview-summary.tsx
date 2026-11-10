@@ -173,7 +173,12 @@ const LOADING: ReadonlyArray<{ label: string; Icon: LucideIcon }> = [
   { label: "Resolved incidents", Icon: CircleCheck },
 ];
 
-const ROW = "grid gap-3 sm:grid-cols-2 xl:grid-cols-4";
+/**
+ * The four cards, held in a darker section of their own, as the incident
+ * pages hold theirs, so the row reads as one summary.
+ */
+const ROW =
+  "grid gap-3 rounded-2xl border border-line-subtle bg-linear-to-b from-rail-top to-rail-mid p-3 sm:grid-cols-2 sm:p-3.5 xl:grid-cols-4";
 
 /**
  * The row, once the summary has arrived.

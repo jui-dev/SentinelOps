@@ -78,8 +78,11 @@ const widths = {
   full: "max-w-[90rem]",
   /** A reference list of a few columns: proportioned, however few its rows. */
   list: "max-w-[72rem]",
-  /** One column read top to bottom — an incident: wide enough for a timeline. */
-  reading: "max-w-[60rem]",
+  /**
+   * One column read top to bottom — an incident: wide enough for a timeline,
+   * and centred, so a wide screen frames it rather than leaving it to one side.
+   */
+  reading: "mx-auto w-full max-w-[68rem]",
   /** Settings and forms: a readable measure. */
   form: "max-w-3xl",
 };
