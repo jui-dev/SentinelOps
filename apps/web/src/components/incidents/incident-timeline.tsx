@@ -49,7 +49,11 @@ const RESPONSE_COMPLETE =
   "Your response to this incident is already complete, so you cannot post more updates. The incident has been refreshed.";
 
 /** What a recorded change says, in one line. Updates carry their own text. */
-function describe(entry: IncidentActivityResponse): ReactNode {
+function describe(
+  entry: IncidentActivityResponse,
+  /** The caller's own entry, said as "You …": "your", not "their". */
+  mine = false,
+): ReactNode {
   switch (entry.type) {
     case "DECLARED":
       return (
@@ -132,7 +136,7 @@ function describe(entry: IncidentActivityResponse): ReactNode {
     case "RESPONSE_STARTED":
       return "started investigating";
     case "RESPONSE_COMPLETED":
-      return "completed their response";
+      return mine ? "completed your response" : "completed their response";
     default:
       return null;
   }
@@ -256,7 +260,7 @@ function TimelineEntry({
           <span className="inline-flex flex-wrap items-center gap-x-1">
             {fresh && <NewTag />}
             <span className="font-semibold text-fg">{mine ? "You" : entry.actor.name}</span>{" "}
-            {describe(entry)}
+            {describe(entry, mine)}
           </span>
           <When at={entry.createdAt} now={now} />
         </p>

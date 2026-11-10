@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, CircleCheck, Clock, Link2, Server, Users } from "lucide-react";
+import { Check, Clock, Link2, Server, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -26,6 +26,7 @@ import {
   Duration,
   formatDuration,
   LocalDateTime,
+  LocalTime,
   useMinuteClock,
 } from "@/components/ui/timestamp";
 import { linkClasses, quietLinkClasses } from "@/components/ui/link";
@@ -36,7 +37,8 @@ import type {
 } from "@/lib/api/contracts";
 import { isApiError } from "@/lib/api/errors";
 
-import { incidentsHref, useIncident } from "./incident-queries";
+import { PeopleRow, usePeople } from "./incident-people";
+import { incidentsHref, useIncident, useIncidentTimeline } from "./incident-queries";
 import {
   firstStartOf,
   FollowPanel,
@@ -501,6 +503,62 @@ function Lifecycle({ incident }: { incident: IncidentDetailResponse }) {
       ? undefined
       : `waiting ${formatDuration(wait)}`;
 
+  // Once resolved, the path is done: one quiet line of ticks says it, with
+  // the wait to start on it, and the Resolution beneath says the rest.
+  if (resolved) {
+    const done = "inline-flex items-center gap-1.5 text-status-resolved-text";
+    const rule = (
+      <span aria-hidden="true" className="h-0.5 min-w-4 flex-1 rounded-full bg-status-resolved-line" />
+    );
+
+    // Each step holds the line to the next, so the list holds only steps.
+    return (
+      <ol
+        aria-label="Lifecycle"
+        className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-line bg-surface px-4.5 py-3 text-sm sm:flex-nowrap"
+      >
+        <li className="flex min-w-0 flex-1 items-center gap-3">
+          <span className={done}>
+            <Check aria-hidden="true" strokeWidth={3} className="size-3.5" />
+            Declared
+          </span>
+          {rule}
+          {waited && (
+            <>
+              <span
+                className={cx(
+                  "data shrink-0 rounded-full border px-2 py-0.5 text-[0.6875rem]",
+                  slow
+                    ? "border-warning-line bg-warning-subtle text-warning-text"
+                    : "border-status-resolved-line bg-status-resolved-subtle text-status-resolved-text",
+                )}
+              >
+                {waited}
+              </span>
+              {rule}
+            </>
+          )}
+        </li>
+        <li className="flex min-w-0 flex-1 items-center gap-3">
+          <span className={firstStart ? done : "text-fg-muted"}>
+            {firstStart && <Check aria-hidden="true" strokeWidth={3} className="size-3.5" />}
+            {firstStart ? "Investigated" : "No one responded"}
+          </span>
+          {rule}
+        </li>
+        <li className={done}>
+          <Check aria-hidden="true" strokeWidth={3} className="size-3.5" />
+          Resolved{" "}
+          {incident.resolvedAt && (
+            <span className="data">
+              <LocalTime value={incident.resolvedAt} />
+            </span>
+          )}
+        </li>
+      </ol>
+    );
+  }
+
   return (
     <ol
       aria-label="Lifecycle"
@@ -564,47 +622,78 @@ function Lifecycle({ incident }: { incident: IncidentDetailResponse }) {
 
 
 /**
- * How a resolved incident ended: the Admin's note, framed with the success
- * edge completed work has. An incident resolved before notes were required
- * says so, rather than leaving a gap.
+ * How a resolved incident ended, said once: the Admin's note — or, resolved
+ * before notes were required, that there is none — who resolved it and
+ * when, the four figures the response is read by, and who responded. Where
+ * the role panels stood while it was open: once resolved there is nothing
+ * left to do on it but learn from it, which the analysis beneath is for.
  */
-function Resolution({
-  resolution,
-  resolvedAt,
-}: {
-  resolution: string | null;
-  resolvedAt: string;
-}) {
+function Resolution({ incident }: { incident: IncidentDetailResponse }) {
+  const organization = useOrganization();
   const headingId = useId();
+  const timeline = useIncidentTimeline(organization.id, incident.number);
+  const people = usePeople(incident);
+  const firstStart = firstStartOf(incident);
+  const resolvedBy = timeline.data?.findLast(
+    ({ type, toValue }) => type === "STATUS_CHANGED" && toValue === "RESOLVED",
+  )?.actor.name;
+  const updates = timeline.data?.filter(({ type }) => type === "UPDATE").length;
 
   return (
     <section
       aria-labelledby={headingId}
-      className="flex gap-3 rounded-lg border border-status-resolved-line border-l-[3px] border-l-status-resolved-text bg-status-resolved-subtle px-4 py-4 sm:px-5"
+      className="overflow-hidden rounded-2xl border border-status-resolved-line bg-linear-to-b from-status-resolved-subtle to-surface"
     >
-      <CircleCheck
-        aria-hidden="true"
-        strokeWidth={2}
-        className="mt-1 size-4 shrink-0 text-status-resolved-text"
-      />
-      <div className="flex min-w-0 flex-col gap-1.5">
-        <h2 id={headingId} className="text-base font-semibold text-fg">
-          Resolution
-        </h2>
-        {resolution ? (
-          <p className="max-w-3xl text-sm leading-6 whitespace-pre-line text-fg">
-            {resolution}
+      <div className="grid gap-5 px-5 py-5 sm:px-6 md:grid-cols-[minmax(0,1fr)_17rem] md:gap-7">
+        <div className="flex min-w-0 flex-col gap-2.5">
+          <h2 id={headingId} className="label-caps text-status-resolved-text">
+            Resolution
+          </h2>
+          {incident.resolution ? (
+            <p className="text-[0.9375rem] leading-relaxed whitespace-pre-line text-fg">
+              {incident.resolution}
+            </p>
+          ) : (
+            <p className="text-sm text-fg-muted">
+              Resolved before resolution notes were recorded.
+            </p>
+          )}
+          <p className="text-xs text-fg-muted">
+            Resolved {incident.resolvedAt && <LocalDateTime value={incident.resolvedAt} />}
+            {resolvedBy && ` by ${resolvedBy}`} · kept as it is; if it returns,
+            declare a new incident.
           </p>
-        ) : (
-          <p className="text-sm text-fg-muted">
-            Resolved before resolution notes were recorded.
-          </p>
-        )}
-        <p className="text-xs text-fg-muted">
-          Resolved <LocalDateTime value={resolvedAt} />. A resolved incident is
-          kept as it is; if the problem returns, declare a new incident.
-        </p>
+        </div>
+        <dl
+          aria-label={`${incidentKey(incident.number)} at a glance`}
+          className="grid grid-cols-2 gap-x-5 gap-y-3.5 self-start rounded-xl border border-status-resolved-line/70 bg-canvas/40 px-4.5 py-4"
+        >
+          {[
+            [
+              "Lasted",
+              <Duration key="lasted" from={incident.createdAt} to={incident.resolvedAt} />,
+            ],
+            [
+              "First response",
+              firstStart
+                ? formatDuration(Date.parse(firstStart) - Date.parse(incident.createdAt))
+                : "—",
+            ],
+            ["Responders", incident.responders.length],
+            ["Updates", updates ?? "—"],
+          ].map(([label, value]) => (
+            <div key={label as string} className="flex flex-col gap-0.5">
+              <dt className="label-caps text-fg-subtle">{label}</dt>
+              <dd className="numeric text-lg font-semibold text-fg">{value}</dd>
+            </div>
+          ))}
+        </dl>
       </div>
+      {people.length > 0 && (
+        <div className="border-t border-status-resolved-line/60 bg-canvas/20 px-5 py-3.5 sm:px-6">
+          <PeopleRow label={incident.team.name} people={people} />
+        </div>
+      )}
     </section>
   );
 }
@@ -648,23 +737,20 @@ function IncidentPage({
         <div className="flex flex-col gap-6">
           <IncidentFacts incident={incident} />
           <Lifecycle incident={incident} />
-          {/* How it ended, then what was learned from it: one closing pair. */}
-          {resolved && incident.resolvedAt && (
-            <div className="flex flex-col gap-3">
-              <Resolution
-                resolution={incident.resolution}
-                resolvedAt={incident.resolvedAt}
-              />
-              <AnalysisEntry incident={incident} />
-            </div>
-          )}
           {actionError && (
             <ErrorAlert
               error={actionError}
               message={responseErrorMessage(actionError)}
             />
           )}
-          {canManage || (oversees && !working) ? (
+          {resolved ? (
+            // How it ended, said once, then what to learn from it: the
+            // Admin's next step. No role panel: nothing is left to do on it.
+            <>
+              <Resolution incident={incident} />
+              <AnalysisEntry incident={incident} />
+            </>
+          ) : canManage || (oversees && !working) ? (
             <OversightPanel incident={incident} canManage={canManage} />
           ) : working ? (
             <YourResponse incident={incident} own={own} actions={actions} pinned={pinned} />

@@ -1148,7 +1148,8 @@ it("Services, with a row opened", async () => {      signedIn(ADMIN);      const
       const { container } = inWorkspace(<IncidentDetail />);
 
       await screen.findByRole("heading", { level: 1, name: /Reports delayed$/ });
-      await screen.findByRole("heading", { name: "Your response" });
+      await screen.findByRole("heading", { name: "Resolution" });
+      await screen.findByRole("heading", { name: /Incident analysis$/ });
       await expectNoAxeViolations(container);
     });
 
@@ -1169,7 +1170,7 @@ it("Services, with a row opened", async () => {      signedIn(ADMIN);      const
       signedIn(MEMBER);
       const { container } = inWorkspace(<IncidentDetail />);
 
-      await screen.findByRole("link", { name: "Open draft" });
+      await screen.findByRole("link", { name: /^(Review and publish|Continue writing|Read draft)$/ });
       await expectNoAxeViolations(container);
     });
 

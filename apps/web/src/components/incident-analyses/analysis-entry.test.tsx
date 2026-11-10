@@ -40,9 +40,9 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace: vi.fn(), push: navigation.push }),
 }));
 
-/** The entry panel, once it has said something. */
+/** The entry panel, once it has said something — "Next step: …" when it is the caller's. */
 const entry = async () =>
-  (await screen.findByRole("heading", { name: "Incident analysis" })).closest(
+  (await screen.findByRole("heading", { name: /Incident analysis$/ })).closest(
     "section",
   ) as HTMLElement;
 
@@ -66,7 +66,7 @@ describe("incident analysis", () => {
       inOrganization(<IncidentDetail />);
 
       await screen.findByRole("heading", { name: /Timeline/ });
-      expect(screen.queryByRole("heading", { name: "Incident analysis" })).toBeNull();
+      expect(screen.queryByRole("heading", { name: /Incident analysis$/ })).toBeNull();
       expect(requests.some((r) => r.path === analysisPath)).toBe(false);
     });
 
@@ -88,10 +88,24 @@ describe("incident analysis", () => {
 
       inOrganization(<IncidentDetail />);
 
-      const panel = await entry();
+      expect(await screen.findByText("Start the analysis.")).toBeDefined();
 
-      expect(await within(panel).findByText(/^Not started\./)).toBeDefined();
-      expect(within(panel).getByRole("button", { name: "Start analysis" })).toBeDefined();
+      const ready = await entry();
+
+      // Starting it is the Admin's next step, and says so.
+      expect(within(ready).getByRole("heading").textContent).toMatch(/^Next step/);
+      expect(within(ready).getByRole("button", { name: "Start analysis" })).toBeDefined();
+      // The four sections it will hold, none written.
+      expect(
+        within(within(ready).getByRole("list", { name: "Analysis sections" }))
+          .getAllByRole("listitem")
+          .map((item) => item.textContent),
+      ).toEqual([
+        expect.stringMatching(/^1Summary required to publish.*write this first$/),
+        expect.stringMatching(/^2Impact optional.*not written$/),
+        expect.stringMatching(/^3Cause optional.*not written$/),
+        expect.stringMatching(/^4Lessons optional.*not written$/),
+      ]);
     });
 
     it.each([
@@ -104,9 +118,9 @@ describe("incident analysis", () => {
 
       const panel = await entry();
 
-      expect(
-        await within(panel).findByText("No analysis has been started for this incident."),
-      ).toBeDefined();
+      expect(await within(panel).findByText("No analysis yet.")).toBeDefined();
+      // Not theirs to start: no "next step", and nothing to press.
+      expect(within(panel).getByRole("heading").textContent).toBe("Incident analysis");
       expect(within(panel).queryByRole("button")).toBeNull();
       expect(within(panel).queryByRole("link")).toBeNull();
     });
@@ -119,12 +133,19 @@ describe("incident analysis", () => {
       inOrganization(<IncidentDetail />);
 
       const panel = await entry();
-      const link = await within(panel).findByRole("link", { name: "Open draft" });
+      // The summary is written, so the next step is to review and publish.
+      const link = await within(panel).findByRole("link", { name: "Review and publish" });
 
       expect(link.getAttribute("href")).toBe(analysisHref);
+      expect(within(panel).getByText("Ready to publish.")).toBeDefined();
       expect(within(panel).getByText("Draft")).toBeDefined();
-      expect(panel.textContent).toContain("Owned by Daniel Okafor (you)");
+      expect(panel.textContent).toContain("owned by you");
       expect(panel.textContent).toContain("2 of 4 sections written");
+      expect(
+        within(within(panel).getByRole("list", { name: "Analysis sections" }))
+          .getAllByRole("listitem")
+          .map((item) => item.textContent?.match(/(written|not written)$/)?.[0]),
+      ).toEqual(["written", "written", "not written", "not written"]);
     });
 
     it("lets the admin open a draft someone else owns", async () => {
@@ -134,8 +155,10 @@ describe("incident analysis", () => {
 
       const panel = await entry();
 
-      expect(await within(panel).findByRole("link", { name: "Open draft" })).toBeDefined();
-      expect(panel.textContent).not.toContain("(you)");
+      expect(
+        await within(panel).findByRole("link", { name: "Review and publish" }),
+      ).toBeDefined();
+      expect(panel.textContent).toContain("owned by Daniel Okafor");
     });
 
     it("lets a member who does not own a draft read it", async () => {
@@ -147,6 +170,9 @@ describe("incident analysis", () => {
 
       const panel = await entry();
       const link = await within(panel).findByRole("link", { name: "Read draft" });
+
+      expect(within(panel).getByText("Being written by Daniel Okafor.")).toBeDefined();
+      expect(within(panel).getByRole("heading").textContent).toBe("Incident analysis");
 
       expect(link.getAttribute("href")).toBe(analysisHref);
       expect(within(panel).queryByRole("button")).toBeNull();
@@ -161,23 +187,14 @@ describe("incident analysis", () => {
       const link = await within(panel).findByRole("link", { name: "Read analysis" });
 
       expect(link.getAttribute("href")).toBe(analysisHref);
-      expect(within(panel).getByText("Published")).toBeDefined();
-
-      const lines = [...panel.querySelectorAll("p")].map((p) => p.textContent);
-
-      // "{date} · by {name}": the status mark above already says "Published".
-      const [publication] = panel.querySelectorAll("p");
-
-      expect(
-        publication.querySelector("time")?.getAttribute("dateTime"),
-      ).toBe("2026-09-22T14:10:00.000Z");
-      expect(lines[0]).not.toMatch(/Published/);
-      expect(lines[0]).toMatch(/ · , by Ada Lovelace$/);
-      expect(lines).toEqual([
-        lines[0],
-        "Card payments failed after a deploy.",
-        "Owner Daniel Okafor",
-      ]);
+      expect(within(panel).getByText("Analysis published.")).toBeDefined();
+      // When, and by whom; then its summary. Nothing left to write.
+      expect(panel.querySelector("time")?.getAttribute("dateTime")).toBe(
+        "2026-09-22T14:10:00.000Z",
+      );
+      expect(panel.textContent).toContain("by Ada Lovelace");
+      expect(within(panel).getByText("Card payments failed after a deploy.")).toBeDefined();
+      expect(within(panel).queryByRole("list", { name: "Analysis sections" })).toBeNull();
     });
 
     it("keeps an analysis that cannot be loaded to itself", async () => {
@@ -306,7 +323,9 @@ describe("incident analysis", () => {
 
       const panel = await entry();
 
-      expect(await within(panel).findByRole("link", { name: "Open draft" })).toBeDefined();
+      expect(
+        await within(panel).findByRole("link", { name: "Review and publish" }),
+      ).toBeDefined();
       expect(navigation.push).not.toHaveBeenCalled();
     });
 

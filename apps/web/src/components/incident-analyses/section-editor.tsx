@@ -8,8 +8,11 @@ import type { AnalysisSection } from "@/lib/api/contracts";
 
 import { SECTION_TITLES } from "./analysis-document";
 
-/** What each section is for, said beneath its heading while it is written. */
-const SECTION_HINTS: Record<AnalysisSection, string> = {
+/**
+ * What each section is for, said beneath its heading while it is written —
+ * and in the checklist an incident shows of its analysis.
+ */
+export const SECTION_HINTS: Record<AnalysisSection, string> = {
   summary: "What happened, in a few sentences someone outside the response could follow.",
   impact: "Who or what was affected, and how much. Leave it blank if it isn't known.",
   cause: "Why it happened, as far as is known.",

@@ -1002,7 +1002,7 @@ describe("incidents", () => {
         await user.click(within(response).getByRole("button", { name: "Resolve incident" }));
 
         expect(
-          await screen.findByText(/A resolved incident is kept as it is; if the problem returns/),
+          await screen.findByText(/kept as it is; if it returns, declare a new incident/),
         ).toBeDefined();
         expect(requests.find((r) => route(r) === `PATCH ${base}/incidents/42`)?.body).toEqual({
           status: "RESOLVED",
@@ -1403,21 +1403,21 @@ describe("incidents", () => {
 
       inOrganization(<IncidentDetail />);
 
-      // Oversight sees how the response ended; a responder, their own part.
-      if (permissions === ADMIN) {
-        const response = await sectionOf("Response and resolution");
+      // Everyone sees one ending: the Resolution, its figures, and who
+      // responded — no role panel, since nothing is left to do on it.
+      const resolution = await sectionOf("Resolution");
 
-        expect(within(response).getByText("Resolved.")).toBeDefined();
+      expect(tile("Responders")).toBe("2");
+      expect(within(resolution).getAllByText("done")).toHaveLength(2);
+      for (const heading of ["Response and resolution", "Your response", "Response"]) {
+        expect(screen.queryByRole("heading", { name: heading })).toBeNull();
+      }
+      // A responder finds their own part in the team, as "You".
+      if (permissions !== ADMIN) {
         expect(
-          within(response).getByText("2 responders responded to this incident."),
-        ).toBeDefined();
-        expect(tile("Completed")).toBe("2");
-      } else {
-        const yours = await sectionOf("Your response");
-
-        expect(within(yours).getByText(/You completed your part/)).toBeDefined();
-        expect(within(yours).getByText(/The incident is resolved\./)).toBeDefined();
-        expect(within(yours).getAllByText("done")).toHaveLength(2);
+          within(within(resolution).getByRole("list", { name: "Payments" }))
+            .getAllByRole("listitem")[0]?.textContent,
+        ).toMatch(/^ALYou/);
       }
       expect(within(screen.getByLabelText("Incident details")).getByText("Lasted")).toBeDefined();
 
