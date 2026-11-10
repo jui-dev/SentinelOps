@@ -27,6 +27,7 @@ import type {
   MemberResponseResponse,
   NotificationResponse,
   NotificationUnreadCountResponse,
+  IncidentFlowResponse,
   IncidentHistoryFilters,
   IncidentHistoryPage,
   IncidentSummaryResponse,
@@ -303,6 +304,12 @@ export const listIncidentHistory = (
     `${incidentsPath(organizationId)}/history?${query}`,
   );
 };
+
+/** How teams' incidents ran over the last `days` whole UTC days. */
+export const getIncidentFlow = (organizationId: string, days: 7 | 14) =>
+  authenticatedRequest<IncidentFlowResponse>(
+    `${incidentsPath(organizationId)}/flow?${new URLSearchParams({ days: String(days) })}`,
+  );
 
 /** Incidents active now, and those declared and resolved in `period`. */
 export const getIncidentSummary = (

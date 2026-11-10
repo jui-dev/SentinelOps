@@ -484,6 +484,64 @@ const signedIn = (permissions: string[]) =>
           });
       case `GET ${base}/teams`:
         return jsonResponse(200, [team]);
+      case `GET ${base}/incidents/flow?days=7`:
+        // A member's team, one incident still waiting and one worked.
+        return jsonResponse(200, {
+          from: "2026-09-13",
+          to: "2026-09-19",
+          asOf: "2026-09-19T12:00:00.000Z",
+          days: 7,
+          scope: "teams",
+          figures: {
+            typicalWaitMs: 1_800_000,
+            started: 1,
+            mostAtOnce: { count: 2, at: "2026-09-18T11:00:00.000Z" },
+            longestWait: { ms: 7_200_000, number: 43, waiting: true },
+            waitingNow: 1,
+          },
+          teams: [
+            {
+              id: team.id,
+              name: team.name,
+              slug: team.slug,
+              figures: {
+                typicalWaitMs: 1_800_000,
+                started: 1,
+                mostAtOnce: { count: 2, at: "2026-09-18T11:00:00.000Z" },
+                longestWait: { ms: 7_200_000, number: 43, waiting: true },
+                waitingNow: 1,
+              },
+              incidents: [
+                {
+                  number: 43,
+                  title: "Checkout failing",
+                  severity: "SEV1",
+                  status: "DECLARED",
+                  service: { id: service.id, name: service.name, slug: service.slug },
+                  createdAt: "2026-09-19T10:00:00.000Z",
+                  startedAt: null,
+                  resolvedAt: null,
+                  waitMs: 7_200_000,
+                  responders: 0,
+                  yourUpdates: [],
+                },
+                {
+                  number: 42,
+                  title: "Card payments failing",
+                  severity: "SEV2",
+                  status: "INVESTIGATING",
+                  service: { id: service.id, name: service.name, slug: service.slug },
+                  createdAt: "2026-09-18T11:00:00.000Z",
+                  startedAt: "2026-09-18T11:30:00.000Z",
+                  resolvedAt: null,
+                  waitMs: 1_800_000,
+                  responders: 1,
+                  yourUpdates: ["2026-09-18T12:30:00.000Z"],
+                },
+              ],
+            },
+          ],
+        });
       case `GET ${base}/incidents/attention`:
         // What waits on a member: one incident nobody on their team started.
         return jsonResponse(200, {
@@ -665,6 +723,7 @@ describe("accessibility", () => {
       await screen.findByRole("heading", { level: 1, name: "My Operations" });
       await screen.findByRole("table", { name: "Waiting on your team" });
       await screen.findByText("Nothing under way");
+      await screen.findByRole("region", { name: "Incidents over the last 7 days" });
       await expectNoAxeViolations(container);
     });
 

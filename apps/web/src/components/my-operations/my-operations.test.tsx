@@ -146,6 +146,34 @@ const api = ({
         return jsonResponse(200, teams);
       case `GET ${base}/incidents/attention`:
         return jsonResponse(200, attention);
+      case `GET ${base}/incidents/flow?days=7`:
+        return jsonResponse(200, {
+          from: "2026-11-04",
+          to: "2026-11-10",
+          asOf: "2026-11-10T14:30:00.000Z",
+          days: 7,
+          scope: "teams",
+          figures: {
+            typicalWaitMs: null,
+            started: 0,
+            mostAtOnce: null,
+            longestWait: null,
+            waitingNow: 0,
+          },
+          teams: teams.map(({ id, name, slug }) => ({
+            id,
+            name,
+            slug,
+            figures: {
+              typicalWaitMs: null,
+              started: 0,
+              mostAtOnce: null,
+              longestWait: null,
+              waitingNow: 0,
+            },
+            incidents: [],
+          })),
+        });
       case `GET ${base}/incidents?state=active`:
         return jsonResponse(200, {
           items: active.map(listItem),
@@ -233,6 +261,21 @@ describe("My Operations", () => {
     expect(screen.queryByRole("button", { name: /Start|Finish|Complete/ })).toBeNull();
   });
 
+  it("shows how their teams' incidents ran, below their work", async () => {
+    const { requests } = api();
+    renderPage();
+
+    expect(
+      await screen.findByRole("heading", { level: 2, name: "Your teams' incidents" }),
+    ).toBeDefined();
+    expect(
+      await screen.findByText("No incidents on your teams in the last 7 days."),
+    ).toBeDefined();
+    expect(requests.some((request) => request.path.endsWith("/incidents/flow?days=7"))).toBe(
+      true,
+    );
+  });
+
   it("says plainly when nothing is waiting and nothing is theirs", async () => {
     api({ attention: { manage: null, respond: { needsYourTeam: [], yourResponses: [] } } });
     renderPage();
@@ -252,6 +295,8 @@ describe("My Operations", () => {
 
     expect(await screen.findByText("You're not on a team yet")).toBeDefined();
     await waitFor(() => expect(tile("Your teams")).toBe("00 services"));
+    // No teams, so no flow is asked for.
+    expect(screen.queryByRole("heading", { name: "Your teams' incidents" })).toBeNull();
   });
 
   it("asks nothing about incidents without incidents:read", async () => {
@@ -269,6 +314,7 @@ describe("My Operations", () => {
 
     await screen.findByRole("table", { name: "Waiting on your team" });
     await waitFor(() => expect(tile("Active on your teams")).toBe("21 × SEV1"));
+    await screen.findByText("No incidents on your teams in the last 7 days.");
     await expectNoAxeViolations(container);
   });
 });

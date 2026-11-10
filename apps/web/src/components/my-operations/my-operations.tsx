@@ -15,6 +15,7 @@ import {
   useIncidentAttention,
   useIncidentList,
 } from "@/components/incidents/incident-queries";
+import { IncidentFlow } from "@/components/flow/incident-flow";
 import { LiveStatus } from "@/components/incidents/live-status";
 import { incidentKey, SeverityMark } from "@/components/incidents/severity";
 import {
@@ -331,6 +332,7 @@ function YourOperations() {
           </CardRow>
         )
       )}
+      {teams.data && teams.data.length > 0 && <IncidentFlow scope="teams" />}
     </div>
   );
 }

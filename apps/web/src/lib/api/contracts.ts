@@ -579,6 +579,55 @@ export interface IncidentHistoryPage {
   page: { cursor: string | null; hasMore: boolean };
 }
 
+/**
+ * One incident in a response flow. `waitMs` runs from its declaration to its
+ * first responder's start — or, unstarted, to its resolution or now.
+ * `yourUpdates` are the caller's own, never anyone else's.
+ */
+export interface IncidentFlowItemResponse {
+  number: number;
+  title: string;
+  severity: IncidentSeverity;
+  status: IncidentStatus;
+  service: { id: string; name: string; slug: string };
+  createdAt: string;
+  startedAt: string | null;
+  resolvedAt: string | null;
+  waitMs: number;
+  responders: number;
+  yourUpdates: string[];
+}
+
+/** Team-level figures over a flow's incidents; never anyone's own. */
+export interface IncidentFlowFiguresResponse {
+  typicalWaitMs: number | null;
+  started: number;
+  mostAtOnce: { count: number; at: string } | null;
+  longestWait: { ms: number; number: number; waiting: boolean } | null;
+  waitingNow: number;
+}
+
+/**
+ * `GET .../incidents/flow`: how teams' incidents ran over the last `days`
+ * whole UTC days, counting stopped at `asOf`. `scope` is `teams` — the
+ * caller's own — or `organization`, every team, for whoever oversees.
+ */
+export interface IncidentFlowResponse {
+  from: string;
+  to: string;
+  asOf: string;
+  days: 7 | 14;
+  scope: "teams" | "organization";
+  figures: IncidentFlowFiguresResponse;
+  teams: {
+    id: string;
+    name: string;
+    slug: string;
+    figures: IncidentFlowFiguresResponse;
+    incidents: IncidentFlowItemResponse[];
+  }[];
+}
+
 /** Which of a period's incidents: still open, or resolved in it. */
 export type IncidentHistoryShow = "open" | "resolved";
 
