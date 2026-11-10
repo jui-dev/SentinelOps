@@ -35,6 +35,7 @@ import type {
   IncidentHistoryPage,
   IncidentOccurrenceResponse,
   IncidentPage,
+  IncidentPartsResponse,
   IncidentSeverity,
   IncidentSummaryResponse,
   MemberActivityResponse,
@@ -60,6 +61,7 @@ import {
   toIncidentHistoryItemResponse,
   toIncidentOccurrenceResponse,
   toIncidentListItemResponse,
+  toIncidentPartsResponse,
   toIncidentSummaryResponse,
   toMemberActivityResponse,
   toMemberResponseResponse,
@@ -81,6 +83,7 @@ import type {
   IncidentFlowQuery,
   IncidentHistoryQuery,
   IncidentOccurrenceQuery,
+  IncidentPart,
   IncidentSummaryQuery,
   ListIncidentsQuery,
   MemberResponsesQuery,
@@ -117,6 +120,38 @@ export const HISTORY_PAGE_SIZE = 25;
 const escapeLike = (text: string): string => text.replace(/[\\%_]/g, '\\$&');
 
 /**
+ * One of the caller's parts (see INCIDENT_PARTS) as a condition on an
+ * incident. It narrows by the caller's own membership only, and always sits
+ * inside the reader's scope, so it can never show an incident the reader's
+ * list would not.
+ */
+export const partCondition = (
+  part: IncidentPart,
+  membershipId: string,
+): Prisma.IncidentWhereInput => {
+  switch (part) {
+    case 'needs-you':
+      return {
+        team: { memberships: { some: { membershipId } } },
+        responders: { none: { membershipId } },
+        OR: [
+          { status: 'DECLARED' },
+          {
+            status: 'INVESTIGATING',
+            responders: { some: { status: 'INVESTIGATING' } },
+          },
+        ],
+      };
+    case 'investigating':
+      return {
+        responders: { some: { membershipId, status: 'INVESTIGATING' } },
+      };
+    case 'completed':
+      return { responders: { some: { membershipId, status: 'COMPLETED' } } };
+  }
+};
+
+/**
  * The list filters, as conditions on an incident. Each is an equality on a
  * column the organization already scopes, so a service or team from another
  * organization matches nothing rather than leaking anything.
@@ -128,12 +163,16 @@ const escapeLike = (text: string): string => text.replace(/[\\%_]/g, '\\$&');
  * means those four characters. It sits under AND, so it never meets the
  * active list's cursor OR.
  */
-const listFilters = (query: ListIncidentsQuery): Prisma.IncidentWhereInput => {
+const listFilters = (
+  query: ListIncidentsQuery,
+  membershipId: string,
+): Prisma.IncidentWhereInput => {
   const number = query.q ? searchedIncidentNumber(query.q) : undefined;
 
   // Each condition its own entry under AND, so none can displace the
   // state's own status — a resolved list asked for unclaimed ones is empty.
   const and: Prisma.IncidentWhereInput[] = [
+    ...(query.part ? [partCondition(query.part, membershipId)] : []),
     ...(query.response === 'unclaimed'
       ? [{ status: 'DECLARED' as const }]
       : []),
@@ -271,9 +310,19 @@ const incidentSelection = {
  * statuses to count, and its latest update's time — two small joins, never
  * the responders themselves.
  */
+// Each responder's status for the counts, and who and when only so the
+// reader's own row can be picked out: toIncidentListItemResponse emits no one
+// else's.
 const incidentListSelection = {
   ...incidentSelection,
-  responders: { select: { status: true } },
+  responders: {
+    select: {
+      status: true,
+      membershipId: true,
+      startedAt: true,
+      completedAt: true,
+    },
+  },
   activity: {
     where: { type: 'UPDATE' },
     orderBy: { createdAt: 'desc' },
@@ -517,7 +566,7 @@ export class IncidentsService {
       query.from && query.to
         ? summaryBounds({ from: query.from, to: query.to })
         : undefined;
-    const filters = listFilters(query);
+    const filters = listFilters(query, reader.membershipId);
     let rows;
 
     if (query.state === 'active') {
@@ -568,7 +617,9 @@ export class IncidentsService {
     const last = items.at(-1);
 
     return {
-      items: items.map(toIncidentListItemResponse),
+      items: items.map((item) =>
+        toIncidentListItemResponse(item, reader.membershipId),
+      ),
       page: {
         cursor:
           hasMore && last
@@ -1229,6 +1280,62 @@ export class IncidentsService {
         teams,
       }),
     );
+  }
+
+  /**
+   * The reader's active incidents counted by their own part in each, and
+   * all of them: what sizes the Incidents page's tabs and filter pills.
+   *
+   * Every count stays inside the reader's scope (incidents.scope.ts), so it
+   * never counts an incident their list would not show. Four groupings by
+   * team and severity in one repeatable-read snapshot, so the parts agree
+   * with each other and with the whole; the search and the list's other
+   * filters play no part.
+   */
+  async parts(
+    organizationId: string,
+    reader: IncidentReader,
+  ): Promise<IncidentPartsResponse> {
+    const grouped = (part?: IncidentPart) =>
+      this.prisma.incident.groupBy({
+        by: ['teamId', 'severity'],
+        where: withinIncidentScope(organizationId, reader, {
+          status: { not: 'RESOLVED' },
+          ...(part && { AND: [partCondition(part, reader.membershipId)] }),
+        }),
+        _count: { _all: true },
+      });
+
+    const [needsYou, investigating, completed, active] =
+      await this.prisma.$transaction(
+        [
+          grouped('needs-you'),
+          grouped('investigating'),
+          grouped('completed'),
+          grouped(),
+        ],
+        { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+      );
+
+    const rows = (
+      groups: readonly {
+        teamId: string;
+        severity: IncidentSeverity;
+        _count: { _all: number };
+      }[],
+    ) =>
+      groups.map(({ teamId, severity, _count }) => ({
+        teamId,
+        severity,
+        count: _count._all,
+      }));
+
+    return toIncidentPartsResponse({
+      'needs-you': rows(needsYou),
+      investigating: rows(investigating),
+      completed: rows(completed),
+      active: rows(active),
+    });
   }
 
   /**

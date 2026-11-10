@@ -512,6 +512,36 @@ export interface MemberActivityResponse {
 export interface IncidentListItemResponse extends IncidentResponse {
   response: { investigating: number; completed: number };
   lastUpdateAt: string | null;
+  /**
+   * The caller's own response to it, or null if they have not started. Only
+   * ever the caller's: no one else's responder row reaches a list.
+   */
+  yourResponse: {
+    status: IncidentResponderStatus;
+    startedAt: string;
+    completedAt: string | null;
+  } | null;
+}
+
+/** How many incidents one part holds, in all and by team and severity. */
+export interface IncidentPartCount {
+  total: number;
+  /** Teams with at least one; the team's id, as the lists name it. */
+  byTeam: { teamId: string; count: number }[];
+  bySeverity: SeverityCounts;
+}
+
+/**
+ * `GET /organizations/:organizationId/incidents/parts`: the caller's active
+ * incidents counted by their own part in each, and all of them, within what
+ * their incident list would show. The counts ignore the list's other filters
+ * and its search: they size the tabs and the filter pills.
+ */
+export interface IncidentPartsResponse {
+  'needs-you': IncidentPartCount;
+  investigating: IncidentPartCount;
+  completed: IncidentPartCount;
+  active: IncidentPartCount;
 }
 
 /**

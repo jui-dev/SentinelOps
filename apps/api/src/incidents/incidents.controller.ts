@@ -17,6 +17,7 @@ import { OrganizationController } from '../tenancy/organization-controller.decor
 import type {
   IncidentActivityResponse,
   IncidentAttentionResponse,
+  IncidentPartsResponse,
   IncidentDetailResponse,
   IncidentFlowResponse,
   IncidentHistoryPage,
@@ -191,6 +192,23 @@ export class IncidentsController {
     @CurrentMembership() membership: OrganizationContext,
   ): Promise<IncidentAttentionResponse> {
     return this.incidents.attention(membership.organizationId, {
+      membershipId: membership.membershipId,
+      role: membership.role,
+    });
+  }
+
+  /**
+   * The caller's active incidents counted by their own part in each, and
+   * all of them, within what their list shows. Every role may ask; what is
+   * counted follows the caller's read scope. Declared before
+   * `:incidentNumber`, which would otherwise claim the path.
+   */
+  @Get('parts')
+  @RequirePermission(Permission.INCIDENTS_READ)
+  parts(
+    @CurrentMembership() membership: OrganizationContext,
+  ): Promise<IncidentPartsResponse> {
+    return this.incidents.parts(membership.organizationId, {
       membershipId: membership.membershipId,
       role: membership.role,
     });

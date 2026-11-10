@@ -997,6 +997,121 @@ describe('incidents (integration)', () => {
         });
       });
 
+      it('should narrow by the caller’s own part, give only their own response, and count each part within their scope', async () => {
+        // Payments, Dave's team: 1 waits on everyone; Finn is on 2; Dave is
+        // on 3; Dave finished 4; Finn alone finished 5, which waits on the
+        // admin, not on Dave. 6 is Platform's, outside Dave's scope.
+        const finn = await aMemberOn(fx.paymentsA, 'Finn');
+        const portalA = await aService(fx.orgA, fx.platformA, 'Portal');
+
+        for (let n = 0; n < 5; n += 1) {
+          const severity = n === 2 ? 'SEV2' : 'SEV1';
+
+          expect(
+            (await declare(fx.orgA, fx.alice, fx.apiA, { severity })).status,
+          ).toBe(201);
+        }
+        expect((await declare(fx.orgA, fx.alice, portalA)).status).toBe(201);
+
+        for (const [who, number, complete] of [
+          [finn, 2, false],
+          [fx.dave, 3, false],
+          [fx.dave, 4, true],
+          [finn, 5, true],
+        ] as const) {
+          expect((await startAs(fx.orgA, who, number)).status).toBe(200);
+          if (complete) {
+            expect((await completeAs(fx.orgA, who, number)).status).toBe(200);
+          }
+        }
+
+        const items = async (userId: string, query: string) =>
+          (await call('get', `${fx.orgA}/incidents?${query}`, userId)).body
+            .items as {
+            number: number;
+            yourResponse: { status: string; completedAt: string | null } | null;
+          }[];
+        const numbers = async (userId: string, query: string) =>
+          (await items(userId, query)).map(({ number }) => number);
+
+        expect(await numbers(fx.dave, 'state=active&part=needs-you')).toEqual([
+          1, 2,
+        ]);
+        expect(
+          await numbers(fx.dave, 'state=active&part=investigating'),
+        ).toEqual([3]);
+        expect(await numbers(fx.dave, 'state=active&part=completed')).toEqual([
+          4,
+        ]);
+        // The part is the caller's: Finn's needs differ on the same incidents.
+        expect(await numbers(finn, 'state=active&part=needs-you')).toEqual([
+          1, 3,
+        ]);
+        // It combines with the other filters.
+        expect(
+          await numbers(fx.dave, 'state=active&part=needs-you&severity=SEV2'),
+        ).toEqual([]);
+
+        const everything = new Map(
+          (await items(fx.dave, 'state=active')).map((item) => [
+            item.number,
+            item.yourResponse,
+          ]),
+        );
+
+        expect([...everything.keys()]).toEqual([1, 2, 4, 5, 3]);
+        expect(everything.get(2)).toBeNull();
+        expect(everything.get(5)).toBeNull();
+        expect(everything.get(3)).toMatchObject({
+          status: 'INVESTIGATING',
+          completedAt: null,
+        });
+        expect(everything.get(4)).toMatchObject({ status: 'COMPLETED' });
+        expect(everything.get(4)?.completedAt).toEqual(expect.any(String));
+
+        const parts = await call('get', `${fx.orgA}/incidents/parts`, fx.dave);
+
+        expect(parts.status).toBe(200);
+        expect(parts.body['needs-you']).toEqual({
+          total: 2,
+          byTeam: [{ teamId: fx.paymentsA, count: 2 }],
+          bySeverity: { SEV1: 2, SEV2: 0, SEV3: 0, SEV4: 0 },
+        });
+        expect(parts.body.investigating).toMatchObject({
+          total: 1,
+          bySeverity: { SEV1: 0, SEV2: 1, SEV3: 0, SEV4: 0 },
+        });
+        expect(parts.body.completed.total).toBe(1);
+        // Platform's incident is outside Dave's list, so outside his counts.
+        expect(parts.body.active).toEqual({
+          total: 5,
+          byTeam: [{ teamId: fx.paymentsA, count: 5 }],
+          bySeverity: { SEV1: 4, SEV2: 1, SEV3: 0, SEV4: 0 },
+        });
+
+        // The admin, on no team, sees all six and needs to start none.
+        const overseer = await call(
+          'get',
+          `${fx.orgA}/incidents/parts`,
+          fx.alice,
+        );
+
+        expect(overseer.body['needs-you'].total).toBe(0);
+        expect(overseer.body.active.total).toBe(6);
+        expect(overseer.body.active.byTeam).toHaveLength(2);
+
+        const unknown = await call(
+          'get',
+          `${fx.orgA}/incidents?state=active&part=mine`,
+          fx.dave,
+        );
+
+        expect(unknown.status).toBe(400);
+        expect(
+          unknown.body.details.map((d: { field: string }) => d.field),
+        ).toEqual(['part']);
+      });
+
       it('should search titles case-insensitively, taking % and _ literally, and find an incident by its number', async () => {
         for (const title of [
           'Checkout latency',

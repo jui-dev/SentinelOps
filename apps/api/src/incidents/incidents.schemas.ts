@@ -27,6 +27,28 @@ export const incidentSummarySchema = z
 export const incidentSeveritySchema = z.enum(['SEV1', 'SEV2', 'SEV3', 'SEV4']);
 
 /**
+ * The caller's own part in an incident, as the list's `part` filter and the
+ * parts counts name it. Each is about the caller alone, never a teammate:
+ *
+ *   - `needs-you`: their team is responsible, they have not started on it,
+ *     and it still wants someone — nobody has started, or someone is still
+ *     investigating. An incident everyone has finished on is waiting for
+ *     resolution, not for them.
+ *   - `investigating`: they started and have not completed.
+ *   - `completed`: they started and completed their part.
+ *
+ * Team placement as it stands now decides `needs-you`, as it decides who may
+ * start (see incidents.scope.ts).
+ */
+export const INCIDENT_PARTS = [
+  'needs-you',
+  'investigating',
+  'completed',
+] as const;
+
+export type IncidentPart = (typeof INCIDENT_PARTS)[number];
+
+/**
  * The status a change can move an incident to: RESOLVED, and nothing else.
  * An incident is DECLARED only by being declared, and becomes INVESTIGATING
  * only when a responder starts investigating it. Whether resolving is allowed
@@ -141,6 +163,8 @@ const searchSchema = z
  * service or team this organization lacks is a filter nothing matches, not
  * an error. A cursor belongs to the filters it was issued under; the client
  * sends the same ones with it.
+ *
+ * `part` narrows by the caller's own part in each (see INCIDENT_PARTS).
  */
 export const listIncidentsQuerySchema = z
   .object({
@@ -152,6 +176,7 @@ export const listIncidentsQuerySchema = z
     serviceId: resourceIdSchema.optional(),
     teamId: resourceIdSchema.optional(),
     response: z.enum(['unclaimed', 'ready']).optional(),
+    part: z.enum(INCIDENT_PARTS).optional(),
     q: searchSchema,
   })
   .refine(({ from, to }) => (from === undefined) === (to === undefined), {

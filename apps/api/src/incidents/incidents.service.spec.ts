@@ -1371,6 +1371,80 @@ describe('IncidentsService', () => {
     });
   });
 
+  describe('parts', () => {
+    it('should count the reader’s active incidents by their part, by team and severity, in one snapshot inside their scope', async () => {
+      const { service, prisma } = serviceWith();
+      const group = (teamId: string, severity: string, count: number) => ({
+        teamId,
+        severity,
+        _count: { _all: count },
+      });
+      const groupBy = vi
+        .fn()
+        // needs-you, investigating, completed, then every active one.
+        .mockResolvedValueOnce([
+          group(TEAM, 'SEV1', 1),
+          group(OTHER_TEAM, 'SEV3', 1),
+        ])
+        .mockResolvedValueOnce([group(TEAM, 'SEV2', 1)])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([
+          group(TEAM, 'SEV1', 1),
+          group(TEAM, 'SEV2', 2),
+          group(OTHER_TEAM, 'SEV3', 1),
+        ]);
+      Object.assign(prisma.incident, { groupBy });
+      prisma.$transaction.mockImplementation((work: unknown) =>
+        Array.isArray(work)
+          ? Promise.all(work)
+          : (work as (tx: unknown) => unknown)(prisma),
+      );
+
+      const parts = await service.parts(ORG, MEMBER_ACTOR);
+
+      expect(parts['needs-you']).toEqual({
+        total: 2,
+        byTeam: [
+          { teamId: TEAM, count: 1 },
+          { teamId: OTHER_TEAM, count: 1 },
+        ],
+        bySeverity: { SEV1: 1, SEV2: 0, SEV3: 1, SEV4: 0 },
+      });
+      expect(parts.investigating.total).toBe(1);
+      expect(parts.completed).toEqual({
+        total: 0,
+        byTeam: [],
+        bySeverity: { SEV1: 0, SEV2: 0, SEV3: 0, SEV4: 0 },
+      });
+      expect(parts.active).toEqual({
+        total: 4,
+        byTeam: [
+          { teamId: TEAM, count: 3 },
+          { teamId: OTHER_TEAM, count: 1 },
+        ],
+        bySeverity: { SEV1: 1, SEV2: 2, SEV3: 1, SEV4: 0 },
+      });
+
+      expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Array), {
+        isolationLevel: 'RepeatableRead',
+      });
+      const wheres = groupBy.mock.calls.map(([args]) => args.where.AND);
+      for (const [organization, scope, active] of wheres) {
+        expect(organization).toEqual({
+          organizationId: ORG,
+          organization: { deletedAt: null },
+        });
+        // A member's counts never leave what their list would show.
+        expect(scope).toHaveProperty('OR');
+        expect(active.status).toEqual({ not: 'RESOLVED' });
+      }
+      // Each part narrows by the reader; the whole does not.
+      expect(wheres[0][2].AND).toHaveLength(1);
+      expect(wheres[3][2].AND).toBeUndefined();
+      expect(groupBy.mock.calls[0][0].by).toEqual(['teamId', 'severity']);
+    });
+  });
+
   describe('list', () => {
     const rows = (count: number) =>
       Array.from({ length: count }, (_, index) =>
@@ -1382,45 +1456,127 @@ describe('IncidentsService', () => {
         }),
       );
 
-    it('should give each item its response in counts, and when it was last updated', async () => {
+    it('should give each item its response in counts, the reader’s own response, and when it was last updated', async () => {
       const { service, prisma } = serviceWith();
+      const started = new Date('2026-09-18T12:10:00.000Z');
+      const completed = new Date('2026-09-18T12:40:00.000Z');
+      const responder = (
+        membershipId: string,
+        status: 'INVESTIGATING' | 'COMPLETED',
+      ) => ({
+        status,
+        membershipId,
+        startedAt: started,
+        completedAt: status === 'COMPLETED' ? completed : null,
+      });
       prisma.incident.findMany.mockResolvedValue([
         incidentRow({
           responders: [
-            { status: 'INVESTIGATING' },
-            { status: 'COMPLETED' },
-            { status: 'COMPLETED' },
+            responder(OTHER_MEMBERSHIP, 'INVESTIGATING'),
+            responder(MEMBERSHIP, 'COMPLETED'),
+            responder('0199a1b2-c3d4-7000-8000-0000000000ac', 'COMPLETED'),
           ],
           activity: [{ createdAt: new Date('2026-09-18T12:30:00.000Z') }],
         }),
         incidentRow({
           id: 'incident-2',
           number: 2,
-          responders: [],
+          responders: [responder(OTHER_MEMBERSHIP, 'INVESTIGATING')],
           activity: [],
         }),
       ]);
 
-      const { items } = await service.list(ORG, ADMIN_ACTOR, {
+      const { items } = await service.list(ORG, MEMBER_ACTOR, {
         state: 'active',
       });
 
       expect(
-        items.map(({ response, lastUpdateAt }) => ({ response, lastUpdateAt })),
+        items.map(({ response, lastUpdateAt, yourResponse }) => ({
+          response,
+          lastUpdateAt,
+          yourResponse,
+        })),
       ).toEqual([
         {
           response: { investigating: 1, completed: 2 },
           lastUpdateAt: '2026-09-18T12:30:00.000Z',
+          yourResponse: {
+            status: 'COMPLETED',
+            startedAt: started.toISOString(),
+            completedAt: completed.toISOString(),
+          },
         },
-        { response: { investigating: 0, completed: 0 }, lastUpdateAt: null },
+        // Someone else's response is a count, never theirs to see.
+        {
+          response: { investigating: 1, completed: 0 },
+          lastUpdateAt: null,
+          yourResponse: null,
+        },
       ]);
-      // Statuses and one update's time: never the responders themselves.
+      // Statuses, and who and when only to find the reader's own row: no
+      // names, and no one else's row reaches the answer.
       const { select } = prisma.incident.findMany.mock.calls[0][0];
-      expect(select.responders).toEqual({ select: { status: true } });
+      expect(select.responders).toEqual({
+        select: {
+          status: true,
+          membershipId: true,
+          startedAt: true,
+          completedAt: true,
+        },
+      });
+      expect(JSON.stringify(items)).not.toContain(OTHER_MEMBERSHIP);
       expect(select.activity).toEqual(
         expect.objectContaining({ where: { type: 'UPDATE' }, take: 1 }),
       );
     });
+
+    it.each([
+      [
+        'needs-you',
+        {
+          team: { memberships: { some: { membershipId: MEMBERSHIP } } },
+          responders: { none: { membershipId: MEMBERSHIP } },
+          OR: [
+            { status: 'DECLARED' },
+            {
+              status: 'INVESTIGATING',
+              responders: { some: { status: 'INVESTIGATING' } },
+            },
+          ],
+        },
+      ],
+      [
+        'investigating',
+        {
+          responders: {
+            some: { membershipId: MEMBERSHIP, status: 'INVESTIGATING' },
+          },
+        },
+      ],
+      [
+        'completed',
+        {
+          responders: {
+            some: { membershipId: MEMBERSHIP, status: 'COMPLETED' },
+          },
+        },
+      ],
+    ] as const)(
+      'should narrow by the reader’s own part: %s, inside their scope',
+      async (part, condition) => {
+        const { service, prisma } = serviceWith();
+
+        await service.list(ORG, MEMBER_ACTOR, { state: 'active', part });
+
+        const [, scope, page] =
+          prisma.incident.findMany.mock.calls[0][0].where.AND;
+
+        // The member's scope still applies, beside the part.
+        expect(scope).toHaveProperty('OR');
+        expect(page.status).toEqual({ not: 'RESOLVED' });
+        expect(page.AND).toEqual([condition]);
+      },
+    );
 
     it.each([
       ['unclaimed', { status: 'DECLARED' }],

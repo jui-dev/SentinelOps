@@ -20,6 +20,8 @@ import type {
   IncidentDetailResponse,
   IncidentListItemResponse,
   IncidentOccurrenceResponse,
+  IncidentPartCount,
+  IncidentPartsResponse,
   IncidentResponderStatus,
   IncidentResponse,
   IncidentSeverity,
@@ -97,21 +99,80 @@ export const toIncidentResponse = (
  */
 export const toIncidentListItemResponse = (
   incident: IncidentRow & {
-    responders: readonly { status: IncidentResponderStatus }[];
+    responders: readonly {
+      status: IncidentResponderStatus;
+      membershipId: string;
+      startedAt: Date;
+      completedAt: Date | null;
+    }[];
     activity: readonly { createdAt: Date }[];
   },
-): IncidentListItemResponse => ({
-  ...toIncidentResponse(incident),
-  response: {
-    investigating: incident.responders.filter(
-      ({ status }) => status === 'INVESTIGATING',
-    ).length,
-    completed: incident.responders.filter(
-      ({ status }) => status === 'COMPLETED',
-    ).length,
-  },
-  lastUpdateAt: incident.activity[0]?.createdAt.toISOString() ?? null,
-});
+  /** The reader: only their own responder row is ever emitted. */
+  membershipId: string,
+): IncidentListItemResponse => {
+  const yours = incident.responders.find(
+    (responder) => responder.membershipId === membershipId,
+  );
+
+  return {
+    ...toIncidentResponse(incident),
+    response: {
+      investigating: incident.responders.filter(
+        ({ status }) => status === 'INVESTIGATING',
+      ).length,
+      completed: incident.responders.filter(
+        ({ status }) => status === 'COMPLETED',
+      ).length,
+    },
+    lastUpdateAt: incident.activity[0]?.createdAt.toISOString() ?? null,
+    yourResponse: yours
+      ? {
+          status: yours.status,
+          startedAt: yours.startedAt.toISOString(),
+          completedAt: yours.completedAt?.toISOString() ?? null,
+        }
+      : null,
+  };
+};
+
+/** Each part's counts, from (team, severity) groups of its incidents. */
+export const toIncidentPartsResponse = (
+  groups: Record<
+    keyof IncidentPartsResponse,
+    readonly { teamId: string; severity: IncidentSeverity; count: number }[]
+  >,
+): IncidentPartsResponse => {
+  const count = (
+    rows: readonly {
+      teamId: string;
+      severity: IncidentSeverity;
+      count: number;
+    }[],
+  ): IncidentPartCount => {
+    const byTeam = new Map<string, number>();
+    const bySeverity: SeverityCounts = { SEV1: 0, SEV2: 0, SEV3: 0, SEV4: 0 };
+
+    for (const { teamId, severity, count } of rows) {
+      byTeam.set(teamId, (byTeam.get(teamId) ?? 0) + count);
+      bySeverity[severity] += count;
+    }
+
+    return {
+      total: rows.reduce((sum, row) => sum + row.count, 0),
+      byTeam: [...byTeam]
+        .map(([teamId, count]) => ({ teamId, count }))
+        .sort((a, b) => a.teamId.localeCompare(b.teamId)),
+      bySeverity,
+    };
+  };
+
+  return {
+    'needs-you': count(groups['needs-you']),
+    investigating: count(groups.investigating),
+    completed: count(groups.completed),
+    active: count(groups.active),
+  };
+};
 
 /** One of a member's responses, with its incident as the lists give it. */
 export const toMemberResponseResponse = (response: {
