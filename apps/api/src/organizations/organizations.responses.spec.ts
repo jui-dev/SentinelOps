@@ -48,6 +48,7 @@ describe('organization response mappers', () => {
             'services:read',
             'teams:manage',
             'teams:read',
+            'teams:read-all',
           ],
         },
       });

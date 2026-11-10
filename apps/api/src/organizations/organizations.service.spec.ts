@@ -137,6 +137,7 @@ describe('OrganizationsService', () => {
             'services:read',
             'teams:manage',
             'teams:read',
+            'teams:read-all',
           ],
         },
       });
