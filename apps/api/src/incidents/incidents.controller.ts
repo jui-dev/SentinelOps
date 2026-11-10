@@ -18,6 +18,7 @@ import type {
   IncidentActivityResponse,
   IncidentAttentionResponse,
   IncidentDetailResponse,
+  IncidentFlowResponse,
   IncidentHistoryPage,
   IncidentOccurrenceResponse,
   IncidentPage,
@@ -27,6 +28,7 @@ import type {
 import {
   createIncidentSchema,
   incidentActivityQuerySchema,
+  incidentFlowQuerySchema,
   incidentHistoryQuerySchema,
   incidentOccurrenceQuerySchema,
   incidentSummaryQuerySchema,
@@ -37,6 +39,7 @@ import {
 import type {
   CreateIncidentRequest,
   IncidentActivityQuery,
+  IncidentFlowQuery,
   IncidentHistoryQuery,
   IncidentOccurrenceQuery,
   IncidentSummaryQuery,
@@ -154,6 +157,25 @@ export class IncidentsController {
     query: IncidentOccurrenceQuery,
   ): Promise<IncidentOccurrenceResponse> {
     return this.incidents.occurrence(membership.organizationId, query);
+  }
+
+  /**
+   * How teams' incidents ran over the last week or two. Every role may ask:
+   * a member is answered for the teams they are on, whoever oversees every
+   * incident for every team — the service decides which, from the role.
+   * Declared before `:incidentNumber`, which would otherwise claim the path.
+   */
+  @Get('flow')
+  @RequirePermission(Permission.INCIDENTS_READ)
+  flow(
+    @CurrentMembership() membership: OrganizationContext,
+    @Query({ schema: incidentFlowQuerySchema }) query: IncidentFlowQuery,
+  ): Promise<IncidentFlowResponse> {
+    return this.incidents.flow(
+      membership.organizationId,
+      { membershipId: membership.membershipId, role: membership.role },
+      query,
+    );
   }
 
   /**

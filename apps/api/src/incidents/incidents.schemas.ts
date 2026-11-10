@@ -204,6 +204,34 @@ export const incidentSummaryQuerySchema = z
 export const incidentActivityQuerySchema = incidentSummaryQuerySchema;
 
 /**
+ * How many whole UTC days a response flow covers, ending today: a week, or
+ * two. Only these — the reading is drawn day by day, and a longer one would
+ * be a different view, not a wider one. A week when none is asked for.
+ */
+export const incidentFlowQuerySchema = z.object({
+  days: z
+    .enum(['7', '14'])
+    .default('7')
+    .transform((days) => Number(days) as 7 | 14),
+});
+
+/**
+ * The whole UTC days a flow covers: the last `days`, ending with the one
+ * `now` falls on — the same shape as every other period here.
+ */
+export const flowWindow = (
+  days: number,
+  now: Date,
+): { from: string; to: string } => {
+  const to = now.toISOString().slice(0, 10);
+  const from = new Date(startOfUtcDay(to).getTime() - (days - 1) * DAY_MS)
+    .toISOString()
+    .slice(0, 10);
+
+  return { from, to };
+};
+
+/**
  * Which part of a period's history to page through: the summary's whole UTC
  * days, both required, with the same limits.
  *
@@ -295,6 +323,7 @@ export type ListIncidentsQuery = z.infer<typeof listIncidentsQuerySchema>;
 export type IncidentSummaryQuery = z.infer<typeof incidentSummaryQuerySchema>;
 export type IncidentActivityQuery = z.infer<typeof incidentActivityQuerySchema>;
 export type IncidentHistoryQuery = z.infer<typeof incidentHistoryQuerySchema>;
+export type IncidentFlowQuery = z.infer<typeof incidentFlowQuerySchema>;
 export type IncidentOccurrenceQuery = z.infer<
   typeof incidentOccurrenceQuerySchema
 >;

@@ -1,6 +1,7 @@
 import type { ServiceCriticality } from '../services/services.contract.js';
 import { LEVELS } from './incidents.activity.js';
 import type { Calendar } from './incidents.calendar.js';
+import type { Flow, FlowFigures } from './incidents.flow.js';
 import type { Attention } from './incidents.attention.js';
 import type { Occurrence } from './incidents.occurrence.js';
 import { MEMBER_LEVELS } from './member-activity.js';
@@ -27,6 +28,8 @@ import type {
   MemberResponseResponse,
   SeverityCounts,
   TypicalResolutionResponse,
+  IncidentFlowFiguresResponse,
+  IncidentFlowResponse,
   IncidentHistoryItemResponse,
 } from './incidents.contract.js';
 
@@ -471,6 +474,59 @@ const countResponders = (
  * rather than in SQL, so the distinctness is tested with the rest of the
  * shaping.
  */
+const toFlowFigures = (figures: FlowFigures): IncidentFlowFiguresResponse => ({
+  typicalWaitMs: figures.typicalWaitMs,
+  started: figures.started,
+  mostAtOnce: figures.mostAtOnce && {
+    count: figures.mostAtOnce.count,
+    at: figures.mostAtOnce.at.toISOString(),
+  },
+  longestWait: figures.longestWait,
+  waitingNow: figures.waitingNow,
+});
+
+/** A response flow, as the API answers it. */
+export const toIncidentFlowResponse = (
+  flow: Flow,
+  meta: {
+    from: string;
+    to: string;
+    asOf: Date;
+    days: 7 | 14;
+    scope: 'teams' | 'organization';
+  },
+): IncidentFlowResponse => ({
+  from: meta.from,
+  to: meta.to,
+  asOf: meta.asOf.toISOString(),
+  days: meta.days,
+  scope: meta.scope,
+  figures: toFlowFigures(flow.figures),
+  teams: flow.teams.map(({ team, figures, incidents }) => ({
+    id: team.id,
+    name: team.name,
+    slug: team.slug,
+    figures: toFlowFigures(figures),
+    incidents: incidents.map(({ row, startedAt, waitMs }) => ({
+      number: row.number,
+      title: row.title,
+      severity: row.severity,
+      status: row.status,
+      service: {
+        id: row.service.id,
+        name: row.service.name,
+        slug: row.service.slug,
+      },
+      createdAt: row.createdAt.toISOString(),
+      startedAt: startedAt?.toISOString() ?? null,
+      resolvedAt: row.resolvedAt?.toISOString() ?? null,
+      waitMs,
+      responders: row.responders.length,
+      yourUpdates: row.updates.map(({ createdAt }) => createdAt.toISOString()),
+    })),
+  })),
+});
+
 /** One incident in a period's history, as a response. */
 export const toIncidentHistoryItemResponse = (item: {
   incident: IncidentRow;

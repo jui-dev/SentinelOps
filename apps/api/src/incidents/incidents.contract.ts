@@ -515,6 +515,70 @@ export interface IncidentListItemResponse extends IncidentResponse {
 }
 
 /**
+ * One incident in a response flow: enough to recognise and open it, when it
+ * was declared, first started, and resolved, and how many responded. The
+ * caller's own updates on it inside the window are carried so they can see
+ * where their work fell — never anyone else's.
+ */
+export interface IncidentFlowItemResponse {
+  number: number;
+  title: string;
+  severity: IncidentSeverity;
+  status: IncidentStatus;
+  service: { id: string; name: string; slug: string };
+  createdAt: string;
+  /** The first responder's start; null while nobody has started. */
+  startedAt: string | null;
+  resolvedAt: string | null;
+  /** Declaration to first start — or to resolution or now, unstarted. */
+  waitMs: number;
+  responders: number;
+  yourUpdates: string[];
+}
+
+/**
+ * Figures over a flow's incidents, team-level only. `typicalWaitMs` is the
+ * median wait of the `started` incidents someone has started, null with
+ * none; `mostAtOnce` the most running at one instant in the window and when
+ * that began; `longestWait` the longest wait, whose, and whether it is still
+ * running; `waitingNow` the unresolved ones nobody has started.
+ */
+export interface IncidentFlowFiguresResponse {
+  typicalWaitMs: number | null;
+  started: number;
+  mostAtOnce: { count: number; at: string } | null;
+  longestWait: { ms: number; number: number; waiting: boolean } | null;
+  waitingNow: number;
+}
+
+/**
+ * `GET .../incidents/flow`: how teams' incidents ran over the last `days`
+ * whole UTC days, `from` to `to`, counting stopped at `asOf`.
+ *
+ * `scope` says whose: `teams`, the caller's own teams now; `organization`,
+ * every team, for whoever oversees every incident. Each team is listed, in
+ * name order, even with nothing in the window. An incident belongs to the
+ * team responsible for it now, and is here if it was running at any point
+ * in the window — waiting first, then being worked, then resolved; newest
+ * first in each.
+ */
+export interface IncidentFlowResponse {
+  from: string;
+  to: string;
+  asOf: string;
+  days: 7 | 14;
+  scope: 'teams' | 'organization';
+  figures: IncidentFlowFiguresResponse;
+  teams: {
+    id: string;
+    name: string;
+    slug: string;
+    figures: IncidentFlowFiguresResponse;
+    incidents: IncidentFlowItemResponse[];
+  }[];
+}
+
+/**
  * `GET .../incidents/history`: one page of a period's history, every
  * incident declared or resolved in it, most recent first — each placed at
  * its resolution when that fell in the period, and its declaration

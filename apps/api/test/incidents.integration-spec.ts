@@ -3533,6 +3533,193 @@ describe('incidents (integration)', () => {
     });
   });
 
+  describe('response flow', () => {
+    type Flow = {
+      from: string;
+      to: string;
+      days: number;
+      scope: 'teams' | 'organization';
+      figures: { waitingNow: number; started: number };
+      teams: {
+        name: string;
+        figures: { waitingNow: number; started: number };
+        incidents: {
+          number: number;
+          startedAt: string | null;
+          resolvedAt: string | null;
+          responders: number;
+          yourUpdates: string[];
+        }[];
+      }[];
+    };
+
+    const DAY = 86_400_000;
+
+    const flowOf = async (
+      organizationId: string,
+      userId: string,
+      query = '',
+    ): Promise<Flow> => {
+      const response = await call(
+        'get',
+        `${organizationId}/incidents/flow${query}`,
+        userId,
+      );
+
+      expect(response.status).toBe(200);
+
+      return response.body as Flow;
+    };
+
+    /** Each team's incident numbers, in the order the flow gives them. */
+    const lanes = (flow: Flow) =>
+      flow.teams.map(({ name, incidents }) => [
+        name,
+        incidents.map(({ number }) => number),
+      ]);
+
+    /** An incident written directly, with times the routes cannot set. */
+    const written = (
+      number: number,
+      createdAt: Date,
+      resolvedAt: Date | null,
+    ) =>
+      prisma.incident.create({
+        data: {
+          organizationId: fx.orgA,
+          number,
+          title: `Incident ${number}`,
+          serviceId: fx.apiA,
+          teamId: fx.paymentsA,
+          createdById: fx.alice,
+          severity: 'SEV3',
+          status: resolvedAt ? 'RESOLVED' : 'DECLARED',
+          createdAt,
+          resolvedAt,
+        },
+      });
+
+    it("should give a member their own teams' incidents, waiting first, with only their own updates", async () => {
+      const login = await aService(fx.orgA, fx.platformA, 'Login');
+
+      // 1 Payments, started and updated by Dave; 2 Platform; 3 Payments,
+      // waiting.
+      expect((await declare(fx.orgA, fx.alice, fx.apiA)).status).toBe(201);
+      expect((await declare(fx.orgA, fx.alice, login)).status).toBe(201);
+      expect((await declare(fx.orgA, fx.alice, fx.apiA)).status).toBe(201);
+      expect((await startAs(fx.orgA, fx.dave, 1)).status).toBe(200);
+      const posted = await call(
+        'post',
+        `${fx.orgA}/incidents/1/updates`,
+        fx.dave,
+        { message: 'Rolled back the deploy.' },
+      );
+      expect(posted.status).toBe(201);
+      // The admin's update is not Dave's.
+      expect(
+        (
+          await call('post', `${fx.orgA}/incidents/1/updates`, fx.alice, {
+            message: 'Customers told.',
+          })
+        ).status,
+      ).toBe(201);
+
+      const dave = await flowOf(fx.orgA, fx.dave);
+      const today = new Date().toISOString().slice(0, 10);
+
+      expect(dave).toMatchObject({
+        to: today,
+        from: new Date(Date.parse(`${today}T00:00:00.000Z`) - 6 * DAY)
+          .toISOString()
+          .slice(0, 10),
+        days: 7,
+        scope: 'teams',
+      });
+      // Payments only: Platform is not Dave's team.
+      expect(lanes(dave)).toEqual([['Payments', [3, 1]]]);
+
+      const [waiting, worked] = dave.teams[0].incidents;
+
+      expect(waiting).toMatchObject({
+        startedAt: null,
+        responders: 0,
+        yourUpdates: [],
+      });
+      expect(worked.startedAt).not.toBeNull();
+      expect(worked).toMatchObject({
+        responders: 1,
+        yourUpdates: [posted.body.createdAt],
+      });
+      expect(dave.teams[0].figures).toMatchObject({
+        waitingNow: 1,
+        started: 1,
+      });
+
+      // Erin sees Platform's alone.
+      expect(lanes(await flowOf(fx.orgA, fx.erin))).toEqual([
+        ['Platform', [2]],
+      ]);
+
+      // The admin oversees every team, and has posted their own update.
+      const alice = await flowOf(fx.orgA, fx.alice);
+
+      expect(alice.scope).toBe('organization');
+      expect(lanes(alice)).toEqual([
+        ['Payments', [3, 1]],
+        ['Platform', [2]],
+      ]);
+      expect(alice.teams[0].incidents[1].yourUpdates).toHaveLength(1);
+      expect(alice.teams[0].incidents[1].yourUpdates).not.toEqual(
+        worked.yourUpdates,
+      );
+      expect(alice.figures).toMatchObject({ waitingNow: 2, started: 1 });
+    });
+
+    it('should hold what was running in the window, however long ago it was declared', async () => {
+      const now = Date.now();
+
+      // Declared and resolved before the window: not in it.
+      await written(1, new Date(now - 20 * DAY), new Date(now - 19 * DAY));
+      // Declared long before, still unresolved: running all through it.
+      await written(2, new Date(now - 20 * DAY), null);
+      // Resolved inside the window.
+      await written(3, new Date(now - 9 * DAY), new Date(now - 3 * DAY));
+      // Resolved before a week, inside two.
+      await written(4, new Date(now - 12 * DAY), new Date(now - 10 * DAY));
+
+      expect(lanes(await flowOf(fx.orgA, fx.dave))).toEqual([
+        ['Payments', [2, 3]],
+      ]);
+      expect(lanes(await flowOf(fx.orgA, fx.dave, '?days=14'))).toEqual([
+        ['Payments', [2, 3, 4]],
+      ]);
+    });
+
+    it('should list a team with nothing on it, answer a member on no team with none, and keep to the organization', async () => {
+      expect((await declare(fx.orgB, fx.bob, fx.apiB)).status).toBe(201);
+
+      // Nothing in Acme: both teams still listed, for the admin.
+      expect(lanes(await flowOf(fx.orgA, fx.alice))).toEqual([
+        ['Payments', []],
+        ['Platform', []],
+      ]);
+      // Carol is a member in Bravo on no team: no teams, and so nothing.
+      const carol = await flowOf(fx.orgB, fx.carol);
+
+      expect(carol.teams).toEqual([]);
+      expect(carol.figures.waitingNow).toBe(0);
+    });
+
+    it('should refuse a range it does not offer', async () => {
+      for (const days of ['30', '0', 'week']) {
+        expect(
+          (await call('get', `${fx.orgA}/incidents/flow?days=${days}`, fx.dave))
+            .status,
+        ).toBe(400);
+      }
+    });
+  });
+
   describe('attention', () => {
     type Listed = { number: number; id: string }[];
 

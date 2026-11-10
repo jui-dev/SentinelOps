@@ -31,6 +31,7 @@ import type {
   IncidentActivityType,
   IncidentAttentionResponse,
   IncidentDetailResponse,
+  IncidentFlowResponse,
   IncidentHistoryPage,
   IncidentOccurrenceResponse,
   IncidentPage,
@@ -55,6 +56,7 @@ import {
   toIncidentActivityResponse,
   toIncidentAttentionResponse,
   toIncidentDetailResponse,
+  toIncidentFlowResponse,
   toIncidentHistoryItemResponse,
   toIncidentOccurrenceResponse,
   toIncidentListItemResponse,
@@ -64,8 +66,10 @@ import {
   toOperationalActivityResponse,
 } from './incidents.responses.js';
 import type { TypicalResolutionRow } from './incidents.responses.js';
+import { buildFlow } from './incidents.flow.js';
 import { mergeHistory, toHistoryEntry } from './incidents.history.js';
 import {
+  flowWindow,
   parseIncidentNumber,
   searchedIncidentNumber,
   summaryBounds,
@@ -74,6 +78,7 @@ import {
 import type {
   CreateIncidentRequest,
   IncidentActivityQuery,
+  IncidentFlowQuery,
   IncidentHistoryQuery,
   IncidentOccurrenceQuery,
   IncidentSummaryQuery,
@@ -98,6 +103,12 @@ export const RESPONSE_PAGE_SIZE = 20;
 
 /** How many of a period's incidents a summary previews. */
 export const HISTORY_PREVIEW_LIMIT = 10;
+
+/**
+ * The most incidents a response flow reads, newest first: a bound on one
+ * request, far above two weeks of any organization's incidents.
+ */
+export const FLOW_INCIDENT_LIMIT = 500;
 
 /** A period's history per page. Not a client parameter. */
 export const HISTORY_PAGE_SIZE = 25;
@@ -1218,6 +1229,111 @@ export class IncidentsService {
         teams,
       }),
     );
+  }
+
+  /**
+   * How teams' incidents ran over the last week or two: each one's wait for
+   * a first responder and its work after, with team-level figures.
+   *
+   * Whose teams follows the caller's grant: with `incidents:read-all`,
+   * every team in the organization; otherwise the teams they are on now —
+   * a subset of what incidents.scope.ts already lets them read, so nothing
+   * here is visible that their incident list would not show. Their own
+   * updates are found by their user, the timeline's actor.
+   *
+   * One repeatable-read snapshot: the teams, the incidents, and the
+   * updates agree. An incident is read if it was running at any point in
+   * the window: declared before its end, and unresolved or resolved after
+   * its start.
+   */
+  async flow(
+    organizationId: string,
+    actor: { membershipId: string; role: Role },
+    query: IncidentFlowQuery,
+    /** The moment the window ends at; the clock, unless a test says. */
+    now: Date = new Date(),
+  ): Promise<IncidentFlowResponse> {
+    const oversees = hasPermission(actor.role, Permission.INCIDENTS_READ_ALL);
+    const { from, to } = flowWindow(query.days, now);
+    const bounds = summaryBounds({ from, to });
+    const asOf = now < bounds.lt ? now : bounds.lt;
+
+    const { teams, rows } = await this.prisma.$transaction(
+      async (tx) => {
+        const membership = await tx.membership.findFirst({
+          where: {
+            id: actor.membershipId,
+            organizationId,
+            organization: { deletedAt: null },
+          },
+          select: { userId: true },
+        });
+
+        if (!membership) {
+          throw organizationNotFound();
+        }
+
+        const teams = await tx.team.findMany({
+          where: {
+            organizationId,
+            ...(!oversees && {
+              memberships: { some: { membershipId: actor.membershipId } },
+            }),
+          },
+          select: { id: true, name: true, slug: true },
+          orderBy: [{ name: 'asc' }, { id: 'asc' }],
+        });
+
+        const incidents = await tx.incident.findMany({
+          where: {
+            organizationId,
+            teamId: { in: teams.map(({ id }) => id) },
+            createdAt: { lt: bounds.lt },
+            OR: [{ resolvedAt: null }, { resolvedAt: { gte: bounds.gte } }],
+          },
+          select: {
+            id: true,
+            number: true,
+            title: true,
+            severity: true,
+            status: true,
+            createdAt: true,
+            resolvedAt: true,
+            team: { select: { id: true, name: true, slug: true } },
+            service: { select: { id: true, name: true, slug: true } },
+            responders: { select: { startedAt: true } },
+            activity: {
+              where: {
+                type: 'UPDATE',
+                actorId: membership.userId,
+                createdAt: { gte: bounds.gte, lt: bounds.lt },
+              },
+              select: { createdAt: true },
+              orderBy: { createdAt: 'asc' },
+            },
+          },
+          orderBy: { createdAt: 'desc' },
+          take: FLOW_INCIDENT_LIMIT,
+        });
+
+        return { teams, rows: incidents };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
+
+    const flow = buildFlow(
+      rows.map(({ activity, ...row }) => ({ ...row, updates: activity })),
+      teams,
+      { gte: bounds.gte, lt: bounds.lt, now: asOf },
+    );
+
+    return toIncidentFlowResponse(flow, {
+      from,
+      to,
+      asOf,
+      days: query.days,
+      scope: oversees ? 'organization' : 'teams',
+    });
   }
 
   /**
