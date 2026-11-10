@@ -622,13 +622,14 @@ describe("the organization landing", () => {
     }
 
     // Only what the API scopes to the caller: who is asking, what waits on
-    // them, their teams, and the incidents they may see.
+    // them, their teams, the incidents they may see, and their own record.
     await waitFor(() =>
       expect(
         [
           ...new Set(
             requests
-              .map((request) => request.path)
+              // The activity's own period is whatever today makes it.
+              .map((request) => request.path.replace(/(\/activity)\?.*$/, "$1"))
               .filter((path) => path.startsWith(base)),
           ),
         ].sort(),
@@ -638,6 +639,9 @@ describe("the organization landing", () => {
           `${base}/incidents/attention`,
           `${base}/incidents?state=active`,
           `${base}/teams`,
+          // Their own activity and responses, by their own membership.
+          `${base}/memberships/${organizationDetail([]).membership.id}/activity`,
+          `${base}/memberships/${organizationDetail([]).membership.id}/responses`,
         ].sort(),
       ),
     );

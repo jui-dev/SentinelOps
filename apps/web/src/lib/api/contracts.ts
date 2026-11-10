@@ -683,6 +683,39 @@ export interface ActivityIncidentResponse {
   events: number;
 }
 
+/**
+ * What one member did, as their activity counts it: responses they started,
+ * updates they posted, and responses they finished.
+ */
+export type MemberActivityCategory =
+  | "responseStarted"
+  | "update"
+  | "responseCompleted";
+
+/** One day of one member's response activity, every category zero-filled. */
+export interface MemberActivityDayResponse {
+  date: string;
+  total: number;
+  level: ActivityLevel;
+  counts: Record<MemberActivityCategory, number>;
+  incidents: ActivityIncidentResponse[];
+  moreIncidents: number;
+}
+
+/**
+ * `GET .../memberships/:membershipId/activity`: one member's response
+ * activity over whole UTC days `from` to `to`, every day present, oldest
+ * first — their own, or oversight's to read.
+ */
+export interface MemberActivityResponse {
+  from: string;
+  to: string;
+  days: MemberActivityDayResponse[];
+  total: number;
+  activeDays: number;
+  thresholds: [number, number, number, number];
+}
+
 /** One day of operational activity, with every category zero-filled. */
 export interface OperationalActivityDayResponse {
   date: string;

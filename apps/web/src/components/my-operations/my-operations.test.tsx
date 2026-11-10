@@ -1,4 +1,5 @@
 import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { MyOperations } from "@/components/my-operations/my-operations";
@@ -120,6 +121,70 @@ const elsewhere = detail(80, {
   team: { id: platform.id, name: platform.name, slug: platform.slug },
 });
 
+const SAM = "0199a1b2-c3d4-7000-8000-0000000000bb";
+
+const teamMember = (membershipId: string, name: string) => ({
+  membershipId,
+  addedAt: "2026-09-01T12:00:00.000Z",
+  user: { id: `user-${membershipId}`, name, email: `${name.split(" ")[0].toLowerCase()}@acme.example` },
+});
+
+const service = (id: string, name: string, owner: TeamResponse) => ({
+  id,
+  name,
+  slug: name.toLowerCase().replace(/\s+/g, "-"),
+  description: null,
+  criticality: "CRITICAL",
+  ownerTeam: { id: owner.id, name: owner.name, slug: owner.slug },
+  archivedAt: null,
+  createdAt: "2026-09-01T12:00:00.000Z",
+  updatedAt: "2026-09-01T12:00:00.000Z",
+});
+
+const paymentApi = service("0199a1b2-c3d4-7000-8000-0000000000e1", "Payment API", payments);
+const fraud = service("0199a1b2-c3d4-7000-8000-0000000000e2", "Fraud Detection", risk);
+
+/** Every day of the period, quiet but for the 9th of November. */
+const activity = (from: string, to: string) => {
+  const days = [];
+
+  for (
+    let at = Date.parse(`${from}T00:00:00.000Z`);
+    at <= Date.parse(`${to}T00:00:00.000Z`);
+    at += 86_400_000
+  ) {
+    const date = new Date(at).toISOString().slice(0, 10);
+    const busy = date === "2026-11-09";
+
+    days.push({
+      date,
+      total: busy ? 3 : 0,
+      level: busy ? 1 : 0,
+      counts: {
+        responseStarted: busy ? 1 : 0,
+        update: busy ? 2 : 0,
+        responseCompleted: 0,
+      },
+      incidents: busy
+        ? [
+            {
+              id: mine.id,
+              number: 74,
+              title: mine.title,
+              severity: "SEV2",
+              status: "INVESTIGATING",
+              service: { name: "Payment API", slug: "payment-api" },
+              events: 3,
+            },
+          ]
+        : [],
+      moreIncidents: 0,
+    });
+  }
+
+  return { from, to, days, total: 3, activeDays: 1, thresholds: [1, 5, 10, 20] };
+};
+
 const api = ({
   permissions = MEMBER,
   teams = [payments, risk],
@@ -135,7 +200,31 @@ const api = ({
   active?: IncidentDetailResponse[];
 } = {}) =>
   mockApi((request) => {
+    if (route(request).startsWith(`GET ${base}/memberships/${ME}/activity?`)) {
+      const query = new URLSearchParams(request.path.split("?")[1]);
+
+      return jsonResponse(200, activity(query.get("from")!, query.get("to")!));
+    }
+
     switch (route(request)) {
+      case `GET ${base}/services`:
+        return jsonResponse(200, [paymentApi, fraud]);
+      case `GET ${base}/teams/${payments.id}/members`:
+        return jsonResponse(200, [teamMember(ME, "Priya Shah"), teamMember(SAM, "Sam Okafor")]);
+      case `GET ${base}/teams/${risk.id}/members`:
+        return jsonResponse(200, [teamMember(ME, "Priya Shah")]);
+      case `GET ${base}/memberships/${ME}/responses`:
+        return jsonResponse(200, {
+          items: [
+            {
+              incident: mine,
+              status: "INVESTIGATING",
+              startedAt: "2026-11-10T13:30:00.000Z",
+              completedAt: null,
+            },
+          ],
+          page: { cursor: null, hasMore: false },
+        });
       case "POST /auth/refresh":
         return refreshed("token");
       case "GET /auth/me":
@@ -282,7 +371,8 @@ describe("My Operations", () => {
 
     expect(await screen.findByText("Nothing waiting")).toBeDefined();
     expect(screen.getByText("Nothing under way")).toBeDefined();
-    expect(screen.queryByRole("table")).toBeNull();
+    expect(screen.queryByRole("table", { name: "Waiting on your team" })).toBeNull();
+    expect(screen.queryByRole("table", { name: "You're investigating" })).toBeNull();
   });
 
   it("tells a member on no team why nothing reaches them", async () => {
@@ -307,6 +397,72 @@ describe("My Operations", () => {
     expect(requests.some((request) => request.path.includes("/incidents"))).toBe(false);
   });
 
+  it("shows their teams as a roster: who is on each, and the services each owns", async () => {
+    api();
+    renderPage();
+
+    const roster = await screen.findByRole("list", { name: "Your teams and their services" });
+    const [first, second] = within(roster).getAllByRole("listitem", { name: undefined }).filter(
+      (item) => item.parentElement === roster,
+    );
+
+    expect(
+      within(first).getByRole("link", { name: "Payments" }).getAttribute("href"),
+    ).toBe("/orgs/acme-ops/teams/payments");
+    expect(
+      within(await within(first).findByRole("list", { name: "Services Payments owns" }))
+        .getByRole("link", { name: /Payment API/ })
+        .getAttribute("href"),
+    ).toBe("/orgs/acme-ops/services/payment-api");
+    // The member first, as "you"; then everyone else.
+    expect(await within(first).findByText("You, Sam Okafor")).toBeDefined();
+    expect(await within(second).findByText("Only you")).toBeDefined();
+  });
+
+  it("draws their own activity over six months, and says what a chosen day held", async () => {
+    const user = userEvent.setup();
+    const { requests } = api();
+    renderPage();
+
+    const grid = await screen.findByRole("grid", {
+      name: "Your activity over the last six months",
+    });
+    // Their own, never anyone else's: the request names them.
+    const asked = requests
+      .map((request) => request.path)
+      .find((path) => path.includes("/activity?"));
+
+    expect(asked).toMatch(new RegExp(`/memberships/${ME}/activity\\?from=2026-05-13&to=2026-11-10$`));
+    expect(
+      screen.getByText(
+        (_, element) =>
+          element?.tagName === "P" && /^Active on 1 day\./.test(element.textContent ?? ""),
+      ),
+    ).toBeDefined();
+
+    await user.click(
+      within(grid).getByRole("button", {
+        name: /9.*2026 — 1 response started, 2 updates$/,
+      }),
+    );
+
+    const worked = screen.getByRole("list", { name: "Incidents you worked on that day" });
+
+    expect(
+      within(worked).getByRole("link", { name: /INC-74/ }).getAttribute("href"),
+    ).toBe("/orgs/acme-ops/incidents/74");
+  });
+
+  it("lists their own responses, said to them", async () => {
+    api();
+    renderPage();
+
+    const table = await screen.findByRole("table", { name: "Your recent responses" });
+
+    expect(within(table).getByRole("columnheader", { name: "Your part" })).toBeDefined();
+    expect(within(table).getByText("Elevated authorization latency")).toBeDefined();
+  });
+
   it("has no accessibility violations", async () => {
     api();
 
@@ -315,6 +471,9 @@ describe("My Operations", () => {
     await screen.findByRole("table", { name: "Waiting on your team" });
     await waitFor(() => expect(tile("Active on your teams")).toBe("21 × SEV1"));
     await screen.findByText("No incidents on your teams in the last 7 days.");
+    await screen.findByRole("grid", { name: "Your activity over the last six months" });
+    await screen.findByRole("table", { name: "Your recent responses" });
+    await screen.findByText("You, Sam Okafor");
     await expectNoAxeViolations(container);
   });
 });

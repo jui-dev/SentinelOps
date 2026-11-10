@@ -441,6 +441,34 @@ const signedIn = (permissions: string[]) =>
       });
     }
 
+    // One member's own activity: the same days, read as theirs.
+    if (
+      route(request).startsWith(
+        `GET ${base}/memberships/${currentUser.memberships[0].id}/activity?`,
+      )
+    ) {
+      const query = new URLSearchParams(request.path.split("?")[1]);
+
+      return jsonResponse(200, activity(query.get("from")!, query.get("to")!));
+    }
+
+    if (
+      route(request) ===
+      `GET ${base}/memberships/${currentUser.memberships[0].id}/responses`
+    ) {
+      return jsonResponse(200, {
+        items: [
+          {
+            incident: activeIncident,
+            status: "INVESTIGATING",
+            startedAt: "2026-09-18T12:05:00.000Z",
+            completedAt: null,
+          },
+        ],
+        page: { cursor: null, hasMore: false },
+      });
+    }
+
     if (route(request).startsWith(`GET ${base}/incidents/activity?`)) {
       const query = new URLSearchParams(request.path.split("?")[1]);
 
@@ -724,6 +752,9 @@ describe("accessibility", () => {
       await screen.findByRole("table", { name: "Waiting on your team" });
       await screen.findByText("Nothing under way");
       await screen.findByRole("region", { name: "Incidents over the last 7 days" });
+      await screen.findByRole("grid", { name: "Your activity over the last six months" });
+      await screen.findByRole("table", { name: "Your recent responses" });
+      await screen.findByRole("list", { name: "Your teams and their services" });
       await expectNoAxeViolations(container);
     });
 

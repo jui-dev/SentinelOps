@@ -16,6 +16,7 @@ import {
   useIncidentList,
 } from "@/components/incidents/incident-queries";
 import { IncidentFlow } from "@/components/flow/incident-flow";
+import { MemberResponses } from "@/components/incidents/member-responses";
 import { LiveStatus } from "@/components/incidents/live-status";
 import { incidentKey, SeverityMark } from "@/components/incidents/severity";
 import {
@@ -43,6 +44,9 @@ import type {
   IncidentListItemResponse,
   TeamResponse,
 } from "@/lib/api/contracts";
+
+import { YourActivity } from "./your-activity";
+import { YourTeams } from "./your-teams";
 
 /**
  * My Operations: where a member enters their organization.
@@ -333,6 +337,19 @@ function YourOperations() {
         )
       )}
       {teams.data && teams.data.length > 0 && <IncidentFlow scope="teams" />}
+      <CardRow>
+        {teams.data && teams.data.length > 0 ? (
+          <YourTeams teams={teams.data} />
+        ) : (
+          <div />
+        )}
+        <YourActivity />
+      </CardRow>
+      <MemberResponses
+        membershipId={organization.membership.id}
+        name="you"
+        self
+      />
     </div>
   );
 }

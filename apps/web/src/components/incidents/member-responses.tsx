@@ -118,9 +118,12 @@ function ResponseRow({ response }: { response: MemberResponseResponse }) {
 export function MemberResponses({
   membershipId,
   name,
+  self = false,
 }: {
   membershipId: string;
   name: string;
+  /** Said to the member themselves: "your", "you". */
+  self?: boolean;
 }) {
   const organization = useOrganization();
   const responses = useMemberResponses(organization.id, membershipId);
@@ -143,10 +146,16 @@ export function MemberResponses({
     content =
       items.length === 0 ? (
         <EmptyNote title="No incident responses yet">
-          Incidents {name} starts investigating appear here.
+          {self
+            ? "Incidents you start investigating appear here."
+            : `Incidents ${name} starts investigating appear here.`}
         </EmptyNote>
       ) : (
-        <Table label="Recent responses" variant="operational" fixed>
+        <Table
+          label={self ? "Your recent responses" : "Recent responses"}
+          variant="operational"
+          fixed
+        >
           <colgroup>
             <col className="w-21 sm:w-24" />
             <col />
@@ -161,7 +170,7 @@ export function MemberResponses({
               <TH>Incident</TH>
               <TH className="hidden lg:table-cell">Service</TH>
               <TH className="hidden lg:table-cell">Team</TH>
-              <TH>Their part</TH>
+              <TH>{self ? "Your part" : "Their part"}</TH>
               <TH className="hidden sm:table-cell">Incident status</TH>
             </TR>
           </THead>
@@ -187,8 +196,8 @@ export function MemberResponses({
   return (
     <DetailCard
       id="responses"
-      title="Recent responses"
-      aside={`Incidents ${name} started investigating, most recent first`}
+      title={self ? "Your recent responses" : "Recent responses"}
+      aside={`Incidents ${self ? "you" : name} started investigating, most recent first`}
       footer={footer || undefined}
     >
       {content}

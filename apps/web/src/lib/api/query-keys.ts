@@ -118,6 +118,21 @@ export const queryKeys = {
         Object.entries(filters).filter(([, value]) => value !== undefined),
       ),
     ] as const,
+  memberActivity: (
+    organizationId: string,
+    membershipId: string,
+    from: string,
+    to: string,
+  ) =>
+    [
+      "organization",
+      organizationId,
+      "memberships",
+      membershipId,
+      "activity",
+      from,
+      to,
+    ] as const,
   incidentFlow: (organizationId: string, days: number) =>
     ["organization", organizationId, "incidents", "flow", days] as const,
   incidentActivity: (organizationId: string, from: string, to: string) =>

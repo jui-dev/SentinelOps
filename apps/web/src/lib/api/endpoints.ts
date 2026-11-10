@@ -28,6 +28,7 @@ import type {
   NotificationResponse,
   NotificationUnreadCountResponse,
   IncidentFlowResponse,
+  MemberActivityResponse,
   IncidentHistoryFilters,
   IncidentHistoryPage,
   IncidentSummaryResponse,
@@ -304,6 +305,16 @@ export const listIncidentHistory = (
     `${incidentsPath(organizationId)}/history?${query}`,
   );
 };
+
+/** One member's response activity on each day of `period`. */
+export const getMemberActivity = (
+  organizationId: string,
+  membershipId: string,
+  { from, to }: IncidentPeriod,
+) =>
+  authenticatedRequest<MemberActivityResponse>(
+    `${organizationPath(organizationId)}/memberships/${encodeURIComponent(membershipId)}/activity?${new URLSearchParams({ from, to })}`,
+  );
 
 /** How teams' incidents ran over the last `days` whole UTC days. */
 export const getIncidentFlow = (organizationId: string, days: 7 | 14) =>
