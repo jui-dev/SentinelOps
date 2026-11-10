@@ -1,3 +1,4 @@
+import { useId } from "react";
 import type { ReactNode } from "react";
 
 import { EVENT_MARKERS } from "@/components/incidents/event-markers";
@@ -5,8 +6,7 @@ import type { EventMarker } from "@/components/incidents/event-markers";
 import { SeverityMark } from "@/components/incidents/severity";
 import { cx } from "@/components/ui/cx";
 import { OnwardLink } from "@/components/ui/onward-link";
-import { Section } from "@/components/ui/page";
-import { LocalTime } from "@/components/ui/timestamp";
+import { formatDuration, LocalTime } from "@/components/ui/timestamp";
 import type {
   IncidentAnalysisResponse,
   IncidentKeyMomentKind,
@@ -14,7 +14,7 @@ import type {
   IncidentSeverity,
 } from "@/lib/api/contracts";
 
-import { sinceDeclared } from "./analysis-facts";
+import { between, lasted, sinceDeclared } from "./analysis-facts";
 
 /** Each kind of key moment, drawn as the timeline draws its event. */
 const MOMENT_MARKERS: Record<IncidentKeyMomentKind, EventMarker> = {
@@ -82,12 +82,92 @@ function describe(moment: IncidentKeyMomentResponse): ReactNode {
   }
 }
 
+/** Markers this close on the track, as a share of it, are nudged apart. */
+const MIN_GAP = 4;
+
+/**
+ * Where each moment sits on the track, as a percentage of the incident's
+ * length — nudged apart where two would touch, so each marker shows.
+ */
+const placeOnTrack = (
+  facts: IncidentAnalysisResponse["facts"],
+  moments: readonly IncidentKeyMomentResponse[],
+) => {
+  const length = Math.max(1, between(facts.declaredAt, facts.resolvedAt));
+  const places = moments.map(
+    (moment) => (between(facts.declaredAt, moment.at) / length) * 100,
+  );
+
+  for (let index = 1; index < places.length; index += 1) {
+    places[index] = Math.max(places[index], places[index - 1] + MIN_GAP);
+  }
+  for (let index = places.length - 1; index >= 0; index -= 1) {
+    places[index] = Math.min(places[index], 100 - (places.length - 1 - index) * MIN_GAP);
+  }
+
+  return places.map((place) => Math.max(0, place));
+};
+
+type Phase = { label: string; ms: number; colour: string; swatch: string };
+
+/**
+ * The incident's three stretches: waiting for someone to start, the work,
+ * and the wait to be resolved once the work was done. Measured from the
+ * facts and the last response's completion; a stretch that did not happen
+ * is left out.
+ */
+const phasesOf = (analysis: IncidentAnalysisResponse): Phase[] => {
+  const { facts, keyMoments } = analysis;
+  const lastDone = keyMoments.findLast(({ kind }) => kind === "LAST_RESPONSE_COMPLETED")?.at;
+
+  if (facts.firstResponseAt === null) {
+    return [
+      {
+        label: "with no response",
+        ms: lasted(facts),
+        colour: "text-warning-text",
+        swatch: "bg-warning-text",
+      },
+    ];
+  }
+
+  return [
+    {
+      label: "to first response",
+      ms: between(facts.declaredAt, facts.firstResponseAt),
+      colour: "text-warning-text",
+      swatch: "bg-warning-text",
+    },
+    {
+      label: "worked",
+      ms: between(facts.firstResponseAt, lastDone ?? facts.resolvedAt),
+      colour: "text-status-investigating-text",
+      swatch: "bg-status-investigating-text",
+    },
+    ...(lastDone
+      ? [
+          {
+            label: "to resolve",
+            ms: between(lastDone, facts.resolvedAt),
+            colour: "text-status-resolved-text",
+            swatch: "bg-status-resolved-text",
+          },
+        ]
+      : []),
+  ];
+};
+
 /**
  * The moments that shaped the incident — its declaration, the first
  * response, each change of severity or team, the last response completing,
- * and its resolution — each at its time from the declaration. A selection,
- * not the timeline: no updates, one line each, and the way on to the whole
- * of it.
+ * and its resolution. A selection, not the timeline: no updates, and the way
+ * on to the whole of it.
+ *
+ * Drawn twice over, each part doing one job. The track is to scale: its
+ * stretches show how the time went, named in the legend above it, and each
+ * moment is a numbered marker on it. The words are in numbered cards
+ * beneath, evenly spaced, so two moments close together never crowd each
+ * other's labels.
  */
 export function KeyMoments({
   analysis,
@@ -96,47 +176,109 @@ export function KeyMoments({
   analysis: IncidentAnalysisResponse;
   timelineHref: string;
 }) {
+  const headingId = useId();
   const { keyMoments, facts } = analysis;
+  const phases = phasesOf(analysis);
+  const total = phases.reduce((sum, phase) => sum + phase.ms, 0) || 1;
+  const places = placeOnTrack(facts, keyMoments);
 
   return (
-    <Section id="key-moments" title="Key moments" meta={keyMoments.length}>
+    <section
+      id="key-moments"
+      aria-labelledby={headingId}
+      className="flex flex-col gap-4 rounded-xl border border-line bg-surface px-4.5 py-4 sm:px-5"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-x-5 gap-y-2">
+        <h3 id={headingId} className="label-caps text-fg-subtle">
+          Key moments{" "}
+          <span className="data tracking-normal normal-case">
+            · {formatDuration(lasted(facts))} in all
+          </span>
+        </h3>
+        <ul
+          aria-label="How the time went"
+          className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-fg-muted"
+        >
+          {phases.map((phase) => (
+            <li key={phase.label} className="flex items-center gap-1.5">
+              <span aria-hidden="true" className={cx("h-1 w-3.5 rounded-full", phase.swatch)} />
+              <span className={cx("data", phase.colour)}>{formatDuration(phase.ms)}</span>
+              {phase.label}
+            </li>
+          ))}
+        </ul>
+        <OnwardLink href={timelineHref}>Full timeline</OnwardLink>
+      </div>
+
       {keyMoments.length === 0 ? (
         <p className="text-sm text-fg-muted">No moments were recorded.</p>
       ) : (
-        <ol className="flex flex-col">
-          {keyMoments.map((moment) => {
-            const { Icon, colour } = MOMENT_MARKERS[moment.kind];
-
-            return (
-              <li
-                key={moment.activityId}
-                className="grid grid-cols-[4.75rem_1rem_minmax(0,1fr)] items-start gap-x-2.5 border-b border-line-subtle py-2 last:border-b-0"
-              >
-                <span className="data pt-px text-right text-fg-muted">
-                  {sinceDeclared(facts.declaredAt, moment.at)}
-                </span>
-                <Icon
-                  aria-hidden="true"
-                  strokeWidth={2}
-                  className={cx("mt-0.5 size-3.5", colour)}
+        <>
+          <div aria-hidden="true" className="relative mx-3.5 h-7">
+            <span className="absolute inset-x-0 top-3 flex h-1 overflow-hidden rounded-full">
+              {phases.map((phase) => (
+                <span
+                  key={phase.label}
+                  className={phase.swatch}
+                  style={{ width: `${(phase.ms / total) * 100}%` }}
                 />
-                <div className="flex min-w-0 flex-col gap-0.5">
-                  <p className="flex flex-wrap items-center gap-x-1 text-sm text-fg">
-                    {describe(moment)}
-                  </p>
-                  <p className="text-xs text-fg-muted">
-                    {moment.actor.name}
-                    <span aria-hidden="true"> · </span>
-                    <span className="sr-only">, </span>
-                    <LocalTime value={moment.at} />
-                  </p>
-                </div>
-              </li>
-            );
-          })}
-        </ol>
+              ))}
+            </span>
+            {keyMoments.map((moment, index) => (
+              <span
+                key={moment.activityId}
+                className={cx(
+                  "data absolute top-0 grid size-7 -translate-x-1/2 place-items-center rounded-full border-2 border-current bg-surface text-[0.6875rem] font-semibold",
+                  MOMENT_MARKERS[moment.kind].colour,
+                )}
+                style={{ left: `${places[index]}%` }}
+              >
+                {index + 1}
+              </span>
+            ))}
+          </div>
+          <ol aria-label="Moments" className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
+            {keyMoments.map((moment, index) => {
+              const { colour } = MOMENT_MARKERS[moment.kind];
+              const resolved = moment.kind === "RESOLVED";
+
+              return (
+                <li
+                  key={moment.activityId}
+                  className={cx(
+                    "flex gap-2.5 rounded-lg border px-3.5 py-3",
+                    resolved
+                      ? "border-status-resolved-line bg-status-resolved-subtle/50"
+                      : "border-line bg-sunken/50",
+                  )}
+                >
+                  <span
+                    aria-hidden="true"
+                    className={cx(
+                      "data grid size-5.5 shrink-0 place-items-center rounded-full border-[1.5px] border-current text-[0.625rem] font-semibold",
+                      colour,
+                    )}
+                  >
+                    {index + 1}
+                  </span>
+                  <span className="flex min-w-0 flex-col gap-0.5">
+                    <span className="flex flex-wrap items-center gap-x-1 text-sm font-semibold text-fg">
+                      {describe(moment)}
+                    </span>
+                    <span className="text-xs text-fg-muted">{moment.actor.name}</span>
+                    <span className="data text-[0.6875rem] text-fg-subtle">
+                      {sinceDeclared(facts.declaredAt, moment.at)}
+                      <span aria-hidden="true"> · </span>
+                      <span className="sr-only">, </span>
+                      <LocalTime value={moment.at} />
+                    </span>
+                  </span>
+                </li>
+              );
+            })}
+          </ol>
+        </>
       )}
-      <OnwardLink href={timelineHref}>Full timeline</OnwardLink>
-    </Section>
+    </section>
   );
 }

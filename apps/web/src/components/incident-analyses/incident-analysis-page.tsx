@@ -1,5 +1,6 @@
 "use client";
 
+import { Check, Circle } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
@@ -10,25 +11,31 @@ import {
   IncidentNotFound,
   parseNumber,
 } from "@/components/incidents/incident-detail";
-import { incidentHref, useIncident } from "@/components/incidents/incident-queries";
+import {
+  incidentHref,
+  incidentsHref,
+  useIncident,
+} from "@/components/incidents/incident-queries";
 import { incidentKey } from "@/components/incidents/severity";
 import { useOrganization } from "@/components/organizations/organization-scope";
 import { serviceHref } from "@/components/services/service-scope";
 import { teamHref } from "@/components/teams/team-scope";
 import { ErrorAlert } from "@/components/ui/alert";
+import { cx } from "@/components/ui/cx";
 import { EmptyState } from "@/components/ui/empty-state";
 import { linkClasses, quietLinkClasses } from "@/components/ui/link";
 import { PageBody, PageHeader } from "@/components/ui/page";
-import { RecordList, RecordRow } from "@/components/ui/record";
 import { PageSpinner, Spinner } from "@/components/ui/spinner";
 import { LocalDateTime } from "@/components/ui/timestamp";
+import { ANALYSIS_SECTIONS } from "@/lib/api/contracts";
 import type {
+  AnalysisSection,
   IncidentAnalysisResponse,
   IncidentDetailResponse,
 } from "@/lib/api/contracts";
 import { isApiError } from "@/lib/api/errors";
 
-import { AnalysisDocument } from "./analysis-document";
+import { AnalysisDocument, SECTION_TITLES } from "./analysis-document";
 import { AnalysisEditor } from "./analysis-editor";
 import { useAnalysisAccess, useIncidentAnalysis } from "./analysis-queries";
 import { AnalysisStatusMark } from "./analysis-status";
@@ -37,6 +44,7 @@ import { UnsavedText } from "./draft-recovery";
 import { FactsStrip } from "./facts-strip";
 import { KeyMoments } from "./key-moments";
 import { PublishOutcomeNotice } from "./publish-dialog";
+import { sectionAnchor } from "./section-editor";
 import type { PublishOutcome } from "./publish-dialog";
 import { StartAnalysis } from "./start-analysis";
 import { useAnalysisDraft } from "./use-analysis-draft";
@@ -114,7 +122,86 @@ function StatusLine({
             : `${analysis.owner.name} is writing this analysis. It may change until it is published.`}
         </p>
       )}
+      {/* When it was started and last changed: where a side column held it. */}
+      <p className="flex flex-wrap items-center gap-x-2 text-xs text-fg-subtle">
+        <span>
+          Started <LocalDateTime value={analysis.createdAt} /> by {analysis.createdBy.name}
+        </span>
+        {dot}
+        <span>
+          Last changed <LocalDateTime value={analysis.updatedAt} />
+        </span>
+      </p>
     </div>
+  );
+}
+
+/**
+ * How far the draft has come, read at a glance: a ring filled by the share
+ * of its four sections written, what that means for publishing, and a link
+ * to each section — ticked once written — so the writer can go straight to
+ * what is left. Counted from what is on the page while it is written.
+ */
+function DraftProgress({
+  written,
+}: {
+  written: Record<AnalysisSection, boolean>;
+}) {
+  const count = ANALYSIS_SECTIONS.filter((section) => written[section]).length;
+  const share = (count / ANALYSIS_SECTIONS.length) * 100;
+
+  return (
+    <section
+      aria-label="Progress"
+      className="flex flex-wrap items-center gap-x-6 gap-y-4 rounded-2xl border border-status-investigating-line bg-linear-to-r from-status-investigating-subtle to-surface px-5 py-4 sm:px-6"
+    >
+      <span
+        role="img"
+        aria-label={`${count} of ${ANALYSIS_SECTIONS.length} sections written`}
+        className="grid size-18 shrink-0 place-items-center rounded-full"
+        style={{
+          background: `conic-gradient(var(--color-status-resolved-text) 0 ${share}%, var(--color-line) ${share}% 100%)`,
+        }}
+      >
+        <span className="data grid size-14 place-items-center rounded-full bg-surface text-[0.9375rem] font-semibold text-fg">
+          {count}/{ANALYSIS_SECTIONS.length}
+        </span>
+      </span>
+      <div className="flex min-w-0 flex-1 basis-60 flex-col gap-1">
+        <p className="text-base font-semibold text-fg">
+          {count} of {ANALYSIS_SECTIONS.length} sections written
+        </p>
+        <p className="text-sm text-fg-muted">
+          {count === ANALYSIS_SECTIONS.length
+            ? "Every section is written. Save it, then publish when it reads right."
+            : written.summary
+              ? "The summary is in, so it can be published. Impact, cause and lessons are optional."
+              : "Start with the summary: it is all a draft needs to be published."}
+        </p>
+      </div>
+      <nav aria-label="Sections" className="flex flex-wrap gap-2">
+        {ANALYSIS_SECTIONS.map((section) => (
+          <a
+            key={section}
+            href={`#${sectionAnchor(section)}`}
+            className={cx(
+              "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-sm transition-colors duration-(--duration-fast) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+              written[section]
+                ? "border-status-resolved-line bg-status-resolved-subtle text-fg"
+                : "border-line bg-surface text-fg-muted hover:text-fg",
+            )}
+          >
+            {written[section] ? (
+              <Check aria-hidden="true" strokeWidth={3} className="size-3.5 text-status-resolved-text" />
+            ) : (
+              <Circle aria-hidden="true" strokeWidth={2} className="size-3.5 text-fg-subtle" />
+            )}
+            {SECTION_TITLES[section]}
+            <span className="sr-only">{written[section] ? ", written" : ", not written"}</span>
+          </a>
+        ))}
+      </nav>
+    </section>
   );
 }
 
@@ -170,44 +257,40 @@ function Workspace({
   const draft = useAnalysisDraft(analysis, incident.number);
   const editing = canWrite && analysis.status === "DRAFT";
   const [outcome, setOutcome] = useState<PublishOutcome | null>(null);
+  // What is written: from the page while it is written, else as saved.
+  const written = Object.fromEntries(
+    ANALYSIS_SECTIONS.map((section) => [
+      section,
+      editing ? draft.state.text[section].trim() !== "" : analysis[section] !== null,
+    ]),
+  ) as Record<AnalysisSection, boolean>;
 
+  // One column, read top to bottom: how far it has come, what the record
+  // says and when things happened, then the document.
   return (
-    <>
-      <FactsStrip analysis={analysis} />
-      <div className="grid items-start gap-x-10 gap-y-10 xl:grid-cols-[minmax(0,1fr)_18rem]">
-        {editing ? (
-          <AnalysisEditor
-            draft={draft}
-            incidentNumber={incident.number}
-            onPublishOutcome={setOutcome}
-          />
-        ) : (
-          <div className="flex min-w-0 flex-col gap-8">
-            {outcome && <PublishOutcomeNotice outcome={outcome} analysis={analysis} />}
-            {/* Text written here that can no longer be saved: kept to copy. */}
-            {draft.unsaved && <UnsavedText analysis={analysis} draft={draft} />}
-            <AnalysisDocument analysis={analysis} />
-          </div>
-        )}
-        <aside aria-label="Analysis context" className="flex min-w-0 flex-col gap-8">
-          <KeyMoments
-            analysis={analysis}
-            timelineHref={`${incidentHref(organization.slug, incident.number)}#timeline`}
-          />
-          {analysis.status === "DRAFT" && (
-            <RecordList tone="secondary" stacked>
-              <RecordRow label="Started">
-                <LocalDateTime value={analysis.createdAt} />
-                <span className="mt-0.5 block">by {analysis.createdBy.name}</span>
-              </RecordRow>
-              <RecordRow label="Last changed">
-                <LocalDateTime value={analysis.updatedAt} />
-              </RecordRow>
-            </RecordList>
-          )}
-        </aside>
-      </div>
-    </>
+    <div className="flex flex-col gap-6">
+      {analysis.status === "DRAFT" && <DraftProgress written={written} />}
+      <FactsStrip analysis={analysis}>
+        <KeyMoments
+          analysis={analysis}
+          timelineHref={`${incidentHref(organization.slug, incident.number)}#timeline`}
+        />
+      </FactsStrip>
+      {editing ? (
+        <AnalysisEditor
+          draft={draft}
+          incidentNumber={incident.number}
+          onPublishOutcome={setOutcome}
+        />
+      ) : (
+        <div className="flex min-w-0 flex-col gap-4">
+          {outcome && <PublishOutcomeNotice outcome={outcome} analysis={analysis} />}
+          {/* Text written here that can no longer be saved: kept to copy. */}
+          {draft.unsaved && <UnsavedText analysis={analysis} draft={draft} />}
+          <AnalysisDocument analysis={analysis} />
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -220,28 +303,50 @@ function AnalysisBody({ incident }: { incident: IncidentDetailResponse }) {
   return (
     <>
       <PageHeader
+        width="reading"
         eyebrow={
-          <Link
-            href={incidentHref(organization.slug, incident.number)}
-            className={quietLinkClasses}
-          >
-            <span className="data">{key}</span>
-            <span aria-hidden="true"> · </span>
-            <span className="sr-only">, </span>
-            {incident.title}
-          </Link>
+          <nav aria-label="Breadcrumb">
+            <ol className="flex items-center gap-2">
+              <li>
+                <Link href={incidentsHref(organization.slug)} className={quietLinkClasses}>
+                  Incidents
+                </Link>
+              </li>
+              <li aria-hidden="true" className="text-fg-subtle">
+                /
+              </li>
+              <li>
+                <Link
+                  href={incidentHref(organization.slug, incident.number)}
+                  className={quietLinkClasses}
+                >
+                  <span className="data">{key}</span>
+                  <span className="sr-only">, {incident.title}</span>
+                </Link>
+              </li>
+              <li aria-hidden="true" className="text-fg-subtle">
+                /
+              </li>
+              <li aria-current="page" className="text-fg-muted">
+                Analysis
+              </li>
+            </ol>
+          </nav>
         }
-        title="Incident analysis"
+        title={`Analysis of ${key}`}
         description={
-          analysis.data && (
-            <div className="flex flex-col gap-2">
-              <StatusLine analysis={analysis.data} incident={incident} />
-              <IncidentContext incident={incident} />
-            </div>
-          )
+          <div className="flex flex-col gap-2">
+            <p className="text-sm text-fg-muted">{incident.title}</p>
+            {analysis.data && (
+              <>
+                <StatusLine analysis={analysis.data} incident={incident} />
+                <IncidentContext incident={incident} />
+              </>
+            )}
+          </div>
         }
       />
-      <PageBody>
+      <PageBody width="reading">
         {analysis.isError ? (
           <ErrorAlert error={analysis.error} />
         ) : analysis.data === undefined ? (

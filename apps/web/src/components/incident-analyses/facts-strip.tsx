@@ -8,7 +8,7 @@ import type { IncidentAnalysisResponse } from "@/lib/api/contracts";
 
 import { lasted, severityPath, toFirstResponse } from "./analysis-facts";
 
-/** One cell of the strip: a small caps label over its reading. */
+/** One fact card: a small caps label over its reading. */
 function Cell({
   label,
   className,
@@ -19,7 +19,12 @@ function Cell({
   children: ReactNode;
 }) {
   return (
-    <dl className={cx("flex min-w-0 flex-col gap-1 bg-surface px-4 py-3 sm:px-5", className)}>
+    <dl
+      className={cx(
+        "flex min-w-0 flex-col gap-1 rounded-xl border border-line bg-linear-to-b from-surface to-sunken px-4 py-3.5",
+        className,
+      )}
+    >
       <dt className="label-caps text-fg-subtle">{label}</dt>
       <dd className="flex min-w-0 flex-col gap-0.5">{children}</dd>
     </dl>
@@ -81,17 +86,19 @@ function Count({ value, one, many }: { value: number; one: string; many: string 
 }
 
 /**
- * What SentinelOps knew about the incident before anyone wrote a word: how
- * long it lasted, how long until someone responded, and how its severity
- * moved — read first — then how many responded, posted, and were moved
- * between teams, quieter. One strip of readings divided by hairlines, not a
- * row of cards: this is a document's instrument panel, not a dashboard.
- * When things happened is Key moments' to say.
+ * What SentinelOps knew about the incident before anyone wrote a word, as
+ * "What the record says": how long it lasted, how long until someone
+ * responded, how its severity moved, and the response in counts — four
+ * cards in a dark section of their own, as the incident page holds its
+ * facts. The key moments follow inside it, given as `children`: when things
+ * happened is theirs to say.
  */
 export function FactsStrip({
   analysis,
+  children,
 }: {
   analysis: IncidentAnalysisResponse;
+  children?: ReactNode;
 }) {
   const headingId = useId();
   const { facts } = analysis;
@@ -100,13 +107,12 @@ export function FactsStrip({
   return (
     <section
       aria-labelledby={headingId}
-      className="overflow-hidden rounded-md border border-line"
+      className="flex flex-col gap-3 rounded-2xl border border-line-subtle bg-linear-to-b from-rail-top to-rail-mid p-3 sm:p-3.5"
     >
-      <h2 id={headingId} className="sr-only">
-        Incident facts
+      <h2 id={headingId} className="label-caps px-1 pt-1 text-fg-subtle">
+        What the record says
       </h2>
-      {/* The hairlines are the gaps, showing the line colour beneath. */}
-      <div className="grid grid-cols-2 gap-px bg-line-subtle md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,2fr)] xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.75fr)_minmax(0,1fr)]">
+      <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
         <Cell label="Lasted">
           <Reading>{formatDuration(lasted(facts))}</Reading>
           <span className="text-xs text-fg-muted">
@@ -124,15 +130,18 @@ export function FactsStrip({
             {firstResponse === null ? "None recorded" : "After declaration"}
           </span>
         </Cell>
-        <Cell label="Severity" className="col-span-2 md:col-span-1">
+        <Cell label="Severity">
           <SeverityReading severity={facts.severity} />
         </Cell>
         <div
           role="group"
           aria-label="Response counts"
-          className="col-span-2 bg-surface px-4 py-3 sm:px-5 md:col-span-3 xl:col-span-1"
+          className="flex min-w-0 flex-col gap-1.5 rounded-xl border border-line bg-linear-to-b from-surface to-sunken px-4 py-3.5"
         >
-          <dl className="flex flex-wrap gap-x-5 gap-y-1 xl:flex-col xl:pt-1">
+          <span aria-hidden="true" className="label-caps text-fg-subtle">
+            The response
+          </span>
+          <dl className="flex flex-col gap-0.5">
             <Count value={facts.responderCount} one="responder" many="responders" />
             <Count value={facts.updateCount} one="update" many="updates" />
             <Count
@@ -143,6 +152,7 @@ export function FactsStrip({
           </dl>
         </div>
       </div>
+      {children}
     </section>
   );
 }

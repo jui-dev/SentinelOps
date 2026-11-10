@@ -1,3 +1,4 @@
+import { Check } from "lucide-react";
 import { useId } from "react";
 import type { ReactNode } from "react";
 
@@ -18,6 +19,9 @@ export const SECTION_HINTS: Record<AnalysisSection, string> = {
   cause: "Why it happened, as far as is known.",
   lessons: "What to keep, change, or look into.",
 };
+
+/** Where a section is on the page, for the links that lead to it. */
+export const sectionAnchor = (section: AnalysisSection) => `section-${section}`;
 
 /** The count appears once a section nears its limit, and not before. */
 const COUNT_FROM = ANALYSIS_SECTION_MAX_LENGTH - 400;
@@ -47,16 +51,39 @@ export function SectionEditor({
   const hintId = `${id}-hint`;
   const countId = `${id}-count`;
   const counting = value.length > COUNT_FROM;
+  const written = value.trim() !== "";
 
+  // A card of its own, edged in teal once it holds something; its id is
+  // where the progress card's link to it lands.
   return (
-    <section aria-labelledby={headingId} className="flex max-w-[68ch] flex-col gap-2">
-      <div className="flex items-baseline gap-2">
-        <h2 id={headingId} className="text-[0.9375rem] leading-6 font-semibold text-fg">
-          {SECTION_TITLES[section]}
-        </h2>
-        <span className="text-xs text-fg-subtle">
-          {section === "summary" ? "Required to publish" : "Optional"}
-        </span>
+    <section
+      id={sectionAnchor(section)}
+      aria-labelledby={headingId}
+      className={cx(
+        "flex scroll-mt-6 flex-col gap-2 rounded-2xl border bg-surface px-5 py-4.5 sm:px-6",
+        written ? "border-status-resolved-line" : "border-line",
+      )}
+    >
+      <div className="flex items-baseline justify-between gap-3">
+        <div className="flex items-baseline gap-2">
+          <h2 id={headingId} className="text-base leading-6 font-semibold text-fg">
+            {SECTION_TITLES[section]}
+          </h2>
+          <span
+            className={cx(
+              "text-xs",
+              section === "summary" ? "text-warning-text" : "text-fg-subtle",
+            )}
+          >
+            {section === "summary" ? "Required to publish" : "Optional"}
+          </span>
+        </div>
+        {written && (
+          <span className="inline-flex items-center gap-1 text-xs text-status-resolved-text">
+            <Check aria-hidden="true" strokeWidth={3} className="size-3" />
+            written
+          </span>
+        )}
       </div>
       <p id={hintId} className="text-sm text-fg-muted">
         {SECTION_HINTS[section]}

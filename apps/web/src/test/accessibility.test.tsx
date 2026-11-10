@@ -1190,8 +1190,8 @@ it("Services, with a row opened", async () => {      signedIn(ADMIN);      const
       signedIn(MEMBER);
       const { container } = inWorkspace(<IncidentAnalysisPage />);
 
-      await screen.findByRole("heading", { level: 1, name: "Incident analysis" });
-      await screen.findByRole("heading", { name: "Incident facts" });
+      await screen.findByRole("heading", { level: 1, name: "Analysis of INC-7" });
+      await screen.findByRole("heading", { name: "What the record says" });
       await screen.findByRole("heading", { name: /Key moments/ });
       await expectNoAxeViolations(container);
     });

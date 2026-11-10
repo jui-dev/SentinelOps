@@ -52,7 +52,7 @@ export function AnalysisEditor({
         event.preventDefault();
         draft.save();
       }}
-      className="flex min-w-0 flex-col gap-8"
+      className="flex min-w-0 flex-col gap-4"
     >
       {/* The notices and the bar keep the fields' width, so they read as
           the document's own — measured in its type, not the notices'. */}

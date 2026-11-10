@@ -80,7 +80,7 @@ const eventful = (
 
 /** The facts strip, found by its (visually hidden) heading. */
 const factsStrip = async () =>
-  (await screen.findByRole("heading", { name: "Incident facts" })).closest(
+  (await screen.findByRole("heading", { name: "What the record says" })).closest(
     "section",
   ) as HTMLElement;
 
@@ -169,12 +169,9 @@ describe("the incident analysis workspace", () => {
   });
 
   describe("its key moments", () => {
+    /** The moments' cards: the words, beneath the track. */
     const rows = async () =>
-      within(
-        (await screen.findByRole("heading", { name: /Key moments/ })).closest(
-          "section",
-        ) as HTMLElement,
-      ).getAllByRole("listitem");
+      within(await screen.findByRole("list", { name: "Moments" })).getAllByRole("listitem");
 
     it("tells each moment at its time from the declaration, in few words", async () => {
       api(READ_ONLY, { analysis: eventful() });
@@ -182,9 +179,11 @@ describe("the incident analysis workspace", () => {
       inOrganization(<IncidentAnalysisPage />);
 
       // The time from the declaration, then what happened.
-      const lines = (await rows()).map(
-        (row) => `${row.firstElementChild?.textContent} ${row.querySelector("p")?.textContent}`,
-      );
+      const lines = (await rows()).map((row) => {
+        const [what, , when] = row.lastElementChild!.children;
+
+        return `${when.textContent?.split(" · ")[0]} ${what.textContent}`;
+      });
 
       expect(lines).toEqual([
         "T+0 Declared at SEV3Moderate",
@@ -212,9 +211,16 @@ describe("the incident analysis workspace", () => {
       expect(time.querySelector('[aria-hidden="true"]')?.textContent).not.toMatch(/2026/);
       expect(time.getAttribute("title")).toMatch(/2026/);
       expect(time.querySelector(".sr-only")?.textContent).toBe(time.getAttribute("title"));
+      expect(await rows()).toHaveLength(7);
+      // How long it all took, beside its name; how the time went, in words.
+      expect(screen.getByRole("heading", { name: /Key moments/ }).textContent).toBe(
+        "Key moments · 1h in all",
+      );
       expect(
-        screen.getByRole("heading", { name: /Key moments/ }).parentElement?.textContent,
-      ).toBe("Key moments7");
+        within(screen.getByRole("list", { name: "How the time went" }))
+          .getAllByRole("listitem")
+          .map((item) => item.textContent),
+      ).toEqual(["5mto first response", "50mworked", "5mto resolve"]);
     });
 
     it("leads on to the incident's whole timeline", async () => {
@@ -274,20 +280,20 @@ describe("the incident analysis workspace", () => {
       expect(
         screen.getAllByRole("heading").map((h) => `${h.tagName} ${h.textContent}`),
       ).toEqual([
-        "H1 Incident analysis",
-        "H2 Incident facts",
+        "H1 Analysis of INC-42",
+        "H2 What the record says",
+        "H3 Key moments · 1h in all",
         "H2 Summary",
         "H2 Impact",
         "H2 Cause",
         "H2 Lessons",
-        "H2 Key moments",
       ]);
     });
   });
 
   describe("its status", () => {
     const header = async () =>
-      (await screen.findByRole("heading", { level: 1, name: "Incident analysis" }))
+      (await screen.findByRole("heading", { level: 1, name: "Analysis of INC-42" }))
         .closest("header") as HTMLElement;
 
     it("tells the owner their draft is theirs", async () => {
@@ -338,13 +344,15 @@ describe("the incident analysis workspace", () => {
 
       inOrganization(<IncidentAnalysisPage />);
 
-      const context = await screen.findByRole("complementary", {
-        name: "Analysis context",
-      });
-      const record = within(context).getAllByRole("term").map((term) => term.textContent);
+      // In the status line, where the side column held them.
+      await screen.findByText(/^Started/);
 
-      expect(record).toEqual(["Started", "Last changed"]);
-      expect(within(context).getByText("by Ada Lovelace")).toBeDefined();
+      const header = (
+        await screen.findByRole("heading", { level: 1, name: "Analysis of INC-42" })
+      ).closest("header") as HTMLElement;
+
+      expect(header.textContent).toMatch(/Started .+ by Ada Lovelace/);
+      expect(header.textContent).toMatch(/Last changed /);
       expect(document.body.textContent).not.toMatch(/version/i);
     });
 

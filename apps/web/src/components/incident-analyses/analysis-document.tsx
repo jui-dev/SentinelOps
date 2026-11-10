@@ -1,5 +1,6 @@
 import { Lock } from "lucide-react";
 
+import { cx } from "@/components/ui/cx";
 import { ANALYSIS_SECTIONS } from "@/lib/api/contracts";
 import type {
   AnalysisSection,
@@ -31,20 +32,26 @@ export function AnalysisDocument({
   const published = analysis.status === "PUBLISHED";
 
   return (
-    <article aria-label="Analysis" className="flex min-w-0 flex-col gap-8">
+    <article aria-label="Analysis" className="flex min-w-0 flex-col gap-4">
       {ANALYSIS_SECTIONS.map((section) => {
         const text = analysis[section];
         const headingId = `analysis-${section}`;
 
         return (
+          // A card per section, as the editor draws it, so reading and
+          // writing look alike; its id is where the progress links land.
           <section
             key={section}
+            id={`section-${section}`}
             aria-labelledby={headingId}
-            className="flex flex-col gap-2"
+            className={cx(
+              "flex scroll-mt-6 flex-col gap-2 rounded-2xl border bg-surface px-5 py-4.5 sm:px-6",
+              text ? "border-status-resolved-line" : "border-line",
+            )}
           >
             <h2
               id={headingId}
-              className="text-[0.9375rem] leading-6 font-semibold text-fg"
+              className="text-base leading-6 font-semibold text-fg"
             >
               {SECTION_TITLES[section]}
             </h2>
@@ -61,7 +68,7 @@ export function AnalysisDocument({
         );
       })}
       {published && (
-        <p className="flex items-start gap-2 border-t border-line-subtle pt-4 text-xs text-fg-muted">
+        <p className="flex items-start gap-2 pt-1 text-xs text-fg-muted">
           <Lock aria-hidden="true" className="mt-px size-3.5 shrink-0" />
           This analysis is final. It is kept as published.
         </p>

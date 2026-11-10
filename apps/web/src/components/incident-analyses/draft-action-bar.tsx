@@ -113,7 +113,7 @@ export function DraftActionBar({
     <div
       role="region"
       aria-label="Draft actions"
-      className="sticky bottom-0 z-10 flex max-w-[68ch] flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-line bg-canvas py-3"
+      className="sticky bottom-3 z-10 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-xl border border-line-strong bg-rail-top/95 px-4 py-3 shadow-[0_12px_32px_rgb(0_0_0/0.35)] backdrop-blur sm:px-5"
     >
       <div className="flex min-w-0 flex-col gap-0.5">
         <p role="status" className="text-sm text-fg-muted">
@@ -137,7 +137,7 @@ export function DraftActionBar({
           {draft.saving ? "Saving…" : draft.failure ? "Try again" : "Save draft"}
         </Button>
         <Button
-          variant="secondary"
+          variant="complete"
           disabled={draft.publishBlock !== null}
           aria-describedby={reason ? reasonId : undefined}
           onClick={() => setPublishing(true)}

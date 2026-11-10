@@ -360,7 +360,7 @@ describe("incident analysis", () => {
       inOrganization(<IncidentAnalysisPage />);
 
       expect(
-        await screen.findByRole("heading", { level: 1, name: "Incident analysis" }),
+        await screen.findByRole("heading", { level: 1, name: "Analysis of INC-42" }),
       ).toBeDefined();
       expect(
         screen.getByRole("link", { name: /INC-42.*Card payments failing/ }).getAttribute("href"),

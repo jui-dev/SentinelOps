@@ -79,7 +79,7 @@ const asAdmin = (
   });
 
 const header = async () =>
-  (await screen.findByRole("heading", { level: 1, name: "Incident analysis" })).closest(
+  (await screen.findByRole("heading", { level: 1, name: "Analysis of INC-42" })).closest(
     "header",
   ) as HTMLElement;
 
