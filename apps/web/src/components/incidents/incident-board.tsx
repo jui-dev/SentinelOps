@@ -292,6 +292,86 @@ const memberAction = (
       : { label: "View", tone: "accent" as const };
 
 /**
+ * A member's list on a phone: each incident a card, whole and tappable —
+ * its severity, key, and how long it has been open; its title in full; its
+ * service and team, with their own part; where the team's response stands;
+ * and what the card offers them, as the table's action does. No table to
+ * squeeze, and nothing to scroll sideways.
+ */
+export function IncidentCards({
+  incidents,
+  label,
+  perspective = "member",
+  yourTeamIds = new Set(),
+}: {
+  incidents: readonly IncidentListItemResponse[];
+  label: string;
+  /** Oversight's cards say no part of the reader's, and each offers View. */
+  perspective?: "oversight" | "member";
+  yourTeamIds?: ReadonlySet<string>;
+}) {
+  const organization = useOrganization();
+  const member = perspective === "member";
+
+  return (
+    <ul
+      aria-label={label}
+      className="flex flex-col divide-y divide-line-subtle overflow-hidden rounded-xl border border-line bg-surface"
+    >
+      {incidents.map((incident) => {
+        const key = incidentKey(incident.number);
+        const action = member
+          ? memberAction(incident, yourTeamIds)
+          : { label: "View", tone: "accent" as const };
+        const unstarted =
+          incident.status !== "RESOLVED" &&
+          incident.response.investigating + incident.response.completed === 0;
+
+        return (
+          <li key={incident.id} className="relative">
+            {unstarted && (
+              <span
+                aria-hidden="true"
+                className="absolute inset-y-2 left-0 w-[3px] rounded-full bg-warning-text"
+              />
+            )}
+            <Link
+              href={incidentHref(organization.slug, incident.number)}
+              aria-label={`${action.label} ${key}, ${incident.title}`}
+              className="flex flex-col gap-1.5 px-4 py-3.5 hover:bg-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
+            >
+              <span className="flex items-center justify-between gap-3 text-xs">
+                <span className="flex items-center gap-2">
+                  <SeverityMark severity={incident.severity} emphasis />
+                  <span className="data text-fg-subtle">{key}</span>
+                </span>
+                <span className="data text-fg-muted">
+                  <Duration from={incident.createdAt} to={incident.resolvedAt} />
+                </span>
+              </span>
+              <span className="text-[0.9375rem] leading-snug font-semibold text-fg">
+                {incident.title}
+              </span>
+              <span className="text-xs text-fg-muted">
+                {incident.service.name} · {incident.team.name}
+                {member && <YourPart incident={incident} />}
+              </span>
+              <span className="mt-1 flex items-center justify-between gap-3 text-sm">
+                <ResponseCell incident={incident} />
+                <span aria-hidden="true" className={rowActionClasses(action.tone)}>
+                  {action.label}
+                  <ChevronRight strokeWidth={2} className="size-3.5" />
+                </span>
+              </span>
+            </Link>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/**
  * The Incidents page's table: each incident with where its response stands
  * and how recently it was updated, a View action, and a row that opens in
  * place to show the latest update and who can respond — scanned, compared,

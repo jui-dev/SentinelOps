@@ -241,10 +241,16 @@ export function YourResponse({
   incident,
   own,
   actions,
+  pinned = false,
 }: {
   incident: IncidentDetailResponse;
   own: IncidentResponderResponse | undefined;
   actions: OwnResponse;
+  /**
+   * On a phone: the update box pinned to the foot of the screen while they
+   * investigate, so posting is always in reach however far they scroll.
+   */
+  pinned?: boolean;
 }) {
   const now = useMinuteClock();
   const people = usePeople(incident);
@@ -282,9 +288,10 @@ export function YourResponse({
           </Button>
         }
       >
+        {/* On a phone the line above says enough; the steps take the screen. */}
         <ol
           aria-label="How a response goes"
-          className="grid gap-3 px-5 pb-5 sm:grid-cols-3 sm:px-6"
+          className="hidden gap-3 px-5 pb-5 sm:grid sm:grid-cols-3 sm:px-6"
         >
           {[
             ["Start", "You're listed as investigating."],
@@ -324,13 +331,22 @@ export function YourResponse({
         }
         action={tally && <span className="text-sm text-fg-muted">{tally}</span>}
       >
-        {active && (
-          <UpdateComposer
-            incident={incident}
-            placeholder="What did you find, what did you change, what happens next?"
-            className="px-5 pb-5 sm:px-6"
-          />
-        )}
+        {active &&
+          (pinned ? (
+            <div className="fixed inset-x-0 bottom-0 z-30 border-t border-status-resolved-line bg-rail-top/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgb(0_0_0/0.3)] backdrop-blur">
+              <UpdateComposer
+                incident={incident}
+                placeholder="What did you find or change?"
+                compact
+              />
+            </div>
+          ) : (
+            <UpdateComposer
+              incident={incident}
+              placeholder="What did you find, what did you change, what happens next?"
+              className="px-5 pb-5 sm:px-6"
+            />
+          ))}
         <Band>
           {team}
           {active && (

@@ -19,6 +19,7 @@ import { ErrorAlert } from "@/components/ui/alert";
 import { cx } from "@/components/ui/cx";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageBody, PageHeader } from "@/components/ui/page";
+import { useMinWidth } from "@/components/ui/use-min-width";
 import { rowActionClasses } from "@/components/ui/row-action";
 import { PageSpinner } from "@/components/ui/spinner";
 import {
@@ -253,12 +254,12 @@ function FactCard({
   // The group holds its term and descriptions directly, as a list's group
   // must; the icon sits in the term, placed beside them by the grid.
   return (
-    <div className="grid min-w-0 grid-cols-[2.5rem_minmax(0,1fr)] items-center gap-x-3 gap-y-0.5 rounded-xl border border-line bg-linear-to-b from-surface to-sunken px-4 py-3.5">
+    <div className="grid min-w-0 grid-cols-[2rem_minmax(0,1fr)] items-center gap-x-3 gap-y-0.5 rounded-xl border border-line bg-linear-to-b from-surface to-sunken px-3.5 py-2.5 sm:grid-cols-[2.5rem_minmax(0,1fr)] sm:px-4 sm:py-3.5">
       <dt className="contents">
         <span
           aria-hidden="true"
           className={cx(
-            "row-span-3 grid size-10 place-items-center rounded-lg border",
+            "row-span-3 grid size-8 place-items-center rounded-lg border sm:size-10",
             tone === "orange" && "border-warning-line bg-warning-subtle text-warning-text",
             tone === "blue" &&
               "border-status-investigating-line bg-status-investigating-subtle text-status-investigating-text",
@@ -301,7 +302,7 @@ function IncidentFacts({ incident }: { incident: IncidentDetailResponse }) {
   return (
     <dl
       aria-label="Incident details"
-      className="grid gap-3 rounded-2xl border border-line-subtle bg-linear-to-b from-rail-top to-rail-mid p-3.5 sm:grid-cols-3"
+      className="grid gap-2 rounded-2xl border border-line-subtle bg-linear-to-b from-rail-top to-rail-mid p-2.5 sm:grid-cols-3 sm:gap-3 sm:p-3.5"
     >
       <FactCard
         icon={Server}
@@ -406,15 +407,16 @@ function Step({
   children: ReactNode;
 }) {
   return (
+    // A phone reads the steps down the page, each mark beside its words.
     <li
       aria-current={state === "current" ? "step" : undefined}
-      className="flex min-w-0 flex-col gap-2.5"
+      className="flex min-w-0 items-start gap-3 sm:flex-col sm:gap-2.5"
     >
-      <span className="flex items-center gap-2">
+      <span className="flex shrink-0 items-center gap-2 sm:w-full">
         <StepMark state={state} tone={tone} />
         {link}
       </span>
-      <span className="flex min-w-0 flex-col gap-0.5 pr-3">
+      <span className="flex min-w-0 flex-col gap-0.5 pt-0.5 pr-3 sm:pt-0">
         <span
           className={cx(
             "text-sm font-semibold",
@@ -493,30 +495,36 @@ function Lifecycle({ incident }: { incident: IncidentDetailResponse }) {
   const ready = state === "complete";
   const wait = (firstStart ? Date.parse(firstStart) : now.getTime()) - Date.parse(incident.createdAt);
   const slow = !firstStart || wait > SLOW_START_MS;
+  const waited = firstStart
+    ? `${formatDuration(wait)} to start`
+    : resolved
+      ? undefined
+      : `waiting ${formatDuration(wait)}`;
 
   return (
     <ol
       aria-label="Lifecycle"
-      className="grid gap-4 rounded-2xl border border-line bg-surface px-5 py-4.5 sm:grid-cols-3 sm:gap-0"
+      className="grid gap-3.5 rounded-2xl border border-line bg-surface px-4 py-4 sm:grid-cols-3 sm:gap-0 sm:px-5 sm:py-4.5"
     >
       <Step
         label="Declared"
         state="done"
-        link={
-          <StepLink
-            done={!!firstStart || !resolved}
-            warn={slow}
-            chip={
-              firstStart
-                ? `${formatDuration(wait)} to start`
-                : resolved
-                  ? undefined
-                  : `waiting ${formatDuration(wait)}`
-            }
-          />
-        }
+        link={<StepLink done={!!firstStart || !resolved} warn={slow} chip={waited} />}
       >
         <LocalDateTime value={incident.createdAt} /> · {incident.createdBy.name}
+        {/* A phone has no line between the steps to carry the wait: said here. */}
+        {waited && (
+          <span
+            className={cx(
+              "data mt-1 block w-max rounded-full border px-2 py-0.5 text-[0.6875rem] sm:hidden",
+              slow
+                ? "border-warning-line bg-warning-subtle text-warning-text"
+                : "border-status-resolved-line bg-status-resolved-subtle text-status-resolved-text",
+            )}
+          >
+            {waited}
+          </span>
+        )}
       </Step>
       <Step
         label={ready || resolved ? "Investigated" : "Investigating"}
@@ -627,11 +635,16 @@ function IncidentPage({
   const working =
     perspective === "eligible" || (perspective === "responder" && !!own);
   const actionError = actions.start.error ?? actions.complete.error;
+  // On a phone, a member investigating posts from a bar pinned to the foot
+  // of the screen; the page leaves room beneath for it.
+  const wide = useMinWidth();
+  const pinned =
+    !wide && working && own?.status === "INVESTIGATING" && !resolved;
 
   return (
     <>
       <IncidentHeader incident={incident} canManage={canManage} live={live} />
-      <PageBody width="reading">
+      <PageBody width="reading" className={cx(pinned && "pb-48")}>
         <div className="flex flex-col gap-6">
           <IncidentFacts incident={incident} />
           <Lifecycle incident={incident} />
@@ -654,7 +667,7 @@ function IncidentPage({
           {canManage || (oversees && !working) ? (
             <OversightPanel incident={incident} canManage={canManage} />
           ) : working ? (
-            <YourResponse incident={incident} own={own} actions={actions} />
+            <YourResponse incident={incident} own={own} actions={actions} pinned={pinned} />
           ) : (
             <FollowPanel incident={incident} />
           )}

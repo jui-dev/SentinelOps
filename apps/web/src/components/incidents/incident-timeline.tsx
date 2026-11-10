@@ -347,10 +347,13 @@ export function UpdateComposer({
   incident,
   placeholder = "What changed, what is being tried, what is next.",
   className,
+  compact = false,
 }: {
   incident: IncidentResponse;
   placeholder?: string;
   className?: string;
+  /** Two lines, for a bar pinned to a phone's screen. */
+  compact?: boolean;
 }) {
   const organization = useOrganization();
   const queryClient = useQueryClient();
@@ -420,6 +423,7 @@ export function UpdateComposer({
         maxLength={2000}
         value={message}
         placeholder={placeholder}
+        className={compact ? "min-h-16!" : undefined}
         onChange={(event) => setMessage(event.target.value)}
         onKeyDown={(event) => {
           // Ctrl+Enter (or ⌘+Enter) posts, as in most chat and ticket tools.
@@ -431,7 +435,7 @@ export function UpdateComposer({
         error={fields.message}
       />
       <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
-        <span className="mr-auto text-xs text-fg-subtle">
+        <span className="mr-auto hidden text-xs text-fg-subtle sm:inline">
           <kbd className="data rounded-sm border border-line px-1">Ctrl</kbd> +{" "}
           <kbd className="data rounded-sm border border-line px-1">Enter</kbd>{" "}
           to post

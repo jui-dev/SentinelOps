@@ -27,6 +27,7 @@ import { PageBody, PageHeader } from "@/components/ui/page";
 import { Select } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs } from "@/components/ui/tabs";
+import { useMinWidth } from "@/components/ui/use-min-width";
 import { linkClasses } from "@/components/ui/link";
 import {
   RequiredNote,
@@ -55,7 +56,7 @@ import {
   storeIncident,
   useIncidentList,
 } from "./incident-queries";
-import { IncidentBoard } from "./incident-board";
+import { IncidentBoard, IncidentCards } from "./incident-board";
 import { LiveStatus } from "./live-status";
 import { MemberIncidentsView } from "./member-incidents-view";
 import { SEVERITY_LEVELS, severityOf } from "./severity";
@@ -303,6 +304,7 @@ function IncidentList({
   filtered: boolean;
 }) {
   const active = state === "active";
+  const wide = useMinWidth();
 
   if (list.isError) return <ErrorAlert error={list.error} />;
 
@@ -359,11 +361,20 @@ function IncidentList({
           {active ? "Declared in this range." : "Resolved in this range."}
         </p>
       )}
-      <IncidentBoard
-        incidents={incidents}
-        state={state}
-        label={active ? "Active incidents" : "Resolved incidents"}
-      />
+      {wide ? (
+        <IncidentBoard
+          incidents={incidents}
+          state={state}
+          label={active ? "Active incidents" : "Resolved incidents"}
+        />
+      ) : (
+        // A phone has no room for the table's columns: each incident a card.
+        <IncidentCards
+          incidents={incidents}
+          label={active ? "Active incidents" : "Resolved incidents"}
+          perspective="oversight"
+        />
+      )}
       {list.hasNextPage && (
         <div>
           <Button

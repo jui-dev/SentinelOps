@@ -13,13 +13,14 @@ import { cx } from "@/components/ui/cx";
 import { EmptyNote } from "@/components/ui/empty-state";
 import { PageBody, PageHeader } from "@/components/ui/page";
 import { Spinner } from "@/components/ui/spinner";
+import { useMinWidth } from "@/components/ui/use-min-width";
 import type {
   IncidentPart,
   IncidentPartCount,
   IncidentState,
 } from "@/lib/api/contracts";
 
-import { IncidentBoard } from "./incident-board";
+import { IncidentBoard, IncidentCards } from "./incident-board";
 import {
   FilterChip,
   useIncidentFilters,
@@ -135,10 +136,11 @@ function PartTabs({
   onChange: (next: View) => void;
 }) {
   return (
+    // On a phone, one row that scrolls sideways, each part its name and count.
     <div
       role="group"
       aria-label="Your part"
-      className="flex flex-wrap gap-3 rounded-2xl border border-line-subtle bg-linear-to-b from-rail-top to-rail-mid p-3 sm:p-4"
+      className="scrollbar-thin flex gap-2 overflow-x-auto rounded-2xl border border-line-subtle bg-linear-to-b from-rail-top to-rail-mid p-2.5 sm:flex-wrap sm:gap-3 sm:overflow-visible sm:p-4"
     >
       {VIEWS.map((each) => {
         const pressed = view === each.value;
@@ -151,7 +153,7 @@ function PartTabs({
             aria-pressed={pressed}
             onClick={() => onChange(each.value)}
             className={cx(
-              "flex min-w-38 flex-1 flex-col items-start gap-0.5 rounded-lg border px-4 py-3 text-left transition-colors duration-(--duration-fast) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus sm:flex-none",
+              "flex shrink-0 flex-col items-start gap-0.5 rounded-full border px-3.5 py-2 text-left whitespace-nowrap transition-colors duration-(--duration-fast) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus sm:min-w-38 sm:rounded-lg sm:px-4 sm:py-3 sm:whitespace-normal",
               pressed
                 ? "border-status-resolved-line bg-status-resolved-subtle"
                 : "border-line bg-surface hover:bg-hover",
@@ -163,7 +165,7 @@ function PartTabs({
                 <span className={cx("numeric ml-1.5", each.tone)}>{count}</span>
               )}
             </span>
-            <span className="text-xs text-fg-muted">{each.note}</span>
+            <span className="hidden text-xs text-fg-muted sm:block">{each.note}</span>
           </button>
         );
       })}
@@ -256,7 +258,11 @@ function MemberFilterBar({
         </form>
         {teams.data && teams.data.length > 1 && (
           <>
-            <div role="group" aria-label="Team" className="flex flex-wrap gap-1.5">
+            <div
+              role="group"
+              aria-label="Team"
+              className="scrollbar-thin flex w-full gap-1.5 overflow-x-auto sm:w-auto sm:flex-wrap sm:overflow-visible"
+            >
               <FilterChip pressed={team === ""} onClick={() => set("team", "")}>
                 All your teams {tally(count?.total, team === "")}
               </FilterChip>
@@ -273,7 +279,11 @@ function MemberFilterBar({
             <span aria-hidden="true" className="mx-1 hidden h-5 w-px bg-line sm:block" />
           </>
         )}
-        <div role="group" aria-label="Severity" className="flex flex-wrap gap-1.5">
+        <div
+          role="group"
+          aria-label="Severity"
+          className="scrollbar-thin flex w-full gap-1.5 overflow-x-auto sm:w-auto sm:flex-wrap sm:overflow-visible"
+        >
           <FilterChip pressed={severity === ""} onClick={() => set("severity", "")}>
             Any severity {tally(count?.total, severity === "")}
           </FilterChip>
@@ -320,6 +330,8 @@ export function MemberIncidentsView() {
   const teams = useTeams(organization.id);
   const filters = useIncidentFilters();
   const parts = useIncidentParts(organization.id);
+  // A phone gets the list as cards: a table of six columns has no room there.
+  const wide = useMinWidth();
 
   const asked = searchParams.get("view");
   const view: View = asked && isView(asked) ? asked : "needs-you";
@@ -420,13 +432,21 @@ export function MemberIncidentsView() {
               )
             ) : (
               <>
-                <IncidentBoard
-                  incidents={incidents}
-                  state={state}
-                  label={chosen.label}
-                  perspective="member"
-                  yourTeamIds={yourTeamIds}
-                />
+                {wide ? (
+                  <IncidentBoard
+                    incidents={incidents}
+                    state={state}
+                    label={chosen.label}
+                    perspective="member"
+                    yourTeamIds={yourTeamIds}
+                  />
+                ) : (
+                  <IncidentCards
+                    incidents={incidents}
+                    label={chosen.label}
+                    yourTeamIds={yourTeamIds}
+                  />
+                )}
                 {list.hasNextPage && (
                   <div>
                     <Button

@@ -1875,6 +1875,102 @@ describe("incidents", () => {
     });
   });
 
+  describe("on a phone", () => {
+    beforeEach(() => {
+      vi.stubGlobal(
+        "matchMedia",
+        (query: string) =>
+          ({
+            matches: false,
+            media: query,
+            addEventListener: () => {},
+            removeEventListener: () => {},
+          }) as unknown as MediaQueryList,
+      );
+
+      return () => vi.unstubAllGlobals();
+    });
+
+    /** The section a heading names. */
+    const sectionOf = async (name: string | RegExp) =>
+      (await screen.findByRole("heading", { name })).closest("section") as HTMLElement;
+
+    it("lists a member's incidents as cards, each one tap that says what it offers", async () => {
+      api(MEMBER, {
+        handler: (request) => {
+          if (route(request) === `GET ${base}/incidents/parts`) {
+            const none = { total: 0, byTeam: [], bySeverity: { SEV1: 0, SEV2: 0, SEV3: 0, SEV4: 0 } };
+
+            return jsonResponse(200, {
+              "needs-you": none,
+              investigating: none,
+              completed: none,
+              active: none,
+            });
+          }
+          if (request.path === `${base}/incidents?state=active&part=needs-you`) {
+            return jsonResponse(200, page([incident({ responders: [responder(daniel)] })]));
+          }
+
+          return undefined;
+        },
+      });
+
+      inOrganization(<IncidentsView />);
+
+      const cards = await screen.findByRole("list", { name: "Needs you" });
+      const card = within(cards).getByRole("link", {
+        name: "Respond INC-42, Card payments failing",
+      });
+
+      expect(card.getAttribute("href")).toBe("/orgs/acme-ops/incidents/42");
+      expect(card.textContent).toMatch(/Payment API · Payments/);
+      // No table to squeeze.
+      expect(screen.queryByRole("table")).toBeNull();
+    });
+
+    it("pins the update box to the foot of the screen while a member investigates", async () => {
+      navigation.params = { orgSlug: "acme-ops", incidentNumber: "42" };
+      api(MEMBER, { detail: incident({ responders: [responder(ada)] }) });
+
+      inOrganization(<IncidentDetail />);
+
+      const box = await screen.findByLabelText("Post an update");
+
+      expect(box.closest(".fixed")).not.toBeNull();
+      // The response itself is still theirs to complete, in place.
+      expect(
+        within(await sectionOf("Your response")).getByRole("button", {
+          name: "Complete my response",
+        }),
+      ).toBeDefined();
+    });
+
+    it("lists the organization's incidents as cards for oversight too, each a View", async () => {
+      api(OVERSIGHT);
+
+      inOrganization(<IncidentsView />);
+
+      const cards = await screen.findByRole("list", { name: "Active incidents" });
+
+      expect(
+        within(cards).getByRole("link", { name: "View INC-42, Card payments failing" }),
+      ).toBeDefined();
+      expect(screen.queryByRole("table")).toBeNull();
+    });
+
+    it("leaves the Admin's update box in place", async () => {
+      navigation.params = { orgSlug: "acme-ops", incidentNumber: "42" };
+      api(ADMIN);
+
+      inOrganization(<IncidentDetail />);
+
+      const box = await screen.findByLabelText("Post an update");
+
+      expect(box.closest(".fixed")).toBeNull();
+    });
+  });
+
   describe("freshness", () => {
     it("says how fresh a page is in seconds, then minutes, then hours", () => {
       expect(formatAge(3_000)).toBe("just now");
