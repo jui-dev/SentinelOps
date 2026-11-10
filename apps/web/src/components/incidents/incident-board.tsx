@@ -28,7 +28,7 @@ import {
   useIncident,
   useIncidentTimeline,
 } from "./incident-queries";
-import { Avatar } from "./incident-response";
+import { Avatar } from "./incident-people";
 import { incidentKey, SeverityMark, StatusMark } from "./severity";
 
 /** Past this long without an update, an active incident's last one is stale. */

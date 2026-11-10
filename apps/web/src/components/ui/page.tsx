@@ -43,7 +43,8 @@ export function PageHeader({
         {/* Wide enough to wrap the actions beneath it on a phone. */}
         <div className="flex min-w-0 flex-1 basis-80 flex-col gap-1">
           {eyebrow && (
-            <p className="eyebrow truncate text-fg-muted">{eyebrow}</p>
+            // A div, not a p: an eyebrow may hold a breadcrumb's nav and list.
+            <div className="eyebrow truncate text-fg-muted">{eyebrow}</div>
           )}
           <div className="flex min-w-0 items-baseline gap-3">
             <h1
@@ -77,6 +78,8 @@ const widths = {
   full: "max-w-[90rem]",
   /** A reference list of a few columns: proportioned, however few its rows. */
   list: "max-w-[72rem]",
+  /** One column read top to bottom — an incident: wide enough for a timeline. */
+  reading: "max-w-[60rem]",
   /** Settings and forms: a readable measure. */
   form: "max-w-3xl",
 };

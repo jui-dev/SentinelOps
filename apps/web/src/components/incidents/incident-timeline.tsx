@@ -9,7 +9,6 @@ import { useOrganization } from "@/components/organizations/organization-scope";
 import { ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { cx } from "@/components/ui/cx";
-import { DetailCard } from "@/components/ui/detail-layout";
 import { TextArea } from "@/components/ui/field";
 import { SubmitHint, useRequiredFields } from "@/components/ui/required";
 import { Spinner } from "@/components/ui/spinner";
@@ -32,6 +31,7 @@ import { useCurrentUser } from "@/lib/auth/session-provider";
 
 import { EVENT_MARKERS } from "./event-markers";
 import type { EventMarker } from "./event-markers";
+import { Avatar } from "./incident-people";
 import { useIncidentTimeline } from "./incident-queries";
 import { SeverityMark, StatusMark } from "./severity";
 import type { RetiredIncidentStatus } from "./severity";
@@ -167,67 +167,106 @@ const writtenText = (entry: IncidentActivityResponse) =>
     ? entry.message
     : null;
 
+/** When an entry happened: its time, and how long ago, at the row's end. */
+function When({ at, now }: { at: string; now: Date }) {
+  return (
+    <span className="data shrink-0 text-xs text-fg-subtle">
+      <LocalTime value={at} /> · {formatDuration(now.getTime() - Date.parse(at))} ago
+    </span>
+  );
+}
+
+function NewTag() {
+  return (
+    <span className="mr-1 rounded-sm border border-accent-line bg-accent-subtle px-1.5 text-xs font-semibold text-accent-text">
+      New
+    </span>
+  );
+}
+
 /**
- * One entry, as a row on the rail: when, on the left — the time, and how
- * long ago — then a dot in the event's colour, then who did what. What
- * people wrote sits beneath in a quiet block: an update's text, or the note
- * the incident was resolved with.
+ * One entry on the rail. An update reads as a message: the poster's
+ * initials on the rail, and a card with who, when, and what they wrote —
+ * the caller's own in teal, so their part is easy to find. Everything else
+ * the server recorded is a quiet line: its marker on the rail, who did what,
+ * and when, with the note beneath when the incident was resolved with one.
  */
 function TimelineEntry({
   entry,
   now,
   fresh,
+  mine,
 }: {
   entry: IncidentActivityResponse;
   now: Date;
   /** Added by someone else since the page was opened. */
   fresh: boolean;
+  /** Posted or done by the caller. */
+  mine: boolean;
 }) {
   const marker = eventMarker(entry);
   const text = writtenText(entry);
   const resolution = entry.type === "STATUS_CHANGED" && entry.toValue === "RESOLVED";
 
+  if (entry.type === "UPDATE") {
+    return (
+      <li className="relative grid grid-cols-[1.875rem_minmax(0,1fr)] gap-x-3.5 py-2">
+        <Avatar name={entry.actor.name} tone={mine ? "complete" : "investigating"} />
+        <div
+          className={cx(
+            "flex min-w-0 flex-col gap-1.5 rounded-xl border px-4 py-3",
+            mine
+              ? "border-status-resolved-line bg-status-resolved-subtle/60"
+              : "border-line bg-surface",
+            fresh && "ring-2 ring-accent-line",
+          )}
+        >
+          <p className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-sm text-fg-muted">
+            <span>
+              {fresh && <NewTag />}
+              <span className="font-semibold text-fg">
+                {mine ? "You" : entry.actor.name}
+              </span>{" "}
+              posted an update
+            </span>
+            <When at={entry.createdAt} now={now} />
+          </p>
+          <p className="text-[0.9375rem] leading-6 whitespace-pre-line text-fg">{text}</p>
+        </div>
+      </li>
+    );
+  }
+
+  const Icon = marker?.Icon;
+
   return (
-    <li
-      className={cx(
-        "grid grid-cols-[4.5rem_1.25rem_minmax(0,1fr)] gap-x-3",
-        fresh && "-mx-4 bg-accent-subtle/50 px-4 sm:-mx-5 sm:px-5",
-      )}
-    >
-      <span className="flex flex-col pt-3 text-xs">
-        <span className="data text-fg-muted">
-          <LocalTime value={entry.createdAt} />
-        </span>
-        <span className="text-fg-subtle">
-          {formatDuration(now.getTime() - Date.parse(entry.createdAt))} ago
-        </span>
-      </span>
-      <span aria-hidden="true" className="relative flex justify-center">
-        <span className="absolute inset-y-0 w-0.5 bg-line-subtle" />
+    <li className="relative grid grid-cols-[1.875rem_minmax(0,1fr)] gap-x-3.5 py-1.5">
+      <span aria-hidden="true" className="flex justify-center pt-0.5">
         <span
           className={cx(
-            "relative mt-4 size-2.5 rounded-full bg-current ring-3 ring-surface",
-            marker ? marker.colour : "text-accent-text",
+            "grid size-5.5 place-items-center rounded-full border border-line bg-rail-mid",
+            marker?.colour,
           )}
-        />
+        >
+          {Icon && <Icon strokeWidth={2.25} className="size-3" />}
+        </span>
       </span>
-      <div className="flex min-w-0 flex-col gap-1.5 py-3">
-        <p className="flex flex-wrap items-center gap-x-1 text-sm text-fg-muted">
-          {fresh && (
-            <span className="mr-1 rounded-sm border border-accent-line bg-accent-subtle px-1.5 text-xs font-semibold text-accent-text">
-              New
-            </span>
-          )}
-          <span className="font-semibold text-fg">{entry.actor.name}</span>{" "}
-          {describe(entry)}
+      <div className="flex min-w-0 flex-col gap-1.5 pt-0.5">
+        <p className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-sm text-fg-muted">
+          <span className="inline-flex flex-wrap items-center gap-x-1">
+            {fresh && <NewTag />}
+            <span className="font-semibold text-fg">{mine ? "You" : entry.actor.name}</span>{" "}
+            {describe(entry)}
+          </span>
+          <When at={entry.createdAt} now={now} />
         </p>
         {text && (
           <p
             className={cx(
-              "max-w-3xl rounded-md border px-3 py-2 text-sm leading-6 whitespace-pre-line text-fg",
+              "max-w-3xl rounded-xl border px-4 py-3 text-sm leading-6 whitespace-pre-line text-fg",
               resolution
                 ? "border-status-resolved-line bg-status-resolved-subtle"
-                : "border-line-subtle bg-sunken/60",
+                : "border-line bg-surface",
             )}
           >
             {text}
@@ -237,6 +276,32 @@ function TimelineEntry({
     </li>
   );
 }
+
+/**
+ * Between two days far apart, one marker for the silence instead of the
+ * empty stretch: amber while nobody had started yet, quiet after.
+ */
+function QuietGap({ days, waiting }: { days: number; waiting: boolean }) {
+  return (
+    <div className="grid grid-cols-[1.875rem_minmax(0,1fr)] gap-x-3.5 py-3">
+      <span aria-hidden="true" className="flex justify-center">
+        <span className="mt-2 size-1.5 rounded-full bg-line-strong" />
+      </span>
+      <p
+        className={cx(
+          "w-max rounded-full border px-3 py-1 text-xs",
+          waiting
+            ? "border-warning-line bg-warning-subtle text-warning-text"
+            : "border-line bg-surface text-fg-muted",
+        )}
+      >
+        {days} {days === 1 ? "day" : "days"} {waiting ? "with no response" : "quiet"}
+      </p>
+    </div>
+  );
+}
+
+const DAY_MS = 86_400_000;
 
 /** "Today", "Yesterday", or the date: the heading over one day's entries. */
 const dayLabel = (iso: string, now: Date) => {
@@ -273,8 +338,20 @@ const responseClosed = (error: unknown) =>
   (isApiError(error, 409) &&
     error.code === ApiErrorCode.RESPONSE_ALREADY_COMPLETED);
 
-/** Posting a short operational update. Cleared once it is on the timeline. */
-export function UpdateComposer({ incident }: { incident: IncidentResponse }) {
+/**
+ * Posting a short operational update. Cleared once it is on the timeline.
+ * It sits in the caller's panel — a member's response, or the Admin's —
+ * with what to write about said in its placeholder.
+ */
+export function UpdateComposer({
+  incident,
+  placeholder = "What changed, what is being tried, what is next.",
+  className,
+}: {
+  incident: IncidentResponse;
+  placeholder?: string;
+  className?: string;
+}) {
   const organization = useOrganization();
   const queryClient = useQueryClient();
   const [message, setMessage] = useState("");
@@ -330,7 +407,7 @@ export function UpdateComposer({ incident }: { incident: IncidentResponse }) {
       ref={requiredRef}
       onSubmit={onSubmit}
       noValidate
-      className="flex flex-col gap-2 border-b border-line-subtle px-4 py-4 sm:px-5"
+      className={cx("flex flex-col gap-2", className)}
     >
       {post.isError && Object.keys(fields).length === 0 && (
         <ErrorAlert error={post.error} message={errorMessage} />
@@ -342,7 +419,7 @@ export function UpdateComposer({ incident }: { incident: IncidentResponse }) {
         rows={2}
         maxLength={2000}
         value={message}
-        placeholder="What changed, what is being tried, what is next."
+        placeholder={placeholder}
         onChange={(event) => setMessage(event.target.value)}
         onKeyDown={(event) => {
           // Ctrl+Enter (or ⌘+Enter) posts, as in most chat and ticket tools.
@@ -416,16 +493,23 @@ function ShowToggle({
  * The operational story of the incident, newest first and by day: updates
  * people posted, responses starting and completing, and the declaration,
  * severity, status, and team changes the server recorded. History only —
- * where the response stands now is the Response card above it. `canPost`
- * puts the update composer at its head: for the Admin, and for a member
- * while they are investigating.
+ * where the response stands now, and posting to it, are the panel above.
+ *
+ * Drawn in a dark panel of its own, under a header band tinted for whose
+ * reading it is: teal for a member's, blue for oversight. Days far apart are
+ * joined by one marker for the silence. It opens on the updates when the
+ * reader is working the incident and there are any; on everything
+ * otherwise.
  */
 export function IncidentTimeline({
   incident,
-  canPost,
+  tone,
+  preferUpdates = false,
 }: {
   incident: IncidentResponse;
-  canPost: boolean;
+  tone: "member" | "oversight";
+  /** Open on the updates, when there are any: for those working it. */
+  preferUpdates?: boolean;
 }) {
   const organization = useOrganization();
   const me = useCurrentUser();
@@ -433,7 +517,7 @@ export function IncidentTimeline({
     live: incident.status !== "RESOLVED",
   });
   const now = useMinuteClock();
-  const [show, setShow] = useState<Show>("everything");
+  const [chosen, setShow] = useState<Show | null>(null);
   // What was there when the page opened, and what the caller has since been
   // shown: entries others added after it are new, until they look.
   const [seen, setSeen] = useState<ReadonlySet<string> | null>(null);
@@ -461,13 +545,17 @@ export function IncidentTimeline({
       : `${unread.length} new ${unread.length === 1 ? "entry" : "entries"}`;
 
   const updates = all.filter((entry) => entry.type === "UPDATE");
+  const show: Show =
+    chosen ?? (preferUpdates && updates.length > 0 ? "updates" : "everything");
   const shown = show === "updates" ? updates : all;
+  // The first start, from everything recorded: before it, silence was a wait.
+  const firstStart = all.find(({ type }) => type === "RESPONSE_STARTED")?.createdAt;
 
   let content;
 
   if (timeline.isError) {
     content = (
-      <div className="p-4 sm:px-5">
+      <div className="py-4">
         <ErrorAlert error={timeline.error} />
       </div>
     );
@@ -475,40 +563,81 @@ export function IncidentTimeline({
     content = <Spinner label="Loading timeline…" />;
   } else if (shown.length === 0) {
     content = (
-      <p className="px-4 py-4 text-sm text-fg-muted sm:px-5">
+      <p className="py-6 text-center text-sm text-fg-muted">
         {show === "updates" && all.length > 0
           ? "No updates posted yet."
           : "No activity recorded yet."}
       </p>
     );
   } else {
-    content = byDay(shown).map((day) => (
-      <section key={day.key} aria-label={dayLabel(day.entries[0].createdAt, now)}>
-        <p className="label-caps border-b border-line-subtle bg-sunken/40 px-4 py-2 text-fg-subtle sm:px-5">
-          {dayLabel(day.entries[0].createdAt, now)}
-        </p>
-        <ol className="px-4 pb-2 sm:px-5">
-          {day.entries.map((entry) => (
-            <TimelineEntry
-              key={entry.id}
-              entry={entry}
-              now={now}
-              fresh={fresh.has(entry.id)}
+    const days = byDay(shown);
+
+    content = days.map((day, index) => {
+      // The quiet between this day and the one before it, read newest first.
+      const older = days[index + 1]?.entries[0];
+      const newest = day.entries.at(-1)!;
+      const gap = older ? Date.parse(newest.createdAt) - Date.parse(older.createdAt) : 0;
+      const label = dayLabel(day.entries[0].createdAt, now);
+
+      return (
+        <div key={day.key}>
+          <section aria-label={label}>
+            <p className="label-caps flex items-center gap-3 pt-5 pb-2 text-fg-subtle">
+              <span aria-hidden="true" className="w-7.5 shrink-0" />
+              {label}
+            </p>
+            <ol className="relative">
+              <span
+                aria-hidden="true"
+                className="absolute top-3 bottom-3 left-[0.875rem] w-0.5 rounded-full bg-line-subtle"
+              />
+              {day.entries.map((entry) => (
+                <TimelineEntry
+                  key={entry.id}
+                  entry={entry}
+                  now={now}
+                  fresh={fresh.has(entry.id)}
+                  mine={entry.actor.id === me.data?.id}
+                />
+              ))}
+            </ol>
+          </section>
+          {gap >= DAY_MS && (
+            <QuietGap
+              days={Math.floor(gap / DAY_MS)}
+              waiting={!firstStart || Date.parse(older!.createdAt) < Date.parse(firstStart)}
             />
-          ))}
-        </ol>
-      </section>
-    ));
+          )}
+        </div>
+      );
+    });
   }
 
   return (
-    <DetailCard
+    <section
       id="timeline"
-      title="Timeline"
-      meta={timeline.data?.length}
-      action={
-        timeline.data &&
-        timeline.data.length > 0 && (
+      aria-labelledby="timeline-title"
+      className="overflow-hidden rounded-2xl border border-line-subtle bg-linear-to-b from-rail-top to-rail-mid shadow-[0_16px_40px_rgb(0_0_0/0.28),inset_0_1px_0_rgb(255_255_255/0.03)]"
+    >
+      <div
+        className={cx(
+          "flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-line-subtle px-4 py-3.5 sm:px-6",
+          tone === "member"
+            ? "bg-linear-to-r from-status-resolved-subtle via-status-investigating-subtle/40 to-transparent"
+            : "bg-linear-to-r from-status-investigating-subtle via-status-investigating-subtle/30 to-transparent",
+        )}
+      >
+        <h2 id="timeline-title" className="flex items-baseline gap-2 text-lg font-semibold text-fg">
+          Timeline
+          {timeline.data && (
+            <span className="numeric text-sm font-normal text-fg-muted">
+              {timeline.data.length}
+              <span className="sr-only"> entries</span>
+            </span>
+          )}
+          <span className="text-xs font-normal text-fg-subtle">newest first</span>
+        </h2>
+        {timeline.data && timeline.data.length > 0 && (
           <span className="flex flex-wrap items-center gap-2">
             {unread.length > 0 && (
               <button
@@ -532,11 +661,9 @@ export function IncidentTimeline({
               counts={{ updates: updates.length, everything: all.length }}
             />
           </span>
-        )
-      }
-    >
-      {canPost && <UpdateComposer incident={incident} />}
-      {content}
-    </DetailCard>
+        )}
+      </div>
+      <div className="px-4 pb-5 sm:px-6">{content}</div>
+    </section>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
-import { Check, CircleCheck, Clock, Link2, MessageSquare, Users, Zap } from "lucide-react";
+import { Check, CircleCheck, Clock, Link2, Server, Users } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useId, useState } from "react";
@@ -11,12 +12,11 @@ import {
   useCan,
   useOrganization,
 } from "@/components/organizations/organization-scope";
-import { CriticalityMark } from "@/components/services/criticality-mark";
+import { criticalityOf } from "@/components/services/criticality";
 import { serviceHref } from "@/components/services/service-scope";
 import { teamHref, useTeamMembers } from "@/components/teams/team-scope";
 import { ErrorAlert } from "@/components/ui/alert";
 import { cx } from "@/components/ui/cx";
-import { DetailCard, Glance, GlanceTile } from "@/components/ui/detail-layout";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageBody, PageHeader } from "@/components/ui/page";
 import { rowActionClasses } from "@/components/ui/row-action";
@@ -35,12 +35,14 @@ import type {
 } from "@/lib/api/contracts";
 import { isApiError } from "@/lib/api/errors";
 
-import { incidentsHref, useIncident, useIncidentTimeline } from "./incident-queries";
+import { incidentsHref, useIncident } from "./incident-queries";
 import {
-  Avatar,
-  ResponseCard,
+  firstStartOf,
+  FollowPanel,
+  OversightPanel,
   responseErrorMessage,
   responseStateOf,
+  SLOW_START_MS,
   useOwnResponse,
   YourResponse,
 } from "./incident-response";
@@ -134,29 +136,36 @@ export function Fact({ label, children }: { label: string; children: ReactNode }
   );
 }
 
-/** When the first responder started: the moment investigation began. */
-const firstStartOf = (incident: IncidentDetailResponse) =>
-  incident.responders.reduce<string | undefined>(
-    (first, { startedAt }) =>
-      first === undefined || Date.parse(startedAt) < Date.parse(first)
-        ? startedAt
-        : first,
-    undefined,
-  );
 
-/** A service or team named in the header: a quiet chip, not a link. */
-function Chip({ children }: { children: ReactNode }) {
+/** Copies this page's address, and says so for a moment. */
+function CopyLink() {
+  const [copied, setCopied] = useState(false);
+
   return (
-    <span className="rounded-full border border-line bg-hover px-2.5 py-px text-sm text-fg">
-      {children}
-    </span>
+    <button
+      type="button"
+      className={rowActionClasses("accent")}
+      onClick={() => {
+        void navigator.clipboard?.writeText(window.location.href).then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        });
+      }}
+    >
+      {copied ? (
+        <Check aria-hidden="true" className="size-3.5" />
+      ) : (
+        <Link2 aria-hidden="true" className="size-3.5" />
+      )}
+      {copied ? "Copied" : "Copy link"}
+    </button>
   );
 }
 
 /**
- * The incident's header: where it sits (Incidents / INC-42), its severity,
- * status, and how long it has been open, its key and title, what it affects
- * and who is responsible, and its summary. Managing it, for the Admin.
+ * The incident's header: where it sits (Incidents / INC-42), its key and
+ * title, its severity and status, and its summary. Copying its link for
+ * everyone; managing it, for the Admin.
  */
 function IncidentHeader({
   incident,
@@ -173,7 +182,7 @@ function IncidentHeader({
 
   return (
     <PageHeader
-      width="full"
+      width="reading"
       eyebrow={
         <nav aria-label="Breadcrumb">
           <ol className="flex items-center gap-2">
@@ -204,27 +213,11 @@ function IncidentHeader({
       description={
         <div className="flex flex-col gap-3 pt-1.5">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center rounded-sm border border-line bg-surface px-2 py-0.5 text-xs">
+            <span className="inline-flex items-center rounded-full border border-line bg-surface px-2.5 py-0.5 text-xs">
               <SeverityMark severity={incident.severity} label />
             </span>
             <StatusMark status={incident.status} />
-            <span className="data text-sm text-fg-muted">
-              {resolved ? "Lasted " : "Open for "}
-              <Duration from={incident.createdAt} to={incident.resolvedAt} />
-            </span>
           </div>
-          <p className="flex flex-wrap items-center gap-2 text-sm text-fg-muted">
-            <span>Affects</span>
-            <Chip>
-              {incident.service.name}
-              {incident.service.archivedAt && (
-                <span className="text-fg-muted"> (archived)</span>
-              )}
-            </Chip>
-            <span aria-hidden="true">·</span>
-            <span>Responsible</span>
-            <Chip>{incident.team.name}</Chip>
-          </p>
           {incident.summary && (
             <p className="text-base whitespace-pre-line text-fg">
               {incident.summary}
@@ -233,57 +226,200 @@ function IncidentHeader({
         </div>
       }
       actions={
-        !resolved && (
-          <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
-            <LiveStatus updatedAt={live.updatedAt} failed={live.failed} />
-            {canManage && <ManageIncident incident={incident} />}
-          </div>
-        )
+        <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
+          {!resolved && <LiveStatus updatedAt={live.updatedAt} failed={live.failed} />}
+          <CopyLink />
+          {canManage && !resolved && <ManageIncident incident={incident} />}
+        </div>
       }
     />
   );
 }
 
+/** One detail card: an icon tile, a label, the value, and one line more. */
+function FactCard({
+  icon: Icon,
+  tone,
+  label,
+  value,
+  note,
+}: {
+  icon: LucideIcon;
+  tone: "orange" | "blue" | "teal";
+  label: string;
+  value: ReactNode;
+  note?: ReactNode;
+}) {
+  // The group holds its term and descriptions directly, as a list's group
+  // must; the icon sits in the term, placed beside them by the grid.
+  return (
+    <div className="grid min-w-0 grid-cols-[2.5rem_minmax(0,1fr)] items-center gap-x-3 gap-y-0.5 rounded-xl border border-line bg-linear-to-b from-surface to-sunken px-4 py-3.5">
+      <dt className="contents">
+        <span
+          aria-hidden="true"
+          className={cx(
+            "row-span-3 grid size-10 place-items-center rounded-lg border",
+            tone === "orange" && "border-warning-line bg-warning-subtle text-warning-text",
+            tone === "blue" &&
+              "border-status-investigating-line bg-status-investigating-subtle text-status-investigating-text",
+            tone === "teal" &&
+              "border-status-resolved-line bg-status-resolved-subtle text-status-resolved-text",
+          )}
+        >
+          <Icon strokeWidth={2} className="size-4.5" />
+        </span>
+        <span className="label-caps col-start-2 text-fg-subtle">{label}</span>
+      </dt>
+      <dd className="col-start-2 truncate text-[0.9375rem] font-semibold text-fg">{value}</dd>
+      {note && <dd className="col-start-2 truncate text-xs text-fg-muted">{note}</dd>}
+    </div>
+  );
+}
+
+/**
+ * What the incident affects, who is responsible and how many of them are on
+ * it, and how long it has been open: three cards, held in a dark section of
+ * their own.
+ */
+function IncidentFacts({ incident }: { incident: IncidentDetailResponse }) {
+  const organization = useOrganization();
+  const members = useTeamMembers(organization.id, incident.team.id);
+  const { investigating, list } = responseStateOf(incident);
+  const resolved = incident.status === "RESOLVED";
+  const everyoneDone = list.length > 0 && investigating.length === 0;
+
+  const teamNote = resolved
+    ? `${list.length} responded`
+    : [
+        members.data &&
+          `${members.data.length} ${members.data.length === 1 ? "member" : "members"}`,
+        everyoneDone ? "responders done" : `${investigating.length} on it`,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+
+  return (
+    <dl
+      aria-label="Incident details"
+      className="grid gap-3 rounded-2xl border border-line-subtle bg-linear-to-b from-rail-top to-rail-mid p-3.5 sm:grid-cols-3"
+    >
+      <FactCard
+        icon={Server}
+        tone="orange"
+        label="Service"
+        value={
+          <Link
+            href={serviceHref(organization.slug, incident.service.slug)}
+            className={entityLinkClasses}
+          >
+            {incident.service.name}
+          </Link>
+        }
+        note={
+          <>
+            {criticalityOf(incident.service.criticality).label} service
+            {incident.service.archivedAt && " · archived"}
+          </>
+        }
+      />
+      <FactCard
+        icon={Users}
+        tone="blue"
+        label="Responsible team"
+        value={
+          <Link
+            href={teamHref(organization.slug, incident.team.slug)}
+            className={entityLinkClasses}
+          >
+            {incident.team.name}
+          </Link>
+        }
+        note={
+          <span className={cx(everyoneDone && !resolved && "text-status-resolved-text")}>
+            {teamNote}
+          </span>
+        }
+      />
+      <FactCard
+        icon={Clock}
+        tone="teal"
+        label={resolved ? "Lasted" : "Open for"}
+        value={
+          <span className="data font-medium">
+            <Duration from={incident.createdAt} to={incident.resolvedAt} />
+          </span>
+        }
+        note={
+          <>
+            since <LocalDateTime value={incident.createdAt} />
+          </>
+        }
+      />
+    </dl>
+  );
+}
+
 type StepState = "done" | "current" | "todo";
 
-/** One step of the lifecycle: its mark, its name, and when. */
+/** A step's round marker: a tick when done, a ring when now, empty after. */
+function StepMark({ state, tone }: { state: StepState; tone: "blue" | "teal" }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cx(
+        "grid size-7 shrink-0 place-items-center rounded-full border-2",
+        state === "done" &&
+          "border-status-resolved-text bg-status-resolved-subtle text-status-resolved-text",
+        state === "current" &&
+          (tone === "blue"
+            ? "border-status-investigating-text bg-status-investigating-subtle shadow-[0_0_0_5px_var(--color-status-investigating-subtle)]"
+            : "border-status-resolved-text bg-status-resolved-subtle shadow-[0_0_0_5px_var(--color-status-resolved-subtle)]"),
+        state === "todo" && "border-line-strong",
+      )}
+    >
+      {state === "done" && <Check strokeWidth={3} className="size-3.5" />}
+      {state === "current" && (
+        <span
+          className={cx(
+            "size-2 rounded-full",
+            tone === "blue" ? "bg-status-investigating-text" : "bg-status-resolved-text",
+          )}
+        />
+      )}
+    </span>
+  );
+}
+
+/** One step: its mark and the link to the next, then its name and when. */
 function Step({
   label,
   state,
-  last = false,
+  tone = "blue",
+  link,
   children,
 }: {
   label: string;
   state: StepState;
-  last?: boolean;
+  tone?: "blue" | "teal";
+  /** The line to the next step, and what it says; none for the last. */
+  link?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <li
       aria-current={state === "current" ? "step" : undefined}
-      className="flex min-w-0 items-center gap-2.5"
+      className="flex min-w-0 flex-col gap-2.5"
     >
-      <span
-        aria-hidden="true"
-        className={cx(
-          "grid size-6 shrink-0 place-items-center rounded-full border",
-          state === "done" &&
-            "border-status-resolved-line bg-status-resolved-subtle text-status-resolved-text",
-          state === "current" &&
-            "border-2 border-status-investigating-text bg-status-investigating-subtle",
-          state === "todo" && "border-line-strong bg-surface",
-        )}
-      >
-        {state === "done" && <Check strokeWidth={3} className="size-3.5" />}
-        {state === "current" && (
-          <span className="size-2 rounded-full bg-status-investigating-text" />
-        )}
+      <span className="flex items-center gap-2">
+        <StepMark state={state} tone={tone} />
+        {link}
       </span>
-      <span className="flex min-w-0 flex-col">
+      <span className="flex min-w-0 flex-col gap-0.5 pr-3">
         <span
           className={cx(
             "text-sm font-semibold",
-            state === "current" && "text-status-investigating-text",
+            state === "current" &&
+              (tone === "blue" ? "text-status-investigating-text" : "text-status-resolved-text"),
             state === "todo" && "text-fg-muted",
             state === "done" && "text-fg",
           )}
@@ -293,316 +429,131 @@ function Step({
             {state === "done" ? " (done)" : state === "current" ? " (now)" : " (next)"}
           </span>
         </span>
-        <span className="truncate text-xs text-fg-subtle">{children}</span>
+        <span className="text-xs text-fg-subtle">{children}</span>
       </span>
-      {!last && (
-        <span
-          aria-hidden="true"
-          className={cx(
-            "mx-3 hidden h-0.5 min-w-6 flex-1 rounded-full sm:block",
-            state === "done" ? "bg-status-resolved-line" : "bg-line",
-          )}
-        />
-      )}
     </li>
+  );
+}
+
+/** A solid line between two steps, with a figure on it if it has one. */
+function StepLink({
+  done,
+  chip,
+  warn = false,
+}: {
+  done: boolean;
+  chip?: ReactNode;
+  warn?: boolean;
+}) {
+  const line = (
+    <span
+      aria-hidden="true"
+      className={cx(
+        "h-0.5 min-w-3 flex-1 rounded-full",
+        !done && "h-0 border-t-2 border-dashed border-line-strong",
+        done && (warn ? "bg-warning-text" : "bg-status-resolved-text"),
+      )}
+    />
+  );
+
+  return (
+    <span className="hidden min-w-0 flex-1 items-center gap-2 sm:flex">
+      {line}
+      {chip && (
+        <>
+          <span
+            className={cx(
+              "data shrink-0 rounded-full border px-2 py-0.5 text-[0.6875rem]",
+              warn
+                ? "border-warning-line bg-warning-subtle text-warning-text"
+                : "border-status-resolved-line bg-status-resolved-subtle text-status-resolved-text",
+            )}
+          >
+            {chip}
+          </span>
+          {line}
+        </>
+      )}
+    </span>
   );
 }
 
 /**
  * Where the incident is in its only path — Declared, then Investigating,
- * then Resolved — with when each step was reached, and what the next waits
- * for.
+ * then Resolved — with when each step was reached and what the next waits
+ * for. The link out of Declared says how long it waited for someone to
+ * start: amber when that was slow, or while it still waits. Once everyone
+ * who started has completed, the last step is "Ready to resolve".
  */
 function Lifecycle({ incident }: { incident: IncidentDetailResponse }) {
+  const now = useMinuteClock();
   const firstStart = firstStartOf(incident);
-  const { investigating } = responseStateOf(incident);
-  const order = ["DECLARED", "INVESTIGATING", "RESOLVED"] as const;
-  const at = order.indexOf(incident.status);
-  const stateOf = (index: number): StepState =>
-    incident.status === "RESOLVED" || index < at
-      ? "done"
-      : index === at
-        ? "current"
-        : "todo";
+  const { state, investigating, list } = responseStateOf(incident);
+  const resolved = state === "resolved";
+  const ready = state === "complete";
+  const wait = (firstStart ? Date.parse(firstStart) : now.getTime()) - Date.parse(incident.createdAt);
+  const slow = !firstStart || wait > SLOW_START_MS;
 
   return (
     <ol
       aria-label="Lifecycle"
-      className="grid grid-cols-1 gap-3 rounded-lg border border-line bg-surface px-4 py-3.5 sm:grid-cols-3 sm:gap-0 sm:px-5"
+      className="grid gap-4 rounded-2xl border border-line bg-surface px-5 py-4.5 sm:grid-cols-3 sm:gap-0"
     >
-      <Step label="Declared" state={stateOf(0)}>
+      <Step
+        label="Declared"
+        state="done"
+        link={
+          <StepLink
+            done={!!firstStart || !resolved}
+            warn={slow}
+            chip={
+              firstStart
+                ? `${formatDuration(wait)} to start`
+                : resolved
+                  ? undefined
+                  : `waiting ${formatDuration(wait)}`
+            }
+          />
+        }
+      >
         <LocalDateTime value={incident.createdAt} /> · {incident.createdBy.name}
       </Step>
-      <Step label="Investigating" state={stateOf(1)}>
+      <Step
+        label={ready || resolved ? "Investigated" : "Investigating"}
+        state={incident.status === "DECLARED" ? "todo" : ready || resolved ? "done" : "current"}
+        link={<StepLink done={ready || resolved} />}
+      >
         {firstStart ? (
-          <>
-            since <LocalDateTime value={firstStart} />
-            {incident.status === "INVESTIGATING" &&
-              ` · ${investigating.length} on it now`}
-          </>
+          ready || resolved ? (
+            `${list.length} ${list.length === 1 ? "responder" : "responders"}${ready ? " · all done" : ""}`
+          ) : (
+            <>
+              since <LocalDateTime value={firstStart} /> · {investigating.length} on it
+            </>
+          )
+        ) : resolved ? (
+          "No one responded"
         ) : (
           `when someone on ${incident.team.name} starts`
         )}
       </Step>
-      <Step label="Resolved" state={stateOf(2)} last>
+      <Step
+        label={ready ? "Ready to resolve" : "Resolved"}
+        state={resolved ? "done" : ready ? "current" : "todo"}
+        tone="teal"
+      >
         {incident.resolvedAt ? (
           <LocalDateTime value={incident.resolvedAt} />
+        ) : ready ? (
+          "the Admin resolves next"
         ) : (
-          "once no one is still investigating"
+          "by the Admin, once no one is still investigating"
         )}
       </Step>
     </ol>
   );
 }
 
-/**
- * The incident in four figures, none of which the header already says: how
- * long it has been open, how soon someone responded, how many are
- * responding, and how many updates they have posted. About the incident,
- * never a measure of a person.
- */
-function IncidentGlance({ incident }: { incident: IncidentDetailResponse }) {
-  const organization = useOrganization();
-  const timeline = useIncidentTimeline(organization.id, incident.number);
-  const now = useMinuteClock();
-  const firstStart = firstStartOf(incident);
-  const { list, investigating, complete } = responseStateOf(incident);
-  const resolved = incident.status === "RESOLVED";
-  const updates = (timeline.data ?? []).filter(({ type }) => type === "UPDATE");
-  const lastUpdate = updates.at(-1);
-  const firstResponder = incident.responders.find(
-    ({ startedAt }) => startedAt === firstStart,
-  );
-
-  return (
-    <Glance label={`${incidentKey(incident.number)} at a glance`} columns={4}>
-      <GlanceTile
-        label={resolved ? "Lasted" : "Open for"}
-        icon={Clock}
-        tone="accent"
-        value={<Duration from={incident.createdAt} to={incident.resolvedAt} />}
-      />
-      <GlanceTile
-        label="First response"
-        icon={Zap}
-        tone={firstStart ? "resolved" : "warning"}
-        noteTone={!firstStart}
-        value={
-          firstStart
-            ? formatDuration(Date.parse(firstStart) - Date.parse(incident.createdAt))
-            : "—"
-        }
-        note={firstResponder ? `by ${firstResponder.name}` : "no one yet"}
-      />
-      <GlanceTile
-        label="Responders"
-        icon={Users}
-        tone="investigating"
-        value={list.length}
-        note={
-          list.length === 0
-            ? "no one yet"
-            : `${investigating.length} investigating · ${complete} complete`
-        }
-      />
-      <GlanceTile
-        label="Updates"
-        icon={MessageSquare}
-        tone="info"
-        value={timeline.data ? updates.length : "—"}
-        note={
-          lastUpdate
-            ? `last ${formatDuration(now.getTime() - Date.parse(lastUpdate.createdAt))} ago`
-            : timeline.data
-              ? "none yet"
-              : undefined
-        }
-      />
-    </Glance>
-  );
-}
-
-/** Copies this page's address, and says so for a moment. */
-function CopyLink() {
-  const [copied, setCopied] = useState(false);
-
-  return (
-    <button
-      type="button"
-      className={rowActionClasses("accent")}
-      onClick={() => {
-        void navigator.clipboard?.writeText(window.location.href).then(() => {
-          setCopied(true);
-          setTimeout(() => setCopied(false), 2000);
-        });
-      }}
-    >
-      {copied ? (
-        <Check aria-hidden="true" className="size-3.5" />
-      ) : (
-        <Link2 aria-hidden="true" className="size-3.5" />
-      )}
-      {copied ? "Copied" : "Copy link"}
-    </button>
-  );
-}
-
-/** The record: what it affects, who is responsible, and when. */
-function Details({ incident }: { incident: IncidentDetailResponse }) {
-  const organization = useOrganization();
-  const now = useMinuteClock();
-
-  return (
-    <DetailCard id="details" title="Details" action={<CopyLink />}>
-      <dl className="grid grid-cols-[7rem_minmax(0,1fr)] gap-x-3 gap-y-2.5 px-4 py-3.5 text-sm sm:px-5">
-        <dt className="text-fg-subtle">Service</dt>
-        <dd className="flex flex-wrap items-center gap-x-2">
-          <Link
-            href={serviceHref(organization.slug, incident.service.slug)}
-            className={entityLinkClasses}
-          >
-            {incident.service.name}
-          </Link>
-          {incident.service.archivedAt && (
-            <span className="text-fg-muted">(archived)</span>
-          )}
-          <span className="text-fg-muted">
-            <CriticalityMark criticality={incident.service.criticality} />
-          </span>
-        </dd>
-        <dt className="text-fg-subtle">Responsible</dt>
-        <dd>
-          <Link
-            href={teamHref(organization.slug, incident.team.slug)}
-            className={entityLinkClasses}
-          >
-            {incident.team.name}
-          </Link>
-        </dd>
-        <dt className="text-fg-subtle">Declared</dt>
-        <dd>
-          <LocalDateTime value={incident.createdAt} />
-          <span className="mt-0.5 block text-fg-muted">
-            by {incident.createdBy.name}
-          </span>
-        </dd>
-        {incident.resolvedAt && (
-          <>
-            <dt className="text-fg-subtle">Resolved</dt>
-            <dd>
-              <LocalDateTime value={incident.resolvedAt} />
-            </dd>
-          </>
-        )}
-        <dt className="text-fg-subtle">Last changed</dt>
-        <dd>
-          <time dateTime={incident.updatedAt}>
-            {formatDuration(now.getTime() - Date.parse(incident.updatedAt))} ago
-          </time>
-        </dd>
-      </dl>
-    </DetailCard>
-  );
-}
-
-type Person = {
-  membershipId: string;
-  name: string;
-  state: "investigating" | "complete" | "not-joined";
-};
-
-const PERSON_STATES: Record<Person["state"], { word: string; colour: string }> = {
-  investigating: { word: "investigating", colour: "text-status-investigating-text" },
-  complete: { word: "done", colour: "text-status-resolved-text" },
-  "not-joined": { word: "not joined", colour: "text-fg-subtle" },
-};
-
-/**
- * Everyone who can respond, and where each stands: whoever is investigating,
- * whoever is done, then the rest of the responsible team, who have not
- * joined. Someone who started before a reassignment stays, though no
- * longer on the team. Once resolved, only those who responded. When the
- * caller cannot see the team's members, only the responders.
- */
-function WhoCanRespond({ incident }: { incident: IncidentDetailResponse }) {
-  const organization = useOrganization();
-  const members = useTeamMembers(organization.id, incident.team.id);
-  const resolved = incident.status === "RESOLVED";
-  const responding = new Set(incident.responders.map(({ membershipId }) => membershipId));
-
-  const people: Person[] = [
-    ...incident.responders
-      .filter(({ status }) => status === "INVESTIGATING")
-      .map(({ membershipId, name }) => ({ membershipId, name, state: "investigating" as const })),
-    ...incident.responders
-      .filter(({ status }) => status === "COMPLETED")
-      .map(({ membershipId, name }) => ({ membershipId, name, state: "complete" as const })),
-    ...(resolved
-      ? []
-      : (members.data ?? [])
-          .filter(({ membershipId }) => !responding.has(membershipId))
-          .map(({ membershipId, user }) => ({
-            membershipId,
-            name: user.name,
-            state: "not-joined" as const,
-          }))),
-  ];
-
-  const footer = resolved
-    ? undefined
-    : members.data
-      ? `Everyone on ${incident.team.name}, the responsible team.`
-      : `Members of ${incident.team.name}, the responsible team, can respond.`;
-
-  return (
-    <DetailCard
-      id="who-can-respond"
-      title={resolved ? "Who responded" : "Who can respond"}
-      meta={people.length}
-      footer={footer}
-    >
-      {people.length === 0 ? (
-        <p className="px-4 py-3 text-sm text-fg-muted sm:px-5">
-          {resolved ? "No one responded." : "No one on the team yet."}
-        </p>
-      ) : (
-        <ul aria-label="People" className="divide-y divide-line-subtle">
-          {people.map((person) => {
-            const { word, colour } = PERSON_STATES[person.state];
-
-            return (
-              <li
-                key={person.membershipId}
-                className="flex items-center gap-2.5 px-4 py-2 sm:px-5"
-              >
-                <Avatar
-                  name={person.name}
-                  size="sm"
-                  tone={
-                    person.state === "not-joined"
-                      ? "quiet"
-                      : person.state === "complete"
-                        ? "complete"
-                        : "investigating"
-                  }
-                />
-                <span
-                  className={cx(
-                    "min-w-0 flex-1 truncate text-sm",
-                    person.state === "not-joined" ? "text-fg-muted" : "text-fg",
-                  )}
-                >
-                  {person.name}
-                </span>
-                <span className={cx("text-xs", colour)}>{word}</span>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </DetailCard>
-  );
-}
 
 /**
  * How a resolved incident ended: the Admin's note, framed with the success
@@ -653,6 +604,14 @@ function Resolution({
 /** How fresh the incident on the page is, from its own query. */
 type Live = { updatedAt: number; failed: boolean };
 
+
+/**
+ * The incident, read top to bottom in one column: its header, the facts in
+ * their dark section, where it is in its lifecycle, how it ended once it
+ * has, then the caller's panel — a member's own response, oversight's
+ * response and resolution, or a reader's view of who is on it — and the
+ * timeline beneath, in a dark panel of its own.
+ */
 function IncidentPage({
   incident,
   live,
@@ -662,19 +621,19 @@ function IncidentPage({
 }) {
   const { perspective, own } = usePerspective(incident);
   const actions = useOwnResponse(incident);
+  const oversees = useCan(Permission.INCIDENTS_READ_ALL);
   const resolved = incident.status === "RESOLVED";
   const canManage = perspective === "admin";
   const working =
     perspective === "eligible" || (perspective === "responder" && !!own);
-  const canPost =
-    !resolved && (canManage || own?.status === "INVESTIGATING");
   const actionError = actions.start.error ?? actions.complete.error;
 
   return (
     <>
       <IncidentHeader incident={incident} canManage={canManage} live={live} />
-      <PageBody width="full">
+      <PageBody width="reading">
         <div className="flex flex-col gap-6">
+          <IncidentFacts incident={incident} />
           <Lifecycle incident={incident} />
           {/* How it ended, then what was learned from it: one closing pair. */}
           {resolved && incident.resolvedAt && (
@@ -686,35 +645,31 @@ function IncidentPage({
               <AnalysisEntry incident={incident} />
             </div>
           )}
-          <IncidentGlance incident={incident} />
-          <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,23rem)]">
-            <div className="flex min-w-0 flex-col gap-6">
-              {actionError && (
-                <ErrorAlert
-                  error={actionError}
-                  message={responseErrorMessage(actionError)}
-                />
-              )}
-              {/* A member's own part first; the team's response for everyone. */}
-              {working && (
-                <YourResponse incident={incident} own={own} actions={actions} />
-              )}
-              <ResponseCard incident={incident} canManage={canManage} />
-              <IncidentTimeline incident={incident} canPost={canPost} />
-            </div>
-            <aside
-              aria-label="Incident details"
-              className="flex flex-col gap-6 lg:sticky lg:top-6"
-            >
-              <Details incident={incident} />
-              <WhoCanRespond incident={incident} />
-            </aside>
-          </div>
+          {actionError && (
+            <ErrorAlert
+              error={actionError}
+              message={responseErrorMessage(actionError)}
+            />
+          )}
+          {canManage || (oversees && !working) ? (
+            <OversightPanel incident={incident} canManage={canManage} />
+          ) : working ? (
+            <YourResponse incident={incident} own={own} actions={actions} />
+          ) : (
+            <FollowPanel incident={incident} />
+          )}
+          <IncidentTimeline
+            incident={incident}
+            tone={canManage || oversees ? "oversight" : "member"}
+            // Working it, the updates are the point; once resolved, the whole story.
+            preferUpdates={working && !resolved}
+          />
         </div>
       </PageBody>
     </>
   );
 }
+
 
 /**
  * One incident, at `/incidents/[incidentNumber]`: what it is and what it

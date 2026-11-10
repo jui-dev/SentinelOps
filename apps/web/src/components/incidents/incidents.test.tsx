@@ -868,7 +868,14 @@ describe("incidents", () => {
       expect(
         screen.getByRole("link", { name: "Payments" }).getAttribute("href"),
       ).toBe("/orgs/acme-ops/teams/payments");
-      expect(screen.getByText("by Ada Lovelace")).toBeDefined();
+      const details = screen.getByLabelText("Incident details");
+
+      expect(within(details).getByText("Critical service")).toBeDefined();
+      expect(details.textContent).toMatch(/Open for.+since /);
+      // Who declared it, on the lifecycle's first step.
+      expect(
+        within(screen.getByRole("list", { name: "Lifecycle" })).getByText(/Ada Lovelace/),
+      ).toBeDefined();
       // Read-only: nothing to change.
       expect(screen.queryByRole("button", { name: "Resolve incident" })).toBeNull();
       expect(screen.queryByLabelText("Status")).toBeNull();
@@ -880,19 +887,20 @@ describe("incidents", () => {
 
         inOrganization(<IncidentDetail />);
 
-        const response = await sectionOf("Awaiting team response");
+        const response = await sectionOf("Response and resolution");
 
+        expect(within(response).getByText("Waiting for Payments to start.")).toBeDefined();
         expect(
           within(response).getByText("Payments has not started investigating yet."),
         ).toBeDefined();
-        // No counts before anyone responds.
-        expect(within(response).queryByRole("list", { name: "Responders" })).toBeNull();
+        // Nobody has started, so nothing to wait on: no locked Resolve either.
+        expect(tile("First response")).toBe("—");
         for (const name of ["Start investigation", "Start investigating", "Resolve incident"]) {
           expect(screen.queryByRole("button", { name })).toBeNull();
         }
         expect(screen.queryByRole("heading", { name: "Your response" })).toBeNull();
         // The admin still posts updates, without responding.
-        expect(screen.getByLabelText("Post an update")).toBeDefined();
+        expect(within(response).getByLabelText("Post an update")).toBeDefined();
       });
 
       it("sees who is investigating, and why it cannot be resolved yet", async () => {
@@ -900,24 +908,36 @@ describe("incidents", () => {
 
         inOrganization(<IncidentDetail />);
 
-        const response = await sectionOf("Response in progress");
+        const response = await sectionOf("Response and resolution");
 
-        expect(within(response).getByText("2 investigating · 0 complete")).toBeDefined();
-        expect(tile("Responders")).toBe("22 investigating · 0 complete");
-        expect(
-          within(within(response).getByRole("list", { name: "Responders" }))
-            .getAllByRole("listitem")
-            .map((item) => item.textContent),
-        ).toEqual([
-          expect.stringMatching(/^DODaniel OkaforInvestigatingfor /),
-          expect.stringMatching(/^SOSam OkaforInvestigatingfor /),
-        ]);
+        expect(within(response).getByText("Not ready to resolve yet.")).toBeDefined();
         expect(
           within(response).getByText(
-            "Resolve becomes available when Daniel Okafor and Sam Okafor complete their responses.",
+            "Daniel Okafor and Sam Okafor are still investigating. Resolve opens when everyone who started has completed.",
           ),
         ).toBeDefined();
-        expect(screen.queryByRole("button", { name: "Resolve incident" })).toBeNull();
+        expect(tile("Investigating")).toBe("2");
+        expect(tile("Completed")).toBe("0");
+        // Everyone on the team, and where each stands — once the team is here.
+        await waitFor(() =>
+          expect(
+            within(within(response).getByRole("list", { name: "Payments" }))
+              .getAllByRole("listitem")
+              .map((item) => item.textContent),
+          ).toEqual([
+            // The caller first: the fixtures put the Admin on Payments.
+            "ALYounot joined",
+            expect.stringMatching(/^DODaniel Okaforinvestigating /),
+            expect.stringMatching(/^SOSam Okaforinvestigating /),
+          ]),
+        );
+        // Resolve is shown, locked, with who it waits on.
+        const resolve = within(response).getByRole("button", { name: "Resolve incident" });
+
+        expect((resolve as HTMLButtonElement).disabled).toBe(true);
+        expect(
+          document.getElementById(resolve.getAttribute("aria-describedby")!)?.textContent,
+        ).toBe("waiting on 2 responders");
       });
 
       it("sees a mixed response, still held by whoever is investigating", async () => {
@@ -927,16 +947,20 @@ describe("incidents", () => {
 
         inOrganization(<IncidentDetail />);
 
-        const response = await sectionOf("Response in progress");
+        const response = await sectionOf("Response and resolution");
 
-        expect(within(response).getByText("1 investigating · 1 complete")).toBeDefined();
-        expect(within(response).getByText("Response complete")).toBeDefined();
+        expect(tile("Investigating")).toBe("1");
+        expect(tile("Completed")).toBe("1");
+        expect(within(response).getByText("done")).toBeDefined();
         expect(
           within(response).getByText(
-            "Resolve becomes available when Daniel Okafor completes their response.",
+            "Daniel Okafor is still investigating. Resolve opens when everyone who started has completed.",
           ),
         ).toBeDefined();
-        expect(screen.queryByRole("button", { name: "Resolve incident" })).toBeNull();
+        expect(
+          (within(response).getByRole("button", { name: "Resolve incident" }) as HTMLButtonElement)
+            .disabled,
+        ).toBe(true);
       });
 
       it("resolves once response work is complete, after confirmation", async () => {
@@ -960,10 +984,13 @@ describe("incidents", () => {
 
         inOrganization(<IncidentDetail />);
 
-        const response = await sectionOf("Response work complete");
+        const response = await sectionOf("Response and resolution");
 
         expect(
-          within(response).getByText("2 responders completed their response."),
+          within(response).getByText("Everyone has completed. Ready to resolve."),
+        ).toBeDefined();
+        expect(
+          within(response).getByText(/^2 responders completed their response\./),
         ).toBeDefined();
 
         await user.click(within(response).getByRole("button", { name: "Resolve incident" }));
@@ -1036,7 +1063,7 @@ describe("incidents", () => {
         inOrganization(<IncidentDetail />);
 
         // Not on the page until asked for.
-        expect(await screen.findByRole("heading", { name: "Awaiting team response" })).toBeDefined();
+        expect(await screen.findByRole("heading", { name: "Response and resolution" })).toBeDefined();
         expect(screen.queryByLabelText("Severity")).toBeNull();
 
         const drawer = await openManage(user);
@@ -1048,7 +1075,7 @@ describe("incidents", () => {
         await user.click(within(drawer).getByRole("button", { name: "Close" }));
         await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
         expect(screen.queryByRole("heading", { name: "Your response" })).toBeNull();
-        expect(screen.queryByRole("button", { name: "Mark my response complete" })).toBeNull();
+        expect(screen.queryByRole("button", { name: "Complete my response" })).toBeNull();
       });
 
       it("sends only what changed in severity and team, which has no status to choose", async () => {
@@ -1120,23 +1147,31 @@ describe("incidents", () => {
         const yours = await sectionOf("Your response");
 
         expect(
-          within(yours).getByText("You have not started responding to this incident."),
+          within(yours).getByText("Nobody on Payments has started yet."),
         ).toBeDefined();
+        expect(
+          within(within(yours).getByRole("list", { name: "How a response goes" }))
+            .getAllByRole("listitem")
+            .map((step) => step.textContent),
+        ).toEqual([
+          expect.stringMatching(/^1Start/),
+          expect.stringMatching(/^2Post updates/),
+          expect.stringMatching(/^3Complete your part/),
+        ]);
         // Starting comes first: no composer yet.
         expect(screen.queryByLabelText("Post an update")).toBeNull();
 
         await user.click(within(yours).getByRole("button", { name: "Start investigating" }));
 
-        expect(await within(yours).findByText("You are investigating")).toBeDefined();
-        expect(within(yours).getByText(/^Started/)).toBeDefined();
-        // Where they post is the timeline.
+        // The page becomes their response: posting is right there, in it.
+        const working = await sectionOf("Your response");
+
+        expect(await within(working).findByText(/You're investigating/)).toBeDefined();
+        expect(within(working).getByLabelText("Post an update")).toBeDefined();
         expect(
-          within(await sectionOf(/^Timeline/)).getByLabelText("Post an update"),
+          within(working).getByRole("button", { name: "Complete my response" }),
         ).toBeDefined();
-        expect(
-          within(yours).getByRole("button", { name: "Mark my response complete" }),
-        ).toBeDefined();
-        expect(await sectionOf("Response in progress")).toBeDefined();
+        expect(within(await sectionOf(/^Timeline/)).queryByLabelText("Post an update")).toBeNull();
         expect(count(requests, `POST ${base}/incidents/42/responders/me`)).toBe(1);
         // The timeline refetches: starting was recorded there.
         await waitFor(() =>
@@ -1163,17 +1198,18 @@ describe("incidents", () => {
 
         expect(screen.getByLabelText("Post an update")).toBeDefined();
 
-        await user.click(within(yours).getByRole("button", { name: "Mark my response complete" }));
+        await user.click(within(yours).getByRole("button", { name: "Complete my response" }));
 
-        expect(await within(yours).findByText("Response complete")).toBeDefined();
+        const done = await sectionOf("Your response");
+
+        expect(await within(done).findByText(/You completed your part/)).toBeDefined();
+        // Daniel is still investigating: the incident stays with him.
         expect(
-          within(yours).getByText(/Your response work on this incident is complete/),
+          within(done).getByText(/Daniel Okafor is still investigating; the Admin resolves once no one is\./),
         ).toBeDefined();
         expect(screen.queryByLabelText("Post an update")).toBeNull();
-        expect(screen.queryByRole("button", { name: "Mark my response complete" })).toBeNull();
+        expect(screen.queryByRole("button", { name: "Complete my response" })).toBeNull();
         expect(screen.queryByRole("button", { name: "Start investigating" })).toBeNull();
-        // Daniel is still investigating: the incident stays in progress.
-        expect(await sectionOf("Response in progress")).toBeDefined();
         expect(requests.some((r) => r.method === "PATCH")).toBe(false);
       });
 
@@ -1310,11 +1346,11 @@ describe("incidents", () => {
 
       const yours = await sectionOf("Your response");
 
-      expect(within(yours).getByText("You are investigating")).toBeDefined();
+      expect(within(yours).getByText(/You're investigating/)).toBeDefined();
       expect(
-        within(yours).getByRole("button", { name: "Mark my response complete" }),
+        within(yours).getByRole("button", { name: "Complete my response" }),
       ).toBeDefined();
-      expect(screen.getByLabelText("Post an update")).toBeDefined();
+      expect(within(yours).getByLabelText("Post an update")).toBeDefined();
     });
 
     it("lets a member of another team follow the incident, with nothing to do", async () => {
@@ -1326,12 +1362,15 @@ describe("incidents", () => {
 
       inOrganization(<IncidentDetail />);
 
-      expect(await sectionOf("Response in progress")).toBeDefined();
+      const response = await sectionOf("Response");
+
+      expect(within(response).getByText("Response in progress.")).toBeDefined();
+      expect(within(response).getByText("1 investigating · 0 complete")).toBeDefined();
       expect(
         await screen.findByText("Investigating elevated database latency."),
       ).toBeDefined();
       expect(screen.queryByRole("heading", { name: "Your response" })).toBeNull();
-      for (const name of ["Start investigating", "Mark my response complete", "Resolve incident"]) {
+      for (const name of ["Start investigating", "Complete my response", "Resolve incident"]) {
         expect(screen.queryByRole("button", { name })).toBeNull();
       }
       expect(screen.queryByLabelText("Post an update")).toBeNull();
@@ -1364,24 +1403,29 @@ describe("incidents", () => {
 
       inOrganization(<IncidentDetail />);
 
-      // Everyone sees the response as a whole; a responder, their own part
-      // above it.
-      const response = await sectionOf("Response");
+      // Oversight sees how the response ended; a responder, their own part.
+      if (permissions === ADMIN) {
+        const response = await sectionOf("Response and resolution");
 
-      expect(
-        within(response).getByText("2 responders responded to this incident."),
-      ).toBeDefined();
-      if (permissions !== ADMIN) {
-        expect(within(await sectionOf("Your response")).getByText("Response complete")).toBeDefined();
+        expect(within(response).getByText("Resolved.")).toBeDefined();
+        expect(
+          within(response).getByText("2 responders responded to this incident."),
+        ).toBeDefined();
+        expect(tile("Completed")).toBe("2");
+      } else {
+        const yours = await sectionOf("Your response");
+
+        expect(within(yours).getByText(/You completed your part/)).toBeDefined();
+        expect(within(yours).getByText(/The incident is resolved\./)).toBeDefined();
+        expect(within(yours).getAllByText("done")).toHaveLength(2);
       }
-      expect(within(response).getAllByText("Response complete")).toHaveLength(2);
-      expect(tile("Lasted")).toBeTruthy();
+      expect(within(screen.getByLabelText("Incident details")).getByText("Lasted")).toBeDefined();
 
       const timeline = await sectionOf(/^Timeline/);
       const entries = await within(timeline).findAllByRole("listitem");
 
       // Newest first: the resolution heads it.
-      expect(entries[0]?.textContent).toMatch(/Resolved the incident$/);
+      expect(entries[0]?.textContent).toMatch(/Resolved the incident/);
       // Resolved before notes were required: said, not left as a gap.
       expect(
         within(await sectionOf("Resolution")).getByText(
@@ -1390,7 +1434,7 @@ describe("incidents", () => {
       ).toBeDefined();
       for (const name of [
         "Start investigating",
-        "Mark my response complete",
+        "Complete my response",
         "Resolve incident",
       ]) {
         expect(screen.queryByRole("button", { name })).toBeNull();
@@ -1429,7 +1473,7 @@ describe("incidents", () => {
       const [entry] = await within(timeline).findAllByRole("listitem");
 
       expect(entry.textContent).toMatch(
-        /ago\s*Ada Lovelace\s*Resolved the incident.*Rolled back the 12:00 deploy/,
+        /You\s*Resolved the incident.*ago.*Rolled back the 12:00 deploy/,
       );
     });
 
@@ -1484,18 +1528,25 @@ describe("incidents", () => {
 
       const timeline = await sectionOf(/^Timeline/);
       const entries = await within(timeline).findAllByRole("listitem");
-      // Who did what, without the time column before it.
-      const said = (entry: HTMLElement) =>
-        entry.lastElementChild?.textContent?.replace(/\s+/g, " ").trim();
+      // Who did what — the row's first line without its time — then what
+      // they wrote, if anything.
+      const said = (entry: HTMLElement) => {
+        const [head, body] = entry.querySelectorAll("p");
+
+        return `${head?.querySelector("span")?.textContent ?? ""}${body?.textContent ?? ""}`
+          .replace(/\s+/g, " ")
+          .trim();
+      };
 
       expect(entries.map(said)).toEqual([
         "Daniel Okafor completed their response",
-        "Ada Lovelace reassigned the incident from Payments to Platform",
+        // The caller's own entries are theirs: "You".
+        "You reassigned the incident from Payments to Platform",
         expect.stringMatching(/^Daniel Okafor changed severity SEV2.*→.*SEV1/),
         "Daniel Okafor posted an updateInvestigating elevated database latency.",
         "Daniel Okafor moved the incident to Investigating",
         "Daniel Okafor started investigating",
-        expect.stringMatching(/^Ada Lovelace declared the incident at SEV2/),
+        expect.stringMatching(/^You declared the incident at SEV2/),
       ]);
       expect(within(timeline).queryByLabelText("Post an update")).toBeNull();
     });
@@ -1518,7 +1569,7 @@ describe("incidents", () => {
       const timeline = await sectionOf(/^Timeline/);
       const [entry] = await within(timeline).findAllByRole("listitem");
 
-      expect(entry.textContent).toMatch(/changed status Identified.*→.*Monitoring$/);
+      expect(entry.textContent).toMatch(/changed status Identified.*→.*Monitoring.*ago$/);
     });
 
     describe("live", () => {
