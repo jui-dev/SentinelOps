@@ -1,4 +1,7 @@
 import { startOfUtcDay, utcDay } from "@/lib/period/period";
+import { DAYS_IN_WEEK, WEEKDAYS, weekdayOf } from "@/lib/period/week";
+
+export { DAYS_IN_WEEK, WEEKDAYS, weekdayOf };
 
 /**
  * Arranging a run of UTC days into calendar weeks, and moving around them.
@@ -7,8 +10,8 @@ import { startOfUtcDay, utcDay } from "@/lib/period/period";
  * is decided by the API that answered — this takes the days as given and
  * decides only where each one sits on screen and where the arrow keys go.
  *
- * Weeks start on Sunday and run to Saturday. That is the calendar
- * SentinelOps shows, and it is independent of how any history was
+ * Weeks start on Saturday and run to Friday, as lib/period/week.ts sets
+ * them for every calendar here. That is independent of how any history was
  * generated: a day is placed by the weekday its own UTC date falls on.
  */
 
@@ -38,30 +41,13 @@ export type CalendarCell =
   | { kind: "future"; date: string }
   | { kind: "blank"; date: string };
 
-/** Sunday first, as the columns read down. */
-export const WEEKDAYS = [
-  "Sunday",
-  "Monday",
-  "Tuesday",
-  "Wednesday",
-  "Thursday",
-  "Friday",
-  "Saturday",
-] as const;
-
-export const DAYS_IN_WEEK = WEEKDAYS.length;
-
 const DAY_MS = 86_400_000;
 
 const addDays = (day: string, days: number): string =>
   utcDay(new Date(startOfUtcDay(day).getTime() + days * DAY_MS));
 
-/** Which weekday a UTC date falls on, 0 for Sunday. */
-export const weekdayOf = (date: string): number =>
-  startOfUtcDay(date).getUTCDay();
-
 /**
- * The calendar as whole Sunday-to-Saturday columns, oldest first.
+ * The calendar as whole Saturday-to-Friday columns, oldest first.
  *
  * `range` is the stretch of days the calendar covers — a whole year, for
  * the Overview — and is padded out to whole weeks at both ends, so every
@@ -169,7 +155,7 @@ const MONTH = new Intl.DateTimeFormat(undefined, {
 /**
  * Where each month begins, for the labels above the grid.
  *
- * A label goes above the first column whose Sunday belongs to a new month.
+ * A label goes above the first column whose first day belongs to a new month.
  * The leftmost column is labelled only when its month holds the next one
  * too — otherwise a month with a single visible column would put its name
  * beside the next month's, and the two would collide.
@@ -216,8 +202,8 @@ const MOVES: Record<string, { by: CalendarMove; step: number }> = {
  *
  * `dates` are the focusable days in order, which are the real ones: a
  * placeholder is never focused, so moving never lands on a day that has not
- * happened. Movement is over that run, so one day forward from a Saturday
- * is the next column's Sunday, and a week forward is the same weekday.
+ * happened. Movement is over that run, so one day forward from a Friday
+ * is the next column's Saturday, and a week forward is the same weekday.
  * Both ends clamp rather than wrapping — running off the end of the year
  * and reappearing at the other is disorienting.
  */

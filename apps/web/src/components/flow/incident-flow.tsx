@@ -23,6 +23,7 @@ import type {
   IncidentFlowResponse,
 } from "@/lib/api/contracts";
 import { getIncidentFlow } from "@/lib/api/endpoints";
+import { isWeekend } from "@/lib/period/week";
 import { queryKeys } from "@/lib/api/query-keys";
 
 /**
@@ -140,7 +141,7 @@ const daysOf = (from: string, count: number) =>
       weekday: WEEKDAY.format(date),
       date: date.getUTCDate(),
       month: index === 0 || date.getUTCDate() === 1 ? MONTH.format(date) : "",
-      weekend: date.getUTCDay() === 0 || date.getUTCDay() === 6,
+      weekend: isWeekend(date.toISOString().slice(0, 10)),
     };
   });
 
@@ -381,6 +382,21 @@ function FlowFrame({
       "linear-gradient(to right, var(--flow-rule) 1px, transparent 1px)",
     backgroundSize: `${100 / flow.days}% 100%`,
   };
+  // The weekend — Friday and Saturday (lib/period/week.ts) — faintly banded
+  // behind every row. Incidents happen then like any other day and are drawn
+  // in full; the band only says when one landed outside the working week,
+  // where a long wait for a first responder is worth noticing.
+  const weekendBands = days.map(
+    (day, index) =>
+      day.weekend && (
+        <span
+          key={day.key}
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-y-0 bg-[color-mix(in_srgb,transparent_94%,var(--color-fg))]"
+          style={{ left: percent(index / flow.days), width: percent(1 / flow.days) }}
+        />
+      ),
+  );
   const nowLine = (
     <span
       aria-hidden="true"
@@ -422,7 +438,11 @@ function FlowFrame({
               return (
                 <span
                   key={day.key}
-                  className="flex items-end gap-1 border-l border-(--flow-rule) px-2 pb-2"
+                  className={cx(
+                    "flex items-end gap-1 border-l border-(--flow-rule) px-2 pb-2",
+                    day.weekend &&
+                      "bg-[color-mix(in_srgb,transparent_94%,var(--color-fg))]",
+                  )}
                 >
                   <span
                     className={cx(
@@ -503,6 +523,7 @@ function FlowFrame({
                         ` · most at once ${group.figures.mostAtOnce.count}`}
                     </span>
                   )}
+                  {weekendBands}
                   {nowLine}
                 </div>
 
@@ -544,6 +565,7 @@ function FlowFrame({
                           className="relative h-10 group-hover/row:bg-[color-mix(in_srgb,transparent_92%,var(--color-fg))]"
                           style={dayLines}
                         >
+                          {weekendBands}
                           <Bar
                             incident={incident}
                             start={start}

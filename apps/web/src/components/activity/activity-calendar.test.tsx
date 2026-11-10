@@ -16,9 +16,9 @@ import { expectNoAxeViolations } from "@/test/axe";
 
 const DAY_MS = 86_400_000;
 
-/** 2026-03-22 is a Sunday; 26 weeks of it end on Saturday 2026-09-19. */
-const SUNDAY = "2026-03-22";
-const LAST = "2026-09-19";
+/** 2026-03-21 is a Saturday; 26 weeks of it end on Friday 2026-09-18. */
+const SATURDAY = "2026-03-21";
+const LAST = "2026-09-18";
 const WEEKS = 26;
 
 /** A date as the reader's locale writes it — what the labels are built on. */
@@ -52,7 +52,7 @@ const run = (
     return { date, total: level === 0 ? 0 : level * 3, level };
   });
 
-const SIX_MONTHS = run(SUNDAY, WEEKS * 7);
+const SIX_MONTHS = run(SATURDAY, WEEKS * 7);
 
 const calendar = (props: Partial<Parameters<typeof ActivityCalendar>[0]> = {}) =>
   render(
@@ -79,7 +79,7 @@ const dayOn = (date: string) =>
 
 describe("the activity calendar", () => {
   describe("its shape", () => {
-    it("lays 26 weeks out as seven Sunday-to-Saturday rows", () => {
+    it("lays 26 weeks out as seven Saturday-to-Friday rows", () => {
       calendar();
 
       // One row per weekday, each a rowheader and 26 columns.
@@ -89,7 +89,7 @@ describe("the activity calendar", () => {
       ).toEqual(Array.from({ length: 7 }, () => WEEKS));
     });
 
-    it("names its rows Sunday first and Saturday last", () => {
+    it("names its rows Saturday first and Friday last, as Bangladesh's week runs", () => {
       calendar();
 
       expect(
@@ -97,28 +97,28 @@ describe("the activity calendar", () => {
           (row) => within(row).getByRole("rowheader").textContent,
         ),
       ).toEqual([
+        "Saturday",
         "Sunday",
         "Monday",
         "Tuesday",
         "Wednesday",
         "Thursday",
         "Friday",
-        "Saturday",
       ]);
     });
 
     it("puts each date in the row its weekday belongs to", () => {
       calendar();
 
-      const sunday = rows()[0];
-      const saturday = rows()[6];
+      const saturday = rows()[0];
+      const friday = rows()[6];
 
       // The first column's ends, and the last column's.
-      expect(within(sunday).getAllByRole("button")[0]).toBe(dayOn(SUNDAY));
-      expect(within(saturday).getAllByRole("button")[0]).toBe(
-        dayOn("2026-03-28"),
+      expect(within(saturday).getAllByRole("button")[0]).toBe(dayOn(SATURDAY));
+      expect(within(friday).getAllByRole("button")[0]).toBe(
+        dayOn("2026-03-27"),
       );
-      expect(within(saturday).getAllByRole("button").at(-1)).toBe(dayOn(LAST));
+      expect(within(friday).getAllByRole("button").at(-1)).toBe(dayOn(LAST));
     });
 
     it("is one day per date, and no more", () => {
@@ -127,8 +127,8 @@ describe("the activity calendar", () => {
       expect(dayButtons()).toHaveLength(WEEKS * 7);
     });
 
-    it("pads a range that does not begin on a Sunday", () => {
-      // 2026-03-25 is a Wednesday: Sunday to Tuesday have no day behind them.
+    it("pads a range that does not begin on a Saturday", () => {
+      // 2026-03-25 is a Wednesday: Saturday to Tuesday have no day behind them.
       calendar({ days: run("2026-03-25", 10) });
 
       const first = within(rows()[0]).getAllByRole("gridcell")[0];
@@ -177,10 +177,10 @@ describe("the activity calendar", () => {
     };
 
     it("draws all five levels, each in its own fill", () => {
-      calendar({ days: run(SUNDAY, 7, levels) });
+      calendar({ days: run(SATURDAY, 7, levels) });
 
       // Quiet, then the four steps.
-      expect(dayOn(SUNDAY).dataset.level).toBe("0");
+      expect(dayOn(SATURDAY).dataset.level).toBe("0");
       expect(dayOn("2026-03-23").dataset.level).toBe("1");
       expect(dayOn("2026-03-24").dataset.level).toBe("2");
       expect(dayOn("2026-03-25").dataset.level).toBe("3");
@@ -204,11 +204,11 @@ describe("the activity calendar", () => {
     });
 
     it("gives every day the same square, whatever happened on it", () => {
-      calendar({ days: run(SUNDAY, 7, levels) });
+      calendar({ days: run(SATURDAY, 7, levels) });
 
       // Intensity is the ramp's alone: nothing grows with the level.
       for (const date of [
-        SUNDAY,
+        SATURDAY,
         "2026-03-23",
         "2026-03-24",
         "2026-03-25",
@@ -223,11 +223,11 @@ describe("the activity calendar", () => {
     });
 
     it("keeps a quiet day quiet, and tells it from a faint one", () => {
-      calendar({ days: run(SUNDAY, 7, levels) });
+      calendar({ days: run(SATURDAY, 7, levels) });
 
-      expect(dayOn(SUNDAY).getAttribute("aria-label")).toMatch(/no activity$/);
+      expect(dayOn(SATURDAY).getAttribute("aria-label")).toMatch(/no activity$/);
 
-      const quiet = dayOn(SUNDAY).firstElementChild?.className ?? "";
+      const quiet = dayOn(SATURDAY).firstElementChild?.className ?? "";
 
       // No blue at all, and an edge — so it reads as an empty slot rather
       // than as the palest step of the ramp, which it sits close to.
@@ -243,7 +243,7 @@ describe("the activity calendar", () => {
       ["operational", "bg-activity-operational-"],
       ["personal", "bg-activity-personal-"],
     ])("draws the %s variant from its own family", (variant, family) => {
-      calendar({ days: run(SUNDAY, 7, levels), variant });
+      calendar({ days: run(SATURDAY, 7, levels), variant });
 
       for (const level of [1, 2, 3, 4]) {
         const date = `2026-03-2${2 + level}`;
@@ -253,13 +253,13 @@ describe("the activity calendar", () => {
         );
       }
       // A quiet day has no domain, so it has no family either.
-      expect(dayOn(SUNDAY).firstElementChild?.className).toMatch(
+      expect(dayOn(SATURDAY).firstElementChild?.className).toMatch(
         /bg-activity-empty/,
       );
     });
 
     it("uses no signal or accent colour for intensity", () => {
-      const { container } = calendar({ days: run(SUNDAY, 7, levels) });
+      const { container } = calendar({ days: run(SATURDAY, 7, levels) });
 
       expect(container.innerHTML).not.toMatch(/bg-signal-/);
       expect(container.innerHTML).not.toMatch(/bg-accent/);
@@ -269,23 +269,23 @@ describe("the activity calendar", () => {
   describe("days that have not happened", () => {
     it("draws them as still to come rather than as quiet days", () => {
       // Read on the Wednesday of the first week.
-      calendar({ days: run(SUNDAY, 7), today: "2026-03-25" });
+      calendar({ days: run(SATURDAY, 7), today: "2026-03-25" });
 
       const cells = within(rows()[0]).getAllByRole("gridcell");
 
       expect(dayOn("2026-03-25")).toBeDefined();
       // Thursday on has no day behind it, so nothing to focus or choose.
-      expect(dayButtons()).toHaveLength(4);
+      expect(dayButtons()).toHaveLength(5);
       expect(within(cells[0]).queryByRole("button")).not.toBeNull();
       expect(
-        within(rows()[4]).getAllByRole("gridcell")[0].querySelector("button"),
+        within(rows()[5]).getAllByRole("gridcell")[0].querySelector("button"),
       ).toBeNull();
     });
 
     it("gives a day still to come no name and no level", () => {
-      calendar({ days: run(SUNDAY, 7), today: "2026-03-25" });
+      calendar({ days: run(SATURDAY, 7), today: "2026-03-25" });
 
-      const friday = within(rows()[5]).getAllByRole("gridcell")[0];
+      const friday = within(rows()[6]).getAllByRole("gridcell")[0];
 
       expect(within(friday).queryByRole("button")).toBeNull();
       expect(friday.querySelector("[data-future]")).not.toBeNull();
@@ -294,9 +294,9 @@ describe("the activity calendar", () => {
     it("keeps every day of a range whose days have not all happened", () => {
       // A fortnight of range, a week of it lived through.
       calendar({
-        days: run(SUNDAY, 7),
+        days: run(SATURDAY, 7),
         today: "2026-03-28",
-        range: { from: SUNDAY, to: "2026-04-04" },
+        range: { from: SATURDAY, to: "2026-04-04" },
       });
 
       // Seven lived days, seven still to come, and nothing blank between.
@@ -309,7 +309,7 @@ describe("the activity calendar", () => {
 
   describe("today", () => {
     it("marks it, and says so in its name", () => {
-      calendar({ days: run(SUNDAY, 7), today: "2026-03-25" });
+      calendar({ days: run(SATURDAY, 7), today: "2026-03-25" });
 
       const today = dayOn("2026-03-25");
 
@@ -320,17 +320,17 @@ describe("the activity calendar", () => {
     });
 
     it("marks no other day", () => {
-      calendar({ days: run(SUNDAY, 7), today: "2026-03-25" });
+      calendar({ days: run(SATURDAY, 7), today: "2026-03-25" });
 
       expect(
         dayButtons().filter((button) => button.dataset.today === "true"),
       ).toHaveLength(1);
-      expect(dayOn(SUNDAY).dataset.today).toBeUndefined();
+      expect(dayOn(SATURDAY).dataset.today).toBeUndefined();
     });
 
     it("lets a selection take over its edge", () => {
       calendar({
-        days: run(SUNDAY, 7),
+        days: run(SATURDAY, 7),
         today: "2026-03-25",
         selected: "2026-03-25",
       });
@@ -475,10 +475,10 @@ describe("the activity calendar", () => {
       dayOn("2026-05-13").focus();
 
       await user.keyboard("{Home}");
-      expect(document.activeElement).toBe(dayOn(SUNDAY));
+      expect(document.activeElement).toBe(dayOn(SATURDAY));
 
       await user.keyboard("{ArrowUp}{ArrowLeft}");
-      expect(document.activeElement).toBe(dayOn(SUNDAY));
+      expect(document.activeElement).toBe(dayOn(SATURDAY));
 
       await user.keyboard("{End}");
       expect(document.activeElement).toBe(dayOn(LAST));
@@ -533,7 +533,7 @@ describe("the activity calendar", () => {
 
   describe("what it says", () => {
     it("names a day by its date and what it holds", () => {
-      calendar({ days: run(SUNDAY, 7, { "2026-03-24": 3 }) });
+      calendar({ days: run(SATURDAY, 7, { "2026-03-24": 3 }) });
 
       expect(dayOn("2026-03-24").getAttribute("aria-label")).toBe(
         `${formatDate("2026-03-24")} — 9 events, level 3 of 4`,
@@ -542,18 +542,18 @@ describe("the activity calendar", () => {
 
     it("counts one event as one", () => {
       calendar({
-        days: [{ date: SUNDAY, total: 1, level: 1 }],
+        days: [{ date: SATURDAY, total: 1, level: 1 }],
       });
 
       // The only day given, so it is also the most recent one.
-      expect(dayOn(SUNDAY).getAttribute("aria-label")).toBe(
-        `${formatDate(SUNDAY)} (today) — 1 event, level 1 of 4`,
+      expect(dayOn(SATURDAY).getAttribute("aria-label")).toBe(
+        `${formatDate(SATURDAY)} (today) — 1 event, level 1 of 4`,
       );
     });
 
     it("lets the feature say what its days hold, in its own words", () => {
       calendar({
-        days: run(SUNDAY, 7, { "2026-03-24": 2 }),
+        days: run(SATURDAY, 7, { "2026-03-24": 2 }),
         describeDay: (day) => `${day.total} responses`,
       });
 
@@ -675,7 +675,7 @@ describe("the activity calendar", () => {
     const { container } = calendar({
       variant: "personal",
       label: "Response activity",
-      days: run(SUNDAY, 7, { "2026-03-24": 4 }),
+      days: run(SATURDAY, 7, { "2026-03-24": 4 }),
     });
 
     await expectNoAxeViolations(container);

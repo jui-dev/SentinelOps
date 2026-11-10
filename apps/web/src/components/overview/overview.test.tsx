@@ -1510,13 +1510,14 @@ describe("the operations overview", () => {
       expect(
         rows.map((row) => within(row).getAllByRole("gridcell").length),
       ).toEqual(Array.from({ length: 7 }, () => YEAR_COLUMNS));
-      // Sunday first, and the year's first Sunday heads its column.
-      expect(within(rows[0]).getByRole("rowheader").textContent).toBe("Sunday");
+      // Saturday first, as Bangladesh's week runs, and the year's first
+      // Saturday heads its column.
+      expect(within(rows[0]).getByRole("rowheader").textContent).toBe("Saturday");
       expect(within(rows[0]).getAllByRole("button")[0]).toBe(
-        dayOn("2026-01-04"),
+        dayOn("2026-01-03"),
       );
-      // Today is the last day with anything behind it.
-      expect(within(rows[6]).getAllByRole("button").at(-1)).toBe(
+      // Today, a Saturday, is the last day with anything behind it.
+      expect(within(rows[0]).getAllByRole("button").at(-1)).toBe(
         dayOn("2026-09-19"),
       );
 
