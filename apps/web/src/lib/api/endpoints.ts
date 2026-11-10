@@ -22,7 +22,7 @@ import type {
   IncidentFilters,
   IncidentOccurrenceResponse,
   IncidentPeriod,
-  IncidentResponse,
+  IncidentListItemResponse,
   IncidentState,
   MemberResponseResponse,
   NotificationResponse,
@@ -270,11 +270,12 @@ export const listIncidents = (
   if (filters.severity) query.set("severity", filters.severity);
   if (filters.serviceId) query.set("serviceId", filters.serviceId);
   if (filters.teamId) query.set("teamId", filters.teamId);
+  if (filters.response) query.set("response", filters.response);
   if (filters.q) query.set("q", filters.q);
   // Last, so a page request reads as the list's own query plus where it starts.
   if (cursor) query.set("cursor", cursor);
 
-  return authenticatedRequest<Page<IncidentResponse>>(
+  return authenticatedRequest<Page<IncidentListItemResponse>>(
     `${incidentsPath(organizationId)}?${query}`,
   );
 };

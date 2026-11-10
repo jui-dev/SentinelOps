@@ -164,6 +164,7 @@ const busy = (from: string, to: string): IncidentSummaryResponse => ({
     affectedServices: [],
     responders: { active: 0, teams: 0 },
     activeByStatus: { DECLARED: 0, INVESTIGATING: 0 },
+    readyToResolve: 0,
     typicalResolution: {
       from: "2026-06-22",
       to: "2026-09-19",
@@ -234,6 +235,7 @@ const quiet = (from: string, to: string): IncidentSummaryResponse => ({
     affectedServices: [],
     responders: { active: 0, teams: 0 },
     activeByStatus: { DECLARED: 0, INVESTIGATING: 0 },
+    readyToResolve: 0,
     typicalResolution: {
       from: "2026-06-22",
       to: "2026-09-19",

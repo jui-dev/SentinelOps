@@ -7,6 +7,7 @@ import { OrganizationScope } from "@/components/organizations/organization-scope
 import type {
   IncidentActivityResponse,
   IncidentDetailResponse,
+  IncidentListItemResponse,
   IncidentResponderResponse,
   IncidentResponse,
 } from "@/lib/api/contracts";
@@ -207,10 +208,58 @@ const activity = (
   ...overrides,
 });
 
+/**
+ * An incident as a list gives it: its responders counted, and when it was
+ * last updated — by default never.
+ */
+const listItem = (
+  item: IncidentResponse & Partial<IncidentDetailResponse & IncidentListItemResponse>,
+): IncidentListItemResponse => ({
+  response: {
+    investigating: (item.responders ?? []).filter(({ status }) => status === "INVESTIGATING")
+      .length,
+    completed: (item.responders ?? []).filter(({ status }) => status === "COMPLETED").length,
+  },
+  lastUpdateAt: null,
+  ...item,
+});
+
 const page = (items: IncidentResponse[], cursor: string | null = null) => ({
-  items,
+  items: items.map(listItem),
   page: { cursor, hasMore: cursor !== null },
 });
+
+/** Where response stands now, as the Incidents page's band reads it. */
+const summary = {
+  current: {
+    active: 4,
+    activeBySeverity: { SEV1: 1, SEV2: 1, SEV3: 1, SEV4: 1 },
+    affectedServices: [],
+    responders: { active: 2, teams: 1 },
+    activeByStatus: { DECLARED: 1, INVESTIGATING: 3 },
+    readyToResolve: 1,
+    typicalResolution: {
+      from: "2026-06-21",
+      to: "2026-09-18",
+      minimumSample: 5,
+      bySeverity: {
+        SEV1: { resolved: 0, medianMs: null },
+        SEV2: { resolved: 0, medianMs: null },
+        SEV3: { resolved: 0, medianMs: null },
+        SEV4: { resolved: 0, medianMs: null },
+      },
+    },
+  },
+  period: {
+    from: "2026-08-20",
+    to: "2026-09-18",
+    declared: 9,
+    declaredBySeverity: { SEV1: 1, SEV2: 3, SEV3: 4, SEV4: 1 },
+    resolved: 9,
+    stillOpen: 0,
+    history: { total: 0, items: [] },
+  },
+};
 
 type Handler = (request: SentRequest) => Response | undefined;
 
@@ -239,6 +288,10 @@ const api = (
     const handled = handler(request);
 
     if (handled) return handled;
+
+    if (route(request).startsWith(`GET ${base}/incidents/summary?`)) {
+      return jsonResponse(200, summary);
+    }
 
     switch (route(request)) {
       case "POST /auth/refresh":
@@ -300,20 +353,25 @@ describe("incidents", () => {
       expect(within(first).getByText("SEV1")).toBeDefined();
       // The word is read out even where only the code is shown.
       expect(within(first).getByText("Critical")).toBeDefined();
-      expect(
-        within(first).getByRole("link", { name: /INC-42 Card payments failing/ }).getAttribute("href"),
-      ).toBe("/orgs/acme-ops/incidents/42");
-      expect(within(first).getByText("Payment API")).toBeDefined();
-      expect(within(first).getByText("Payments")).toBeDefined();
+      expect(within(first).getByText("Card payments failing")).toBeDefined();
+      expect(within(first).getByText("Payment API · Payments")).toBeDefined();
       expect(within(first).getByText("Investigating")).toBeDefined();
-      expect(within(first).getByText(/^(<1m|\d+[mhd])/)).toBeDefined();
+      expect(within(first).getAllByText(/^(<1m|\d+[mhd])/).length).toBeGreaterThan(0);
       expect(within(second).getByText("Declared")).toBeDefined();
-      expect(await screen.findByText("No resolved incidents")).toBeDefined();
+      // Where the response stands, and when it was last updated.
+      expect(within(second).getByText("No one yet")).toBeDefined();
+      expect(within(first).getAllByText("None yet").length).toBeGreaterThan(0);
+      // The active tab, counted; the resolved one not asked for until opened.
+      expect(screen.getByRole("tab", { name: "Active 2", selected: true })).toBeDefined();
+      expect(screen.getByRole("tab", { name: "Resolved", selected: false })).toBeDefined();
     });
 
-    it("makes each row one link, and folds where and who under the title for narrow screens", async () => {
+    it("gives each row one way in, View, and opens it in place to show the latest update and who can respond", async () => {
+      const user = userEvent.setup();
       api(READ_ONLY, {
         active: [incident(), incident({ number: 7, severity: "SEV3", title: "Reports delayed", status: "DECLARED" })],
+        detail: incident({ responders: [responder(daniel)] }),
+        timeline: [activity()],
       });
 
       inOrganization(<IncidentsView />);
@@ -321,11 +379,31 @@ describe("incidents", () => {
       const table = await screen.findByRole("table", { name: "Active incidents" });
       const [, first, second] = within(table).getAllByRole("row");
 
-      // One tab stop per row, named by the incident.
+      // One link per row, named by the incident; the title is not one.
       expect(within(first).getAllByRole("link")).toHaveLength(1);
       expect(within(second).getAllByRole("link")).toHaveLength(1);
-      // The service and team stay in the row where their columns are hidden.
-      expect(within(first).getByText(/Payment API · Payments/)).toBeDefined();
+      expect(
+        within(first).getByRole("link", { name: "View INC-42" }).getAttribute("href"),
+      ).toBe("/orgs/acme-ops/incidents/42");
+
+      // A click on the row opens it in place.
+      await user.click(within(first).getByText("Card payments failing"));
+
+      const latest = await screen.findByRole("region", { name: "Latest update on INC-42" });
+      expect(
+        await within(latest).findByText("Investigating elevated database latency."),
+      ).toBeDefined();
+      const who = screen.getByRole("region", { name: "Who can respond to INC-42" });
+      expect(await within(who).findByText("Daniel Okafor")).toBeDefined();
+      expect(within(who).getByText("investigating")).toBeDefined();
+      // The rest of the team, who have not joined.
+      expect(await within(who).findByText("Ada Lovelace")).toBeDefined();
+      expect(within(who).getByText("not joined")).toBeDefined();
+
+      await user.click(
+        within(first).getByRole("button", { name: "Hide the latest update and responders of INC-42" }),
+      );
+      expect(screen.queryByRole("region", { name: "Latest update on INC-42" })).toBeNull();
       // Status is its word; the icon beside it is decoration.
       const status = within(first).getByText("Investigating");
       expect(status.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
@@ -418,13 +496,12 @@ describe("incidents", () => {
         screen.getByRole("link", { name: "Clear" }).getAttribute("href"),
       ).toBe("/orgs/acme-ops/incidents");
 
-      // Each list says which moment it is filtered on.
+      // The list says which moment it is filtered on.
       expect(screen.getByText("Declared in this range.")).toBeDefined();
-      expect(screen.getByText("Resolved in this range.")).toBeDefined();
-      expect(await screen.findByText("None resolved in this range")).toBeDefined();
 
       expect(count(requests, `GET ${base}/incidents?state=active&${range}`)).toBe(1);
-      expect(count(requests, `GET ${base}/incidents?state=resolved&${range}`)).toBe(1);
+      // Asked for once its tab is opened.
+      expect(count(requests, `GET ${base}/incidents?state=resolved&${range}`)).toBe(0);
       expect(navigation.replace).not.toHaveBeenCalled();
     });
 
@@ -467,16 +544,18 @@ describe("incidents", () => {
         inOrganization(<IncidentsView />);
 
         expect(await screen.findByText("Checkout failing")).toBeDefined();
-        expect(await screen.findByText("No resolved incidents match")).toBeDefined();
         expect(count(requests, filtered("active"))).toBe(1);
-        expect(count(requests, filtered("resolved"))).toBe(1);
         // Waited for the lists, rather than showing everything for a moment.
         expect(count(requests, `GET ${base}/incidents?state=active`)).toBe(0);
 
         const search = screen.getByRole("search", { name: "Filter incidents" });
 
         expect((within(search).getByLabelText("Search") as HTMLInputElement).value).toBe("checkout");
-        expect((within(search).getByLabelText("Severity") as HTMLSelectElement).value).toBe("SEV2");
+        expect(
+          within(within(search).getByRole("group", { name: "Severity" })).getByRole("button", {
+            pressed: true,
+          }).textContent,
+        ).toMatch(/^SEV2/);
         expect((within(search).getByLabelText("Service") as HTMLSelectElement).value).toBe("payment-api");
         expect((within(search).getByLabelText("Responsible team") as HTMLSelectElement).value).toBe(
           payments.id,
@@ -495,7 +574,7 @@ describe("incidents", () => {
 
         inOrganization(<IncidentsView />);
 
-        await user.selectOptions(await screen.findByLabelText("Severity"), "SEV1");
+        await user.click(await screen.findByRole("button", { name: "SEV1 Critical" }));
 
         expect(navigation.replace).toHaveBeenLastCalledWith(
           "/orgs/acme-ops/incidents?from=2026-09-12&to=2026-09-18&q=checkout&severity=SEV1",
@@ -531,8 +610,40 @@ describe("incidents", () => {
         expect(screen.queryByRole("button", { name: "Clear filters" })).toBeNull();
       });
 
+      it("narrows by where the response stands, one choice at a time", async () => {
+        const user = userEvent.setup();
+        navigation.search = "response=unclaimed";
+        const { requests } = api(READ_ONLY, {
+          handler: (request) =>
+            route(request) === `GET ${base}/incidents?state=active&response=unclaimed`
+              ? jsonResponse(200, page([incident({ status: "DECLARED" })]))
+              : undefined,
+        });
+
+        inOrganization(<IncidentsView />);
+
+        expect(
+          await screen.findByRole("button", { name: "Needs a responder", pressed: true }),
+        ).toBeDefined();
+        await waitFor(() =>
+          expect(count(requests, `GET ${base}/incidents?state=active&response=unclaimed`)).toBe(1),
+        );
+
+        await user.click(screen.getByRole("button", { name: "Ready to resolve" }));
+        expect(navigation.replace).toHaveBeenLastCalledWith(
+          "/orgs/acme-ops/incidents?response=ready",
+          { scroll: false },
+        );
+
+        // Pressed again, it no longer applies.
+        await user.click(screen.getByRole("button", { name: "Needs a responder" }));
+        expect(navigation.replace).toHaveBeenLastCalledWith("/orgs/acme-ops/incidents", {
+          scroll: false,
+        });
+      });
+
       it("takes a filter that can never apply out of the URL, keeping the rest", async () => {
-        navigation.search = `q=checkout&severity=SEV9&service=no-such-service&team=${platform.id}`;
+        navigation.search = `q=checkout&severity=SEV9&response=soon&service=no-such-service&team=${platform.id}`;
         api(READ_ONLY, {
           handler: (request) =>
             route(request).startsWith(`GET ${base}/incidents?state=`)
@@ -551,8 +662,39 @@ describe("incidents", () => {
       });
     });
 
+    it("says where response stands now, from the summary the Overview shares", async () => {
+      api(READ_ONLY);
+
+      inOrganization(<IncidentsView />);
+
+      const band = await screen.findByLabelText("Incidents now");
+      const figure = (label: string) =>
+        within(band).getByText(label).nextElementSibling?.textContent;
+
+      await waitFor(() => expect(figure("Active")).toBe("41 × SEV1"));
+      expect(figure("Needs a responder")).toBe("1no one has started");
+      expect(figure("Ready to resolve")).toBe("1everyone is done");
+      expect(figure("Resolved")).toBe("9in the last 30 days");
+    });
+
+    it("opens the resolved tab into the URL, keeping the filters", async () => {
+      const user = userEvent.setup();
+      navigation.search = "q=checkout";
+      api(READ_ONLY);
+
+      inOrganization(<IncidentsView />);
+
+      await user.click(await screen.findByRole("tab", { name: "Resolved" }));
+
+      expect(navigation.replace).toHaveBeenLastCalledWith(
+        "/orgs/acme-ops/incidents?q=checkout&view=resolved",
+        { scroll: false },
+      );
+    });
+
     it("loads the next page of resolved incidents on request, by the API's cursor", async () => {
       const user = userEvent.setup();
+      navigation.search = "view=resolved";
       const { requests } = api(READ_ONLY, {
         handler: (request) => {
           if (route(request) === `GET ${base}/incidents?state=resolved`) {

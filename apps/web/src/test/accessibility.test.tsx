@@ -247,6 +247,7 @@ const summary = (from: string, to: string) => ({
     ],
     responders: { active: 1, teams: 1 },
     activeByStatus: { DECLARED: 1, INVESTIGATING: 1 },
+    readyToResolve: 0,
     typicalResolution: {
       from: "2026-06-22",
       to: "2026-09-19",
@@ -475,12 +476,25 @@ const signedIn = (permissions: string[]) =>
         return jsonResponse(200, [service]);
       case `GET ${base}/incidents?state=active`:
         return jsonResponse(200, {
-          items: [activeIncident, majorIncident],
+          items: [
+            {
+              ...activeIncident,
+              response: { investigating: 1, completed: 0 },
+              lastUpdateAt: "2026-09-18T12:30:00.000Z",
+            },
+            { ...majorIncident, response: { investigating: 0, completed: 0 }, lastUpdateAt: null },
+          ],
           page: { cursor: null, hasMore: false },
         });
       case `GET ${base}/incidents?state=resolved`:
         return jsonResponse(200, {
-          items: [resolvedIncident],
+          items: [
+            {
+              ...resolvedIncident,
+              response: { investigating: 0, completed: 2 },
+              lastUpdateAt: "2026-09-18T12:50:00.000Z",
+            },
+          ],
           page: { cursor: "7", hasMore: true },
         });
       case `GET ${base}/incidents/42`:
@@ -882,9 +896,24 @@ it("Services, with a row opened", async () => {      signedIn(ADMIN);      const
       const { container } = inWorkspace(<IncidentsView />);
 
       await screen.findByRole("table", { name: "Active incidents" });
-      await screen.findByRole("table", { name: "Resolved incidents" });
       (await screen.findByRole("button", { name: "Declare incident" })).click();
       await screen.findByLabelText("Affected service");
+      await expectNoAxeViolations(container);
+    });
+
+    it("Incidents, a row opened in place", async () => {
+      signedIn(ADMIN);
+      const { container } = inWorkspace(<IncidentsView />);
+
+      const table = await screen.findByRole("table", { name: "Active incidents" });
+      await screen.findByLabelText("Incidents now");
+      (
+        await within(table).findByRole("button", {
+          name: "Show the latest update and responders of INC-42",
+        })
+      ).click();
+      await screen.findByRole("region", { name: "Latest update on INC-42" });
+      await screen.findByRole("region", { name: "Who can respond to INC-42" });
       await expectNoAxeViolations(container);
     });
 

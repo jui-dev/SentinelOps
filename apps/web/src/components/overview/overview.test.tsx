@@ -149,6 +149,7 @@ const busy = (from: string, to: string): IncidentSummaryResponse => ({
     // members from a count of responses.
     responders: { active: 2, teams: 2 },
     activeByStatus: { DECLARED: 1, INVESTIGATING: 2 },
+    readyToResolve: 0,
     // A SEV1 has typically taken six hours; nothing else has enough
     // resolutions to say.
     typicalResolution: {
@@ -222,6 +223,7 @@ const quiet = (from: string, to: string): IncidentSummaryResponse => ({
     affectedServices: [],
     responders: { active: 0, teams: 0 },
     activeByStatus: { DECLARED: 0, INVESTIGATING: 0 },
+    readyToResolve: 0,
     typicalResolution: {
       from: "2026-06-22",
       to: "2026-09-19",
@@ -841,6 +843,7 @@ describe("the operations overview", () => {
         ],
         responders: { active: 3, teams: 2 },
         activeByStatus: { DECLARED: 3, INVESTIGATING: 3 },
+        readyToResolve: 0,
         typicalResolution: {
           from: "2026-06-22",
           to: "2026-09-19",

@@ -274,6 +274,16 @@ export interface IncidentResponse {
 }
 
 /**
+ * An incident as a list gives it: where its response stands, in counts, and
+ * when the last update was posted — null before any. The responders
+ * themselves are the incident's own route.
+ */
+export interface IncidentListItemResponse extends IncidentResponse {
+  response: { investigating: number; completed: number };
+  lastUpdateAt: string | null;
+}
+
+/**
  * Where one responder's own part of the response stands. Someone who has not
  * started investigating is not a responder, and has no entry.
  */
@@ -533,6 +543,8 @@ export interface IncidentSummaryResponse {
     };
     /** The active incidents by lifecycle status: declared, or investigating. */
     activeByStatus: ActiveStatusCounts;
+    /** Investigating, and no one still is: the Admin may resolve them. */
+    readyToResolve: number;
     /** What an active incident's duration can honestly be read against. */
     typicalResolution: TypicalResolutionResponse;
   };
@@ -777,10 +789,17 @@ export interface MemberResponseResponse {
  * incident's number (`42`, `INC-42`). A service or team the organization
  * lacks matches nothing; it is not an error.
  */
+/**
+ * Where the response stands, as a list can be narrowed by it: `unclaimed`,
+ * no one has started; `ready`, investigating, and no one still is.
+ */
+export type IncidentResponseFilter = "unclaimed" | "ready";
+
 export interface IncidentFilters {
   severity?: IncidentSeverity;
   serviceId?: string;
   teamId?: string;
+  response?: IncidentResponseFilter;
   q?: string;
 }
 

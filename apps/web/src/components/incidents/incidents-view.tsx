@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { CircleCheck, CircleDashed, Flame, History } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -15,15 +16,18 @@ import {
   servicesHref,
   useServices,
 } from "@/components/services/service-scope";
+import { useCurrentOperations } from "@/components/overview/use-current-operations";
 import { ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Glance, GlanceTile } from "@/components/ui/detail-layout";
 import { DialogActions, FormDialog } from "@/components/ui/dialog";
 import { EmptyNote, EmptyState } from "@/components/ui/empty-state";
 import { Field, TextArea } from "@/components/ui/field";
 import { OnwardLink } from "@/components/ui/onward-link";
-import { PageBody, PageHeader, Section } from "@/components/ui/page";
+import { PageBody, PageHeader } from "@/components/ui/page";
 import { Select } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
+import { Tabs } from "@/components/ui/tabs";
 import { linkClasses } from "@/components/ui/link";
 import {
   RequiredNote,
@@ -53,9 +57,9 @@ import {
   storeIncident,
   useIncidentList,
 } from "./incident-queries";
-import { IncidentTable } from "./incident-table";
-import { SEVERITY_LEVELS, severityOf } from "./severity";
+import { IncidentBoard } from "./incident-board";
 import { LiveStatus } from "./live-status";
+import { SEVERITY_LEVELS, severityOf } from "./severity";
 
 export const SERVICE_UNAVAILABLE_MESSAGE =
   "That service is no longer available for new incidents. The list of services has been refreshed.";
@@ -281,128 +285,161 @@ function DeclareIncidentForm({ onCancel }: { onCancel: () => void }) {
   );
 }
 
+type ListQuery = ReturnType<typeof useIncidentList>;
+
 /**
  * One state's incidents: active ones most severe first, then longest
- * running; resolved ones most recent first. Pages load on request.
+ * running; resolved ones most recent first. Pages load on request. The
+ * query is the page's own, so the tabs and the freshness line read it too.
  */
 function IncidentList({
   state,
+  list,
   period,
-  filters,
+  filtered,
 }: {
   state: IncidentState;
+  list: ListQuery;
   period?: IncidentPeriod;
-  filters: ReturnType<typeof useIncidentFilters>;
+  filtered: boolean;
 }) {
-  const organization = useOrganization();
-  const list = useIncidentList(
-    organization.id,
-    state,
-    period,
-    filters.filters,
-    !filters.pending,
-    // This page keeps both lists live: others declare, respond, and resolve.
-    true,
-  );
   const active = state === "active";
 
-  let content;
-  // A count only when every page is here: never an estimate.
-  let count: number | undefined;
+  if (list.isError) return <ErrorAlert error={list.error} />;
 
-  if (list.isError) {
-    content = <ErrorAlert error={list.error} />;
-  } else if (!list.data) {
-    content = (
+  if (!list.data) {
+    return (
       <Spinner
         label={active ? "Loading active incidents…" : "Loading resolved incidents…"}
       />
     );
-  } else {
-    const incidents = list.data.pages.flatMap((page) => page.items);
+  }
 
-    if (active && !list.hasNextPage) count = incidents.length;
+  const incidents = list.data.pages.flatMap((page) => page.items);
 
-    content =
-      incidents.length === 0 && filters.active ? (
-        <EmptyNote
-          title={active ? "No active incidents match" : "No resolved incidents match"}
-        >
-          {period
-            ? "Nothing in this range matches the filters."
-            : "Nothing matches the filters. Clear them to see every incident."}
-        </EmptyNote>
-      ) : incidents.length === 0 ? (
-        active ? (
-          <EmptyNote
-            title={
-              period ? "None declared in this range" : "No active incidents"
-            }
-            // The nominal mark: a real state, said in words as well.
-            glyph={
-              <svg viewBox="0 0 10 10" className="size-2.5 text-signal-nominal">
-                <circle cx="5" cy="5" r="3.75" fill="currentColor" />
-              </svg>
-            }
-          >
-            {period
-              ? "No incident still running was declared between these dates."
-              : "Nothing needs a response right now."}
-          </EmptyNote>
-        ) : (
-          <EmptyNote
-            title={
-              period ? "None resolved in this range" : "No resolved incidents"
-            }
-          >
-            {period
-              ? "No incident was resolved between these dates."
-              : "Incidents appear here once resolved, most recent first."}
-          </EmptyNote>
-        )
-      ) : (
-        <>
-          <IncidentTable
-            incidents={incidents}
-            state={state}
-            label={active ? "Active incidents" : "Resolved incidents"}
-            stickyHeader
-          />
-          {list.hasNextPage && (
-            <div>
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled={list.isFetchingNextPage}
-                onClick={() => void list.fetchNextPage()}
-              >
-                {list.isFetchingNextPage ? "Loading…" : "Show more"}
-              </Button>
-            </div>
-          )}
-        </>
-      );
+  if (incidents.length === 0 && filtered) {
+    return (
+      <EmptyNote
+        title={active ? "No active incidents match" : "No resolved incidents match"}
+      >
+        {period
+          ? "Nothing in this range matches the filters."
+          : "Nothing matches the filters. Clear them to see every incident."}
+      </EmptyNote>
+    );
+  }
+
+  if (incidents.length === 0) {
+    return active ? (
+      <EmptyNote
+        title={period ? "None declared in this range" : "No active incidents"}
+        // The nominal mark: a real state, said in words as well.
+        glyph={
+          <svg viewBox="0 0 10 10" className="size-2.5 text-signal-nominal">
+            <circle cx="5" cy="5" r="3.75" fill="currentColor" />
+          </svg>
+        }
+      >
+        {period
+          ? "No incident still running was declared between these dates."
+          : "Nothing needs a response right now."}
+      </EmptyNote>
+    ) : (
+      <EmptyNote title={period ? "None resolved in this range" : "No resolved incidents"}>
+        {period
+          ? "No incident was resolved between these dates."
+          : "Incidents appear here once resolved, most recent first."}
+      </EmptyNote>
+    );
   }
 
   return (
-    <Section
-      id={`${state}-incidents`}
-      title={active ? "Active" : "Resolved"}
-      meta={count}
-      description={
-        period &&
-        (active ? "Declared in this range." : "Resolved in this range.")
-      }
-    >
-      {content}
-    </Section>
+    <div className="flex flex-col gap-3">
+      {period && (
+        <p className="text-sm text-fg-muted">
+          {active ? "Declared in this range." : "Resolved in this range."}
+        </p>
+      )}
+      <IncidentBoard
+        incidents={incidents}
+        state={state}
+        label={active ? "Active incidents" : "Resolved incidents"}
+      />
+      {list.hasNextPage && (
+        <div>
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={list.isFetchingNextPage}
+            onClick={() => void list.fetchNextPage()}
+          >
+            {list.isFetchingNextPage ? "Loading…" : "Show more"}
+          </Button>
+        </div>
+      )}
+    </div>
   );
 }
 
 /**
- * The Incidents page: what is happening now, what has been resolved, and —
- * for those the API says may respond — a dialog to declare an incident,
- * opened from the header. Declaring opens the new incident.
+ * Where incident response stands now, across the organization: active
+ * incidents and how many are SEV1, how many wait on someone to start, how
+ * many are ready to resolve, and how many were resolved in the last thirty
+ * days. The Overview's own figures, from the one summary they share.
+ */
+function NowBand() {
+  const organization = useOrganization();
+  const now = useCurrentOperations(organization.id);
+  const figures = now.data;
+  const sev1 = figures?.activeBySeverity.SEV1 ?? 0;
+  const unclaimed = figures?.activeByStatus.DECLARED ?? 0;
+
+  if (now.isError) return <ErrorAlert error={now.error} />;
+
+  return (
+    <Glance label="Incidents now" columns={4}>
+      <GlanceTile
+        label="Active"
+        icon={Flame}
+        tone={sev1 > 0 ? "warning" : "accent"}
+        value={figures ? figures.active : "—"}
+        note={sev1 > 0 ? `${sev1} × SEV1` : undefined}
+        noteTone={sev1 > 0}
+      />
+      <GlanceTile
+        label="Needs a responder"
+        icon={CircleDashed}
+        tone={unclaimed > 0 ? "warning" : "neutral"}
+        value={figures ? unclaimed : "—"}
+        note="no one has started"
+      />
+      <GlanceTile
+        label="Ready to resolve"
+        icon={CircleCheck}
+        tone="resolved"
+        value={figures ? figures.readyToResolve : "—"}
+        note="everyone is done"
+      />
+      <GlanceTile
+        label="Resolved"
+        icon={History}
+        tone="info"
+        value={figures ? figures.resolved : "—"}
+        note="in the last 30 days"
+      />
+    </Glance>
+  );
+}
+
+const VIEWS = ["active", "resolved"] as const satisfies readonly IncidentState[];
+
+/**
+ * The Incidents page: where response stands now, the ways to narrow the
+ * lists, and active and resolved incidents in tabs — the tab, like the
+ * filters, held in the URL (`?view=resolved`). The active list stays live,
+ * and the resolved one while it is shown. For those the API says may
+ * declare, a dialog opened from the header; declaring opens the new
+ * incident. The one place incidents are declared.
  */
 export function IncidentsView() {
   const organization = useOrganization();
@@ -419,20 +456,44 @@ export function IncidentsView() {
     searchParams.get("to"),
   );
   const filters = useIncidentFilters();
-  // How fresh the page is: the active list's own answer, read from the
-  // cache its section polls — this reader adds no polling of its own.
-  const freshness = useIncidentList(
+  const view: IncidentState =
+    searchParams.get("view") === "resolved" ? "resolved" : "active";
+
+  // The page's two lists: the active one always — its count names its tab —
+  // and the resolved one once its tab is opened. Both kept live.
+  const activeList = useIncidentList(
     organization.id,
     "active",
     period,
     filters.filters,
     !filters.pending,
+    true,
   );
+  const resolvedList = useIncidentList(
+    organization.id,
+    "resolved",
+    period,
+    filters.filters,
+    !filters.pending && view === "resolved",
+    true,
+  );
+  const shown = view === "active" ? activeList : resolvedList;
+  // A count only when every page is here: never an estimate.
+  const activeCount =
+    activeList.data && !activeList.hasNextPage
+      ? activeList.data.pages.reduce((sum, page) => sum + page.items.length, 0)
+      : undefined;
 
   // A range the API would refuse, or a filter that can never apply, is
   // taken out of the URL rather than quietly ignored, so the address and
   // the incidents shown always agree. Everything else in it is kept.
-  const drop = [...(invalid ? ["from", "to"] : []), ...filters.invalid].join(",");
+  const drop = [
+    ...(invalid ? ["from", "to"] : []),
+    ...filters.invalid,
+    ...(searchParams.has("view") && searchParams.get("view") !== "resolved"
+      ? ["view"]
+      : []),
+  ].join(",");
 
   useEffect(() => {
     if (drop) replace((params) => drop.split(",").forEach((name) => params.delete(name)));
@@ -450,14 +511,15 @@ export function IncidentsView() {
   return (
     <>
       <PageHeader
+        width="full"
         title="Incidents"
         description="Operational problems affecting this organization's services: who is responsible, how serious each is, and where the response stands."
         actions={
           // A phone wraps the link above the button rather than crowding it.
           <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
             <LiveStatus
-              updatedAt={freshness.dataUpdatedAt}
-              failed={freshness.isRefetchError}
+              updatedAt={shown.dataUpdatedAt}
+              failed={shown.isRefetchError}
             />
             {canReadEveryIncident && (
               <OnwardLink href={incidentHistoryHref(organization.slug)}>
@@ -472,27 +534,54 @@ export function IncidentsView() {
           </div>
         }
       />
-      <PageBody>
-        {period && (
-          <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-fg-muted">
-            <span className="data text-fg">{formatPeriodRange(period)}</span>
-            <span>(UTC)</span>
-            <span aria-hidden="true" className="text-fg-subtle">
-              ·
-            </span>
-            <Link
-              href={
-                withoutPeriod.size > 0 ? `${pathname}?${withoutPeriod}` : pathname
-              }
-              className={linkClasses}
-            >
-              Clear
-            </Link>
-          </p>
-        )}
-        <IncidentFilterBar active={filters.active} error={filters.error} />
-        <IncidentList state="active" period={period} filters={filters} />
-        <IncidentList state="resolved" period={period} filters={filters} />
+      <PageBody width="full">
+        <div className="flex flex-col gap-6">
+          {!period && <NowBand />}
+          {period && (
+            <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-fg-muted">
+              <span className="data text-fg">{formatPeriodRange(period)}</span>
+              <span>(UTC)</span>
+              <span aria-hidden="true" className="text-fg-subtle">
+                ·
+              </span>
+              <Link
+                href={
+                  withoutPeriod.size > 0 ? `${pathname}?${withoutPeriod}` : pathname
+                }
+                className={linkClasses}
+              >
+                Clear
+              </Link>
+            </p>
+          )}
+          <IncidentFilterBar active={filters.active} error={filters.error} />
+          <Tabs
+            label="Incidents"
+            tabs={VIEWS.map((value) => ({
+              value,
+              label:
+                value === "active"
+                  ? activeCount === undefined
+                    ? "Active"
+                    : `Active ${activeCount}`
+                  : "Resolved",
+            }))}
+            value={view}
+            onChange={(next) =>
+              replace((params) => {
+                if (next === "resolved") params.set("view", "resolved");
+                else params.delete("view");
+              })
+            }
+          >
+            <IncidentList
+              state={view}
+              list={shown}
+              period={period}
+              filtered={filters.active}
+            />
+          </Tabs>
+        </div>
       </PageBody>
       {canManage && declaring && (
         <FormDialog
