@@ -3,8 +3,8 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { ChevronRight } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
-import type { CSSProperties } from "react";
+import { useState, useSyncExternalStore } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 import { FilterChip } from "@/components/incidents/incident-filters";
 import {
@@ -48,7 +48,31 @@ import { queryKeys } from "@/lib/api/query-keys";
  * Every row is one link to its incident, named with what the bar shows, so
  * nothing on it is said by colour or position alone. Pointing at or
  * focusing a row says its times in the strip beneath.
+ *
+ * On a phone the frame becomes a list instead: one incident under another,
+ * each with its words, a slim track of the whole window beneath them, and
+ * its times written out, since there is nothing to point with. The page
+ * scrolls; the list never does sideways.
  */
+
+/** Wide enough for the timeline's grid; narrower, the list is drawn. */
+const WIDE = "(min-width: 40rem)";
+
+const subscribe = (onChange: () => void) => {
+  const query = window.matchMedia?.(WIDE);
+
+  query?.addEventListener("change", onChange);
+
+  return () => query?.removeEventListener("change", onChange);
+};
+
+/** The timeline, unless the viewport says it is a phone's (or cannot say). */
+const useWide = () =>
+  useSyncExternalStore(
+    subscribe,
+    () => window.matchMedia?.(WIDE).matches !== false,
+    () => true,
+  );
 
 const RANGES = [7, 14] as const;
 type Range = (typeof RANGES)[number];
@@ -259,12 +283,15 @@ function Bar({
   end,
   asOf,
   showUpdates,
+  words = true,
 }: {
   incident: IncidentFlowItemResponse;
   start: number;
   end: number;
   asOf: number;
   showUpdates: boolean;
+  /** Whether the words go beside the bar; the list says them above it. */
+  words?: boolean;
 }) {
   const declared = Date.parse(incident.createdAt);
   const started = incident.startedAt ? Date.parse(incident.startedAt) : null;
@@ -322,18 +349,223 @@ function Bar({
             style={{ left: percent(shareOf(Date.parse(at), start, end)) }}
           />
         ))}
-      <span
-        aria-hidden="true"
-        className={cx(
-          "data absolute top-1/2 -translate-y-1/2 text-xs whitespace-nowrap",
-          phase === "waiting" ? "text-warning-text" : "text-fg-subtle",
-          wordsFirst ? "-translate-x-full pr-2" : "pl-2",
-        )}
-        style={{ left: percent(wordsFirst ? from : finish) }}
-      >
-        {describe(incident, asOf)}
-      </span>
+      {words && (
+        <span
+          aria-hidden="true"
+          className={cx(
+            "data absolute top-1/2 -translate-y-1/2 text-xs whitespace-nowrap",
+            phase === "waiting" ? "text-warning-text" : "text-fg-subtle",
+            wordsFirst ? "-translate-x-full pr-2" : "pl-2",
+          )}
+          style={{ left: percent(wordsFirst ? from : finish) }}
+        >
+          {describe(incident, asOf)}
+        </span>
+      )}
     </>
+  );
+}
+
+/** A team's heading: folds its incidents away, and says what it has on. */
+function TeamToggle({
+  group,
+  open,
+  onToggle,
+}: {
+  group: IncidentFlowResponse["teams"][number];
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const active = group.incidents.filter(({ resolvedAt }) => !resolvedAt);
+  const waiting = group.incidents.filter(
+    (incident) => phaseOf(incident) === "waiting",
+  ).length;
+
+  return (
+    <button
+      type="button"
+      aria-expanded={open}
+      onClick={onToggle}
+      className="flex items-baseline gap-2 rounded-sm px-2 text-left focus-visible:outline-2 focus-visible:outline-focus"
+    >
+      <ChevronRight
+        aria-hidden="true"
+        strokeWidth={2}
+        className={cx(
+          "size-3.5 self-center text-fg-subtle transition-transform duration-(--duration-fast)",
+          open && "rotate-90",
+        )}
+      />
+      <span className="text-xs font-semibold tracking-wider text-fg uppercase">
+        {group.name}
+      </span>
+      <span
+        className={cx(
+          "text-xs",
+          active.length === 0
+            ? "text-status-resolved-text"
+            : waiting > 0
+              ? "text-warning-text"
+              : "text-fg-muted",
+        )}
+      >
+        {active.length === 0
+          ? group.incidents.length === 0
+            ? "all clear"
+            : `all clear · ${group.incidents.length} resolved`
+          : `${active.length} active${waiting > 0 ? ` · ${waiting} waiting` : ""}`}
+      </span>
+    </button>
+  );
+}
+
+/** A team's own figures, where every team is shown. */
+const teamFigures = (figures: IncidentFlowFiguresResponse) =>
+  figures.typicalWaitMs === null
+    ? null
+    : `typical wait ${formatDuration(figures.typicalWaitMs)}${
+        figures.mostAtOnce ? ` · most at once ${figures.mostAtOnce.count}` : ""
+      }`;
+
+/**
+ * The phone's reading: the same teams and incidents as the timeline, one
+ * under another. Each incident's track spans the whole window, under one
+ * axis of dates at the top, so where it fell still shows; its words and
+ * times are written out above and below it.
+ */
+function FlowList({
+  flow,
+  teams,
+  days,
+  folded,
+  toggle,
+  start,
+  end,
+  asOf,
+  backdrop,
+}: {
+  flow: IncidentFlowResponse;
+  teams: IncidentFlowResponse["teams"];
+  days: ReturnType<typeof daysOf>;
+  folded: ReadonlySet<string>;
+  toggle: (id: string) => void;
+  start: number;
+  end: number;
+  asOf: number;
+  /** Day lines, weekend bands and the now line, behind each track. */
+  backdrop: { style: CSSProperties; bands: ReactNode; now: ReactNode };
+}) {
+  const organization = useOrganization();
+
+  return (
+    <div role="region" aria-label={`Incidents over the last ${flow.days} days`}>
+      {/* One axis for every track: the dates, today's picked out. */}
+      <div
+        aria-hidden="true"
+        className="grid border-b border-(--flow-rule) bg-(--flow-head) px-4 py-1.5"
+        style={{ gridTemplateColumns: `repeat(${flow.days}, minmax(0, 1fr))` }}
+      >
+        {days.map((day) => (
+          <span
+            key={day.key}
+            className={cx(
+              "numeric text-center text-[0.6875rem] font-semibold",
+              day.key === flow.to ? "text-accent-text" : "text-fg-subtle",
+              day.weekend && "bg-[color-mix(in_srgb,transparent_94%,var(--color-fg))]",
+            )}
+          >
+            {day.date}
+          </span>
+        ))}
+      </div>
+
+      {teams.map((group) => {
+        const open = !folded.has(group.id);
+        const said = flow.scope === "organization" ? teamFigures(group.figures) : null;
+
+        return (
+          <div key={group.id} className="border-t border-(--flow-rule) first:border-t-0">
+            <div className="flex flex-col gap-0.5 px-2 pt-3 pb-2">
+              <TeamToggle group={group} open={open} onToggle={() => toggle(group.id)} />
+              {said && <span className="px-2 pl-7.5 text-xs text-fg-subtle">{said}</span>}
+            </div>
+
+            {open && group.incidents.length > 0 && (
+              <ul className="divide-y divide-(--flow-rule) border-t border-(--flow-rule)">
+                {group.incidents.map((incident) => {
+                  const key = incidentKey(incident.number);
+                  const words = describe(incident, asOf);
+                  const phase = phaseOf(incident);
+
+                  return (
+                    <li key={incident.number} className="flex flex-col gap-1.5 px-4 py-3">
+                      <div className="flex min-w-0 items-baseline gap-2.5">
+                        <SeverityMark severity={incident.severity} className="shrink-0 text-xs" />
+                        <Link
+                          href={incidentHref(organization.slug, incident.number)}
+                          aria-label={`${key}, ${incident.title}: ${words}`}
+                          className="flex min-w-0 items-baseline gap-2 rounded-sm underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-focus"
+                        >
+                          <span className="data shrink-0 text-xs text-fg-subtle">{key}</span>
+                          <span className="line-clamp-2 text-sm text-fg">{incident.title}</span>
+                        </Link>
+                      </div>
+                      <p className="flex flex-wrap gap-x-3 text-xs">
+                        <span
+                          className={cx(
+                            "data",
+                            phase === "waiting" ? "text-warning-text" : "text-fg-muted",
+                          )}
+                        >
+                          {words}
+                        </span>
+                        {flow.scope === "organization" && (
+                          <span className="text-fg-subtle">
+                            {incident.responders === 0
+                              ? "no one yet"
+                              : `${incident.responders} ${incident.responders === 1 ? "responder" : "responders"}`}
+                          </span>
+                        )}
+                      </p>
+                      <div
+                        aria-hidden="true"
+                        className="relative h-4 overflow-hidden rounded-sm bg-(--flow-strip)"
+                        style={backdrop.style}
+                      >
+                        {backdrop.bands}
+                        <Bar
+                          incident={incident}
+                          start={start}
+                          end={end}
+                          asOf={asOf}
+                          showUpdates={flow.scope === "teams"}
+                          words={false}
+                        />
+                        {backdrop.now}
+                      </div>
+                      <p className="flex flex-wrap gap-x-3 text-xs text-fg-subtle">
+                        <span>declared {MOMENT.format(new Date(incident.createdAt))}</span>
+                        {incident.resolvedAt && (
+                          <span className="text-status-resolved-text">
+                            resolved {MOMENT.format(new Date(incident.resolvedAt))}
+                          </span>
+                        )}
+                        {flow.scope === "teams" && incident.yourUpdates.length > 0 && (
+                          <span>
+                            {incident.yourUpdates.length} of your{" "}
+                            {incident.yourUpdates.length === 1 ? "update" : "updates"}
+                          </span>
+                        )}
+                      </p>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -347,6 +579,7 @@ function FlowFrame({
   team: string | undefined;
 }) {
   const organization = useOrganization();
+  const wide = useWide();
   const [pointed, setPointed] = useState<IncidentFlowItemResponse | null>(null);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string> | null>(null);
 
@@ -415,6 +648,29 @@ function FlowFrame({
     );
   }
 
+  const legend = (
+    <Legend scope={flow.scope} asOf={asOf} hint={wide} />
+  );
+
+  if (!wide) {
+    return (
+      <>
+        <FlowList
+          flow={flow}
+          teams={teams}
+          days={days}
+          folded={folded}
+          toggle={toggle}
+          start={start}
+          end={end}
+          asOf={asOf}
+          backdrop={{ style: dayLines, bands: weekendBands, now: nowLine }}
+        />
+        {legend}
+      </>
+    );
+  }
+
   return (
     <>
       <div
@@ -472,56 +728,16 @@ function FlowFrame({
 
           {teams.map((group) => {
             const open = !folded.has(group.id);
-            const active = group.incidents.filter(({ resolvedAt }) => !resolvedAt);
-            const waiting = group.incidents.filter(
-              (incident) => phaseOf(incident) === "waiting",
-            ).length;
+            const said = flow.scope === "organization" ? teamFigures(group.figures) : null;
 
             return (
               <div key={group.id} className="contents">
                 <div className="sticky left-0 z-10 border-t border-(--flow-rule) bg-(--flow-bottom) px-2 pt-3 pb-1.5">
-                  <button
-                    type="button"
-                    aria-expanded={open}
-                    onClick={() => toggle(group.id)}
-                    className="flex items-baseline gap-2 rounded-sm px-2 text-left focus-visible:outline-2 focus-visible:outline-focus"
-                  >
-                    <ChevronRight
-                      aria-hidden="true"
-                      strokeWidth={2}
-                      className={cx(
-                        "size-3.5 self-center text-fg-subtle transition-transform duration-(--duration-fast)",
-                        open && "rotate-90",
-                      )}
-                    />
-                    <span className="text-xs font-semibold tracking-wider text-fg uppercase">
-                      {group.name}
-                    </span>
-                    <span
-                      className={cx(
-                        "text-xs",
-                        active.length === 0
-                          ? "text-status-resolved-text"
-                          : waiting > 0
-                            ? "text-warning-text"
-                            : "text-fg-muted",
-                      )}
-                    >
-                      {active.length === 0
-                        ? group.incidents.length === 0
-                          ? "all clear"
-                          : `all clear · ${group.incidents.length} resolved`
-                        : `${active.length} active${waiting > 0 ? ` · ${waiting} waiting` : ""}`}
-                    </span>
-                  </button>
+                  <TeamToggle group={group} open={open} onToggle={() => toggle(group.id)} />
                 </div>
                 <div className="relative border-t border-(--flow-rule) pt-3 pb-1.5" style={dayLines}>
-                  {flow.scope === "organization" && group.figures.typicalWaitMs !== null && (
-                    <span className="block px-3 text-right text-xs text-fg-subtle">
-                      typical wait {formatDuration(group.figures.typicalWaitMs)}
-                      {group.figures.mostAtOnce &&
-                        ` · most at once ${group.figures.mostAtOnce.count}`}
-                    </span>
+                  {said && (
+                    <span className="block px-3 text-right text-xs text-fg-subtle">{said}</span>
                   )}
                   {weekendBands}
                   {nowLine}
@@ -608,40 +824,70 @@ function FlowFrame({
             )}
           </p>
         ) : (
-          <>
-            <span className="inline-flex items-center gap-1.5">
-              <span aria-hidden="true" className="h-2.5 w-5 rounded-xs" style={STRIPES} />
-              Waiting for someone to start
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <span aria-hidden="true" className="h-2.5 w-5 rounded-xs" style={WORKED} />
-              Being worked
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <span
-                aria-hidden="true"
-                className="h-2.5 w-5 rounded-xs"
-                style={{ ...WORKED, boxShadow: "inset -3px 0 0 var(--flow-resolved)" }}
-              />
-              Resolved
-            </span>
-            {flow.scope === "teams" && (
-              <span className="inline-flex items-center gap-1.5">
-                <span aria-hidden="true" className="size-2 rounded-full bg-fg" />
-                Your update
-              </span>
-            )}
-            <span className="inline-flex items-center gap-1.5">
-              <span aria-hidden="true" className="h-3 w-0.5 bg-accent-text" />
-              Now {CLOCK.format(new Date(asOf))} UTC
-            </span>
-            <span className="ml-auto text-fg-subtle">
-              Point at an incident for its times · select it to open
-            </span>
-          </>
+          legend
         )}
       </div>
     </>
+  );
+}
+
+/** What each mark means; on the timeline, also how to read a row's times. */
+function Legend({
+  scope,
+  asOf,
+  hint,
+}: {
+  scope: IncidentFlowResponse["scope"];
+  asOf: number;
+  hint: boolean;
+}) {
+  const marks = (
+    <>
+      <span className="inline-flex items-center gap-1.5">
+        <span aria-hidden="true" className="h-2.5 w-5 rounded-xs" style={STRIPES} />
+        Waiting for someone to start
+      </span>
+      <span className="inline-flex items-center gap-1.5">
+        <span aria-hidden="true" className="h-2.5 w-5 rounded-xs" style={WORKED} />
+        Being worked
+      </span>
+      <span className="inline-flex items-center gap-1.5">
+        <span
+          aria-hidden="true"
+          className="h-2.5 w-5 rounded-xs"
+          style={{ ...WORKED, boxShadow: "inset -3px 0 0 var(--flow-resolved)" }}
+        />
+        Resolved
+      </span>
+      {scope === "teams" && (
+        <span className="inline-flex items-center gap-1.5">
+          <span aria-hidden="true" className="size-2 rounded-full bg-fg" />
+          Your update
+        </span>
+      )}
+      <span className="inline-flex items-center gap-1.5">
+        <span aria-hidden="true" className="h-3 w-0.5 bg-accent-text" />
+        Now {CLOCK.format(new Date(asOf))} UTC
+      </span>
+    </>
+  );
+
+  if (hint) {
+    return (
+      <>
+        {marks}
+        <span className="ml-auto text-fg-subtle">
+          Point at an incident for its times · select it to open
+        </span>
+      </>
+    );
+  }
+
+  // The list stands alone, so its legend brings its own strip.
+  return (
+    <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-(--flow-rule) bg-(--flow-strip) px-4 py-2.5 text-xs text-fg-muted">
+      {marks}
+    </div>
   );
 }
 

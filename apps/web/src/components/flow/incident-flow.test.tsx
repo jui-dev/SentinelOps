@@ -329,3 +329,83 @@ describe("the response flow", () => {
     await expectNoAxeViolations(container);
   });
 });
+
+describe("the response flow on a phone", () => {
+  beforeEach(() => {
+    clearAccessToken();
+    vi.stubGlobal(
+      "matchMedia",
+      (query: string) =>
+        ({
+          matches: false,
+          media: query,
+          addEventListener: () => {},
+          removeEventListener: () => {},
+        }) as unknown as MediaQueryList,
+    );
+
+    return () => vi.unstubAllGlobals();
+  });
+
+  it("lists each incident with its words and times written out, in the API's order", async () => {
+    api();
+    renderFlow();
+
+    const list = await screen.findByRole("region", { name: "Incidents over the last 7 days" });
+    const items = within(list).getAllByRole("listitem");
+
+    // A list, not the timeline's scrolling frame.
+    expect(list.getAttribute("tabindex")).toBeNull();
+    expect(items.map((each) => within(each).getByRole("link").getAttribute("aria-label"))).toEqual([
+      "INC-76, Card network declines spike: waiting 2h 15m",
+      "INC-74, Elevated authorization latency: waited 36m · working 4h 24m",
+      "INC-65, Card authorisations failing in EU: waited 15m · worked 1h 6m",
+    ]);
+    expect(within(items[0]!).getByText("waiting 2h 15m")).toBeDefined();
+    expect(items[1]!.textContent).toMatch(/declared .*1 of your update$/);
+    expect(items[2]!.textContent).toMatch(/resolved /);
+    // Nothing to point with, so no strip asking to.
+    expect(screen.queryByText(/Point at an incident/)).toBeNull();
+    expect(screen.getByText("Waiting for someone to start")).toBeDefined();
+  });
+
+  it("folds a team away, as the timeline does", async () => {
+    const user = userEvent.setup();
+    api();
+    renderFlow();
+
+    const payments = await screen.findByRole("button", { name: /^Payments/, expanded: true });
+
+    await user.click(payments);
+    expect(screen.queryByRole("link", { name: /INC-76/ })).toBeNull();
+  });
+
+  it("gives an overseer responders and each team's figures", async () => {
+    api((days) =>
+      flow(days, "organization", [
+        {
+          id: "team-payments",
+          name: "Payments",
+          slug: "payments",
+          figures: figures(),
+          incidents: [waiting, { ...working, yourUpdates: [] }],
+        },
+      ]),
+    );
+    renderFlow("organization");
+
+    await screen.findByRole("region", { name: "Incidents over the last 7 days" });
+
+    expect(screen.getByText("no one yet")).toBeDefined();
+    expect(screen.getByText("2 responders")).toBeDefined();
+    expect(screen.getByText("typical wait 26m · most at once 2")).toBeDefined();
+  });
+
+  it("has no accessibility violations", async () => {
+    api();
+    const { container } = renderFlow();
+
+    await screen.findByRole("region", { name: "Incidents over the last 7 days" });
+    await expectNoAxeViolations(container);
+  });
+});
