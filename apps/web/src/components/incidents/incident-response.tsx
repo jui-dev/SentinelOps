@@ -351,8 +351,11 @@ export function YourResponse({
           {team}
           {active && (
             <div className="flex flex-col items-end gap-1">
+              {/* The member's finishing act: the teal of work done, with its tick. */}
               <Button
-                variant="secondary"
+                variant="complete"
+                size="lg"
+                icon={CircleCheck}
                 disabled={pending}
                 onClick={() => actions.complete.mutate()}
               >
