@@ -1,5 +1,6 @@
 "use client";
 
+import { IncidentFlow } from "@/components/flow/incident-flow";
 import Link from "next/link";
 
 import {
@@ -550,6 +551,8 @@ function CurrentOperations({ current: state }: { current: CurrentOperationsState
  *   the summary row          what is the state right now?
  *   waiting on you, work     what needs my attention?
  *   current operations       what is happening, and what is it affecting?
+ *   response flow            how long do incidents wait for someone to
+ *                            start, and when were teams stretched?
  *   recent health            are incidents becoming more or less frequent?
  *   operational activity     what has response looked like across the year?
  *
@@ -574,6 +577,7 @@ export function OperationsOverview() {
       <OverviewSummary state={current} />
       <OperationalAttention />
       <CurrentOperations current={current} />
+      <IncidentFlow scope="organization" />
       <RecentOperationalHealth />
       <OperationalActivity />
     </div>

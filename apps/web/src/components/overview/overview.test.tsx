@@ -519,6 +519,10 @@ const api = (
   } = {},
 ) =>
   mockApi((request) => {
+    if (route(request).startsWith(`GET ${base}/incidents/flow?`)) {
+      return jsonResponse(200, organizationFlow);
+    }
+
     if (route(request).startsWith(`${OCCURRENCE}?`)) {
       return typeof occurrence === "function"
         ? occurrence()
@@ -564,6 +568,60 @@ const api = (
         return apiError(404);
     }
   });
+
+const noFigures = {
+  typicalWaitMs: null,
+  started: 0,
+  mostAtOnce: null,
+  longestWait: null,
+  waitingNow: 0,
+};
+
+/** Every team's flow, as an overseer is answered: one waiting on Payments. */
+const organizationFlow = {
+  from: "2026-09-13",
+  to: "2026-09-19",
+  asOf: "2026-09-19T12:00:00.000Z",
+  days: 7,
+  scope: "organization",
+  figures: {
+    typicalWaitMs: 1_800_000,
+    started: 1,
+    mostAtOnce: { count: 2, at: "2026-09-19T10:00:00.000Z" },
+    longestWait: { ms: 7_200_000, number: 42, waiting: true },
+    waitingNow: 1,
+  },
+  teams: [
+    {
+      id: "team-payments",
+      name: "Payments",
+      slug: "payments",
+      figures: {
+        typicalWaitMs: 1_800_000,
+        started: 1,
+        mostAtOnce: { count: 2, at: "2026-09-19T10:00:00.000Z" },
+        longestWait: { ms: 7_200_000, number: 42, waiting: true },
+        waitingNow: 1,
+      },
+      incidents: [
+        {
+          number: 42,
+          title: "Card payments failing",
+          severity: "SEV1",
+          status: "DECLARED",
+          service: { id: "service-api", name: "Payment API", slug: "payment-api" },
+          createdAt: "2026-09-19T10:00:00.000Z",
+          startedAt: null,
+          resolvedAt: null,
+          waitMs: 7_200_000,
+          responders: 0,
+          yourUpdates: [],
+        },
+      ],
+    },
+    { id: "team-data", name: "Data", slug: "data", figures: noFigures, incidents: [] },
+  ],
+};
 
 const renderOverview = () =>
   renderWithSession(
@@ -1406,6 +1464,33 @@ describe("the operations overview", () => {
       expect(screen.getAllByRole("alert")).toHaveLength(1);
       expect(screen.queryByLabelText("Operational summary")).toBeNull();
     });
+  });
+
+  it("shows every team's response flow, after Current operations, in its own well", async () => {
+    const { requests } = api(READ);
+    renderOverview();
+
+    const flow = await screen.findByRole("region", { name: "Response flow" });
+    const current = screen.getByRole("region", { name: "Current operations" });
+
+    // Beneath the state now, above the last thirty days.
+    expect(
+      current.compareDocumentPosition(flow) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(flow.className).toMatch(/flow-organization/);
+    expect(
+      await within(flow).findByRole("link", {
+        name: "INC-42, Card payments failing: waiting 2h",
+      }),
+    ).toBeDefined();
+    expect(within(flow).getByText("no one yet")).toBeDefined();
+    // A team with nothing on now starts folded.
+    expect(
+      within(flow).getByRole("button", { name: /^Data/, expanded: false }).getAttribute("aria-expanded"),
+    ).toBe("false");
+    expect(requests.some((request) => request.path.endsWith("/incidents/flow?days=7"))).toBe(
+      true,
+    );
   });
 
   it("no longer holds incident history, or anything that chose a period", async () => {

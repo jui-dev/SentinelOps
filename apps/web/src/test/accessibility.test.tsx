@@ -519,7 +519,8 @@ const signedIn = (permissions: string[]) =>
           to: "2026-09-19",
           asOf: "2026-09-19T12:00:00.000Z",
           days: 7,
-          scope: "teams",
+          // Whoever oversees is answered for every team.
+          scope: permissions.includes("incidents:read-all") ? "organization" : "teams",
           figures: {
             typicalWaitMs: 1_800_000,
             started: 1,
@@ -708,6 +709,7 @@ describe("accessibility", () => {
       await screen.findByRole("list", { name: "Incidents declared per day" });
       await screen.findByRole("list", { name: "Services under pressure" });
       await screen.findByRole("grid", { name: /Operational activity/ });
+      await screen.findByRole("region", { name: "Incidents over the last 7 days" });
       await expectNoAxeViolations(container);
       // A year of days is ~370 squares for axe to walk, which jsdom does far
       // more slowly than a browser.
