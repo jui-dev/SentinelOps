@@ -99,6 +99,7 @@ const anIncident = (
   id: `0199a1b2-c3d4-7000-8000-0000000001${String(number).padStart(2, "0")}`,
   number,
   title: `Incident ${number}`,
+  severityConfirmed: true,
   responseAccess: "OPEN",
   assignees: [],
   knownIssue: null,

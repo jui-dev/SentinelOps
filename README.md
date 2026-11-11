@@ -1878,6 +1878,17 @@ independently — a `CRITICAL` service can have a `SEV4` incident — and severi
 derived from criticality; the service's criticality is shown beside the incident as
 context.
 
+**A Reporter's severity is a suggestion.** Whoever decides on incidents
+(`incidents:manage`) settles the severity as they declare. A `REPORTER`'s declaration
+carries `severityConfirmed: false` until someone decides who responds: that decision
+(`PUT /incidents/:number/response-access`, which takes an optional `"severity"`) keeps the
+suggestion or settles another, recorded as a `SEVERITY_CONFIRMED` timeline entry from the
+suggestion to the severity kept, and the Reporter is told (`INCIDENT_SEVERITY_CONFIRMED`).
+Changing the severity with `PATCH` settles it too. Once settled, a severity named with the
+decision is refused with `409 SEVERITY_ALREADY_CONFIRMED`: it is changed in the incident,
+where everyone working it is told. Whoever declared an incident is also told when its
+severity changes and when it is resolved.
+
 | Severity | Meaning |
 | --- | --- |
 | `SEV1` Critical | Core functionality unavailable, or major customer or business impact |
@@ -2072,6 +2083,7 @@ permission is answered `403 PERMISSION_DENIED`. Responding is narrowed further b
 | `PATCH /incidents/:number` | `incidents:manage` | Change `{ "title"?, "summary"?, "severity"?, "status"?, "teamId"? }` of an active incident (at least one). `"status": "RESOLVED"`, with a `"resolution"` note, resolves one under investigation that nobody is still investigating |
 | `GET /incidents/:number/timeline` | `incidents:read` | The incident's timeline, oldest first |
 | `POST /incidents/:number/updates` | `incidents:respond`, and investigating unless deciding or the declarer | Post `{ "message" }` to an active incident's timeline. `201`, with the entry |
+| `PUT /incidents/:number/response-access` | `incidents:manage` | Decide who may respond: `{ "mode": "OPEN" }` or `{ "mode": "ASSIGNED", "membershipIds" }`, each with an optional `"severity"` that settles a suggested one. `200`, with the incident |
 | `POST /incidents/:number/responders/me` | `responses:work`, and let in by who may respond | Start investigating. No body. `200`, with the incident |
 | `POST /incidents/:number/responders/me/complete` | `incidents:respond`, and a response of one's own — finished even after a role change | Mark your own response complete. No body. `200`, with the incident |
 | `GET /memberships/:membershipId/responses` | `incidents:read` | One member's responses, most recently started first — see [A member's responses](#a-members-responses) |

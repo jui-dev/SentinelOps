@@ -232,8 +232,17 @@ function IncidentHeader({
       description={
         <div className="flex flex-col gap-3 pt-1.5">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center rounded-full border border-line bg-surface px-2.5 py-0.5 text-xs">
+            <span className="inline-flex items-center gap-2 rounded-full border border-line bg-surface px-2.5 py-0.5 text-xs">
               <SeverityMark severity={incident.severity} label />
+              {!incident.severityConfirmed && (
+                // A Reporter's severity, until whoever decides confirms it.
+                <span
+                  title={`Suggested by ${incident.createdBy.name}. Confirmed when someone decides who responds.`}
+                  className="rounded-sm border border-warning-line bg-warning-subtle px-1.5 text-2xs font-semibold text-warning-text"
+                >
+                  Suggested
+                </span>
+              )}
             </span>
             <StatusMark status={incident.status} />
             <KnownIssueMark incident={incident} />

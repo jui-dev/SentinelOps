@@ -181,6 +181,32 @@ describe("describeNotification", () => {
     },
   );
 
+  it("should tell a reporter their suggested severity was kept", () => {
+    const description = describeNotification(
+      incidentNotification({
+        type: "INCIDENT_SEVERITY_CONFIRMED",
+        change: { from: "SEV3", to: "SEV3" },
+      }),
+      SLUG,
+    );
+
+    expect(description.headline).toBe("Severity confirmed");
+    expect(description.detail).toEqual(["Kept at SEV3", "Alice Anders"]);
+  });
+
+  it("should tell a reporter their suggested severity was settled at another", () => {
+    const description = describeNotification(
+      incidentNotification({
+        type: "INCIDENT_SEVERITY_CONFIRMED",
+        change: { from: "SEV3", to: "SEV2" },
+      }),
+      SLUG,
+    );
+
+    expect(description.detail).toEqual(["SEV3 → SEV2", "Alice Anders"]);
+    expect(description.spoken).toContain("SEV3 to SEV2, by Alice Anders.");
+  });
+
   it("should mark an incident resolved since, on every notification but its resolution", () => {
     const resolved = {
       number: 104,

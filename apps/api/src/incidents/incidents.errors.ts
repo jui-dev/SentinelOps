@@ -26,6 +26,7 @@ export const IncidentsErrorCode = {
   RESPONSE_NOT_OPEN: 'RESPONSE_NOT_OPEN',
   NOT_ASSIGNED_TO_INCIDENT: 'NOT_ASSIGNED_TO_INCIDENT',
   ASSIGNEE_CANNOT_RESPOND: 'ASSIGNEE_CANNOT_RESPOND',
+  SEVERITY_ALREADY_CONFIRMED: 'SEVERITY_ALREADY_CONFIRMED',
 } as const;
 
 export type IncidentsErrorCode =
@@ -162,3 +163,14 @@ export const assigneeCannotRespond = (): ConflictException =>
   new ConflictException('Only Responders can be assigned to an incident', {
     errorCode: IncidentsErrorCode.ASSIGNEE_CANNOT_RESPOND,
   });
+
+/**
+ * A severity named with the decision on who responds, for an incident whose
+ * severity is already settled. It is changed in the incident itself, where
+ * everyone working it is told.
+ */
+export const severityAlreadyConfirmed = (): ConflictException =>
+  new ConflictException(
+    "This incident's severity is already confirmed. Change it in the incident instead",
+    { errorCode: IncidentsErrorCode.SEVERITY_ALREADY_CONFIRMED },
+  );

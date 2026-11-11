@@ -10,14 +10,16 @@
  *   INCIDENT_DECLARED          the responsible team
  *   INCIDENT_REASSIGNED        the new responsible team, and every responder
  *                              still investigating, whatever their team
- *   INCIDENT_SEVERITY_CHANGED  the responsible team, and every responder
- *                              still investigating
- *   INCIDENT_RESOLVED          the responsible team, and everyone who
- *                              responded
+ *   INCIDENT_SEVERITY_CHANGED  the responsible team, every responder still
+ *                              investigating, and whoever declared it
+ *   INCIDENT_RESOLVED          the responsible team, everyone who
+ *                              responded, and whoever declared it
  *   INCIDENT_READY_TO_RESOLVE  whoever runs incidents' lifecycles (Admins)
  *   INCIDENT_OPENED_TO_TEAM    the responsible team
  *   INCIDENT_ASSIGNED          the people just assigned, and nobody already
  *                              assigned before this choice
+ *   INCIDENT_SEVERITY_CONFIRMED  whoever declared it, and suggested the
+ *                              severity that was settled
  *
  * Never the actor — whoever did it knows — whichever way they would
  * otherwise qualify. Qualifying twice for one entry is still one recipient.
@@ -38,7 +40,8 @@ export type IncidentNotificationType =
   | 'INCIDENT_RESOLVED'
   | 'INCIDENT_READY_TO_RESOLVE'
   | 'INCIDENT_OPENED_TO_TEAM'
-  | 'INCIDENT_ASSIGNED';
+  | 'INCIDENT_ASSIGNED'
+  | 'INCIDENT_SEVERITY_CONFIRMED';
 
 /** Who could be told, as membership ids. */
 export interface IncidentCandidates {
@@ -55,54 +58,79 @@ export interface IncidentCandidates {
   adminIds: readonly string[];
   /** Everyone this change assigned who was not assigned before it. */
   newAssigneeIds: readonly string[];
+  /**
+   * Whoever declared the incident, while they are still a member here: how
+   * a Reporter, on no team, hears what became of what they raised.
+   */
+  declarerIds: readonly string[];
 }
 
 /** Which candidates each type needs, so no more are read than are used. */
 export const CANDIDATES_NEEDED: Record<
   IncidentNotificationType,
-  { team: boolean; responders: boolean; admins: boolean; assigned: boolean }
+  {
+    team: boolean;
+    responders: boolean;
+    admins: boolean;
+    assigned: boolean;
+    declarer: boolean;
+  }
 > = {
   INCIDENT_DECLARED: {
     team: true,
     responders: false,
     admins: false,
     assigned: false,
+    declarer: false,
   },
   INCIDENT_REASSIGNED: {
     team: true,
     responders: true,
     admins: false,
     assigned: false,
+    declarer: false,
   },
   INCIDENT_SEVERITY_CHANGED: {
     team: true,
     responders: true,
     admins: false,
     assigned: false,
+    declarer: true,
   },
   INCIDENT_RESOLVED: {
     team: true,
     responders: true,
     admins: false,
     assigned: false,
+    declarer: true,
   },
   INCIDENT_READY_TO_RESOLVE: {
     team: false,
     responders: false,
     admins: true,
     assigned: false,
+    declarer: false,
   },
   INCIDENT_OPENED_TO_TEAM: {
     team: true,
     responders: false,
     admins: false,
     assigned: false,
+    declarer: false,
   },
   INCIDENT_ASSIGNED: {
     team: false,
     responders: false,
     admins: false,
     assigned: true,
+    declarer: false,
+  },
+  INCIDENT_SEVERITY_CONFIRMED: {
+    team: false,
+    responders: false,
+    admins: false,
+    assigned: false,
+    declarer: true,
   },
 };
 
@@ -120,11 +148,20 @@ const RULES: Record<
 > = {
   INCIDENT_DECLARED: (c) => c.teamMemberIds,
   INCIDENT_REASSIGNED: (c) => [...c.teamMemberIds, ...investigating(c)],
-  INCIDENT_SEVERITY_CHANGED: (c) => [...c.teamMemberIds, ...investigating(c)],
-  INCIDENT_RESOLVED: (c) => [...c.teamMemberIds, ...everyResponder(c)],
+  INCIDENT_SEVERITY_CHANGED: (c) => [
+    ...c.teamMemberIds,
+    ...investigating(c),
+    ...c.declarerIds,
+  ],
+  INCIDENT_RESOLVED: (c) => [
+    ...c.teamMemberIds,
+    ...everyResponder(c),
+    ...c.declarerIds,
+  ],
   INCIDENT_READY_TO_RESOLVE: (c) => c.adminIds,
   INCIDENT_OPENED_TO_TEAM: (c) => c.teamMemberIds,
   INCIDENT_ASSIGNED: (c) => c.newAssigneeIds,
+  INCIDENT_SEVERITY_CONFIRMED: (c) => c.declarerIds,
 };
 
 /** The membership ids to tell of one entry: unique, sorted, never the actor. */

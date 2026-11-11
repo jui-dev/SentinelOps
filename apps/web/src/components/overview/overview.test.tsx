@@ -61,6 +61,7 @@ const incident = (overrides: Partial<IncidentResponse> = {}): IncidentResponse =
   id: "0199a1b2-c3d4-7000-8000-0000000000f1",
   number: 42,
   title: "Card payments failing",
+  severityConfirmed: true,
   responseAccess: "OPEN",
   assignees: [],
   knownIssue: null,

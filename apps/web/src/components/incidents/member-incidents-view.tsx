@@ -5,7 +5,10 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 
-import { useOrganization } from "@/components/organizations/organization-scope";
+import {
+  useCan,
+  useOrganization,
+} from "@/components/organizations/organization-scope";
 import { useTeams } from "@/components/teams/team-scope";
 import { ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -14,6 +17,7 @@ import { EmptyNote } from "@/components/ui/empty-state";
 import { PageBody, PageHeader } from "@/components/ui/page";
 import { Spinner } from "@/components/ui/spinner";
 import { useMinWidth } from "@/components/ui/use-min-width";
+import { Permission } from "@/lib/api/contracts";
 import type {
   IncidentPart,
   IncidentPartCount,
@@ -27,6 +31,7 @@ import {
   useReplaceParams,
 } from "./incident-filters";
 import { useIncidentList, useIncidentParts } from "./incident-queries";
+import { DeclareIncident } from "./incidents-view";
 import { LiveStatus } from "./live-status";
 import { SEVERITY_LEVELS, SeverityGlyph } from "./severity";
 
@@ -333,8 +338,12 @@ export function MemberIncidentsView() {
   // A phone gets the list as cards: a table of six columns has no room there.
   const wide = useMinWidth();
 
+  // Someone who raises incidents rather than working them — a Reporter —
+  // has nothing waiting on them: their page opens on what is active.
+  const works = useCan(Permission.RESPONSES_WORK);
   const asked = searchParams.get("view");
-  const view: View = asked && isView(asked) ? asked : "needs-you";
+  const view: View =
+    asked && isView(asked) ? asked : works ? "needs-you" : "active";
   const state: IncidentState = view === "resolved" ? "resolved" : "active";
   const part = view === "active" || view === "resolved" ? undefined : view;
 
@@ -388,14 +397,19 @@ export function MemberIncidentsView() {
         width="full"
         title="Incidents"
         description={
-          !teams.data
+          !works
+            ? "The incidents you declared, and where each one stands."
+            : !teams.data
             ? "Your teams' incidents, and where your part in each stands."
             : teamNames.length === 0
               ? "You're on no team yet, so nothing waits on you. Incidents you responded to are still here."
               : `Incidents on your ${teamNames.length === 1 ? "team" : "teams"}, ${nameList(teamNames)}, and where your part in each stands.`
         }
         actions={
-          <LiveStatus updatedAt={list.dataUpdatedAt} failed={list.isRefetchError} />
+          <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
+            <LiveStatus updatedAt={list.dataUpdatedAt} failed={list.isRefetchError} />
+            <DeclareIncident />
+          </div>
         }
       />
       <PageBody width="full">

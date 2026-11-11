@@ -43,6 +43,12 @@ export interface IncidentResponse {
   title: string;
   summary: string | null;
   severity: IncidentSeverity;
+  /**
+   * False while a Reporter's severity is a suggestion, waiting for whoever
+   * decides on incidents to confirm it; true once settled, and for every
+   * incident declared by someone who decides.
+   */
+  severityConfirmed: boolean;
   status: IncidentStatus;
   responseAccess: IncidentResponseAccess;
   /** The people assigned, in the order they were; empty unless ASSIGNED. */
@@ -151,7 +157,8 @@ export type IncidentActivityType =
   | 'TEAM_CHANGED'
   | 'RESPONSE_STARTED'
   | 'RESPONSE_COMPLETED'
-  | 'RESPONSE_ACCESS_CHANGED';
+  | 'RESPONSE_ACCESS_CHANGED'
+  | 'SEVERITY_CONFIRMED';
 
 /**
  * One entry on an incident's timeline. History, not state: the incident

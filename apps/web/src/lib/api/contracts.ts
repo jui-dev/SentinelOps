@@ -283,9 +283,13 @@ export type IncidentStatus = "DECLARED" | "INVESTIGATING" | "RESOLVED";
 export type IncidentResponseAccess = "PENDING" | "OPEN" | "ASSIGNED";
 
 /** The Admin's choice: the responsible team, or the people named. */
+/**
+ * The decision on who responds. `severity` settles a Reporter's suggested
+ * severity in the same decision; kept when absent.
+ */
 export type SetIncidentResponseAccessRequest =
-  | { mode: "OPEN" }
-  | { mode: "ASSIGNED"; membershipIds: string[] };
+  | { mode: "OPEN"; severity?: IncidentSeverity }
+  | { mode: "ASSIGNED"; membershipIds: string[]; severity?: IncidentSeverity };
 
 export interface IncidentResponse {
   id: string;
@@ -294,6 +298,11 @@ export interface IncidentResponse {
   summary: string | null;
   severity: IncidentSeverity;
   status: IncidentStatus;
+  /**
+   * False while a Reporter's severity is a suggestion, waiting for whoever
+   * decides on incidents to confirm it.
+   */
+  severityConfirmed: boolean;
   responseAccess: IncidentResponseAccess;
   /** The people assigned, in the order they were; empty unless ASSIGNED. */
   assignees: { membershipId: string; name: string }[];
@@ -420,7 +429,9 @@ export type IncidentActivityType =
   | "TEAM_CHANGED"
   | "RESPONSE_STARTED"
   | "RESPONSE_COMPLETED"
-  | "RESPONSE_ACCESS_CHANGED";
+  | "RESPONSE_ACCESS_CHANGED"
+  /** A suggested severity settled: from the suggestion to the one kept. */
+  | "SEVERITY_CONFIRMED";
 
 /**
  * One entry on an incident's timeline. `message` is set for UPDATE, and on
@@ -940,6 +951,7 @@ export type NotificationType =
   | "INCIDENT_READY_TO_RESOLVE"
   | "INCIDENT_OPENED_TO_TEAM"
   | "INCIDENT_ASSIGNED"
+  | "INCIDENT_SEVERITY_CONFIRMED"
   | "TEAM_MEMBERSHIP_ADDED"
   | "TEAM_MEMBERSHIP_REMOVED";
 
@@ -1153,6 +1165,8 @@ export const ApiErrorCode = {
   LAST_ADMIN: "LAST_ADMIN",
   /** Only a Responder can be assigned to an incident. */
   ASSIGNEE_CANNOT_RESPOND: "ASSIGNEE_CANNOT_RESPOND",
+  /** A settled severity is changed in the incident, not with the decision. */
+  SEVERITY_ALREADY_CONFIRMED: "SEVERITY_ALREADY_CONFIRMED",
   PERMISSION_DENIED: "PERMISSION_DENIED",
   INVITATION_NOT_FOUND: "INVITATION_NOT_FOUND",
   INVITATION_NOT_PENDING: "INVITATION_NOT_PENDING",

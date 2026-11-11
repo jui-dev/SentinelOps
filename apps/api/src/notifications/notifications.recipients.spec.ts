@@ -35,6 +35,7 @@ const candidates = (
   ],
   adminIds: [ALICE, GUS],
   newAssigneeIds: [],
+  declarerIds: [],
   ...overrides,
 });
 
@@ -117,15 +118,47 @@ describe('incidentRecipients', () => {
     'INCIDENT_READY_TO_RESOLVE',
     'INCIDENT_OPENED_TO_TEAM',
     'INCIDENT_ASSIGNED',
+    'INCIDENT_SEVERITY_CONFIRMED',
   ])('should never tell the actor of %s, however they qualify', (type) => {
-    // Alice is on the team, responding, assigned, and an Admin.
+    // Alice is on the team, responding, assigned, an Admin, and declared it.
     const everywhere = candidates({
       teamMemberIds: [ALICE, EVE],
       responders: [{ membershipId: ALICE, status: 'INVESTIGATING' }],
       newAssigneeIds: [ALICE],
+      declarerIds: [ALICE],
     });
 
     expect(incidentRecipients(type, everywhere)).not.toContain(ALICE);
+  });
+
+  it('should tell whoever declared it that their suggested severity was confirmed, and nobody else', () => {
+    expect(
+      incidentRecipients(
+        'INCIDENT_SEVERITY_CONFIRMED',
+        candidates({ declarerIds: ['rita'] }),
+      ),
+    ).toEqual(['rita']);
+  });
+
+  it.each(['INCIDENT_SEVERITY_CHANGED', 'INCIDENT_RESOLVED'] as const)(
+    'should tell whoever declared it of %s, on no team and never responding',
+    (type) => {
+      expect(
+        incidentRecipients(type, candidates({ declarerIds: ['rita'] })),
+      ).toContain('rita');
+    },
+  );
+
+  it.each([
+    'INCIDENT_DECLARED',
+    'INCIDENT_REASSIGNED',
+    'INCIDENT_OPENED_TO_TEAM',
+    'INCIDENT_ASSIGNED',
+    'INCIDENT_READY_TO_RESOLVE',
+  ] as const)('should not tell whoever declared it of %s', (type) => {
+    expect(
+      incidentRecipients(type, candidates({ declarerIds: ['rita'] })),
+    ).not.toContain('rita');
   });
 
   it('should tell a member who qualifies twice for one entry once', () => {

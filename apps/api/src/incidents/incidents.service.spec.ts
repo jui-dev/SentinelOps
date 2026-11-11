@@ -202,6 +202,8 @@ describe('IncidentsService', () => {
             serviceId: SERVICE,
             teamId: TEAM,
             severity: 'SEV1',
+            // Declared by an Admin: settled as it is declared.
+            severityConfirmed: true,
             responseAccess: 'PENDING',
             createdById: USER,
             // A one-off: no known issue chosen, none saved.

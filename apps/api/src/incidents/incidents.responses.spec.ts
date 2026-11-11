@@ -31,6 +31,7 @@ describe('incident responses', () => {
     teamId: 'team-1',
     createdById: 'user-1',
     severity: 'SEV1' as const,
+    severityConfirmed: true,
     status: 'RESOLVED' as const,
     responseAccess: 'OPEN' as const,
     assignees: [],
@@ -77,6 +78,7 @@ describe('incident responses', () => {
       title: 'Card payments failing',
       summary: null,
       severity: 'SEV1',
+      severityConfirmed: true,
       status: 'RESOLVED',
       service: {
         id: 'service-1',

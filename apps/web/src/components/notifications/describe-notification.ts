@@ -214,6 +214,22 @@ export const describeNotification = (
         ["You can start responding", by],
         ["You can start responding", `assigned by ${by}`],
       );
+    case "INCIDENT_SEVERITY_CONFIRMED": {
+      // Kept as suggested, or settled at another severity.
+      const kept = !change?.from || change.from === change.to;
+      const settled = kept
+        ? change?.to
+          ? `Kept at ${change.to}`
+          : undefined
+        : moved;
+
+      return describe(
+        "severity",
+        "Severity confirmed",
+        [settled, by],
+        [kept ? settled : spokenMove, `by ${by}`],
+      );
+    }
   }
 };
 

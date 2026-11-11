@@ -49,6 +49,11 @@ function IncidentRow({
         )}
       >
         <SeverityMark severity={incident.severity} emphasis />
+        {!incident.severityConfirmed && (
+          <span className="ml-1.5 text-2xs font-semibold text-warning-text">
+            Suggested
+          </span>
+        )}
       </TD>
       <TD>
         <Link

@@ -10,12 +10,16 @@ import { ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { cx } from "@/components/ui/cx";
 import { Duration } from "@/components/ui/timestamp";
-import type { IncidentDetailResponse } from "@/lib/api/contracts";
+import type {
+  IncidentDetailResponse,
+  IncidentSeverity,
+} from "@/lib/api/contracts";
 
 import { AssignPeopleDialog } from "./assign-people-dialog";
 import { Avatar, PeopleRow, usePeople } from "./incident-people";
 import { useSetResponseAccess } from "./incident-queries";
 import { AccessBadge, Band, Panel } from "./incident-response";
+import { SeveritySelect } from "./incidents-view";
 
 /** One of the two ways to answer "who should respond?". */
 function Choice({
@@ -140,10 +144,19 @@ export function RespondersPanel({ incident }: { incident: IncidentDetailResponse
   const people = usePeople(incident);
   const access = useSetResponseAccess(incident);
   const [assigning, setAssigning] = useState(false);
+  // A suggested severity is settled with the decision: it starts from the
+  // suggestion, and goes with whichever choice is made.
+  const suggested = !incident.severityConfirmed;
+  const [severity, setSeverity] = useState<IncidentSeverity>(incident.severity);
+  const settling = suggested ? { severity } : {};
   const team = incident.team.name;
   const busy = access.isPending;
   const dialog = assigning && (
-    <AssignPeopleDialog incident={incident} onClose={() => setAssigning(false)} />
+    <AssignPeopleDialog
+      incident={incident}
+      severity={suggested ? severity : undefined}
+      onClose={() => setAssigning(false)}
+    />
   );
   const failure = access.isError && (
     <div className="px-5 pb-4 sm:px-6">
@@ -159,7 +172,7 @@ export function RespondersPanel({ incident }: { incident: IncidentDetailResponse
     <Button
       variant={variant}
       disabled={busy}
-      onClick={() => access.mutate({ mode: "OPEN" })}
+      onClick={() => access.mutate({ mode: "OPEN", ...settling })}
     >
       {busy ? "Saving…" : label}
     </Button>
@@ -180,6 +193,18 @@ export function RespondersPanel({ incident }: { incident: IncidentDetailResponse
         aside={`${team} can see this incident, but nobody can start until you choose.`}
       >
         {failure}
+        {suggested && (
+          <div className="flex flex-col gap-1 border-t border-line-subtle px-5 py-4 sm:px-6">
+            <div className="max-w-md">
+              <SeveritySelect
+                value={severity}
+                onChange={setSeverity}
+                label="Severity"
+                note={`${incident.createdBy.name} suggested ${incident.severity}. Keep it or choose another: it's confirmed with your choice below.`}
+              />
+            </div>
+          </div>
+        )}
         <div className="grid gap-3.5 border-t border-line-subtle bg-canvas/30 px-5 py-4 sm:grid-cols-2 sm:px-6">
           <Choice
             highlighted

@@ -77,6 +77,23 @@ function describe(
           <SeverityMark severity={entry.toValue as IncidentSeverity} />
         </>
       );
+    case "SEVERITY_CONFIRMED":
+      // The suggestion kept, or settled at another severity.
+      return entry.fromValue === entry.toValue ? (
+        <>
+          confirmed the suggested severity{" "}
+          <SeverityMark severity={entry.toValue as IncidentSeverity} />
+        </>
+      ) : (
+        <>
+          confirmed severity{" "}
+          <SeverityMark severity={entry.fromValue as IncidentSeverity} />
+          <span aria-hidden="true"> → </span>
+          <span className="sr-only"> to </span>
+          <SeverityMark severity={entry.toValue as IncidentSeverity} />
+          <span className="text-fg-subtle"> (suggested {entry.fromValue})</span>
+        </>
+      );
     case "RESPONSE_ACCESS_CHANGED":
       return entry.toValue === "OPEN" ? (
         <>opened the incident to the responsible team</>
@@ -160,6 +177,7 @@ const eventMarker = (entry: IncidentActivityResponse): EventMarker | undefined =
     case "DECLARED":
       return EVENT_MARKERS.declared;
     case "SEVERITY_CHANGED":
+    case "SEVERITY_CONFIRMED":
       return EVENT_MARKERS.severityChanged;
     case "TEAM_CHANGED":
     case "RESPONSE_ACCESS_CHANGED":

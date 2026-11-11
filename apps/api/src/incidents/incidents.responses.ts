@@ -48,6 +48,7 @@ interface IncidentRow {
   title: string;
   summary: string | null;
   severity: IncidentSeverity;
+  severityConfirmed: boolean;
   status: IncidentStatus;
   responseAccess: IncidentResponseAccess;
   assignees: readonly { membership: { id: string; user: { name: string } } }[];
@@ -75,6 +76,7 @@ export const toIncidentResponse = (
   title: incident.title,
   summary: incident.summary,
   severity: incident.severity,
+  severityConfirmed: incident.severityConfirmed,
   status: incident.status,
   responseAccess: incident.responseAccess,
   assignees: incident.assignees.map(({ membership }) => ({

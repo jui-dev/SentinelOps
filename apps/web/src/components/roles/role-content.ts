@@ -194,7 +194,7 @@ export const ROLE_CONTENT: Record<Role, RoleContent> = {
       {
         when: "Declared",
         title: "Confirms severity",
-        text: "Keeps or changes the severity it was declared with.",
+        text: "Keeps or changes a Reporter's suggested severity, with the decision on who responds.",
       },
       {
         when: "Declared",
@@ -277,8 +277,8 @@ export const ROLE_CONTENT: Record<Role, RoleContent> = {
       },
       {
         when: "Declared",
-        title: "Says how bad it is",
-        text: "The severity it's declared with. An Incident Manager confirms it.",
+        title: "Suggests how bad it is",
+        text: "A suggested severity. An Incident Manager keeps or changes it.",
       },
       {
         when: "Investigating",
@@ -293,6 +293,7 @@ export const ROLE_CONTENT: Record<Role, RoleContent> = {
     ],
     can: [
       "Declare incidents against any service",
+      "Suggest a severity when declaring",
       "See the incidents they declared",
       "Post updates on them",
     ],
@@ -314,9 +315,14 @@ export const ROLE_CONTENT: Record<Role, RoleContent> = {
     ],
     told: [
       {
-        title: "Their incidents, as they stand",
-        text: "On the Incidents page, with who is responding.",
+        title: "Severity confirmed",
+        text: "Their suggestion kept, or the severity it was set to.",
       },
+      {
+        title: "Severity changed",
+        text: "Raised or lowered as the incident develops.",
+      },
+      { title: "Resolved", text: "With how it ended." },
     ],
   },
   RESPONDER: {

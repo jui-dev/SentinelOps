@@ -198,8 +198,22 @@ export class NotificationsWriter {
           })
         : [];
 
+    const declarer = needs.some(({ declarer }) => declarer)
+      ? await tx.membership.findMany({
+          where: {
+            organizationId,
+            user: {
+              deletedAt: null,
+              incidentsDeclared: { some: { id: change.incidentId } },
+            },
+          },
+          select: { id: true },
+        })
+      : [];
+
     return {
       actorMembershipId: change.actor.membershipId,
+      declarerIds: declarer.map(({ id }) => id),
       teamMemberIds: team.map(({ membershipId }) => membershipId),
       responders,
       adminIds: admins.map(({ id }) => id),

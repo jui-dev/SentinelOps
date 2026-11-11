@@ -5197,6 +5197,128 @@ describe('incidents (integration)', () => {
       );
     });
 
+    describe('suggested severity', () => {
+      /** Declared and left undecided, as a declaration is. */
+      const raise = (userId: string, severity = 'SEV3') =>
+        call('post', `${fx.orgA}/incidents`, userId, {
+          title: 'Checkout slow for EU customers',
+          serviceId: fx.apiA,
+          severity,
+        });
+      const decide = (userId: string, body: object) =>
+        call('put', `${fx.orgA}/incidents/1/response-access`, userId, body);
+      const notificationsOf = (membershipId: string) =>
+        prisma.notification.findMany({
+          where: { recipientMembershipId: membershipId },
+          select: { type: true },
+          orderBy: { createdAt: 'asc' },
+        });
+
+      it("should hold a reporter's severity as a suggestion, and settle one declared by whoever decides", async () => {
+        const rita = await aPerson('REPORTER', 'Rita');
+
+        expect((await raise(rita.userId)).body.severityConfirmed).toBe(false);
+        expect((await raise(fx.alice)).body.severityConfirmed).toBe(true);
+      });
+
+      it('should settle the suggestion with the decision on who responds, record it, and tell the reporter', async () => {
+        const rita = await aPerson('REPORTER', 'Rita');
+        const ian = await aPerson('INCIDENT_MANAGER', 'Ian');
+        await raise(rita.userId, 'SEV3');
+
+        const decided = await decide(ian.userId, {
+          mode: 'OPEN',
+          severity: 'SEV2',
+        });
+
+        expect(decided.status).toBe(200);
+        expect(decided.body).toMatchObject({
+          severity: 'SEV2',
+          severityConfirmed: true,
+          responseAccess: 'OPEN',
+        });
+
+        const timeline = (
+          await call('get', `${fx.orgA}/incidents/1/timeline`, fx.alice)
+        ).body as { type: string; fromValue: string; toValue: string }[];
+        const confirmed = timeline.find(
+          ({ type }) => type === 'SEVERITY_CONFIRMED',
+        );
+
+        expect(confirmed).toMatchObject({ fromValue: 'SEV3', toValue: 'SEV2' });
+        // Settled before the decision it came with.
+        expect(timeline.map(({ type }) => type).slice(-2)).toEqual([
+          'SEVERITY_CONFIRMED',
+          'RESPONSE_ACCESS_CHANGED',
+        ]);
+        expect(await notificationsOf(rita.membershipId)).toEqual([
+          { type: 'INCIDENT_SEVERITY_CONFIRMED' },
+        ]);
+      });
+
+      it('should keep the suggestion when the decision names no severity', async () => {
+        const rita = await aPerson('REPORTER', 'Rita');
+        await raise(rita.userId, 'SEV3');
+
+        const decided = await decide(fx.alice, {
+          mode: 'ASSIGNED',
+          membershipIds: [fx.daveInA],
+        });
+
+        expect(decided.body).toMatchObject({
+          severity: 'SEV3',
+          severityConfirmed: true,
+        });
+      });
+
+      it('should refuse a severity named with the decision once it is settled', async () => {
+        await raise(fx.alice, 'SEV3');
+
+        expectCode(
+          await decide(fx.alice, { mode: 'OPEN', severity: 'SEV1' }),
+          409,
+          'SEVERITY_ALREADY_CONFIRMED',
+        );
+        expect(
+          (await call('get', `${fx.orgA}/incidents/1`, fx.alice)).body.severity,
+        ).toBe('SEV3');
+      });
+
+      it('should settle the suggestion when the severity is changed instead', async () => {
+        const rita = await aPerson('REPORTER', 'Rita');
+        await raise(rita.userId, 'SEV3');
+
+        const changed = await call(
+          'patch',
+          `${fx.orgA}/incidents/1`,
+          fx.alice,
+          {
+            severity: 'SEV4',
+          },
+        );
+
+        expect(changed.body).toMatchObject({
+          severity: 'SEV4',
+          severityConfirmed: true,
+        });
+        expect(await notificationsOf(rita.membershipId)).toEqual([
+          { type: 'INCIDENT_SEVERITY_CHANGED' },
+        ]);
+      });
+
+      it('should tell the reporter when what they raised is resolved', async () => {
+        const rita = await aPerson('REPORTER', 'Rita');
+        await raise(rita.userId);
+        await decide(fx.alice, { mode: 'OPEN' });
+        await resolve(fx.orgA, fx.alice, 1);
+
+        expect(await notificationsOf(rita.membershipId)).toEqual([
+          { type: 'INCIDENT_SEVERITY_CONFIRMED' },
+          { type: 'INCIDENT_RESOLVED' },
+        ]);
+      });
+    });
+
     it('should show a responder whoever decides on incidents, as it shows the admin', async () => {
       const ian = await aPerson('INCIDENT_MANAGER', 'Ian');
       const rita = await aPerson('REPORTER', 'Rita');

@@ -41,6 +41,8 @@ const REPORTS_CHANGE: ReadonlySet<NotificationType> = new Set([
   'INCIDENT_DECLARED',
   'INCIDENT_REASSIGNED',
   'INCIDENT_SEVERITY_CHANGED',
+  // The suggestion, and the severity it was settled at.
+  'INCIDENT_SEVERITY_CONFIRMED',
 ]);
 
 export const toNotificationResponse = (

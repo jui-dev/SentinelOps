@@ -56,6 +56,7 @@ import {
   invalidStatusTransition,
   notAssignedToIncident,
   assigneeCannotRespond,
+  severityAlreadyConfirmed,
   notInvestigating,
   notOnResponsibleTeam,
   respondersStillInvestigating,
@@ -326,6 +327,7 @@ const incidentSelection = {
   title: true,
   summary: true,
   severity: true,
+  severityConfirmed: true,
   status: true,
   responseAccess: true,
   assignees: {
@@ -1681,6 +1683,12 @@ export class IncidentsService {
             serviceId: input.serviceId,
             teamId: service.ownerTeamId,
             severity: input.severity,
+            // Whoever decides on incidents settles the severity as they
+            // declare; anyone else's is a suggestion until they do.
+            severityConfirmed: hasPermission(
+              actor.role,
+              Permission.INCIDENTS_MANAGE,
+            ),
             responseAccess: INITIAL_RESPONSE_ACCESS,
             createdById: declarerId,
             knownIssueId,
@@ -1922,6 +1930,8 @@ export class IncidentsService {
             title: input.title,
             summary: input.summary,
             severity: input.severity,
+            // Changing the severity settles it, suggested or not.
+            severityConfirmed: input.severity !== undefined ? true : undefined,
             status: input.status,
             teamId: input.teamId,
             knownIssueId: input.knownIssueId,
@@ -2175,131 +2185,204 @@ export class IncidentsService {
       throw incidentNotFound();
     }
 
-    const { incident, changed } = await this.prisma.$transaction(async (tx) => {
-      const incidentId = await this.lockActive(
-        tx,
-        organizationId,
-        actor,
-        number,
-      );
-      const current = await tx.incident.findFirstOrThrow({
-        where: { id: incidentId, organizationId },
-        select: {
-          teamId: true,
-          responseAccess: true,
-          assignees: { select: { membershipId: true } },
-          responders: { select: { membershipId: true, status: true } },
-        },
-      });
-      const next = nextResponseAccess(current, input);
-      const people = await tx.membership.findMany({
-        where: { organizationId, id: { in: next.assigneeIds } },
-        select: { id: true, role: true, user: { select: { name: true } } },
-      });
-
-      if (people.length !== next.assigneeIds.length) {
-        throw membershipNotFound();
-      }
-
-      const before = new Set(current.assignees.map((a) => a.membershipId));
-
-      // Only someone who works responses can be newly assigned. One who was
-      // assigned before their role changed stays, as a responder whose
-      // team moves keeps their response.
-      if (
-        people.some(
-          (p) =>
-            !before.has(p.id) &&
-            !hasPermission(p.role, Permission.RESPONSES_WORK),
-        )
-      ) {
-        throw assigneeCannotRespond();
-      }
-      const changed =
-        current.responseAccess !== next.responseAccess ||
-        before.size !== next.assigneeIds.length ||
-        next.assigneeIds.some((id) => !before.has(id));
-
-      if (changed) {
-        const actorId = await this.resolveActor(
+    const { incident, changed, confirming } = await this.prisma.$transaction(
+      async (tx) => {
+        const incidentId = await this.lockActive(
           tx,
           organizationId,
-          actor.membershipId,
+          actor,
+          number,
         );
-        const now = new Date();
-        const named = new Map(people.map((p) => [p.id, p.user.name]));
-
-        // Everyone who stays keeps when they were assigned.
-        await tx.incidentAssignee.deleteMany({
-          where: {
-            organizationId,
-            incidentId,
-            membershipId: { notIn: next.assigneeIds },
+        const current = await tx.incident.findFirstOrThrow({
+          where: { id: incidentId, organizationId },
+          select: {
+            teamId: true,
+            severity: true,
+            severityConfirmed: true,
+            responseAccess: true,
+            assignees: { select: { membershipId: true } },
+            responders: { select: { membershipId: true, status: true } },
           },
         });
-        await tx.incidentAssignee.createMany({
-          data: next.assigneeIds
-            .filter((id) => !before.has(id))
-            .map((membershipId) => ({
+        const next = nextResponseAccess(current, input);
+        const people = await tx.membership.findMany({
+          where: { organizationId, id: { in: next.assigneeIds } },
+          select: { id: true, role: true, user: { select: { name: true } } },
+        });
+
+        if (people.length !== next.assigneeIds.length) {
+          throw membershipNotFound();
+        }
+
+        const before = new Set(current.assignees.map((a) => a.membershipId));
+
+        // Only someone who works responses can be newly assigned. One who was
+        // assigned before their role changed stays, as a responder whose
+        // team moves keeps their response.
+        if (
+          people.some(
+            (p) =>
+              !before.has(p.id) &&
+              !hasPermission(p.role, Permission.RESPONSES_WORK),
+          )
+        ) {
+          throw assigneeCannotRespond();
+        }
+
+        // A settled severity is changed in the incident, where everyone
+        // working it is told; this decision only settles a suggested one.
+        if (
+          current.severityConfirmed &&
+          input.severity !== undefined &&
+          input.severity !== current.severity
+        ) {
+          throw severityAlreadyConfirmed();
+        }
+
+        // Deciding who responds settles a suggested severity: kept, or the
+        // one the decision names. Recorded before the decision itself, and
+        // told to whoever suggested it.
+        const confirming =
+          !current.severityConfirmed && next.responseAccess !== 'PENDING';
+
+        if (confirming) {
+          const actorId = await this.resolveActor(
+            tx,
+            organizationId,
+            actor.membershipId,
+          );
+          const severity = input.severity ?? current.severity;
+
+          await tx.incident.update({
+            where: { id: incidentId },
+            data: { severity, severityConfirmed: true },
+            select: { id: true },
+          });
+          const confirmed = await tx.incidentActivity.create({
+            data: {
               organizationId,
               incidentId,
-              membershipId,
-              assignedAt: now,
-            })),
-        });
-        await tx.incident.update({
-          where: { id: incidentId },
-          data: { responseAccess: next.responseAccess },
-          select: { id: true },
-        });
-        const entry = await tx.incidentActivity.create({
-          data: {
-            organizationId,
-            incidentId,
-            actorId,
-            type: 'RESPONSE_ACCESS_CHANGED',
-            fromValue: current.responseAccess,
-            toValue: next.responseAccess,
-            message:
-              next.assigneeIds.map((id) => named.get(id)).join(', ') || null,
-            createdAt: now,
-          },
-          select: { id: true, createdAt: true },
-        });
-        const newAssigneeIds = next.assigneeIds.filter((id) => !before.has(id));
+              actorId,
+              type: 'SEVERITY_CONFIRMED',
+              fromValue: current.severity,
+              toValue: severity,
+              createdAt: new Date(),
+            },
+            select: { id: true, createdAt: true },
+          });
 
-        // Whoever may now start is told so: the whole team when it was just
-        // opened to them, otherwise only the people just assigned.
-        const opened =
-          next.responseAccess === 'OPEN' && current.responseAccess !== 'OPEN';
-        const type = opened
-          ? ('INCIDENT_OPENED_TO_TEAM' as const)
-          : newAssigneeIds.length > 0
-            ? ('INCIDENT_ASSIGNED' as const)
-            : undefined;
-
-        if (type) {
           await this.notifications.incidentActivities(tx, {
             organizationId,
             incidentId,
             teamId: current.teamId,
             actor: { userId: actorId, membershipId: actor.membershipId },
             events: [
-              { type, activityId: entry.id, createdAt: entry.createdAt },
+              {
+                type: 'INCIDENT_SEVERITY_CONFIRMED',
+                activityId: confirmed.id,
+                createdAt: confirmed.createdAt,
+              },
             ],
-            newAssigneeIds,
           });
         }
-      }
 
-      return {
-        incident: await tx.incident.findFirstOrThrow({
-          where: { id: incidentId, organizationId },
-          select: incidentDetailSelection,
-        }),
-        changed,
-      };
-    });
+        const changed =
+          current.responseAccess !== next.responseAccess ||
+          before.size !== next.assigneeIds.length ||
+          next.assigneeIds.some((id) => !before.has(id));
+
+        if (changed) {
+          const actorId = await this.resolveActor(
+            tx,
+            organizationId,
+            actor.membershipId,
+          );
+          const now = new Date();
+          const named = new Map(people.map((p) => [p.id, p.user.name]));
+
+          // Everyone who stays keeps when they were assigned.
+          await tx.incidentAssignee.deleteMany({
+            where: {
+              organizationId,
+              incidentId,
+              membershipId: { notIn: next.assigneeIds },
+            },
+          });
+          await tx.incidentAssignee.createMany({
+            data: next.assigneeIds
+              .filter((id) => !before.has(id))
+              .map((membershipId) => ({
+                organizationId,
+                incidentId,
+                membershipId,
+                assignedAt: now,
+              })),
+          });
+          await tx.incident.update({
+            where: { id: incidentId },
+            data: { responseAccess: next.responseAccess },
+            select: { id: true },
+          });
+          const entry = await tx.incidentActivity.create({
+            data: {
+              organizationId,
+              incidentId,
+              actorId,
+              type: 'RESPONSE_ACCESS_CHANGED',
+              fromValue: current.responseAccess,
+              toValue: next.responseAccess,
+              message:
+                next.assigneeIds.map((id) => named.get(id)).join(', ') || null,
+              createdAt: now,
+            },
+            select: { id: true, createdAt: true },
+          });
+          const newAssigneeIds = next.assigneeIds.filter(
+            (id) => !before.has(id),
+          );
+
+          // Whoever may now start is told so: the whole team when it was just
+          // opened to them, otherwise only the people just assigned.
+          const opened =
+            next.responseAccess === 'OPEN' && current.responseAccess !== 'OPEN';
+          const type = opened
+            ? ('INCIDENT_OPENED_TO_TEAM' as const)
+            : newAssigneeIds.length > 0
+              ? ('INCIDENT_ASSIGNED' as const)
+              : undefined;
+
+          if (type) {
+            await this.notifications.incidentActivities(tx, {
+              organizationId,
+              incidentId,
+              teamId: current.teamId,
+              actor: { userId: actorId, membershipId: actor.membershipId },
+              events: [
+                { type, activityId: entry.id, createdAt: entry.createdAt },
+              ],
+              newAssigneeIds,
+            });
+          }
+        }
+
+        return {
+          incident: await tx.incident.findFirstOrThrow({
+            where: { id: incidentId, organizationId },
+            select: incidentDetailSelection,
+          }),
+          changed,
+          confirming,
+        };
+      },
+    );
+
+    if (confirming) {
+      this.logger.log('Incident severity confirmed', {
+        incidentId: incident.id,
+        incidentNumber: incident.number,
+        severity: incident.severity,
+      });
+    }
 
     if (changed) {
       this.logger.log('Incident response access changed', {

@@ -194,6 +194,7 @@ const incident = (
   id: "0199a1b2-c3d4-7000-8000-0000000000f1",
   number: 42,
   title: "Card payments failing",
+  severityConfirmed: true,
   responseAccess: "OPEN",
   assignees: [],
   knownIssue: null,
@@ -750,6 +751,7 @@ describe("incidents", () => {
           incident({
             id: "0199a1b2-c3d4-7000-8000-0000000001a3",
             number: 3,
+            severityConfirmed: true,
             responseAccess: "ASSIGNED",
             assignees: [{ membershipId: daniel.id, name: daniel.user.name }],
           }),
@@ -831,6 +833,29 @@ describe("incidents", () => {
       await user.click(within(form).getByRole("combobox", { name: "What is happening?" }));
       await user.click(await within(form).findByRole("option", { name }));
     };
+
+    it("asks a reporter for a suggested severity, and offers no known issue to save", async () => {
+      const user = userEvent.setup();
+      api(["incidents:read", "incidents:declare", "incidents:respond", "organization:read", "services:read", "teams:read"], {
+        services: [paymentApi],
+      });
+
+      inOrganization(<IncidentsView />);
+
+      const form = await openDeclare(user);
+
+      await user.selectOptions(
+        await within(form).findByLabelText("Affected service"),
+        paymentApi.id,
+      );
+      await choose(user, form, /Something new/);
+
+      expect(within(form).getByLabelText(/Suggested severity/)).toBeDefined();
+      expect(
+        within(form).getByText(/An Incident Manager confirms it when deciding who responds/),
+      ).toBeDefined();
+      expect(within(form).queryByText(/Save as a known issue/)).toBeNull();
+    });
 
     it("offers only services in use, names who will be responsible, and saves something new for next time", async () => {
       const user = userEvent.setup();
@@ -1775,6 +1800,13 @@ describe("incidents", () => {
             toValue: "SEV1",
           }),
           activity({
+            id: "0199a1b2-c3d4-7000-8000-000000000101",
+            type: "SEVERITY_CONFIRMED",
+            message: null,
+            fromValue: "SEV3",
+            toValue: "SEV2",
+          }),
+          activity({
             id: "0199a1b2-c3d4-7000-8000-000000000109",
             type: "TEAM_CHANGED",
             message: null,
@@ -1808,6 +1840,7 @@ describe("incidents", () => {
         "Daniel Okafor completed their response",
         // The caller's own entries are theirs: "You".
         "You reassigned the incident from Payments to Platform",
+        expect.stringMatching(/^Daniel Okafor confirmed severity SEV3.*→.*SEV2.*\(suggested SEV3\)/),
         expect.stringMatching(/^Daniel Okafor changed severity SEV2.*→.*SEV1/),
         "Daniel Okafor posted an updateInvestigating elevated database latency.",
         "Daniel Okafor moved the incident to Investigating",
@@ -2060,6 +2093,7 @@ describe("incidents", () => {
             title: "Reports delayed",
             status: "DECLARED",
             team: { id: platform.id, name: platform.name, slug: platform.slug },
+            severityConfirmed: true,
             responseAccess: "ASSIGNED",
             assignees: [{ membershipId: ada.id, name: ada.user.name }],
           }),

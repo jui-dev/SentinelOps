@@ -126,15 +126,15 @@ model Organization {
 /// Soft-deleted rather than removed: a departed responder must still resolve as the
 /// author of past incidents and comments.
 model User {
-  id           String  @id @default(uuid(7)) @db.Uuid
+  id                     String  @id @default(uuid(7)) @db.Uuid
   /// Stored lowercase. Postgres unique indexes are case-sensitive, so normalisation
   /// happens at the Zod boundary rather than by adding the citext extension.
-  email        String  @unique
+  email                  String  @unique
   /// The human-readable display identity for this actor — what an incident timeline,
   /// an assignment, or an audit entry renders instead of a uuid. Deliberately a
   /// single field: this is actor identity, not a user profile. Avatars, titles, time
   /// zones, contact methods, and notification preferences are not part of this stage.
-  name         String
+  name                   String
   /// Argon2id PKC-encoded hash — algorithm, parameters, and salt travel inside the
   /// string, so rehashing at stronger parameters later needs no schema change.
   ///
@@ -145,7 +145,7 @@ model User {
   /// as it treats a wrong password: one indistinguishable 401.
   ///
   /// Never selected except by the login lookup, and never mapped into a response.
-  passwordHash String? @map("password_hash")
+  passwordHash           String? @map("password_hash")
   /// True while the password is one somebody else chose: an admin who added
   /// this person to an organization set a one-time password and handed it
   /// over. Until they choose their own, the account may sign in and change it,
@@ -196,24 +196,24 @@ model Membership {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  organization      Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user              User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  teamMemberships   TeamMembership[]
+  organization        Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user                User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamMemberships     TeamMembership[]
   /// Restrict, like the responder key itself: a membership that has
   /// responded to an incident cannot be physically deleted. Nothing in the
   /// application deletes a membership today; member removal, when it
   /// arrives, decides what happens to that history.
-  incidentResponses IncidentResponder[]
+  incidentResponses   IncidentResponder[]
   /// Cascade, unlike the responder key: an assignment is a standing
   /// instruction, not a record of work done.
   incidentAssignments IncidentAssignee[]
   /// Restrict, like the responder key: the owner of an incident analysis
   /// cannot be physically deleted. Member removal, when it arrives, decides
   /// whether ownership moves first.
-  analysesOwned     IncidentAnalysis[]
+  analysesOwned       IncidentAnalysis[]
   /// This member's inbox in this organization. Cascades: revoking the grant
   /// removes what it was told, along with its access.
-  notifications     Notification[]
+  notifications       Notification[]
 
   /// One capacity per user per organization: nobody is both ADMIN and MEMBER.
   @@unique([organizationId, userId])
@@ -527,24 +527,29 @@ enum IncidentStatus {
 /// RESOLVED exactly when resolved_at is set, number is positive, and only a
 /// resolved incident carries a resolution.
 model Incident {
-  id             String           @id @default(uuid(7)) @db.Uuid
-  organizationId String           @map("organization_id") @db.Uuid
+  id                String                 @id @default(uuid(7)) @db.Uuid
+  organizationId    String                 @map("organization_id") @db.Uuid
   /// The organization's own sequence, shown as INC-{number}. Allocated from
   /// organizations.last_incident_number when the incident is declared:
   /// unique within the organization, never changed, and increasing in the
   /// order declarations commit. Not promised to be gapless.
-  number         Int
-  title          String
+  number            Int
+  title             String
   /// The current understanding of the impact. Null when there is none; blank
   /// is normalised to null at the Zod boundary.
-  summary        String?
-  serviceId      String           @map("service_id") @db.Uuid
-  teamId         String           @map("team_id") @db.Uuid
-  severity       IncidentSeverity
-  status         IncidentStatus   @default(DECLARED)
+  summary           String?
+  serviceId         String                 @map("service_id") @db.Uuid
+  teamId            String                 @map("team_id") @db.Uuid
+  severity          IncidentSeverity
+  /// Whether whoever decides on incidents has settled the severity. False
+  /// only while a Reporter's declaration waits for that decision: the
+  /// severity they declared with is then a suggestion. Set by the decision
+  /// on who responds, or by any change of severity, and never cleared.
+  severityConfirmed Boolean                @default(true) @map("severity_confirmed")
+  status            IncidentStatus         @default(DECLARED)
   /// Who may start responding. The people an ASSIGNED incident names are its
   /// assignees.
-  responseAccess IncidentResponseAccess @default(OPEN) @map("response_access")
+  responseAccess    IncidentResponseAccess @default(OPEN) @map("response_access")
   /// Who declared it: the global User rather than the Membership. A
   /// membership is hard-deleted when access is revoked, and attribution must
   /// outlive the grant; a user is soft-deleted and keeps resolving. Restrict,
@@ -552,24 +557,24 @@ model Incident {
   /// procedure, not a cascade. Users are global, so this is the one reference
   /// the database cannot hold to the organization — IncidentsService takes it
   /// from the admitted membership and never from a request body.
-  createdById    String           @map("created_by_id") @db.Uuid
+  createdById       String                 @map("created_by_id") @db.Uuid
 
-  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
   /// Set by the server in the same write that sets RESOLVED; never supplied
   /// by a client.
-  resolvedAt DateTime? @map("resolved_at") @db.Timestamptz(3)
+  resolvedAt   DateTime? @map("resolved_at") @db.Timestamptz(3)
   /// How the incident ended, in the Admin's words: required by every
   /// resolution, written in the same write as RESOLVED and again as the
   /// message of the resolution's timeline entry — state here, history there,
   /// as severity is. Resolved is final, so the two never diverge. Null on
   /// active incidents, and on incidents resolved before notes were required:
   /// those are not given one after the fact.
-  resolution String?
+  resolution   String?
   /// The known issue this incident is an occurrence of, when it is one:
   /// always one of the incident's own service's, which the composite key
   /// below holds the database to. Null for a one-off.
-  knownIssueId String? @map("known_issue_id") @db.Uuid
+  knownIssueId String?   @map("known_issue_id") @db.Uuid
 
   organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   service      Service             @relation(fields: [organizationId, serviceId], references: [organizationId, id], onDelete: Restrict, onUpdate: Restrict)
@@ -766,6 +771,9 @@ enum IncidentActivityType {
   RESPONSE_STARTED
   RESPONSE_COMPLETED
   RESPONSE_ACCESS_CHANGED
+  /// A suggested severity settled by whoever decides: fromValue the
+  /// suggestion, toValue the severity confirmed, the same when it was kept.
+  SEVERITY_CONFIRMED
 
   @@map("incident_activity_type")
 }
@@ -956,6 +964,8 @@ enum NotificationType {
   INCIDENT_OPENED_TO_TEAM
   /// The Admin assigned the recipient to the incident: they may now start.
   INCIDENT_ASSIGNED
+  /// The severity the recipient suggested when declaring was confirmed.
+  INCIDENT_SEVERITY_CONFIRMED
   TEAM_MEMBERSHIP_ADDED
   TEAM_MEMBERSHIP_REMOVED
 

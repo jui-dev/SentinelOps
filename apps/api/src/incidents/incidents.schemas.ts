@@ -359,13 +359,21 @@ export const memberResponsesQuerySchema = z.object({
 });
 
 /**
- * The Admin's choice of who may respond: the responsible team, or the people
+ * The decision on who may respond: the responsible team, or the people
  * named. Naming nobody leaves the choice to be made.
+ *
+ * `severity` settles a Reporter's suggested severity in the same decision —
+ * kept when absent. Once a severity is confirmed it is changed in the
+ * incident itself, not here.
  */
 export const setIncidentResponseAccessSchema = z.discriminatedUnion('mode', [
-  z.strictObject({ mode: z.literal('OPEN') }),
+  z.strictObject({
+    mode: z.literal('OPEN'),
+    severity: incidentSeveritySchema.optional(),
+  }),
   z.strictObject({
     mode: z.literal('ASSIGNED'),
+    severity: incidentSeveritySchema.optional(),
     membershipIds: z
       .array(resourceIdSchema)
       .max(200)

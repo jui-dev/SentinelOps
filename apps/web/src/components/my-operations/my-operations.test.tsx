@@ -68,6 +68,7 @@ const detail = (
   id: `0199a1b2-c3d4-7000-8000-0000000000${number}`,
   number,
   title: `Incident ${number}`,
+  severityConfirmed: true,
   responseAccess: "OPEN",
   assignees: [],
   knownIssue: null,

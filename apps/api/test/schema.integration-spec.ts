@@ -1944,7 +1944,7 @@ describe('core domain schema (integration)', () => {
         );
       });
 
-      it('should know exactly the nine notification types', async () => {
+      it('should know exactly the ten notification types', async () => {
         const labels = await prisma.$queryRaw<{ label: string }[]>`
           SELECT e.enumlabel AS label
           FROM pg_enum e
@@ -1960,6 +1960,7 @@ describe('core domain schema (integration)', () => {
           'INCIDENT_READY_TO_RESOLVE',
           'INCIDENT_OPENED_TO_TEAM',
           'INCIDENT_ASSIGNED',
+          'INCIDENT_SEVERITY_CONFIRMED',
           'TEAM_MEMBERSHIP_ADDED',
           'TEAM_MEMBERSHIP_REMOVED',
         ]);
@@ -2319,6 +2320,7 @@ describe('core domain schema (integration)', () => {
         'RESPONSE_STARTED',
         'RESPONSE_COMPLETED',
         'RESPONSE_ACCESS_CHANGED',
+        'SEVERITY_CONFIRMED',
       ]);
     });
   });

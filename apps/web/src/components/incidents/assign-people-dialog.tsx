@@ -13,6 +13,7 @@ import { Field } from "@/components/ui/field";
 import { SubmitHint } from "@/components/ui/required";
 import { Spinner } from "@/components/ui/spinner";
 import type {
+  IncidentSeverity,
   IncidentDetailResponse,
   OrganizationMembershipResponse,
 } from "@/lib/api/contracts";
@@ -85,9 +86,12 @@ function PersonRow({
  */
 export function AssignPeopleDialog({
   incident,
+  severity,
   onClose,
 }: {
   incident: IncidentDetailResponse;
+  /** A suggested severity, confirmed with this choice. */
+  severity?: IncidentSeverity;
   onClose: () => void;
 }) {
   const organization = useOrganization();
@@ -163,7 +167,11 @@ export function AssignPeopleDialog({
             event.preventDefault();
             if (count > 0) {
               assign.mutate(
-                { mode: "ASSIGNED", membershipIds: [...chosen] },
+                {
+                  mode: "ASSIGNED",
+                  membershipIds: [...chosen],
+                  ...(severity && { severity }),
+                },
                 { onSuccess: onClose },
               );
             }

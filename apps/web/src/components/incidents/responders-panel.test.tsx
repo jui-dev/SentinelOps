@@ -38,6 +38,7 @@ const active = (overrides: Partial<IncidentDetailResponse> = {}): IncidentDetail
     resolvedAt: null,
     resolution: null,
     responders: [],
+    severityConfirmed: true,
     responseAccess: "PENDING",
     ...overrides,
   });
@@ -113,6 +114,42 @@ describe("who responds to an incident", () => {
     });
   });
 
+  describe("a suggested severity", () => {
+    it("asks to confirm it with the decision, starting from the suggestion", async () => {
+      const user = userEvent.setup();
+      const { requests } = asAdmin(
+        active({ severity: "SEV3", severityConfirmed: false }),
+        () => active({ severity: "SEV2", responseAccess: "OPEN" }),
+      );
+
+      inOrganization(<IncidentDetail />);
+
+      const responders = await panel();
+      const severity = within(responders).getByLabelText("Severity") as HTMLSelectElement;
+
+      expect(severity.value).toBe("SEV3");
+      expect(within(responders).getByText(/suggested SEV3/)).toBeDefined();
+      // Said in the header too, until someone decides.
+      expect(screen.getByText("Suggested")).toBeDefined();
+
+      await user.selectOptions(severity, "SEV2");
+      await user.click(within(responders).getByRole("button", { name: "Open to team" }));
+
+      await screen.findByText("Open to Payments");
+      expect(sent(requests)).toEqual([{ mode: "OPEN", severity: "SEV2" }]);
+    });
+
+    it("asks nothing about severity once it is confirmed", async () => {
+      asAdmin(active());
+      inOrganization(<IncidentDetail />);
+
+      const responders = await panel();
+
+      expect(within(responders).queryByLabelText("Severity")).toBeNull();
+      expect(screen.queryByText("Suggested")).toBeNull();
+    });
+  });
+
   describe("assigning people", () => {
     const openDialog = async (user: ReturnType<typeof userEvent.setup>) => {
       await user.click(within(await panel()).getByRole("button", { name: "Assign people" }));
@@ -147,6 +184,7 @@ describe("who responds to an incident", () => {
       const user = userEvent.setup();
       const { requests } = asAdmin(active(), () =>
         active({
+          severityConfirmed: true,
           responseAccess: "ASSIGNED",
           assignees: [{ membershipId: sam.id, name: sam.user.name }],
         }),
@@ -208,6 +246,7 @@ describe("who responds to an incident", () => {
 
   describe("once assigned", () => {
     const assigned = active({
+      severityConfirmed: true,
       responseAccess: "ASSIGNED",
       status: "INVESTIGATING",
       assignees: [
@@ -294,6 +333,7 @@ describe("who responds to an incident", () => {
 
     it("offers it only to the people assigned, whatever their team", async () => {
       const assigned = active({
+        severityConfirmed: true,
         responseAccess: "ASSIGNED",
         assignees: [{ membershipId: sam.id, name: sam.user.name }],
       });

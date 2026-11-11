@@ -80,6 +80,8 @@ export function SeveritySelect({
   error,
   placeholder,
   usual,
+  label = "Severity",
+  note,
 }: {
   value: IncidentSeverity | "";
   onChange: (value: IncidentSeverity) => void;
@@ -88,20 +90,25 @@ export function SeveritySelect({
   placeholder?: string;
   /** A known issue's usual severity, which the choice started from. */
   usual?: IncidentSeverity;
+  /** "Suggested severity", for someone whose choice is a suggestion. */
+  label?: string;
+  /** Said before the chosen level's definition. */
+  note?: string;
 }) {
+  const definition =
+    usual && value === usual
+      ? `Usually ${usual} for this known issue. Choose what fits this time.`
+      : value
+        ? severityOf(value).definition
+        : undefined;
+
   return (
     <Select
-      label="Severity"
+      label={label}
       name="severity"
       value={value}
       onChange={(event) => onChange(event.target.value as IncidentSeverity)}
-      hint={
-        usual && value === usual
-          ? `Usually ${usual} for this known issue. Choose what fits this time.`
-          : value
-            ? severityOf(value).definition
-            : undefined
-      }
+      hint={note ? [note, definition].filter(Boolean).join(" ") : definition}
       error={error}
       // With nothing chosen to start from — a declaration — choosing is required.
       required={placeholder !== undefined}
@@ -181,6 +188,9 @@ function DeclareIncidentForm({ onCancel }: { onCancel: () => void }) {
   const router = useRouter();
   const services = useServices(organization.id);
   const canManageServices = useCan(Permission.SERVICES_MANAGE);
+  // Whoever decides on incidents settles the severity as they declare;
+  // anyone else suggests it.
+  const decides = useCan(Permission.INCIDENTS_MANAGE);
   const declare = useDeclareIncident(organization.id);
   const [serviceId, setServiceId] = useState("");
   const [choice, setChoice] = useState<KnownIssueChoice | null>(null);
@@ -368,6 +378,10 @@ function DeclareIncidentForm({ onCancel }: { onCancel: () => void }) {
             error={fields.severity}
             placeholder="Choose a severity"
             usual={known?.usualSeverity}
+            {...(!decides && {
+              label: "Suggested severity",
+              note: "An Incident Manager confirms it when deciding who responds.",
+            })}
           />
           <TextArea
             label="Summary"
@@ -598,6 +612,33 @@ const VIEWS = ["active", "resolved"] as const satisfies readonly IncidentState[]
  * page; a member gets their teams' incidents by their own part in each
  * (member-incidents-view.tsx). The same route either way.
  */
+/**
+ * Declaring: the header's button, and the dialog it opens. For whoever the
+ * API says may declare, on whichever version of the Incidents page they
+ * see — still the one place incidents are declared.
+ */
+export function DeclareIncident() {
+  const canDeclare = useCan(Permission.INCIDENTS_DECLARE);
+  const [declaring, setDeclaring] = useState(false);
+
+  if (!canDeclare) return null;
+
+  return (
+    <>
+      <Button onClick={() => setDeclaring(true)}>Declare incident</Button>
+      {declaring && (
+        <FormDialog
+          title="Declare an incident"
+          description="An operational problem affecting one of this organization's services. It starts as Declared."
+          onClose={() => setDeclaring(false)}
+        >
+          <DeclareIncidentForm onCancel={() => setDeclaring(false)} />
+        </FormDialog>
+      )}
+    </>
+  );
+}
+
 export function IncidentsView() {
   const oversees = useCan(Permission.INCIDENTS_READ_ALL);
 
@@ -614,8 +655,6 @@ export function IncidentsView() {
  */
 function OrganizationIncidentsView() {
   const organization = useOrganization();
-  const canDeclare = useCan(Permission.INCIDENTS_DECLARE);
-  const [declaring, setDeclaring] = useState(false);
   const searchParams = useSearchParams();
   const replace = useReplaceParams();
   const pathname = usePathname();
@@ -688,11 +727,7 @@ function OrganizationIncidentsView() {
               updatedAt={shown.dataUpdatedAt}
               failed={shown.isRefetchError}
             />
-            {canDeclare && (
-              <Button onClick={() => setDeclaring(true)}>
-                Declare incident
-              </Button>
-            )}
+            <DeclareIncident />
           </div>
         }
       />
@@ -745,15 +780,6 @@ function OrganizationIncidentsView() {
           </Tabs>
         </div>
       </PageBody>
-      {canDeclare && declaring && (
-        <FormDialog
-          title="Declare an incident"
-          description="An operational problem affecting one of this organization's services. It starts as Declared."
-          onClose={() => setDeclaring(false)}
-        >
-          <DeclareIncidentForm onCancel={() => setDeclaring(false)} />
-        </FormDialog>
-      )}
     </>
   );
 }
