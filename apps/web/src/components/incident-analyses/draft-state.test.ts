@@ -295,23 +295,24 @@ describe("an analysis draft", () => {
   });
 
   describe("publishing", () => {
-    it("is allowed only for what is saved, with a summary", () => {
-      expect(publishBlock(initialDraft(v3))).toBeNull();
-      expect(publishBlock(initialDraft({ ...v3, summary: null }))).toBe("summary");
+    it("is allowed only for what is saved, with a summary marked done", () => {
+      expect(publishBlock(initialDraft(v3), ["summary"])).toBeNull();
+      expect(publishBlock(initialDraft(v3), [])).toBe("summary");
+      expect(publishBlock(initialDraft({ ...v3, summary: null }), [])).toBe("summary");
     });
 
     it("is blocked by anything unsaved, being saved, or awaiting a choice", () => {
       const dirty = writing(["cause", "A deploy."]);
 
-      expect(publishBlock(dirty)).toBe("unsaved");
-      expect(publishBlock(startSaving(dirty, saveRequest(dirty)))).toBe("saving");
+      expect(publishBlock(dirty, ["summary"])).toBe("unsaved");
+      expect(publishBlock(startSaving(dirty, saveRequest(dirty)), ["summary"])).toBe("saving");
       expect(
-        publishBlock(reconcile(dirty, later(4, { cause: "A config change." })).state),
+        publishBlock(reconcile(dirty, later(4, { cause: "A config change." })).state, [
+          "summary",
+        ]),
       ).toBe("conflict");
-      // A summary typed but not saved does not count.
-      expect(
-        publishBlock(typed(initialDraft({ ...v3, summary: null }), "summary", "Written.")),
-      ).toBe("unsaved");
+      // A summary typed over since it was done does not count.
+      expect(publishBlock(writing(["summary", "Rewritten."]), ["summary"])).toBe("summary");
     });
   });
 });

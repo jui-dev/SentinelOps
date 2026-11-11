@@ -101,10 +101,10 @@ describe("incident analysis", () => {
           .getAllByRole("listitem")
           .map((item) => item.textContent),
       ).toEqual([
-        expect.stringMatching(/^1Summary required to publish.*write this first$/),
-        expect.stringMatching(/^2Impact optional.*not written$/),
-        expect.stringMatching(/^3Cause optional.*not written$/),
-        expect.stringMatching(/^4Lessons optional.*not written$/),
+        expect.stringMatching(/^1Summary required to publish.*Write this first$/),
+        expect.stringMatching(/^2Impact optional.*Not started$/),
+        expect.stringMatching(/^3Cause optional.*Not started$/),
+        expect.stringMatching(/^4Lessons optional.*Not started$/),
       ]);
     });
 
@@ -128,28 +128,29 @@ describe("incident analysis", () => {
     it("shows a draft's owner and progress, and lets its owner open it", async () => {
       const { permissions, handler } = asMember(daniel.id);
 
-      api(permissions, { analysis: draft(), handler });
+      api(permissions, { analysis: draft({ doneSections: ["summary"] }), handler });
 
       inOrganization(<IncidentDetail />);
 
       const panel = await entry();
-      // The summary is written, so the next step is to review and publish.
+      // The summary is done, so the next step is to review and publish.
       const link = await within(panel).findByRole("link", { name: "Review and publish" });
 
       expect(link.getAttribute("href")).toBe(analysisHref);
       expect(within(panel).getByText("Ready to publish.")).toBeDefined();
       expect(within(panel).getByText("Draft")).toBeDefined();
       expect(panel.textContent).toContain("owned by you");
-      expect(panel.textContent).toContain("2 of 4 sections written");
+      expect(panel.textContent).toContain("1 of 4 sections done");
+      expect(panel.textContent).toContain("1 in progress");
       expect(
         within(within(panel).getByRole("list", { name: "Analysis sections" }))
           .getAllByRole("listitem")
-          .map((item) => item.textContent?.match(/(written|not written)$/)?.[0]),
-      ).toEqual(["written", "written", "not written", "not written"]);
+          .map((item) => item.textContent?.match(/(Done|In progress|Not started)$/)?.[0]),
+      ).toEqual(["Done", "In progress", "Not started", "Not started"]);
     });
 
     it("lets the admin open a draft someone else owns", async () => {
-      api(ADMIN, { analysis: draft() });
+      api(ADMIN, { analysis: draft({ doneSections: ["summary"] }) });
 
       inOrganization(<IncidentDetail />);
 
@@ -304,7 +305,7 @@ describe("incident analysis", () => {
             return apiError(409, "ANALYSIS_ALREADY_STARTED");
           }
           if (route(request) === `GET ${analysisPath}` && started) {
-            return jsonResponse(200, draft());
+            return jsonResponse(200, draft({ doneSections: ["summary"] }));
           }
           return undefined;
         },

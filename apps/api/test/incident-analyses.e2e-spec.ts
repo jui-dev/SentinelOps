@@ -681,6 +681,7 @@ describe('Incident analyses (e2e)', () => {
         version: number;
         ownerMembershipId: string;
         summary: string | null;
+        doneSections: string[];
       }> = {},
     ) =>
       incidentRow({
@@ -689,6 +690,7 @@ describe('Incident analyses (e2e)', () => {
         version: 1,
         ownerMembershipId: OWNER_MEMBERSHIP_ID,
         summary: 'Card payments failed for two hours.',
+        doneSections: ['summary'],
         ...overrides,
       });
 
@@ -741,7 +743,12 @@ describe('Incident analyses (e2e)', () => {
     it.each([
       { state: { status: 'PUBLISHED' }, code: 'ANALYSIS_PUBLISHED' },
       { state: { version: 2 }, code: 'ANALYSIS_CHANGED' },
-      { state: { summary: null }, code: 'ANALYSIS_SUMMARY_REQUIRED' },
+      {
+        state: { summary: null, doneSections: [] },
+        code: 'ANALYSIS_SUMMARY_REQUIRED',
+      },
+      // Written, but its writer has not said it is finished.
+      { state: { doneSections: [] }, code: 'ANALYSIS_SUMMARY_REQUIRED' },
       // The version is judged before the content.
       { state: { version: 2, summary: null }, code: 'ANALYSIS_CHANGED' },
     ])(

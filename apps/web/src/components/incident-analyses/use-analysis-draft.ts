@@ -179,7 +179,7 @@ export const useAnalysisDraft = (
     /** Each section's standing: not started, in progress, or done. */
     progress: sectionProgress(state, analysis.doneSections),
     /** Why it cannot be published now; null when it can. */
-    publishBlock: publishBlock(state),
+    publishBlock: publishBlock(state, analysis.doneSections),
     /** A save that failed for a reason other than the analysis itself. */
     failure,
     restored: draft.restored,

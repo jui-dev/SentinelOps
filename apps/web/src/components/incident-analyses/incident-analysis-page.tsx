@@ -34,7 +34,7 @@ import type {
 } from "@/lib/api/contracts";
 import { isApiError } from "@/lib/api/errors";
 
-import { AnalysisDocument, SECTION_TITLES } from "./analysis-document";
+import { AnalysisDocument, sectionsInSentence, SECTION_TITLES } from "./analysis-document";
 import { AnalysisEditor } from "./analysis-editor";
 import { useAnalysisAccess, useIncidentAnalysis } from "./analysis-queries";
 import { savedProgress } from "./draft-state";
@@ -143,16 +143,6 @@ const JUMP_LINK_CLASSES: Record<SectionProgress, string> = {
   "not-started": "border-line bg-surface text-fg-muted hover:text-fg",
 };
 
-/** "Impact", or "Impact and cause": sections named inside a sentence. */
-const inSentence = (sections: readonly AnalysisSection[]) => {
-  const names = sections.map((section, index) =>
-    index === 0 ? SECTION_TITLES[section] : SECTION_TITLES[section].toLowerCase(),
-  );
-  const last = names.pop();
-
-  return names.length > 0 ? `${names.join(", ")} and ${last}` : last;
-};
-
 /** What the sections' standing means for publishing. */
 const progressMessage = (progress: Record<AnalysisSection, SectionProgress>) => {
   const open = ANALYSIS_SECTIONS.filter((section) => progress[section] === "in-progress");
@@ -164,7 +154,7 @@ const progressMessage = (progress: Record<AnalysisSection, SectionProgress>) => 
     const said = "The summary is done, so this can be published.";
 
     return open.length > 0
-      ? `${said} ${inSentence(open)} ${open.length === 1 ? "is" : "are"} still in progress.`
+      ? `${said} ${sectionsInSentence(open)} ${open.length === 1 ? "is" : "are"} still in progress.`
       : `${said} Impact, cause and lessons are optional.`;
   }
 

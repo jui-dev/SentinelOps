@@ -117,16 +117,21 @@ export const canSave = (state: DraftState) =>
 
 /**
  * Why the draft cannot be published now, or null when it can. Only what is
- * saved is ever published, so anything unsaved, being saved, or awaiting a
- * choice blocks it; then the one section a publication requires.
+ * saved is ever published, so anything being saved, awaiting a choice, or
+ * unsaved blocks it, and so does a summary not marked done: the one section
+ * a publication requires. The summary is named before unsaved text because
+ * marking it done saves it, so that is the step to take.
  */
 export type PublishBlock = "saving" | "conflict" | "unsaved" | "summary";
 
-export const publishBlock = (state: DraftState): PublishBlock | null => {
+export const publishBlock = (
+  state: DraftState,
+  doneSections: readonly AnalysisSection[],
+): PublishBlock | null => {
   if (state.saving !== null) return "saving";
   if (Object.keys(state.conflicts).length > 0) return "conflict";
+  if (sectionProgress(state, doneSections).summary !== "done") return "summary";
   if (dirtySections(state).length > 0) return "unsaved";
-  if (state.base.sections.summary === "") return "summary";
 
   return null;
 };

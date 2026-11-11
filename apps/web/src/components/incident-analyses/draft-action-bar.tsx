@@ -85,7 +85,7 @@ function DraftStatus({ draft }: { draft: AnalysisDraft }) {
 /** Why Publish is unavailable, when the status alone does not say it. */
 const PUBLISH_REASONS: Partial<Record<PublishBlock, string>> = {
   unsaved: "Save before publishing — only saved text is published.",
-  summary: "Write and save a summary to publish.",
+  summary: "Mark the summary as done to publish.",
 };
 
 /**

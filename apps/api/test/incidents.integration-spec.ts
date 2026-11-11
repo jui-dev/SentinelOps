@@ -4645,6 +4645,7 @@ describe('incidents (integration)', () => {
       const edited = await call('patch', analysis, fx.erin, {
         version: 1,
         summary: 'Card payments failed for two hours.',
+        markDone: ['summary'],
       });
 
       expect(edited.status).toBe(200);

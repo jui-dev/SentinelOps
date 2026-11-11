@@ -65,6 +65,17 @@ const open = async () => {
     handler: (request) => {
       if (route(request) === `GET ${analysisPath}`) return jsonResponse(200, server);
       if (request.path === analysisPath && request.method === "PATCH") return applied(request);
+      if (request.path === `${analysisPath}/publish` && request.method === "POST") {
+        server = {
+          ...server,
+          status: "PUBLISHED",
+          version: server.version + 1,
+          publishedBy: { id: daniel.user.id, name: "Daniel Okafor" },
+          publishedAt: "2026-09-22T14:10:00.000Z",
+        };
+
+        return jsonResponse(200, server);
+      }
 
       return handler(request);
     },
@@ -191,6 +202,82 @@ describe("the sections of an analysis", () => {
     expect(progress().textContent).toContain(
       "The summary is done, so this can be published. Impact is still in progress.",
     );
+  });
+
+  it("keeps Publish shut until the summary is marked done, and says why", async () => {
+    await open();
+
+    const bar = screen.getByRole("region", { name: "Draft actions" });
+    const publish = within(bar).getByRole("button", { name: "Publish…" }) as HTMLButtonElement;
+
+    expect(publish.disabled).toBe(true);
+    expect(bar.textContent).toContain("Mark the summary as done to publish.");
+  });
+
+  it("warns before publishing a section in progress, then allows it", async () => {
+    const user = userEvent.setup();
+
+    server = draft({ doneSections: ["summary"] });
+
+    const mock = await open();
+
+    await user.click(screen.getByRole("button", { name: "Publish…" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Publish this analysis?" });
+
+    expect(dialog.textContent).toContain(
+      "Impact is still in progress. It will be published exactly as it is written now.",
+    );
+    expect(
+      within(within(dialog).getByRole("list", { name: "What will be published" }))
+        .getAllByRole("listitem")
+        .map((item) => item.textContent),
+    ).toEqual([
+      "SummaryDone",
+      "ImpactIn progress",
+      "CauseBlank, left out",
+      "LessonsBlank, left out",
+    ]);
+    expect(within(dialog).getByRole("button", { name: "Go back and finish" })).toBeDefined();
+
+    await expectNoAxeViolations(dialog);
+    await user.click(within(dialog).getByRole("button", { name: "Publish anyway" }));
+
+    expect(await screen.findByText("Analysis published.")).toBeDefined();
+    expect(
+      mock.requests.filter((request) => request.path === `${analysisPath}/publish`),
+    ).toHaveLength(1);
+  });
+
+  it("goes back to the page from the warning, publishing nothing", async () => {
+    const user = userEvent.setup();
+
+    server = draft({ doneSections: ["summary"] });
+
+    const mock = await open();
+
+    await user.click(screen.getByRole("button", { name: "Publish…" }));
+    await user.click(await screen.findByRole("button", { name: "Go back and finish" }));
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(
+      mock.requests.filter((request) => request.path === `${analysisPath}/publish`),
+    ).toHaveLength(0);
+  });
+
+  it("does not warn when nothing is left in progress", async () => {
+    const user = userEvent.setup();
+
+    server = draft({ impact: null, doneSections: ["summary"] });
+
+    await open();
+    await user.click(screen.getByRole("button", { name: "Publish…" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Publish this analysis?" });
+
+    expect(dialog.textContent).not.toContain("still in progress");
+    expect(within(dialog).getByRole("button", { name: "Publish analysis" })).toBeDefined();
+    expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeDefined();
   });
 
   it("has no accessibility violations with every standing on the page", async () => {

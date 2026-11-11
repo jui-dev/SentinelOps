@@ -480,9 +480,11 @@ export class IncidentAnalysesService {
    * (404 ANALYSIS_NOT_STARTED), whether the caller may write it (403
    * NOT_ANALYSIS_OWNER), its state — published (409 ANALYSIS_PUBLISHED) or
    * moved past the caller's version (409 ANALYSIS_CHANGED) — and last its
-   * content: a summary, the one section a publication requires (409
-   * ANALYSIS_SUMMARY_REQUIRED). The version is judged before the content, so
-   * that answer is always about the analysis the caller read.
+   * content: a summary its writer has marked done, the one section a
+   * publication requires (409 ANALYSIS_SUMMARY_REQUIRED). The other sections
+   * are published as they stand, finished or not. The version is judged
+   * before the content, so that answer is always about the analysis the
+   * caller read.
    *
    * The guarantee is applyToDraft's conditional UPDATE, as for an edit.
    * The summary is not in its WHERE: the version
@@ -519,7 +521,7 @@ export class IncidentAnalysesService {
                 status: true,
                 version: true,
                 ownerMembershipId: true,
-                summary: true,
+                doneSections: true,
               },
             },
           },
@@ -547,7 +549,8 @@ export class IncidentAnalysesService {
           throw analysisChanged();
         }
 
-        if (current.summary === null) {
+        // Only a section holding text can be done, so this needs a summary too.
+        if (!current.doneSections.includes('summary')) {
           throw analysisSummaryRequired();
         }
 

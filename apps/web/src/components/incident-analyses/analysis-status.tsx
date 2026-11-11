@@ -1,11 +1,7 @@
 import type { ReactNode } from "react";
 
 import { cx } from "@/components/ui/cx";
-import { ANALYSIS_SECTIONS } from "@/lib/api/contracts";
-import type {
-  IncidentAnalysisResponse,
-  IncidentAnalysisStatus,
-} from "@/lib/api/contracts";
+import type { IncidentAnalysisStatus } from "@/lib/api/contracts";
 
 /**
  * An analysis's status as a glyph and its word — never a pill, and never the
@@ -66,11 +62,3 @@ export function AnalysisStatusMark({
     </span>
   );
 }
-
-/** How many of the analysis's sections have been written. */
-export const sectionsWritten = (analysis: IncidentAnalysisResponse): number =>
-  ANALYSIS_SECTIONS.filter((section) => analysis[section] !== null).length;
-
-/** "2 of 4 sections written". */
-export const sectionsWrittenLabel = (analysis: IncidentAnalysisResponse) =>
-  `${sectionsWritten(analysis)} of ${ANALYSIS_SECTIONS.length} sections written`;

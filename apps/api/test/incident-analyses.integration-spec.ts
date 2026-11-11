@@ -376,6 +376,7 @@ describe('incident analyses (integration)', () => {
         await editAnalysis(fx.orgA, fx.dave, number, {
           version: 1,
           summary: 'Final',
+          markDone: ['summary'],
         })
       ).status,
     ).toBe(200);
@@ -1376,6 +1377,7 @@ describe('incident analyses (integration)', () => {
           await editAnalysis(fx.orgA, fx.dave, number, {
             version: 1,
             summary: 'Card payments failed for two hours.',
+            markDone: ['summary'],
           })
         ).status,
       ).toBe(200);
@@ -1470,6 +1472,44 @@ describe('incident analyses (integration)', () => {
       expect(await publication(fx.orgA, number)).toMatchObject({
         status: 'DRAFT',
         version: 2,
+      });
+    });
+
+    it('should refuse a summary that is written but not marked done, keeping it a draft', async () => {
+      const number = await aDraftDaveOwns();
+
+      await editAnalysis(fx.orgA, fx.dave, number, {
+        version: 1,
+        summary: 'Card payments failed.',
+      });
+
+      expectCode(
+        await publishAnalysis(fx.orgA, fx.dave, number, { version: 2 }),
+        409,
+        'ANALYSIS_SUMMARY_REQUIRED',
+      );
+      expect((await publication(fx.orgA, number)).status).toBe('DRAFT');
+    });
+
+    it('should publish an optional section still in progress, as it stands', async () => {
+      const number = await aDraftDaveOwns();
+
+      await editAnalysis(fx.orgA, fx.dave, number, {
+        version: 1,
+        summary: 'Card payments failed.',
+        impact: 'Still counting.',
+        markDone: ['summary'],
+      });
+
+      const published = await publishAnalysis(fx.orgA, fx.dave, number, {
+        version: 2,
+      });
+
+      expect(published.status).toBe(200);
+      expect(published.body).toMatchObject({
+        status: 'PUBLISHED',
+        impact: 'Still counting.',
+        doneSections: ['summary'],
       });
     });
 

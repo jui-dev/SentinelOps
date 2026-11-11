@@ -23,12 +23,13 @@ import {
   useAnalysisAccess,
   useIncidentAnalysis,
 } from "./analysis-queries";
-import { AnalysisStatusMark, sectionsWritten } from "./analysis-status";
-import { SECTION_HINTS } from "./section-editor";
+import { AnalysisStatusMark } from "./analysis-status";
+import { savedProgress } from "./draft-state";
+import { PROGRESS_WORDS, SECTION_HINTS, SectionMark } from "./section-editor";
 import { StartAnalysis } from "./start-analysis";
 
 /** How far a draft has come, as a bar; the words beside it say the same. */
-function Progress({ written }: { written: number }) {
+function Progress({ done }: { done: number }) {
   return (
     <span
       aria-hidden="true"
@@ -36,7 +37,7 @@ function Progress({ written }: { written: number }) {
     >
       <span
         className="block h-full rounded-full bg-linear-to-r from-status-resolved-text to-status-investigating-text"
-        style={{ width: `${(written / ANALYSIS_SECTIONS.length) * 100}%` }}
+        style={{ width: `${(done / ANALYSIS_SECTIONS.length) * 100}%` }}
       />
     </span>
   );
@@ -44,9 +45,9 @@ function Progress({ written }: { written: number }) {
 
 /**
  * The four sections as a checklist: each one's name, whether it is required,
- * what it is for, and whether it is written. The summary is the one a draft
- * needs to be published, so it says so — and, for whoever is writing, that it
- * comes first while it is missing.
+ * what it is for, and where it stands. The summary is the one a draft needs
+ * to be published, so it says so — and, for whoever is writing, that it comes
+ * first while it is missing.
  */
 function SectionChecklist({
   analysis,
@@ -56,12 +57,16 @@ function SectionChecklist({
   /** The caller writes this draft: the missing summary is theirs to do first. */
   writing: boolean;
 }) {
+  const progress = analysis ? savedProgress(analysis) : null;
+
   return (
     <ol aria-label="Analysis sections" className="divide-y divide-line-subtle border-t border-line-subtle">
       {ANALYSIS_SECTIONS.map((section, index) => {
-        const written = analysis?.[section] != null;
+        const standing = progress?.[section] ?? "not-started";
+        const done = standing === "done";
         const required = section === "summary";
-        const first = required && !written && writing;
+        const first = required && standing === "not-started" && writing;
+        const amber = first || standing === "in-progress";
 
         return (
           <li
@@ -72,14 +77,14 @@ function SectionChecklist({
               aria-hidden="true"
               className={cx(
                 "data grid size-6 place-items-center rounded-md border text-xs",
-                written
+                done
                   ? "border-status-resolved-line bg-status-resolved-subtle text-status-resolved-text"
-                  : first
+                  : amber
                     ? "border-warning-line text-warning-text"
                     : "border-line-strong text-fg-subtle",
               )}
             >
-              {written ? <Check strokeWidth={3} className="size-3.5" /> : index + 1}
+              {done ? <Check strokeWidth={3} className="size-3.5" /> : index + 1}
             </span>
             <span className="flex min-w-0 flex-col">
               <span className="text-sm">
@@ -94,15 +99,18 @@ function SectionChecklist({
             </span>
             <span
               className={cx(
-                "text-xs whitespace-nowrap",
-                written
+                "inline-flex items-center gap-1.5 text-xs whitespace-nowrap",
+                done
                   ? "text-status-resolved-text"
-                  : first
+                  : amber
                     ? "text-warning-text"
                     : "text-fg-subtle",
               )}
             >
-              {written ? "written" : first ? "write this first" : "not written"}
+              {standing !== "not-started" && (
+                <SectionMark progress={standing} className="size-3" />
+              )}
+              {first ? "Write this first" : PROGRESS_WORDS[standing]}
             </span>
           </li>
         );
@@ -116,7 +124,7 @@ function SectionChecklist({
  * step once it is resolved: start the analysis, carry on writing it, review
  * and publish it, and once published, read it. Its header says which, with
  * the one button that does it; beneath, the four sections as a checklist of
- * what is written.
+ * where each stands.
  *
  * Whoever cannot act on it — a member, while the Admin's draft is written —
  * sees where it stands, without the words "next step". Only for a resolved
@@ -164,7 +172,10 @@ export function AnalysisEntry({
   );
 
   const published = data?.status === "PUBLISHED";
-  const written = data ? sectionsWritten(data) : 0;
+  const standings = data ? Object.values(savedProgress(data)) : [];
+  const done = standings.filter((standing) => standing === "done").length;
+  const inProgress = standings.filter((standing) => standing === "in-progress").length;
+  const summaryDone = data?.doneSections.includes("summary") ?? false;
   // Whose move it is: the caller's, while there is something for them to do.
   const yours = data === null ? canStart : !published && canWrite;
 
@@ -190,22 +201,28 @@ export function AnalysisEntry({
   } else {
     headline = !canWrite
       ? `Being written by ${data.owner.name}.`
-      : data.summary !== null
+      : summaryDone
         ? "Ready to publish."
         : "Write up what happened while it's fresh.";
     meta = (
       <span className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
-        <Progress written={written} />
+        <Progress done={done} />
         <AnalysisStatusMark status={data.status} />
         <span>
-          {written} of {ANALYSIS_SECTIONS.length} sections written
+          {done} of {ANALYSIS_SECTIONS.length} sections done
         </span>
+        {inProgress > 0 && (
+          <>
+            <span aria-hidden="true">·</span>
+            <span>{inProgress} in progress</span>
+          </>
+        )}
         <span aria-hidden="true">·</span>
         <span>owned by {isOwner ? "you" : data.owner.name}</span>
       </span>
     );
     action = canWrite
-      ? link(data.summary !== null ? "Review and publish" : "Continue writing")
+      ? link(summaryDone ? "Review and publish" : "Continue writing")
       : link("Read draft", false);
   }
 

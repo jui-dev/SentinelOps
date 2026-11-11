@@ -91,6 +91,9 @@ export const analysisSectionNotWritten = (): ConflictException =>
  * be unknown.
  */
 export const analysisSummaryRequired = (): ConflictException =>
-  new ConflictException('Write a summary before publishing this analysis', {
-    errorCode: IncidentAnalysesErrorCode.ANALYSIS_SUMMARY_REQUIRED,
-  });
+  new ConflictException(
+    'Mark the summary as done before publishing this analysis',
+    {
+      errorCode: IncidentAnalysesErrorCode.ANALYSIS_SUMMARY_REQUIRED,
+    },
+  );

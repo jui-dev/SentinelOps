@@ -1,6 +1,5 @@
 "use client";
 
-import { Circle, CircleCheck } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { incidentKey } from "@/components/incidents/severity";
@@ -11,8 +10,9 @@ import { DialogActions, FormDialog } from "@/components/ui/dialog";
 import { ANALYSIS_SECTIONS } from "@/lib/api/contracts";
 import type { IncidentAnalysisResponse } from "@/lib/api/contracts";
 
-import { SECTION_TITLES } from "./analysis-document";
+import { sectionsInSentence, SECTION_TITLES } from "./analysis-document";
 import { analysisRefusalOf, usePublishIncidentAnalysis } from "./analysis-queries";
+import { PROGRESS_WORDS, SectionMark } from "./section-editor";
 import type { AnalysisDraft } from "./use-analysis-draft";
 
 /**
@@ -24,8 +24,9 @@ export type PublishOutcome = "published" | "preempted" | "not-owner";
 
 /**
  * Publishing the draft as it is saved — the only text that can be — after
- * the writer has seen what will be in it: each section, written or to be
- * published as not recorded. Final, so asked for once more.
+ * the writer has seen what will be in it: each section done, still in
+ * progress, or blank. Final, so asked for once more, and a section left in
+ * progress is warned about before it goes out as it stands.
  *
  * It publishes the version it opened on. Should another arrive while it is
  * open, it closes without publishing, and the writer reviews what changed:
@@ -46,7 +47,12 @@ export function PublishDialog({
   const organization = useOrganization();
   const publish = usePublishIncidentAnalysis(organization.id, incidentNumber);
   const [version] = useState(draft.state.base.version);
-  const { sections } = draft.state.base;
+  const { progress } = draft;
+  const unfinished = ANALYSIS_SECTIONS.filter(
+    (section) => progress[section] === "in-progress",
+  );
+  const warning = unfinished.length > 0;
+  const one = unfinished.length === 1;
   const moved = draft.state.base.version !== version;
 
   useEffect(() => {
@@ -86,46 +92,59 @@ export function PublishDialog({
   return (
     <FormDialog
       title="Publish this analysis?"
-      description={`It becomes ${incidentKey(incidentNumber)}'s permanent record. It can't be edited, reassigned, or unpublished.`}
+      description={`${incidentKey(incidentNumber)}'s published analysis is final and is kept as it is.`}
       onClose={onClose}
     >
       <div className="flex flex-col gap-4">
         {summaryMissing ? (
-          <Alert>Write and save a summary before publishing.</Alert>
+          <Alert>Mark the summary as done before publishing.</Alert>
         ) : (
           publish.isError && !refusal && <ErrorAlert error={publish.error} />
         )}
-        <ul aria-label="What will be published" className="flex flex-col gap-1.5">
-          {ANALYSIS_SECTIONS.map((section) => {
-            const written = sections[section] !== "";
-            const Glyph = written ? CircleCheck : Circle;
-
-            return (
-              <li key={section} className="flex items-center gap-2 text-sm">
-                <Glyph
-                  aria-hidden="true"
-                  strokeWidth={2}
-                  className={
-                    written ? "size-3.5 text-fg-muted" : "size-3.5 text-fg-subtle"
-                  }
-                />
-                <span className={written ? "text-fg" : "text-fg-muted"}>
-                  {SECTION_TITLES[section]}
-                  {!written && <span className="text-fg-subtle"> — not recorded</span>}
+        {warning && (
+          <Alert tone="warning">
+            <strong className="font-semibold">
+              {sectionsInSentence(unfinished)} {one ? "is" : "are"} still in progress.
+            </strong>{" "}
+            {one ? "It" : "They"} will be published exactly as {one ? "it is" : "they are"}{" "}
+            written now.
+          </Alert>
+        )}
+        <ul
+          aria-label="What will be published"
+          className="divide-y divide-line-subtle border-y border-line-subtle"
+        >
+          {ANALYSIS_SECTIONS.map((section) => (
+            <li
+              key={section}
+              className="flex items-center justify-between gap-3 py-2 text-sm text-fg"
+            >
+              {SECTION_TITLES[section]}
+              {progress[section] === "not-started" ? (
+                <span className="text-xs text-fg-muted">Blank, left out</span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 text-xs text-fg-muted">
+                  <SectionMark progress={progress[section]} className="size-3" />
+                  {PROGRESS_WORDS[progress[section]]}
                 </span>
-              </li>
-            );
-          })}
+              )}
+            </li>
+          ))}
         </ul>
-        <p className="text-sm text-fg-muted">
-          Sections left empty are published as &ldquo;Not recorded.&rdquo;
-        </p>
         <DialogActions>
           <Button variant="secondary" onClick={onClose}>
-            Cancel
+            {warning ? "Go back and finish" : "Cancel"}
           </Button>
-          <Button onClick={confirm} disabled={publish.isPending || summaryMissing}>
-            {publish.isPending ? "Publishing…" : "Publish analysis"}
+          <Button
+            variant="complete"
+            onClick={confirm}
+            disabled={publish.isPending || summaryMissing}
+          >
+            {publish.isPending
+              ? "Publishing…"
+              : warning
+                ? "Publish anyway"
+                : "Publish analysis"}
           </Button>
         </DialogActions>
       </div>

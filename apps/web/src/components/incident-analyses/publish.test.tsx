@@ -59,7 +59,7 @@ describe("publishing an incident analysis", () => {
   beforeEach(() => {
     clearAccessToken();
     window.sessionStorage.clear();
-    server = draft({ version: 3 });
+    server = draft({ version: 3, doneSections: ["summary", "impact"] });
   });
 
   describe("when it can be published", () => {
@@ -82,20 +82,20 @@ describe("publishing an incident analysis", () => {
       ).toBe("Save before publishing — only saved text is published.");
     });
 
-    it("waits for a saved summary, and says so", async () => {
-      server = draft({ version: 3, summary: null });
+    it("waits for a summary marked done, and says so", async () => {
+      server = draft({ version: 3, summary: null, doneSections: [] });
       asOwner();
       inOrganization(<IncidentAnalysisPage />);
 
       const publish = await publishButton();
 
       expect(publish).toHaveProperty("disabled", true);
-      expect(screen.getByText("Write and save a summary to publish.")).toBeDefined();
+      expect(screen.getByText("Mark the summary as done to publish.")).toBeDefined();
     });
   });
 
   describe("confirming", () => {
-    it("shows what will be published, the empty sections as not recorded", async () => {
+    it("shows what will be published, the empty sections as left out", async () => {
       const user = userEvent.setup();
 
       asOwner();
@@ -104,13 +104,18 @@ describe("publishing an incident analysis", () => {
       const dialog = await openDialog(user);
 
       expect(dialog.textContent).toContain(
-        "It becomes INC-42's permanent record. It can't be edited, reassigned, or unpublished.",
+        "INC-42's published analysis is final and is kept as it is.",
       );
       expect(
         within(within(dialog).getByRole("list", { name: "What will be published" }))
           .getAllByRole("listitem")
           .map((item) => item.textContent),
-      ).toEqual(["Summary", "Impact", "Cause — not recorded", "Lessons — not recorded"]);
+      ).toEqual([
+        "SummaryDone",
+        "ImpactDone",
+        "CauseBlank, left out",
+        "LessonsBlank, left out",
+      ]);
       await expectNoAxeViolations(dialog);
     });
 
@@ -227,7 +232,7 @@ describe("publishing an incident analysis", () => {
       await user.click(within(dialog).getByRole("button", { name: "Publish analysis" }));
 
       expect(
-        await within(dialog).findByText("Write and save a summary before publishing."),
+        await within(dialog).findByText("Mark the summary as done before publishing."),
       ).toBeDefined();
       expect(within(dialog).getByRole("button", { name: "Publish analysis" })).toHaveProperty(
         "disabled",
