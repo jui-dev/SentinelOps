@@ -20,6 +20,7 @@ import type {
   IncidentAttentionResponse,
   IncidentPartsResponse,
   IncidentDetailResponse,
+  IncidentRepeatsResponse,
   IncidentFlowResponse,
   IncidentHistoryPage,
   IncidentOccurrenceResponse,
@@ -273,6 +274,20 @@ export class IncidentsController {
    * starting and completing, and the severity, status, and team changes the
    * server recorded.
    */
+  /** Its known issue, and the other times that has happened. */
+  @Get(':incidentNumber/repeats')
+  @RequirePermission(Permission.INCIDENTS_READ)
+  repeats(
+    @CurrentMembership() membership: OrganizationContext,
+    @Param('incidentNumber') incidentNumber: string,
+  ): Promise<IncidentRepeatsResponse> {
+    return this.incidents.repeats(
+      membership.organizationId,
+      { membershipId: membership.membershipId, role: membership.role },
+      incidentNumber,
+    );
+  }
+
   @Get(':incidentNumber/timeline')
   @RequirePermission(Permission.INCIDENTS_READ)
   timeline(

@@ -10,7 +10,10 @@ import { NotificationsWriter } from '../notifications/notifications.writer.js';
 import type { IncidentNotificationType } from '../notifications/notifications.recipients.js';
 import { membershipNotFound } from '../organizations/organizations.errors.js';
 import { knownIssueForDeclaration } from '../known-issues/known-issues.declare.js';
-import { knownIssueNotFound } from '../known-issues/known-issues.errors.js';
+import {
+  knownIssueArchived,
+  knownIssueNotFound,
+} from '../known-issues/known-issues.errors.js';
 import {
   serviceArchived,
   serviceNotFound,
@@ -33,6 +36,7 @@ import type {
   IncidentActivityType,
   IncidentAttentionResponse,
   IncidentDetailResponse,
+  IncidentRepeatsResponse,
   IncidentFlowResponse,
   IncidentHistoryPage,
   IncidentOccurrenceResponse,
@@ -1512,6 +1516,82 @@ export class IncidentsService {
   }
 
   /**
+   * The incident's known issue, and the other times it happened: those the
+   * reader may see (see incidents.scope.ts), newest first, and how many
+   * others there are that they may not. The incident itself is read in the
+   * reader's scope first, so one they may not see is 404 as for get().
+   */
+  async repeats(
+    organizationId: string,
+    reader: IncidentReader,
+    incidentNumber: string,
+  ): Promise<IncidentRepeatsResponse> {
+    const number = parseIncidentNumber(incidentNumber);
+
+    if (number === undefined) {
+      throw incidentNotFound();
+    }
+
+    const incident = await this.prisma.incident.findFirst({
+      where: withinIncidentScope(organizationId, reader, { number }),
+      select: {
+        id: true,
+        knownIssue: { select: { id: true, name: true, usualSeverity: true } },
+      },
+    });
+
+    if (!incident) {
+      throw incidentNotFound();
+    }
+
+    if (!incident.knownIssue) {
+      return { knownIssue: null, others: [], hidden: 0 };
+    }
+
+    const others = {
+      knownIssueId: incident.knownIssue.id,
+      id: { not: incident.id },
+    };
+    const [visible, all] = await this.prisma.$transaction(
+      [
+        this.prisma.incident.findMany({
+          where: withinIncidentScope(organizationId, reader, others),
+          select: {
+            number: true,
+            title: true,
+            severity: true,
+            status: true,
+            createdAt: true,
+            resolvedAt: true,
+            analysis: { select: { publishedAt: true } },
+          },
+          orderBy: [{ createdAt: 'desc' }, { number: 'desc' }],
+        }),
+        this.prisma.incident.count({ where: { organizationId, ...others } }),
+      ],
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
+
+    return {
+      knownIssue: {
+        id: incident.knownIssue.id,
+        name: incident.knownIssue.name,
+        usualSeverity: incident.knownIssue.usualSeverity,
+      },
+      others: visible.map((row) => ({
+        number: row.number,
+        title: row.title,
+        severity: row.severity,
+        status: row.status,
+        createdAt: row.createdAt.toISOString(),
+        resolvedAt: row.resolvedAt?.toISOString() ?? null,
+        analysisPublished: row.analysis?.publishedAt != null,
+      })),
+      hidden: all - visible.length,
+    };
+  }
+
+  /**
    * Declares an incident against one of the organization's services. The
    * responsible team is the service's owner at this moment; the declarer is
    * the user behind the admitting membership.
@@ -1722,9 +1802,32 @@ export class IncidentsService {
           select: {
             severity: true,
             status: true,
+            serviceId: true,
+            knownIssueId: true,
             team: { select: { id: true, name: true } },
           },
         });
+
+        // Correcting which known issue it is: one of its own service's, and
+        // not an archived one unless it is already the one linked.
+        if (input.knownIssueId) {
+          const chosen = await tx.knownIssue.findFirst({
+            where: {
+              id: input.knownIssueId,
+              organizationId,
+              serviceId: before.serviceId,
+            },
+            select: { archivedAt: true },
+          });
+
+          if (!chosen) throw knownIssueNotFound();
+          if (
+            chosen.archivedAt !== null &&
+            input.knownIssueId !== before.knownIssueId
+          ) {
+            throw knownIssueArchived();
+          }
+        }
 
         if (resolving) {
           // lockActive has refused a resolved incident, so this is DECLARED
@@ -1810,6 +1913,7 @@ export class IncidentsService {
             severity: input.severity,
             status: input.status,
             teamId: input.teamId,
+            knownIssueId: input.knownIssueId,
             responseAccess: newTeam ? INITIAL_RESPONSE_ACCESS : undefined,
             resolvedAt: resolving ? now : undefined,
             resolution: resolving ? input.resolution : undefined,

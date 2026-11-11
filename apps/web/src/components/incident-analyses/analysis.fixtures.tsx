@@ -91,6 +91,7 @@ export const resolvedIncident = (
   title: "Card payments failing",
   responseAccess: "OPEN",
   assignees: [],
+  knownIssue: null,
   summary: null,
   resolution: "Rolled back the 12:00 deploy.",
   severity: "SEV1",

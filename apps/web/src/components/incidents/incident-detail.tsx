@@ -51,6 +51,10 @@ import {
 } from "./incident-response";
 import { RespondersPanel } from "./responders-panel";
 import { IncidentTimeline } from "./incident-timeline";
+import {
+  HappenedBefore,
+  KnownIssueMark,
+} from "@/components/known-issues/happened-before";
 import { LiveStatus } from "./live-status";
 import { ManageIncident } from "./manage-incident";
 import { incidentKey, SeverityMark, StatusMark } from "./severity";
@@ -232,6 +236,7 @@ function IncidentHeader({
               <SeverityMark severity={incident.severity} label />
             </span>
             <StatusMark status={incident.status} />
+            <KnownIssueMark incident={incident} />
           </div>
           {incident.summary && (
             <p className="text-base whitespace-pre-line text-fg">
@@ -772,6 +777,7 @@ function IncidentPage({
           ) : (
             <FollowPanel incident={incident} />
           )}
+          <HappenedBefore incident={incident} />
           <IncidentTimeline
             incident={incident}
             tone={canManage || oversees ? "oversight" : "member"}

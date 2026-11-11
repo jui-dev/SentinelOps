@@ -107,6 +107,8 @@ export const updateIncidentSchema = z
     status: incidentStatusTargetSchema.optional(),
     resolution: incidentResolutionSchema.optional(),
     teamId: resourceIdSchema.optional(),
+    /** One of the incident's own service's known issues; null for a one-off. */
+    knownIssueId: resourceIdSchema.nullable().optional(),
   })
   .refine(
     (body) =>
@@ -114,8 +116,9 @@ export const updateIncidentSchema = z
       body.summary !== undefined ||
       body.severity !== undefined ||
       body.status !== undefined ||
-      body.teamId !== undefined,
-    'Provide a title, summary, severity, status, or team to change',
+      body.teamId !== undefined ||
+      body.knownIssueId !== undefined,
+    'Provide a title, summary, severity, status, team, or known issue to change',
   )
   .refine(
     (body) => body.status !== 'RESOLVED' || body.resolution !== undefined,

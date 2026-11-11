@@ -88,6 +88,7 @@ const incident: IncidentDetailResponse = {
   title: "Card payments failing",
   responseAccess: "OPEN",
   assignees: [],
+  knownIssue: null,
   summary: null,
   resolution: null,
   severity: "SEV1",

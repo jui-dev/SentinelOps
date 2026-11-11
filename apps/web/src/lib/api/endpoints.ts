@@ -37,6 +37,7 @@ import type {
   InvitationLookupResponse,
   InvitationResponse,
   KnownIssueResponse,
+  IncidentRepeatsResponse,
   CreateKnownIssueRequest,
   UpdateKnownIssueRequest,
   MergeKnownIssueRequest,
@@ -495,6 +496,11 @@ export const listMemberResponses = (
   );
 
 /** The incident's timeline, oldest first. Unpaged. */
+export const getIncidentRepeats = (organizationId: string, number: number) =>
+  authenticatedRequest<IncidentRepeatsResponse>(
+    `${incidentPath(organizationId, number)}/repeats`,
+  );
+
 export const getIncidentTimeline = (organizationId: string, number: number) =>
   authenticatedRequest<IncidentActivityResponse[]>(
     `${incidentPath(organizationId, number)}/timeline`,

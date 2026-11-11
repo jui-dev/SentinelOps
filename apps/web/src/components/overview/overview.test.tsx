@@ -63,6 +63,7 @@ const incident = (overrides: Partial<IncidentResponse> = {}): IncidentResponse =
   title: "Card payments failing",
   responseAccess: "OPEN",
   assignees: [],
+  knownIssue: null,
   summary: null,
   severity: "SEV1",
   status: "DECLARED",

@@ -25,6 +25,7 @@ import {
   getIncident,
   getIncidentAttention,
   getIncidentParts,
+  getIncidentRepeats,
   getIncidentTimeline,
   listIncidents,
   listMemberResponses,
@@ -224,6 +225,10 @@ export const storeIncident = (
   void queryClient.invalidateQueries({
     queryKey: queryKeys.incidentTimeline(organizationId, incident.number),
   });
+  // Its known issue may have changed, or happened once more.
+  void queryClient.invalidateQueries({
+    queryKey: [...queryKeys.incidents(organizationId), "repeats"],
+  });
   void queryClient.invalidateQueries({
     queryKey: queryKeys.incidentAttention(organizationId),
   });
@@ -231,6 +236,19 @@ export const storeIncident = (
     queryKey: [...queryKeys.incidents(organizationId), "member-responses"],
   });
 };
+
+/** The incident's known issue, and the other times it happened. */
+export const useIncidentRepeats = (
+  organizationId: string,
+  number: number,
+  /** Only an incident with a known issue has repeats to ask for. */
+  enabled = true,
+) =>
+  useQuery({
+    queryKey: queryKeys.incidentRepeats(organizationId, number),
+    queryFn: () => getIncidentRepeats(organizationId, number),
+    enabled,
+  });
 
 /** One incident's timeline, oldest first; asked again while `live`. */
 export const useIncidentTimeline = (

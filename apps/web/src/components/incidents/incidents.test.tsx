@@ -194,6 +194,7 @@ const incident = (
   title: "Card payments failing",
   responseAccess: "OPEN",
   assignees: [],
+  knownIssue: null,
   summary: "Card declines since 14:02.",
   resolution: null,
   severity: "SEV1",

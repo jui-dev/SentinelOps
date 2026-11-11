@@ -165,6 +165,9 @@ export const queryKeys = {
     ["organization", organizationId, "notifications", "unread-count"] as const,
   notificationList: (organizationId: string) =>
     ["organization", organizationId, "notifications", "list"] as const,
+  /** Under the incidents, so any change to them refreshes it too. */
+  incidentRepeats: (organizationId: string, number: number) =>
+    ["organization", organizationId, "incidents", "repeats", number] as const,
   incidentTimeline: (organizationId: string, number: number) =>
     [
       "organization",

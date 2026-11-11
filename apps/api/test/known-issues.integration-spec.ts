@@ -484,4 +484,115 @@ describe('known issues (integration)', () => {
       ).rejects.toThrow();
     });
   });
+
+  describe('an incident and its repeats', () => {
+    it('should list the other times it happened that the reader may see, newest first, and count the rest', async () => {
+      const issue = await known('Card payments failing at checkout');
+
+      for (let n = 0; n < 3; n += 1) {
+        await declare({ knownIssueId: issue.id });
+      }
+      await declare({ title: 'A one-off' });
+
+      // Ben is on Payments; incident 1 has since moved to another team.
+      const payments = await prisma.service.findUniqueOrThrow({
+        where: { id: fx.paymentApi },
+        select: { ownerTeamId: true },
+      });
+      const benInA = await prisma.membership.findFirstOrThrow({
+        where: { organizationId: fx.orgA, userId: fx.ben },
+      });
+      const elsewhere = await prisma.team.create({
+        data: { organizationId: fx.orgA, name: 'Elsewhere', slug: 'elsewhere' },
+      });
+
+      await prisma.teamMembership.create({
+        data: {
+          organizationId: fx.orgA,
+          teamId: payments.ownerTeamId,
+          membershipId: benInA.id,
+        },
+      });
+      await prisma.incident.updateMany({
+        where: { organizationId: fx.orgA, number: 1 },
+        data: { teamId: elsewhere.id },
+      });
+
+      const asBen = await call('get', `${fx.orgA}/incidents/3/repeats`, fx.ben);
+
+      expect(asBen.status).toBe(200);
+      expect(asBen.body).toEqual({
+        knownIssue: {
+          id: issue.id,
+          name: 'Card payments failing at checkout',
+          usualSeverity: 'SEV2',
+        },
+        others: [
+          {
+            number: 2,
+            title: 'Card payments failing',
+            severity: 'SEV1',
+            status: 'DECLARED',
+            createdAt: expect.any(String),
+            resolvedAt: null,
+            analysisPublished: false,
+          },
+        ],
+        hidden: 1,
+      });
+
+      const asAlice = await call(
+        'get',
+        `${fx.orgA}/incidents/3/repeats`,
+        fx.alice,
+      );
+
+      expect(
+        asAlice.body.others.map((o: { number: number }) => o.number),
+      ).toEqual([2, 1]);
+      expect(asAlice.body.hidden).toBe(0);
+      // An incident the reader may not see is not found, as everywhere.
+      expect(
+        (await call('get', `${fx.orgA}/incidents/1/repeats`, fx.ben)).body.code,
+      ).toBe('INCIDENT_NOT_FOUND');
+      // A one-off has none.
+      expect(
+        (await call('get', `${fx.orgA}/incidents/4/repeats`, fx.alice)).body,
+      ).toEqual({ knownIssue: null, others: [], hidden: 0 });
+    });
+
+    it('should let the Admin correct which known issue an active incident is, within its service', async () => {
+      const right = await known('Card payments failing at checkout');
+      const wrong = await known('Webhook retries backing up');
+      const portals = await known('Portal slow', fx.portal);
+      const archived = await known('Old problem');
+
+      await call('patch', `${fx.orgA}/known-issues/${archived.id}`, fx.alice, {
+        archived: true,
+      });
+      await declare({ knownIssueId: wrong.id });
+
+      const change = (knownIssueId: string | null) =>
+        call('patch', `${fx.orgA}/incidents/1`, fx.alice, { knownIssueId });
+
+      expect((await change(right.id)).body.knownIssue).toEqual({
+        id: right.id,
+        name: 'Card payments failing at checkout',
+      });
+      expect((await change(portals.id)).body.code).toBe(
+        'KNOWN_ISSUE_NOT_FOUND',
+      );
+      expect((await change(archived.id)).body.code).toBe(
+        'KNOWN_ISSUE_ARCHIVED',
+      );
+      expect((await change(null)).body.knownIssue).toBeNull();
+      expect(
+        (
+          await call('patch', `${fx.orgA}/incidents/1`, fx.ben, {
+            knownIssueId: right.id,
+          })
+        ).status,
+      ).toBe(403);
+    });
+  });
 });

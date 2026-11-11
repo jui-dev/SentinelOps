@@ -71,6 +71,31 @@ export interface IncidentResponse {
 }
 
 /**
+ * `GET .../incidents/:number/repeats`: the incident's known issue, and the
+ * other times it has happened. `others` holds only incidents the reader may
+ * see, newest first, each with whether its analysis is published; `hidden`
+ * counts the rest, so a member is told there are more without being shown
+ * them. A one-off has no known issue and no others.
+ */
+export interface IncidentRepeatsResponse {
+  knownIssue: {
+    id: string;
+    name: string;
+    usualSeverity: IncidentSeverity;
+  } | null;
+  others: {
+    number: number;
+    title: string;
+    severity: IncidentSeverity;
+    status: IncidentStatus;
+    createdAt: string;
+    resolvedAt: string | null;
+    analysisPublished: boolean;
+  }[];
+  hidden: number;
+}
+
+/**
  * Where one responder's own part of the response stands. Someone who has not
  * started investigating is not a responder at all, and has no entry.
  */

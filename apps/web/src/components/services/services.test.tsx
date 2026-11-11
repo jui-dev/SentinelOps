@@ -101,6 +101,7 @@ const anIncident = (
   title: `Incident ${number}`,
   responseAccess: "OPEN",
   assignees: [],
+  knownIssue: null,
   summary: null,
   severity: "SEV3",
   status: "INVESTIGATING",

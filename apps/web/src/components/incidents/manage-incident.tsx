@@ -32,6 +32,7 @@ import {
   useUpdateIncident,
 } from "./incident-queries";
 import { SeveritySelect } from "./incidents-view";
+import { useServiceKnownIssues } from "@/components/known-issues/known-issue-queries";
 import { incidentKey } from "./severity";
 
 /**
@@ -121,6 +122,105 @@ function SeverityAndTeamForm({ incident }: { incident: IncidentResponse }) {
         )}
         <div>
           <Button type="submit" disabled={unchanged || update.isPending}>
+            {update.isPending ? "Saving…" : "Save"}
+          </Button>
+        </div>
+      </form>
+    </Section>
+  );
+}
+
+/**
+ * Which known issue it is, if any: one of its own service's, or none. For
+ * correcting a choice made while declaring; the title stays as it is.
+ */
+function KnownIssueForm({ incident }: { incident: IncidentResponse }) {
+  const organization = useOrganization();
+  const knownIssues = useServiceKnownIssues(organization.id, incident.service.id);
+  const update = useUpdateIncident(incident);
+  const current = incident.knownIssue?.id ?? "";
+  const [chosen, setChosen] = useState(current);
+  const [saved, setSaved] = useState(false);
+  const unavailable =
+    (isApiError(update.error, 404) &&
+      update.error.code === ApiErrorCode.KNOWN_ISSUE_NOT_FOUND) ||
+    (isApiError(update.error, 409) &&
+      update.error.code === ApiErrorCode.KNOWN_ISSUE_ARCHIVED);
+  const fields = fieldErrorsOf(update.error);
+  // The service's in use, and the one linked now even if since archived.
+  const options = [
+    ...(incident.knownIssue &&
+    !knownIssues.data?.some(({ id }) => id === incident.knownIssue?.id)
+      ? [{ id: incident.knownIssue.id, name: incident.knownIssue.name }]
+      : []),
+    ...(knownIssues.data ?? []),
+  ];
+
+  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSaved(false);
+    update.mutate(
+      { knownIssueId: chosen === "" ? null : chosen },
+      { onSuccess: () => setSaved(true) },
+    );
+  };
+
+  return (
+    <Section
+      id="known-issue"
+      title="Known issue"
+      level={3}
+      description={`Which of ${incident.service.name}'s known issues this is, so its repeats are counted together. Its title stays as it is.`}
+    >
+      <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
+        {update.isError && !unavailable && Object.keys(fields).length === 0 && (
+          <ErrorAlert
+            error={update.error}
+            message={
+              resolvedMeanwhile(update.error)
+                ? RESOLVED_MEANWHILE_MESSAGE
+                : undefined
+            }
+          />
+        )}
+        {saved && <Alert tone="success">Known issue updated.</Alert>}
+        {knownIssues.isError ? (
+          <ErrorAlert error={knownIssues.error} />
+        ) : !knownIssues.data ? (
+          <Spinner label="Loading known issues…" />
+        ) : (
+          <Select
+            label="Known issue"
+            name="knownIssueId"
+            value={chosen}
+            onChange={(event) => {
+              setSaved(false);
+              setChosen(event.target.value);
+            }}
+            hint={
+              options.length === 0
+                ? `${incident.service.name} has no known issues yet.`
+                : undefined
+            }
+            error={
+              unavailable
+                ? "That known issue is no longer available. The list has been refreshed."
+                : fields.knownIssueId
+            }
+          >
+            <option value="">None: a one-off</option>
+            {options.map((issue) => (
+              <option key={issue.id} value={issue.id}>
+                {issue.name}
+              </option>
+            ))}
+          </Select>
+        )}
+        <div>
+          <Button
+            type="submit"
+            disabled={chosen === current || update.isPending}
+          >
             {update.isPending ? "Saving…" : "Save"}
           </Button>
         </div>
@@ -287,6 +387,10 @@ function ManageIncidentDrawer({
           />
           <DetailsForm
             key={`${incident.title}-${incident.summary}`}
+            incident={incident}
+          />
+          <KnownIssueForm
+            key={incident.knownIssue?.id ?? "none"}
             incident={incident}
           />
         </div>

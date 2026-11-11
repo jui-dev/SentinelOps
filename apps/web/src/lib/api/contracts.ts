@@ -285,9 +285,30 @@ export interface IncidentResponse {
   };
   team: { id: string; name: string; slug: string };
   createdBy: { id: string; name: string };
+  /** The known issue it is an occurrence of; null for a one-off. */
+  knownIssue: { id: string; name: string } | null;
   createdAt: string;
   updatedAt: string;
   resolvedAt: string | null;
+}
+
+/**
+ * `GET .../incidents/:number/repeats`: the incident's known issue, and the
+ * other times it happened that the reader may see, newest first; `hidden`
+ * counts those they may not.
+ */
+export interface IncidentRepeatsResponse {
+  knownIssue: { id: string; name: string; usualSeverity: IncidentSeverity } | null;
+  others: {
+    number: number;
+    title: string;
+    severity: IncidentSeverity;
+    status: IncidentStatus;
+    createdAt: string;
+    resolvedAt: string | null;
+    analysisPublished: boolean;
+  }[];
+  hidden: number;
 }
 
 /**
@@ -1055,6 +1076,8 @@ export interface UpdateIncidentRequest {
   status?: "RESOLVED";
   resolution?: string;
   teamId?: string;
+  /** One of its own service's known issues; null makes it a one-off. */
+  knownIssueId?: string | null;
 }
 
 /**

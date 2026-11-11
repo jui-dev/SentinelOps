@@ -69,6 +69,7 @@ const detail = (
   title: `Incident ${number}`,
   responseAccess: "OPEN",
   assignees: [],
+  knownIssue: null,
   summary: null,
   severity: "SEV2",
   status: "DECLARED",
