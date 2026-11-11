@@ -1,11 +1,12 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { ChevronRight, Plus, Search } from "lucide-react";
+import { ChevronRight, IdCard, Plus, Search } from "lucide-react";
 import Link from "next/link";
 import { Fragment, useId, useState } from "react";
 
 import { initialsOf } from "@/components/app/shell-utilities";
+import { ROLE_META, ROLE_ORDER } from "@/components/roles/role-meta";
 import { ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { cx } from "@/components/ui/cx";
@@ -14,12 +15,12 @@ import { Spinner } from "@/components/ui/spinner";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { IsoDate } from "@/components/ui/timestamp";
 import { Permission } from "@/lib/api/contracts";
-import type { OrganizationMembershipResponse } from "@/lib/api/contracts";
+import type { OrganizationMembershipResponse, Role } from "@/lib/api/contracts";
 import { listMemberships } from "@/lib/api/endpoints";
 import { queryKeys } from "@/lib/api/query-keys";
 import { useCurrentUser } from "@/lib/auth/session-provider";
 
-import { formatRole } from "./format";
+import { ChangeRoleDialog } from "./change-role-dialog";
 import { MemberPeek } from "./member-peek";
 import { AddToTeamDialog, RemoveFromTeamDialog } from "./member-placement";
 import { memberHref } from "./member-paths";
@@ -46,24 +47,26 @@ const isUnplaced = (member: Member) =>
 
 // ── Filters ────────────────────────────────────────────────────────────────
 
-type FilterId = "all" | "admins" | "members" | "awaiting" | "unplaced";
+type FilterId = "all" | Role | "awaiting" | "unplaced";
 
 const FILTERS: {
   id: FilterId;
   label: string;
   matches: (member: Member) => boolean;
+  /** The role it shows, drawn as a dot of the role's colour. */
+  role?: Role;
   /** A count that wants attention when above nought. */
   attention?: boolean;
   /** About account setup and placement: offered to whoever manages members. */
   setup?: boolean;
 }[] = [
   { id: "all", label: "All", matches: () => true },
-  { id: "admins", label: "Admins", matches: (m) => m.role === "ADMIN" },
-  {
-    id: "members",
-    label: "Responders",
-    matches: (m) => m.role === "RESPONDER",
-  },
+  ...ROLE_ORDER.map((role) => ({
+    id: role,
+    label: ROLE_META[role].plural,
+    matches: (m: Member) => m.role === role,
+    role,
+  })),
   {
     id: "awaiting",
     label: "Awaiting sign-in",
@@ -151,6 +154,16 @@ function Toolbar({
                   : "border-line bg-surface text-fg-muted hover:bg-hover hover:text-fg",
               )}
             >
+              {each.role && (
+                <span
+                  aria-hidden="true"
+                  className={cx(
+                    "size-2 rounded-full border",
+                    ROLE_META[each.role].tone.line,
+                    on ? "bg-on-accent" : ROLE_META[each.role].tone.subtle,
+                  )}
+                />
+              )}
               {/* The space is for the name ("All 3"); flex layout drops it. */}
               {each.label}{" "}
               <span
@@ -178,18 +191,48 @@ function Toolbar({
 const BADGE =
   "inline-flex items-center rounded-sm border px-2 py-0.5 text-xs font-semibold whitespace-nowrap";
 
-function RoleBadge({ role }: { role: string }) {
+/**
+ * The heading over one role's people: the role, what it is for, and how
+ * many hold it.
+ */
+function RoleGroupRow({
+  role,
+  count,
+  columns,
+}: {
+  role: Role;
+  count: number;
+  columns: number;
+}) {
+  const meta = ROLE_META[role];
+  const Icon = meta.icon;
+
   return (
-    <span
-      className={cx(
-        BADGE,
-        role === "ADMIN"
-          ? "border-accent-line bg-accent-subtle text-accent-text"
-          : "border-line-strong bg-hover text-fg-muted",
-      )}
-    >
-      {formatRole(role)}
-    </span>
+    <tr>
+      <th
+        scope="colgroup"
+        colSpan={columns}
+        className="border-b border-line-subtle bg-sunken px-3 pt-4 pb-2.5 text-left font-normal sm:px-4"
+      >
+        <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span
+            className={cx(
+              "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold",
+              meta.tone.text,
+              meta.tone.subtle,
+              meta.tone.line,
+            )}
+          >
+            <Icon aria-hidden="true" strokeWidth={2.25} className="size-3.5" />
+            {meta.plural}
+          </span>
+          <span className="text-xs text-fg-muted">{meta.tagline}</span>
+          <span className="numeric ml-auto text-xs text-fg-subtle">
+            {count} {count === 1 ? "person" : "people"}
+          </span>
+        </span>
+      </th>
+    </tr>
   );
 }
 
@@ -259,13 +302,14 @@ function MemberStatus({ member }: { member: Member }) {
 
 // ── The list ───────────────────────────────────────────────────────────────
 
-type Dialog = { kind: "add" | "remove"; memberId: string } | null;
+type Dialog = { kind: "add" | "remove" | "role"; memberId: string } | null;
 
 /**
- * Everyone in the organization, found by name or email and narrowed by
- * role or by what wants attention. Placing someone on a team, or taking
- * them off one, happens here — each row's Add to team and Remove — and
- * nowhere else; a member's own page reads.
+ * Everyone in the organization, grouped by role, found by name or email and
+ * narrowed by role or by what wants attention. Placing someone on a team,
+ * taking them off one, and changing their role happen here — each row's
+ * Add to team, Remove and Change role — and nowhere else; a member's own
+ * page reads.
  */
 export function MembershipList() {
   const organization = useOrganization();
@@ -277,7 +321,7 @@ export function MembershipList() {
   // sets accounts up. A member reading the directory sees their colleagues,
   // and the API sends them no setup to show.
   const canManage = useCan(Permission.MEMBERS_MANAGE);
-  const columns = canManage ? 6 : 5;
+  const columns = canManage ? 5 : 4;
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<FilterId>("all");
   const [dialog, setDialog] = useState<Dialog>(null);
@@ -300,6 +344,7 @@ export function MembershipList() {
   const shown = all.filter(
     (member) => matches(member) && matchesSearch(member, query),
   );
+  const admins = all.filter(({ role }) => role === "ADMIN").length;
   // Read from the list as it stands, so a dialog shows the latest teams.
   const target = dialog && all.find(({ id }) => id === dialog.memberId);
   const close = () => setDialog(null);
@@ -318,7 +363,6 @@ export function MembershipList() {
         <THead>
           <TR>
             <TH>Person</TH>
-            <TH>Role</TH>
             <TH className="hidden md:table-cell">Teams</TH>
             {canManage && <TH className="hidden sm:table-cell">Status</TH>}
             <TH className="hidden lg:table-cell">Joined</TH>
@@ -343,7 +387,19 @@ export function MembershipList() {
               </TD>
             </TR>
           ) : (
-            shown.map((member) => {
+            ROLE_ORDER.map((role) => {
+              const group = shown.filter((member) => member.role === role);
+
+              if (group.length === 0) return null;
+
+              return (
+                <Fragment key={role}>
+                  <RoleGroupRow
+                    role={role}
+                    count={group.length}
+                    columns={columns}
+                  />
+                  {group.map((member) => {
               const open = expanded.has(member.id);
               const peekId = `member-peek-${member.id}`;
 
@@ -406,9 +462,6 @@ export function MembershipList() {
                     </span>
                   </div>
                 </TD>
-                <TD>
-                  <RoleBadge role={member.role} />
-                </TD>
                 <TD className="hidden md:table-cell">
                   <TeamChips teams={member.teams} />
                 </TD>
@@ -469,6 +522,29 @@ export function MembershipList() {
                         </button>
                       </>
                     )}
+                    {canManage && (
+                      <button
+                        type="button"
+                        aria-label={`Change the role of ${member.user.name}`}
+                        title={
+                          member.role === "ADMIN" && admins <= 1
+                            ? "The only Admin keeps their role"
+                            : undefined
+                        }
+                        disabled={member.role === "ADMIN" && admins <= 1}
+                        onClick={() =>
+                          setDialog({ kind: "role", memberId: member.id })
+                        }
+                        className={rowActionClasses("warning")}
+                      >
+                        <IdCard
+                          aria-hidden="true"
+                          strokeWidth={2}
+                          className="size-3.5"
+                        />
+                        Change role
+                      </button>
+                    )}
                   </div>
                 </TD>
               </TR>
@@ -485,6 +561,9 @@ export function MembershipList() {
               )}
               </Fragment>
               );
+            })}
+                </Fragment>
+              );
             })
           )}
         </TBody>
@@ -494,6 +573,9 @@ export function MembershipList() {
       )}
       {canPlace && target && dialog.kind === "remove" && (
         <RemoveFromTeamDialog key={target.id} member={target} onClose={close} />
+      )}
+      {canManage && target && dialog.kind === "role" && (
+        <ChangeRoleDialog key={target.id} member={target} onClose={close} />
       )}
     </div>
   );

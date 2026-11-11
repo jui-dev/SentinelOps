@@ -18,6 +18,7 @@ import { serviceHref } from "@/components/services/service-scope";
 import { teamHref, teamsHref } from "@/components/teams/team-scope";
 import { Alert, ErrorAlert } from "@/components/ui/alert";
 import { cx } from "@/components/ui/cx";
+import { RoleBadge } from "@/components/roles/role-meta";
 import {
   CardRow,
   DetailCard,
@@ -300,16 +301,7 @@ function MemberPage({ member }: { member: Member }) {
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="break-all">{member.user.email}</span>
             <span aria-hidden="true">·</span>
-            <span
-              className={cx(
-                BADGE,
-                member.role === "ADMIN"
-                  ? "border-accent-line bg-accent-subtle text-accent-text"
-                  : "border-line-strong bg-hover text-fg-muted",
-              )}
-            >
-              {formatRole(member.role)}
-            </span>
+            <RoleBadge role={member.role} />
             {/* Only whoever sets accounts up is sent this. */}
             {setup === undefined ? null : setup ? (
               <span

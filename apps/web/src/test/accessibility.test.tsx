@@ -13,6 +13,7 @@ import { IncidentHistory } from "@/components/history/incident-history";
 import { IncidentsView } from "@/components/incidents/incidents-view";
 import { InvitationAcceptance } from "@/components/invitations/invitation-acceptance";
 import { MemberDetail } from "@/components/organizations/member-detail";
+import { ChangeRoleDialog } from "@/components/organizations/change-role-dialog";
 import { MembersView } from "@/components/organizations/members-view";
 import { OrganizationLanding } from "@/components/organizations/organization-landing";
 import { OrganizationOverview } from "@/components/organizations/organization-overview";
@@ -840,7 +841,34 @@ describe("accessibility", () => {
       await expectNoAxeViolations(container);
     });
 
-it("Members, About roles open", async () => {      signedIn(ADMIN);      const { container } = inWorkspace(<MembersView />);      (await screen.findByRole("button", { name: "About roles" })).click();      await screen.findByRole("dialog", { name: "Roles in SentinelOps" });      await expectNoAxeViolations(container);    });
+it("Change role, a new role chosen", async () => {
+      signedIn(ADMIN);
+      const { container } = inWorkspace(
+        <ChangeRoleDialog
+          member={{
+            id: "0199a1b2-c3d4-7000-8000-0000000000cc",
+            role: "RESPONDER",
+            createdAt: "2026-09-01T12:00:00.000Z",
+            user: {
+              id: "0199a1b2-c3d4-7000-8000-000000000003",
+              name: "Linus Torvalds",
+              email: "linus@example.com",
+            },
+            teams: [],
+          }}
+          onClose={() => {}}
+        />,
+      );
+
+      const dialog = await screen.findByRole("dialog", {
+        name: "Change Linus Torvalds's role",
+      });
+      within(dialog).getByRole("radio", { name: /^Reporter/ }).click();
+      await within(dialog).findByRole("region", {
+        name: "What changes for Linus",
+      });
+      await expectNoAxeViolations(container);
+    });
     it("Add member, choosing teams", async () => {
       signedIn(ADMIN);
       const { container } = inWorkspace(<MembersView />);

@@ -5173,6 +5173,30 @@ describe('incidents (integration)', () => {
       expect(await prisma.incidentAssignee.count()).toBe(0);
     });
 
+    it('should let a responder whose role changed still complete what they started, and start nothing new', async () => {
+      await declare(fx.orgA, fx.alice, fx.apiA);
+      await declare(fx.orgA, fx.alice, fx.apiA);
+      expect((await startAs(fx.orgA, fx.dave, 1)).status).toBe(200);
+      await prisma.membership.update({
+        where: { id: fx.daveInA },
+        data: { role: 'INCIDENT_MANAGER' },
+      });
+
+      expect((await completeAs(fx.orgA, fx.dave, 1)).status).toBe(200);
+      expectCode(await startAs(fx.orgA, fx.dave, 2), 403, 'PERMISSION_DENIED');
+    });
+
+    it('should refuse completing to someone with no response of their own', async () => {
+      const rita = await aPerson('REPORTER', 'Rita');
+      await declare(fx.orgA, rita.userId, fx.apiA);
+
+      expectCode(
+        await completeAs(fx.orgA, rita.userId, 1),
+        409,
+        'NOT_INVESTIGATING',
+      );
+    });
+
     it('should show a responder whoever decides on incidents, as it shows the admin', async () => {
       const ian = await aPerson('INCIDENT_MANAGER', 'Ian');
       const rita = await aPerson('REPORTER', 'Rita');

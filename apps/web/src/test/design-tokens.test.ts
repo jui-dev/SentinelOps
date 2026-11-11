@@ -87,6 +87,10 @@ for (const tone of ["danger", "warning", "success", "info"]) {
   each([`${tone}-text`], [`${tone}-subtle`, "canvas", "surface", "field"], TEXT);
   each(["fg", "fg-muted"], [`${tone}-subtle`], TEXT);
 }
+// Roles: each role's name on its tint and on plain surfaces.
+for (const role of ["admin", "manager", "reporter", "responder"]) {
+  each([`role-${role}-text`], [`role-${role}-subtle`, "canvas", "surface", "sunken"], TEXT);
+}
 // The situation strip.
 each(["ink-fg", "ink-muted"], ["ink", "ink-raised", "ink-hover"], TEXT);
 each(["ink-accent"], ["ink", "ink-raised"], UI);

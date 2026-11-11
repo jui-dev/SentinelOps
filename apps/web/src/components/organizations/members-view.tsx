@@ -10,7 +10,6 @@ import { linkClasses } from "@/components/ui/link";
 import { PageBody, PageHeader } from "@/components/ui/page";
 import { Permission } from "@/lib/api/contracts";
 
-import { AboutRoles } from "./about-roles";
 import { AddMemberDialog } from "./add-member-form";
 import { MembershipList, useMemberships } from "./membership-list";
 import { useCan, useOrganization } from "./organization-scope";
@@ -61,11 +60,11 @@ function Directory() {
         title="Members"
         meta={memberships.data?.length}
         description={
-          <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            Everyone with access to this organization. Their teams decide
-            which incidents they respond to.
-            <AboutRoles />
-          </span>
+          <>
+            Everyone in {organization.name}, you included, grouped by role.
+            A role decides what someone can do; their teams decide which
+            incidents.
+          </>
         }
         actions={
           canAddMembers && (

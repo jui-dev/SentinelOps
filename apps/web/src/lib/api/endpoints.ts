@@ -8,6 +8,7 @@ import type {
   AuthenticatedResponse,
   ChangePasswordRequest,
   CreateInvitationRequest,
+  ChangeRoleRequest,
   CreateMemberRequest,
   CreateServiceRequest,
   CreateTeamRequest,
@@ -140,6 +141,17 @@ export const createMember = (
   authenticatedRequest<OrganizationMembershipResponse>(
     `${organizationPath(organizationId)}/memberships`,
     { method: "POST", body },
+  );
+
+/** Gives a member another role; answers with their membership. */
+export const changeMemberRole = (
+  organizationId: string,
+  membershipId: string,
+  body: ChangeRoleRequest,
+) =>
+  authenticatedRequest<OrganizationMembershipResponse>(
+    `${organizationPath(organizationId)}/memberships/${encodeURIComponent(membershipId)}/role`,
+    { method: "PUT", body },
   );
 
 const invitationsPath = (organizationId: string) =>

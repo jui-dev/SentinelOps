@@ -365,10 +365,15 @@ export class IncidentsController {
   /**
    * The caller marks their own response complete. It resolves nothing, and
    * completing again changes nothing: 200 either way, with the incident.
+   *
+   * `incidents:respond`, not `responses:work`: someone whose role changed
+   * after they started still completes what they started — otherwise the
+   * incident could never be resolved. Starting one is `responses:work`; the
+   * service refuses anyone with no response of their own.
    */
   @Post(':incidentNumber/responders/me/complete')
   @HttpCode(HttpStatus.OK)
-  @RequirePermission(Permission.RESPONSES_WORK)
+  @RequirePermission(Permission.INCIDENTS_RESPOND)
   completeResponse(
     @CurrentMembership() membership: OrganizationContext,
     @Param('incidentNumber') incidentNumber: string,

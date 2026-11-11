@@ -88,8 +88,15 @@ export interface CreateMemberRequest {
   name: string;
   email: string;
   temporaryPassword: string;
+  /** Their role. The API makes them a Responder when it is absent. */
+  role?: Role;
   /** Teams to place them on, all in this organization. Optional. */
   teamIds?: string[];
+}
+
+/** `PUT /organizations/:id/memberships/:membershipId/role`. */
+export interface ChangeRoleRequest {
+  role: Role;
 }
 
 /** `POST /auth/password`. */
@@ -1131,6 +1138,10 @@ export const ApiErrorCode = {
   PASSWORD_CHANGE_REQUIRED: "PASSWORD_CHANGE_REQUIRED",
   ORGANIZATION_NOT_FOUND: "ORGANIZATION_NOT_FOUND",
   MEMBERSHIP_NOT_FOUND: "MEMBERSHIP_NOT_FOUND",
+  /** The organization's only Admin keeps their role. */
+  LAST_ADMIN: "LAST_ADMIN",
+  /** Only a Responder can be assigned to an incident. */
+  ASSIGNEE_CANNOT_RESPOND: "ASSIGNEE_CANNOT_RESPOND",
   PERMISSION_DENIED: "PERMISSION_DENIED",
   INVITATION_NOT_FOUND: "INVITATION_NOT_FOUND",
   INVITATION_NOT_PENDING: "INVITATION_NOT_PENDING",

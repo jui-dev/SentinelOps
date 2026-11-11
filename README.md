@@ -1389,7 +1389,8 @@ incident against any service. `incidents:manage` decides on it: changing its tit
 summary, severity, status, or responsible team, choosing who may respond, and resolving it.
 A responder finishing their own piece of work is not the incident being over, so
 resolution belongs to whoever sees the whole response. `responses:work` — starting one's
-own response and completing it — is the `RESPONDER`'s alone, and only a `RESPONDER` can be
+own response — is the `RESPONDER`'s alone (whoever started one still completes it after a
+role change), and only a `RESPONDER` can be
 assigned (`409 ASSIGNEE_CANNOT_RESPOND` otherwise). `incidents:respond` posts updates:
 whoever decides posts on any incident, a declarer on the incidents they declared, and a
 responder while their own response is under way. Saving a new known issue while declaring
@@ -2071,7 +2072,7 @@ permission is answered `403 PERMISSION_DENIED`. Responding is narrowed further b
 | `GET /incidents/:number/timeline` | `incidents:read` | The incident's timeline, oldest first |
 | `POST /incidents/:number/updates` | `incidents:respond`, and investigating unless deciding or the declarer | Post `{ "message" }` to an active incident's timeline. `201`, with the entry |
 | `POST /incidents/:number/responders/me` | `responses:work`, and let in by who may respond | Start investigating. No body. `200`, with the incident |
-| `POST /incidents/:number/responders/me/complete` | `responses:work` | Mark your own response complete. No body. `200`, with the incident |
+| `POST /incidents/:number/responders/me/complete` | `incidents:respond`, and a response of one's own — finished even after a role change | Mark your own response complete. No body. `200`, with the incident |
 | `GET /memberships/:membershipId/responses` | `incidents:read` | One member's responses, most recently started first — see [A member's responses](#a-members-responses) |
 
 There is **no delete**. Incidents are history; a mistaken declaration is resolved.

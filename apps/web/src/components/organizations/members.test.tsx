@@ -129,6 +129,16 @@ const renderAddMember = async () => {
 const submit = (dialog: HTMLElement) =>
   within(dialog).getByRole("button", { name: "Add member" });
 
+/** Chooses the new person's role, as every addition must. */
+const chooseRole = (
+  user: ReturnType<typeof userEvent.setup>,
+  dialog: HTMLElement,
+  role: string,
+) =>
+  user.click(
+    within(dialog).getByRole("radio", { name: new RegExp(`^${role}`) }),
+  );
+
 describe("the members overview", () => {
   beforeEach(() => {
     clearAccessToken();
@@ -187,13 +197,22 @@ describe("the members overview", () => {
     const graceRow = await rowOf("Grace Hopper");
     const linusRow = await rowOf("Linus Torvalds");
 
-    expect(within(adaRow).getByText("Admin")).toBeDefined();
+    // Each person sits under their role's heading.
+    const table = screen.getByRole("table", { name: "Members" });
+    const headings = within(table)
+      .getAllByRole("columnheader")
+      .map((cell) => cell.textContent);
+    expect(headings).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("Admins"),
+        expect.stringContaining("Responders"),
+      ]),
+    );
     expect(within(adaRow).getByText("You")).toBeDefined();
     expect(within(adaRow).getAllByText("Active").length).toBeGreaterThan(0);
     // An Admin is not bound by teams: no team is no warning for them.
     expect(within(adaRow).queryByText(/sees no incidents/)).toBeNull();
 
-    expect(within(graceRow).getByText("Responder")).toBeDefined();
     expect(
       within(graceRow).getAllByText("Awaiting first sign-in").length,
     ).toBeGreaterThan(0);
@@ -244,7 +263,9 @@ describe("the members overview", () => {
       within(table)
         .queryAllByRole("row")
         .slice(1)
-        .map((row) => row.querySelector(".font-medium")?.textContent);
+        .map((row) => row.querySelector(".font-medium")?.textContent)
+        // The rows that head each role's group name no one.
+        .filter(Boolean);
 
     expect(names()).toEqual(["Ada Lovelace", "Grace Hopper", "Linus Torvalds"]);
 
@@ -597,33 +618,130 @@ describe("a member's row, opened", () => {
   });
 });
 
-describe("about roles", () => {
+describe("changing a role", () => {
   beforeEach(() => {
     clearAccessToken();
   });
 
-  it("explains the two fixed roles beside the page's description, to anyone", async () => {
-    const user = userEvent.setup();
-    api(READ_ONLY);
+  const linus = {
+    ...grace,
+    id: "0199a1b2-c3d4-7000-8000-0000000000cc",
+    user: {
+      ...grace.user,
+      id: "0199a1b2-c3d4-7000-8000-000000000003",
+      name: "Linus Torvalds",
+      email: "linus@example.com",
+      passwordChangeRequired: false,
+    },
+  };
+
+  it("offers Change role to whoever manages members, never to the only Admin", async () => {
+    api(MANAGE, [ada, linus]);
 
     renderMembers();
 
-    const trigger = await screen.findByRole("button", { name: "About roles" });
+    const linusRole = await screen.findByRole("button", {
+      name: "Change the role of Linus Torvalds",
+    });
+    const adaRole = screen.getByRole("button", {
+      name: "Change the role of Ada Lovelace",
+    });
 
-    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect((linusRole as HTMLButtonElement).disabled).toBe(false);
+    expect((adaRole as HTMLButtonElement).disabled).toBe(true);
+    expect(adaRole.getAttribute("title")).toBe("The only Admin keeps their role");
+  });
 
-    await user.click(trigger);
+  it("offers no Change role to someone who only reads the directory", async () => {
+    api(READ_ONLY, [ada, linus]);
 
-    const panel = screen.getByRole("dialog", { name: "Roles in SentinelOps" });
+    renderMembers();
 
-    expect(within(panel).getByRole("region", { name: "Admin" })).toBeDefined();
+    await screen.findByRole("link", { name: "View Linus Torvalds" });
+    expect(screen.queryByRole("button", { name: /Change the role/ })).toBeNull();
+  });
+
+  it("says what the new role gives and takes away, then sends it", async () => {
+    const user = userEvent.setup();
+    const { requests } = api(MANAGE, [ada, linus], (request) =>
+      route(request) === `PUT ${base}/memberships/${linus.id}/role`
+        ? jsonResponse(200, { ...linus, role: "INCIDENT_MANAGER" })
+        : undefined,
+    );
+
+    renderMembers();
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Change the role of Linus Torvalds",
+      }),
+    );
+
+    const dialog = screen.getByRole("dialog", {
+      name: "Change Linus Torvalds's role",
+    });
+    const current = within(dialog).getByRole("radio", { name: /^Responder/ });
+
+    expect((current as HTMLInputElement).checked).toBe(true);
+    expect(within(dialog).getByText("Current")).toBeDefined();
+    // Nothing to change until another role is chosen.
     expect(
-      within(panel).getByText("Responds to incidents on their teams' services"),
-    ).toBeDefined();
-    expect(within(panel).getByText(/Each organization has one Admin/)).toBeDefined();
+      (within(dialog).getByRole("button", { name: "Change role" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(within(dialog).getByText("Choose a new role to continue.")).toBeDefined();
 
-    await user.click(within(panel).getByRole("button", { name: "Close" }));
-    expect(screen.queryByRole("dialog", { name: "Roles in SentinelOps" })).toBeNull();
+    await user.click(
+      within(dialog).getByRole("radio", { name: /^Incident Manager/ }),
+    );
+
+    const changes = within(dialog).getByRole("region", {
+      name: "What changes for Linus",
+    });
+    expect(changes.textContent).toContain(
+      "Decide on incidents: severity, who responds, and resolving",
+    );
+    expect(changes.textContent).toContain("No longer:");
+
+    await user.click(
+      within(dialog).getByRole("button", { name: "Make Incident Manager" }),
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "Change Linus Torvalds's role" }),
+      ).toBeNull(),
+    );
+    expect(
+      requests.find(
+        (r) => route(r) === `PUT ${base}/memberships/${linus.id}/role`,
+      )?.body,
+    ).toEqual({ role: "INCIDENT_MANAGER" });
+  });
+
+  it("explains that the only Admin keeps their role", async () => {
+    const user = userEvent.setup();
+    const other = { ...ada, id: "0199a1b2-c3d4-7000-8000-0000000000ad", user: { ...ada.user, id: "0199a1b2-c3d4-7000-8000-000000000009", name: "Alan Turing", email: "alan@example.com" } };
+    api(MANAGE, [ada, other], (request) =>
+      route(request) === `PUT ${base}/memberships/${other.id}/role`
+        ? apiError(409, "LAST_ADMIN")
+        : undefined,
+    );
+
+    renderMembers();
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Change the role of Alan Turing",
+      }),
+    );
+    const dialog = screen.getByRole("dialog", {
+      name: "Change Alan Turing's role",
+    });
+    await user.click(within(dialog).getByRole("radio", { name: /^Reporter/ }));
+    await user.click(within(dialog).getByRole("button", { name: "Make Reporter" }));
+
+    expect(
+      await within(dialog).findByText(/The only Admin keeps their role/),
+    ).toBeDefined();
   });
 });
 
@@ -632,14 +750,18 @@ describe("adding a member", () => {
     clearAccessToken();
   });
 
-  it("asks for no role, and closes on Cancel without adding anyone", async () => {
+  it("asks for a role, none chosen, and closes on Cancel without adding anyone", async () => {
     const { requests } = api(MANAGE);
     const user = userEvent.setup();
 
     const dialog = await renderAddMember();
 
     await within(dialog).findByLabelText("Name");
-    expect(within(dialog).queryByLabelText("Role")).toBeNull();
+    const roles = within(dialog).getAllByRole("radio");
+    expect(roles).toHaveLength(4);
+    expect(roles.every((radio) => !(radio as HTMLInputElement).checked)).toBe(
+      true,
+    );
 
     await user.type(within(dialog).getByLabelText("Name"), "Grace Hopper");
     await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
@@ -687,6 +809,7 @@ describe("adding a member", () => {
       within(dialog).getByLabelText("One-time password"),
       "one-time-password-123",
     );
+    await chooseRole(user, dialog, "Responder");
     await user.click(submit(dialog));
 
     const panel = await within(dialog).findByRole("status");
@@ -705,6 +828,7 @@ describe("adding a member", () => {
       name: "Grace Hopper",
       email: "grace@example.com",
       temporaryPassword: "one-time-password-123",
+      role: "RESPONDER",
       teamIds: [],
     });
     expect(panel.textContent).toContain("Not on any team yet.");
@@ -741,6 +865,7 @@ describe("adding a member", () => {
       within(dialog).getByLabelText("One-time password"),
       "one-time-password-123",
     );
+    await chooseRole(user, dialog, "Responder");
     await user.click(submit(dialog));
 
     const panel = await within(dialog).findByRole("status");
@@ -770,6 +895,7 @@ describe("adding a member", () => {
       within(dialog).getByLabelText("One-time password"),
       "one-time-password-123",
     );
+    await chooseRole(user, dialog, "Responder");
     await user.click(submit(dialog));
 
     expect(
@@ -810,15 +936,17 @@ describe("choosing teams when adding a member", () => {
     expect(boxes.every((box) => !(box as HTMLInputElement).checked)).toBe(true);
   });
 
-  it("shows the role as fixed, and warns until a team is chosen", async () => {
+  it("warns a Responder with no team, and no other role", async () => {
     const user = userEvent.setup();
     api(MANAGE);
 
     const dialog = await renderAddMember();
 
-    // Not a choice: the role is said, not asked.
-    expect(within(dialog).getByText(/Each organization has one Admin/)).toBeDefined();
-    expect(within(dialog).queryByRole("combobox", { name: /Role/ })).toBeNull();
+    // Only a Responder's work comes through their teams.
+    await within(dialog).findByRole("region", { name: "Teams to choose from" });
+    await chooseRole(user, dialog, "Reporter");
+    expect(within(dialog).queryByText(/see no incidents/)).toBeNull();
+    await chooseRole(user, dialog, "Responder");
 
     expect(
       await within(dialog).findByText(/With no team, they.ll see no incidents/),
@@ -914,6 +1042,7 @@ describe("choosing teams when adding a member", () => {
 
     const dialog = await renderAddMember();
     await fillIn(user);
+    await chooseRole(user, dialog, "Responder");
     await user.click(await screen.findByRole("checkbox", { name: "Platform" }));
     await user.click(screen.getByRole("checkbox", { name: "Payments" }));
     await user.click(submit(dialog));
@@ -942,6 +1071,7 @@ describe("choosing teams when adding a member", () => {
 
     const dialog = await renderAddMember();
     await fillIn(user);
+    await chooseRole(user, dialog, "Responder");
     await user.click(await screen.findByRole("checkbox", { name: "Payments" }));
     await user.click(submit(dialog));
 

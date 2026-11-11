@@ -115,10 +115,12 @@ export const Permission = {
    */
   INCIDENTS_RESPOND: 'incidents:respond',
   /**
-   * Work an incident's response: start your own, and mark it complete. The
-   * Responder's job alone — whoever decides on an incident, or raised it,
-   * does not also work it. Narrowed further by IncidentsService to the
-   * incidents the response access lets the caller start.
+   * Work an incident's response: start your own. The Responder's job alone
+   * — whoever decides on an incident, or raised it, does not also work it.
+   * Narrowed further by IncidentsService to the incidents the response
+   * access lets the caller start. Completing one's own response is
+   * `incidents:respond`, so a response started before a role changed can
+   * still be finished.
    */
   RESPONSES_WORK: 'responses:work',
   /**

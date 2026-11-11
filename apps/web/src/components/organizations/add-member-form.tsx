@@ -19,9 +19,10 @@ import {
   useRequiredFields,
 } from "@/components/ui/required";
 import { Spinner } from "@/components/ui/spinner";
+import { ROLE_META, ROLE_ORDER } from "@/components/roles/role-meta";
 import { teamsHref, useTeams } from "@/components/teams/team-scope";
 import { ApiErrorCode, Permission } from "@/lib/api/contracts";
-import type { CreateMemberRequest } from "@/lib/api/contracts";
+import type { CreateMemberRequest, Role } from "@/lib/api/contracts";
 import { createMember, listServices } from "@/lib/api/endpoints";
 import { fieldErrorsOf, isApiError } from "@/lib/api/errors";
 import { queryKeys } from "@/lib/api/query-keys";
@@ -146,6 +147,74 @@ function FormPart({
       </h3>
       {children}
     </section>
+  );
+}
+
+/**
+ * The four roles as cards to choose one of, none chosen to begin with:
+ * giving someone a role is a decision, not a default. A hidden required
+ * input stands for the choice, so the form's required fields count it.
+ */
+function RoleChoices({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: Role | null;
+  onChange: (role: Role) => void;
+  disabled: boolean;
+}) {
+  return (
+    <fieldset disabled={disabled} className="flex min-w-0 flex-col gap-2">
+      <legend className="sr-only">Role</legend>
+      <input
+        type="hidden"
+        name="role"
+        value={value ?? ""}
+        required
+        data-label="Role"
+      />
+      <div className="grid gap-2 sm:grid-cols-2">
+        {ROLE_ORDER.map((role) => {
+          const meta = ROLE_META[role];
+          const Icon = meta.icon;
+          const checked = value === role;
+
+          return (
+            <label
+              key={role}
+              className={cx(
+                "flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 transition-colors duration-(--duration-fast)",
+                checked
+                  ? cx(meta.tone.subtle, meta.tone.line)
+                  : "border-line bg-sunken hover:bg-hover",
+              )}
+            >
+              <input
+                type="radio"
+                name="roleChoice"
+                value={role}
+                checked={checked}
+                onChange={() => onChange(role)}
+                className="mt-1 size-4 shrink-0 accent-accent-mark"
+              />
+              <span className="flex min-w-0 flex-col gap-0.5">
+                <span
+                  className={cx(
+                    "flex items-center gap-1.5 text-sm font-semibold",
+                    meta.tone.text,
+                  )}
+                >
+                  <Icon aria-hidden="true" strokeWidth={2} className="size-4" />
+                  {meta.label}
+                </span>
+                <span className="text-xs text-fg-muted">{meta.purpose}</span>
+              </span>
+            </label>
+          );
+        })}
+      </div>
+    </fieldset>
   );
 }
 
@@ -336,7 +405,8 @@ function AddedMember({
       tone="success"
       title={
         <>
-          <span className="font-semibold">{added.name}</span> was added as a{" "}
+          <span className="font-semibold">{added.name}</span> was added as{" "}
+          {/^[AEIOU]/.test(formatRole(added.role)) ? "an" : "a"}{" "}
           {formatRole(added.role)}.
         </>
       }
@@ -389,8 +459,11 @@ function AddMemberForm({
   const [password, setPassword] = useState("");
   const [shown, setShown] = useState(true);
   const [chosen, setChosen] = useState<ReadonlySet<string>>(new Set());
+  const [role, setRole] = useState<Role | null>(null);
   const teams = useTeams(organization.id);
-  const { attach: requiredRef, ...required } = useRequiredFields(password);
+  const { attach: requiredRef, ...required } = useRequiredFields(
+    `${password}|${role ?? ""}`,
+  );
 
   const toggle = (teamId: string) =>
     setChosen((current) => {
@@ -408,6 +481,7 @@ function AddMemberForm({
       name: String(data.get("name") ?? ""),
       email: String(data.get("email") ?? ""),
       temporaryPassword: password,
+      ...(role ? { role } : {}),
       // In the list's order, as they are shown, whatever order they were ticked.
       teamIds:
         teams.data?.filter(({ id }) => chosen.has(id)).map(({ id }) => id) ??
@@ -466,15 +540,14 @@ function AddMemberForm({
             error={fields.email}
           />
         </div>
-        {/* Not a choice: each organization has one Admin, its creator. */}
-        <p className="flex flex-wrap items-center gap-x-2.5 gap-y-1 rounded-md border border-line-subtle bg-sunken px-3 py-2 text-xs text-fg-muted">
-          <span className="text-sm font-medium text-fg">Role</span>
-          <span className="rounded-sm border border-line-strong bg-hover px-2 py-px font-semibold text-fg-muted">
-            Member
-          </span>
-          Responds to incidents on their teams&apos; services. Each
-          organization has one Admin.
-        </p>
+      </FormPart>
+
+      <FormPart title="Role">
+        <RoleChoices
+          value={role}
+          onChange={setRole}
+          disabled={create.isPending}
+        />
       </FormPart>
 
       <FormPart title="Sign-in">
@@ -534,6 +607,8 @@ function AddMemberForm({
         {teams.data &&
           teams.data.length > 0 &&
           (chosenNames.length === 0 ? (
+            // Only a Responder's work comes through their teams.
+            role !== "RESPONDER" ? null : (
             <Alert tone="warning">
               With no team, {who === "They" ? "they" : who}&apos;ll see no
               incidents. You can add one later from the{" "}
@@ -545,6 +620,7 @@ function AddMemberForm({
               </Link>{" "}
               list.
             </Alert>
+            )
           ) : (
             <p className="text-xs text-fg-subtle">
               {who} will respond to {chosenNames.join(", ")} incidents. Change
