@@ -36,7 +36,9 @@ type Control = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
 
 /** A control's label, as the reader sees it, without its marks. */
 const labelOf = (control: Control): string => {
-  const label = control.labels?.[0]?.textContent ?? control.name;
+  // A hidden input standing for a custom control names it in data-label.
+  const label =
+    control.labels?.[0]?.textContent ?? control.dataset.label ?? control.name;
 
   return label.replace(/\*/g, "").replace(/Optional/g, "").trim();
 };

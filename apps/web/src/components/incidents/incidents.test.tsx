@@ -7,6 +7,7 @@ import { OrganizationScope } from "@/components/organizations/organization-scope
 import type {
   IncidentActivityResponse,
   IncidentDetailResponse,
+  KnownIssueResponse,
   IncidentListItemResponse,
   IncidentResponderResponse,
   IncidentResponse,
@@ -24,6 +25,7 @@ import {
   route,
 } from "@/test/api";
 import type { SentRequest } from "@/test/api";
+import { expectNoAxeViolations } from "@/test/axe";
 import { renderWithSession } from "@/test/render";
 
 import { IncidentDetail } from "./incident-detail";
@@ -126,6 +128,34 @@ const legacyPortal = {
   slug: "legacy-portal",
   archivedAt: "2026-09-18T12:00:00.000Z",
 };
+
+/** One of Payment API's known issues: four times before, the last 12 days ago. */
+const knownIssue = (
+  overrides: Partial<KnownIssueResponse> = {},
+): KnownIssueResponse => ({
+  id: "0199a1b2-c3d4-7000-8000-0000000000b1",
+  name: "Card payments failing at checkout",
+  description: null,
+  usualSeverity: "SEV1",
+  service: {
+    id: paymentApi.id,
+    name: "Payment API",
+    slug: "payment-api",
+    team: { id: payments.id, name: "Payments", slug: "payments" },
+  },
+  pendingReview: false,
+  archivedAt: null,
+  occurrences: { total: 4, lastAt: "2026-09-06T12:00:00.000Z", active: null },
+  createdAt: "2026-03-01T12:00:00.000Z",
+  ...overrides,
+});
+
+const webhooks = knownIssue({
+  id: "0199a1b2-c3d4-7000-8000-0000000000b2",
+  name: "Webhook retries backing up",
+  usualSeverity: "SEV3",
+  occurrences: { total: 1, lastAt: "2026-07-01T12:00:00.000Z", active: null },
+});
 
 /** Two members of the organization: the caller, and Daniel on no team. */
 const ada = {
@@ -302,6 +332,7 @@ const api = (
     teamMembers = [onTeam(ada), onTeam(daniel)],
     services = [paymentApi],
     needsDecision = [] as IncidentDetailResponse[],
+    knownIssues = [] as KnownIssueResponse[],
     handler = () => undefined,
   }: {
     active?: IncidentResponse[];
@@ -312,6 +343,8 @@ const api = (
     services?: (typeof paymentApi)[];
     /** What waits on the Admin to choose who responds. */
     needsDecision?: IncidentDetailResponse[];
+    /** The chosen service's known issues, most frequent first. */
+    knownIssues?: KnownIssueResponse[];
     handler?: Handler;
   } = {},
 ) =>
@@ -322,6 +355,9 @@ const api = (
 
     if (route(request).startsWith(`GET ${base}/incidents/summary?`)) {
       return jsonResponse(200, summary);
+    }
+    if (route(request).startsWith(`GET ${base}/known-issues?`)) {
+      return jsonResponse(200, knownIssues);
     }
 
     switch (route(request)) {
@@ -776,7 +812,24 @@ describe("incidents", () => {
   });
 
   describe("declaring", () => {
-    it("offers only services in use, names who will be responsible, and sends no team or status", async () => {
+    /** Opens the dialog, and answers it. */
+    const openDeclare = async (user: ReturnType<typeof userEvent.setup>) => {
+      await user.click(await screen.findByRole("button", { name: "Declare incident" }));
+
+      return screen.getByRole("dialog", { name: "Declare an incident" });
+    };
+
+    /** Opens "What is happening?" and chooses one of its options. */
+    const choose = async (
+      user: ReturnType<typeof userEvent.setup>,
+      form: HTMLElement,
+      name: string | RegExp,
+    ) => {
+      await user.click(within(form).getByRole("combobox", { name: "What is happening?" }));
+      await user.click(await within(form).findByRole("option", { name }));
+    };
+
+    it("offers only services in use, names who will be responsible, and saves something new for next time", async () => {
       const user = userEvent.setup();
       const { requests } = api(ADMIN, {
         services: [paymentApi, legacyPortal],
@@ -788,24 +841,33 @@ describe("incidents", () => {
 
       inOrganization(<IncidentsView />);
 
-      await user.click(await screen.findByRole("button", { name: "Declare incident" }));
-
-      const form = screen.getByRole("dialog", { name: "Declare an incident" });
+      const form = await openDeclare(user);
       const service = await within(form).findByLabelText("Affected service");
 
       expect(within(service).queryByRole("option", { name: "Legacy Portal" })).toBeNull();
+      // Nothing to choose from until the service is chosen.
+      expect(
+        (within(form).getByRole("combobox", { name: "What is happening?" }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(true);
 
-      await user.type(within(form).getByLabelText("Title"), "Card payments failing");
       await user.selectOptions(service, paymentApi.id);
 
       expect(
         within(form).getByText(/Payments will be responsible: they own Payment API, whose criticality is critical/),
       ).toBeDefined();
 
+      await choose(user, form, /Something new/);
+      await user.type(within(form).getByLabelText("Title"), "Card payments failing");
+
       // No severity is chosen for the declarer.
       const severity = within(form).getByLabelText("Severity") as HTMLSelectElement;
 
       expect(severity.value).toBe("");
+      expect(
+        (within(form).getByRole("checkbox", { name: /Save as a known issue for Payment API/ }) as HTMLInputElement)
+          .checked,
+      ).toBe(true);
 
       await user.selectOptions(severity, "SEV2");
       await user.type(within(form).getByLabelText(/Summary/), "Declines at checkout.");
@@ -819,7 +881,155 @@ describe("incidents", () => {
         summary: "Declines at checkout.",
         serviceId: paymentApi.id,
         severity: "SEV2",
+        saveAsKnownIssue: true,
       });
+    });
+
+    it("starts from a chosen known issue, keeping its severity only as a suggestion", async () => {
+      const user = userEvent.setup();
+      const { requests } = api(ADMIN, {
+        knownIssues: [knownIssue(), webhooks],
+        handler: (request) =>
+          route(request) === `POST ${base}/incidents`
+            ? jsonResponse(201, incident({ number: 43 }))
+            : undefined,
+      });
+
+      inOrganization(<IncidentsView />);
+
+      const form = await openDeclare(user);
+
+      await user.selectOptions(await within(form).findByLabelText("Affected service"), paymentApi.id);
+      await user.click(within(form).getByRole("combobox", { name: "What is happening?" }));
+
+      const list = await within(form).findByRole("listbox");
+      const options = within(list).getAllByRole("option");
+
+      // Most frequent first, then Something new, always last.
+      expect(options.map((option) => option.textContent)).toEqual([
+        expect.stringMatching(/^Card payments failing at checkout.*4 times$/),
+        expect.stringMatching(/^Webhook retries backing up.*once$/),
+        expect.stringMatching(/^Something new/),
+      ]);
+      await expectNoAxeViolations(form);
+
+      await user.click(options[0]);
+
+      expect((within(form).getByLabelText("Title") as HTMLInputElement).value).toBe(
+        "Card payments failing at checkout",
+      );
+      const severity = within(form).getByLabelText("Severity") as HTMLSelectElement;
+
+      expect(severity.value).toBe("SEV1");
+      expect(
+        within(form).getByText("Usually SEV1 for this known issue. Choose what fits this time."),
+      ).toBeDefined();
+      expect(within(form).queryByRole("checkbox")).toBeNull();
+
+      await user.selectOptions(severity, "SEV2");
+      await user.click(within(form).getByRole("button", { name: "Declare incident" }));
+
+      await waitFor(() =>
+        expect(requests.find((r) => route(r) === `POST ${base}/incidents`)?.body).toEqual({
+          title: "Card payments failing at checkout",
+          summary: "",
+          serviceId: paymentApi.id,
+          severity: "SEV2",
+          knownIssueId: knownIssue().id,
+        }),
+      );
+    });
+
+    it("is chosen from with the keyboard alone", async () => {
+      const user = userEvent.setup();
+
+      api(ADMIN, { knownIssues: [knownIssue(), webhooks] });
+      inOrganization(<IncidentsView />);
+
+      const form = await openDeclare(user);
+
+      await user.selectOptions(await within(form).findByLabelText("Affected service"), paymentApi.id);
+
+      const picker = within(form).getByRole("combobox", { name: "What is happening?" });
+
+      picker.focus();
+      await user.keyboard("{ArrowDown}");
+      await within(form).findByRole("listbox");
+      await user.keyboard("{ArrowDown}{Enter}");
+
+      expect(within(form).queryByRole("listbox")).toBeNull();
+      expect(document.activeElement).toBe(picker);
+      expect((within(form).getByLabelText("Title") as HTMLInputElement).value).toBe(
+        "Webhook retries backing up",
+      );
+
+      // Escape closes it without choosing.
+      await user.keyboard("{ArrowDown}");
+      await within(form).findByRole("listbox");
+      await user.keyboard("{End}{Escape}");
+
+      expect(within(form).queryByRole("listbox")).toBeNull();
+      expect((within(form).getByLabelText("Title") as HTMLInputElement).value).toBe(
+        "Webhook retries backing up",
+      );
+    });
+
+    it("can declare something new without saving it", async () => {
+      const user = userEvent.setup();
+      const { requests } = api(ADMIN, {
+        handler: (request) =>
+          route(request) === `POST ${base}/incidents`
+            ? jsonResponse(201, incident({ number: 43 }))
+            : undefined,
+      });
+
+      inOrganization(<IncidentsView />);
+
+      const form = await openDeclare(user);
+
+      await user.selectOptions(await within(form).findByLabelText("Affected service"), paymentApi.id);
+      await user.click(within(form).getByRole("combobox", { name: "What is happening?" }));
+
+      expect(await within(form).findByText(/Payment API has no known issues yet/)).toBeDefined();
+
+      await user.click(within(form).getByRole("option", { name: /Something new/ }));
+      await user.type(within(form).getByLabelText("Title"), "One-off outage");
+      await user.selectOptions(within(form).getByLabelText("Severity"), "SEV4");
+      await user.click(within(form).getByRole("checkbox", { name: /Save as a known issue/ }));
+      await user.click(within(form).getByRole("button", { name: "Declare incident" }));
+
+      await waitFor(() =>
+        expect(
+          requests.find((r) => route(r) === `POST ${base}/incidents`)?.body,
+        ).not.toHaveProperty("saveAsKnownIssue"),
+      );
+    });
+
+    it("asks to choose again when the known issue is gone meanwhile, and refreshes the list", async () => {
+      const user = userEvent.setup();
+      const { requests } = api(ADMIN, {
+        knownIssues: [knownIssue()],
+        handler: (request) =>
+          route(request) === `POST ${base}/incidents`
+            ? apiError(404, "KNOWN_ISSUE_NOT_FOUND")
+            : undefined,
+      });
+
+      inOrganization(<IncidentsView />);
+
+      const form = await openDeclare(user);
+
+      await user.selectOptions(await within(form).findByLabelText("Affected service"), paymentApi.id);
+      await choose(user, form, /Card payments failing at checkout/);
+      await user.click(within(form).getByRole("button", { name: "Declare incident" }));
+
+      expect(await within(form).findByText(/That known issue is no longer available/)).toBeDefined();
+      expect(within(form).queryByLabelText("Title")).toBeNull();
+      await waitFor(() =>
+        expect(
+          requests.filter((r) => route(r).startsWith(`GET ${base}/known-issues?`)).length,
+        ).toBeGreaterThan(1),
+      );
     });
 
     it("declares in a dialog that Cancel closes without declaring anything", async () => {
@@ -828,11 +1038,9 @@ describe("incidents", () => {
 
       inOrganization(<IncidentsView />);
 
-      await user.click(await screen.findByRole("button", { name: "Declare incident" }));
+      const form = await openDeclare(user);
 
-      const form = screen.getByRole("dialog", { name: "Declare an incident" });
-
-      await user.type(await within(form).findByLabelText("Title"), "Slow checkout");
+      await user.selectOptions(await within(form).findByLabelText("Affected service"), paymentApi.id);
       await user.click(within(form).getByRole("button", { name: "Cancel" }));
 
       expect(screen.queryByRole("dialog", { name: "Declare an incident" })).toBeNull();
@@ -850,21 +1058,25 @@ describe("incidents", () => {
 
       inOrganization(<IncidentsView />);
 
-      await user.click(await screen.findByRole("button", { name: "Declare incident" }));
-
-      const form = screen.getByRole("dialog", { name: "Declare an incident" });
+      const form = await openDeclare(user);
       const declare = within(form).getByRole("button", { name: "Declare incident" });
 
       // Held back, and saying why, until every required field is filled.
       expect((declare as HTMLButtonElement).disabled).toBe(true);
       expect(
-        within(form).getByText(
-          "Fill in Title, Affected service and Severity to continue.",
+        await within(form).findByText(
+          "Fill in Affected service and What is happening? to continue.",
         ),
       ).toBeDefined();
 
-      await user.type(within(form).getByLabelText("Title"), "Card payments failing");
       await user.selectOptions(await within(form).findByLabelText("Affected service"), paymentApi.id);
+      await choose(user, form, /Something new/);
+
+      expect(
+        await within(form).findByText("Fill in Title and Severity to continue."),
+      ).toBeDefined();
+
+      await user.type(within(form).getByLabelText("Title"), "Card payments failing");
       await user.selectOptions(within(form).getByLabelText("Severity"), "SEV2");
 
       await waitFor(() => expect((declare as HTMLButtonElement).disabled).toBe(false));

@@ -36,6 +36,7 @@ import type {
   IncidentSummaryResponse,
   InvitationLookupResponse,
   InvitationResponse,
+  KnownIssueResponse,
   LoginRequest,
   MembershipResponse,
   OperationalActivityResponse,
@@ -224,6 +225,17 @@ const servicePath = (organizationId: string, serviceId: string) =>
 
 export const listServices = (organizationId: string) =>
   authenticatedRequest<ServiceResponse[]>(servicesPath(organizationId));
+
+/** One service's known issues, or every one's; most frequent first. */
+export const listKnownIssues = (
+  organizationId: string,
+  { serviceId }: { serviceId?: string } = {},
+) =>
+  authenticatedRequest<KnownIssueResponse[]>(
+    `${organizationPath(organizationId)}/known-issues${
+      serviceId ? `?${new URLSearchParams({ serviceId })}` : ""
+    }`,
+  );
 
 export const createService = (
   organizationId: string,

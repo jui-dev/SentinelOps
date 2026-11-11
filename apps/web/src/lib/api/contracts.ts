@@ -977,11 +977,42 @@ export interface IncidentFilters {
  * No status (every incident starts DECLARED) and no team (the service's
  * owner is responsible). Severity is required.
  */
+/**
+ * Declaring. `knownIssueId` makes it an occurrence of one of the service's
+ * known issues; `saveAsKnownIssue` keeps something new as one for next
+ * time. Never both.
+ */
 export interface CreateIncidentRequest {
   title: string;
   summary?: string | null;
   serviceId: string;
   severity: IncidentSeverity;
+  knownIssueId?: string;
+  saveAsKnownIssue?: boolean;
+}
+
+/**
+ * `GET .../known-issues`: a problem a service has had before. Declaring
+ * one starts from it; `usualSeverity` is only a suggestion. `occurrences`
+ * counts its incidents: how many, when the latest was declared, and the
+ * number of one still active.
+ */
+export interface KnownIssueResponse {
+  id: string;
+  name: string;
+  description: string | null;
+  usualSeverity: IncidentSeverity;
+  service: {
+    id: string;
+    name: string;
+    slug: string;
+    team: { id: string; name: string; slug: string };
+  };
+  /** Saved while declaring something new; the Admin has yet to look at it. */
+  pendingReview: boolean;
+  archivedAt: string | null;
+  occurrences: { total: number; lastAt: string | null; active: number | null };
+  createdAt: string;
 }
 
 /**
@@ -1061,6 +1092,11 @@ export const ApiErrorCode = {
   SERVICE_NAME_TAKEN: "SERVICE_NAME_TAKEN",
   SERVICE_HAS_INCIDENTS: "SERVICE_HAS_INCIDENTS",
   SERVICE_ARCHIVED: "SERVICE_ARCHIVED",
+  KNOWN_ISSUE_NOT_FOUND: "KNOWN_ISSUE_NOT_FOUND",
+  KNOWN_ISSUE_NAME_TAKEN: "KNOWN_ISSUE_NAME_TAKEN",
+  KNOWN_ISSUE_ARCHIVED: "KNOWN_ISSUE_ARCHIVED",
+  KNOWN_ISSUE_OTHER_SERVICE: "KNOWN_ISSUE_OTHER_SERVICE",
+  KNOWN_ISSUE_MERGE_INTO_ITSELF: "KNOWN_ISSUE_MERGE_INTO_ITSELF",
   INCIDENT_NOT_FOUND: "INCIDENT_NOT_FOUND",
   INCIDENT_RESOLVED: "INCIDENT_RESOLVED",
   INVALID_STATUS_TRANSITION: "INVALID_STATUS_TRANSITION",

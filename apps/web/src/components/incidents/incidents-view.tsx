@@ -61,6 +61,9 @@ import {
 import { IncidentBoard, IncidentCards } from "./incident-board";
 import { LiveStatus } from "./live-status";
 import { MemberIncidentsView } from "./member-incidents-view";
+import { KnownIssuePicker } from "@/components/known-issues/known-issue-picker";
+import type { KnownIssueChoice } from "@/components/known-issues/known-issue-picker";
+import { useServiceKnownIssues } from "@/components/known-issues/known-issue-queries";
 import { SEVERITY_LEVELS, severityOf } from "./severity";
 
 export const SERVICE_UNAVAILABLE_MESSAGE =
@@ -76,12 +79,15 @@ export function SeveritySelect({
   onChange,
   error,
   placeholder,
+  usual,
 }: {
   value: IncidentSeverity | "";
   onChange: (value: IncidentSeverity) => void;
   error?: string;
   /** Offered while nothing is chosen, on a declaration. */
   placeholder?: string;
+  /** A known issue's usual severity, which the choice started from. */
+  usual?: IncidentSeverity;
 }) {
   return (
     <Select
@@ -89,7 +95,13 @@ export function SeveritySelect({
       name="severity"
       value={value}
       onChange={(event) => onChange(event.target.value as IncidentSeverity)}
-      hint={value ? severityOf(value).definition : undefined}
+      hint={
+        usual && value === usual
+          ? `Usually ${usual} for this known issue. Choose what fits this time.`
+          : value
+            ? severityOf(value).definition
+            : undefined
+      }
       error={error}
       // With nothing chosen to start from — a declaration — choosing is required.
       required={placeholder !== undefined}
@@ -108,6 +120,15 @@ export function SeveritySelect({
   );
 }
 
+/** A chosen known issue was merged away or archived meanwhile. */
+const knownIssueUnavailable = (error: unknown) =>
+  (isApiError(error, 404) &&
+    error.code === ApiErrorCode.KNOWN_ISSUE_NOT_FOUND) ||
+  (isApiError(error, 409) && error.code === ApiErrorCode.KNOWN_ISSUE_ARCHIVED);
+
+export const KNOWN_ISSUE_UNAVAILABLE_MESSAGE =
+  "That known issue is no longer available. The list has been refreshed: choose again.";
+
 /**
  * Declares an incident, then opens it. A refusal naming the service — gone,
  * or archived meanwhile — refreshes the services the form offers.
@@ -118,8 +139,19 @@ const useDeclareIncident = (organizationId: string) => {
   return useMutation({
     mutationFn: (body: CreateIncidentRequest) =>
       createIncident(organizationId, body),
-    onSuccess: (created) => storeIncident(queryClient, organizationId, created),
+    onSuccess: (created) => {
+      storeIncident(queryClient, organizationId, created);
+      // Its known issue happened once more, or a new one was saved.
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.knownIssues(organizationId),
+      });
+    },
     onError: (error) => {
+      if (knownIssueUnavailable(error)) {
+        void queryClient.invalidateQueries({
+          queryKey: queryKeys.knownIssues(organizationId),
+        });
+      }
       if (
         isApiError(error, 404) ||
         (isApiError(error, 409) &&
@@ -151,10 +183,38 @@ function DeclareIncidentForm({ onCancel }: { onCancel: () => void }) {
   const canManageServices = useCan(Permission.SERVICES_MANAGE);
   const declare = useDeclareIncident(organization.id);
   const [serviceId, setServiceId] = useState("");
+  const [choice, setChoice] = useState<KnownIssueChoice | null>(null);
+  const [title, setTitle] = useState("");
   const [severity, setSeverity] = useState<IncidentSeverity | "">("");
+  const [save, setSave] = useState(true);
 
   const available = services.data?.filter((service) => !service.archivedAt);
   const chosen = available?.find((service) => service.id === serviceId);
+  const knownIssues = useServiceKnownIssues(organization.id, chosen?.id);
+  const known = choice?.kind === "known" ? choice.issue : undefined;
+
+  // Choosing a known issue starts the incident from it; choosing something
+  // new after one clears what it filled in.
+  const onChoose = (next: KnownIssueChoice) => {
+    if (next.kind === "known") {
+      setTitle(next.issue.name);
+      setSeverity(next.issue.usualSeverity);
+    } else if (choice?.kind === "known") {
+      setTitle("");
+      setSeverity("");
+    }
+    setChoice(next);
+  };
+
+  const onService = (next: string) => {
+    setServiceId(next);
+    // Another service has other known issues: choose again.
+    if (choice?.kind === "known") {
+      setTitle("");
+      setSeverity("");
+    }
+    setChoice(null);
+  };
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -162,14 +222,22 @@ function DeclareIncidentForm({ onCancel }: { onCancel: () => void }) {
 
     declare.mutate(
       {
-        title: String(data.get("title") ?? ""),
+        title,
         summary: String(data.get("summary") ?? ""),
         serviceId,
         severity: severity as IncidentSeverity,
+        ...(known
+          ? { knownIssueId: known.id }
+          : choice?.kind === "new" && save
+            ? { saveAsKnownIssue: true }
+            : {}),
       },
       {
         onSuccess: (created) =>
           router.push(incidentHref(organization.slug, created.number)),
+        onError: (error) => {
+          if (knownIssueUnavailable(error)) setChoice(null);
+        },
       },
     );
   };
@@ -180,7 +248,9 @@ function DeclareIncidentForm({ onCancel }: { onCancel: () => void }) {
     (isApiError(declare.error, 409) &&
       declare.error.code === ApiErrorCode.SERVICE_ARCHIVED);
   const fields = fieldErrorsOf(declare.error);
-  const { attach: requiredRef, ...required } = useRequiredFields();
+  const issueUnavailable =
+    knownIssueUnavailable(declare.error) && choice === null;
+  const { attach: requiredRef, ...required } = useRequiredFields(choice);
 
   if (services.isError) return <ErrorAlert error={services.error} />;
   if (!available) return <Spinner label="Loading services…" />;
@@ -225,24 +295,16 @@ function DeclareIncidentForm({ onCancel }: { onCancel: () => void }) {
       <RequiredNote />
       {declare.isError &&
         !serviceUnavailable &&
+        !knownIssueUnavailable(declare.error) &&
         Object.keys(fields).length === 0 && (
           <ErrorAlert error={declare.error} />
         )}
-      <Field
-        label="Title"
-        name="title"
-        required
-        maxLength={200}
-        autoComplete="off"
-        hint="What is happening, in a few words."
-        error={fields.title}
-      />
       <div className="flex flex-col gap-1.5">
         <Select
           label="Affected service"
           name="serviceId"
           value={serviceId}
-          onChange={(event) => setServiceId(event.target.value)}
+          onChange={(event) => onService(event.target.value)}
           required
           error={
             serviceUnavailable
@@ -267,20 +329,75 @@ function DeclareIncidentForm({ onCancel }: { onCancel: () => void }) {
           </p>
         )}
       </div>
-      <SeveritySelect
-        value={severity}
-        onChange={setSeverity}
-        error={fields.severity}
-        placeholder="Choose a severity"
+      <KnownIssuePicker
+        serviceName={chosen?.name}
+        issues={knownIssues.data}
+        loading={Boolean(chosen) && knownIssues.isPending}
+        value={choice}
+        onChange={onChoose}
+        error={
+          issueUnavailable
+            ? KNOWN_ISSUE_UNAVAILABLE_MESSAGE
+            : (fields.knownIssueId ?? fields.saveAsKnownIssue)
+        }
       />
-      <TextArea
-        label="Summary"
-        name="summary"
-        optional
-        maxLength={2000}
-        hint="What is known so far: who is affected and how."
-        error={fields.summary}
-      />
+      {knownIssues.isError && <ErrorAlert error={knownIssues.error} />}
+      {/* The rest, once it is known what is happening. */}
+      {choice && (
+        <>
+          <Field
+            label="Title"
+            name="title"
+            required
+            maxLength={200}
+            autoComplete="off"
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            hint={
+              known
+                ? "From the known issue. Change it if this time is different."
+                : save
+                  ? "What is happening, in a few words. It also names the new known issue."
+                  : "What is happening, in a few words."
+            }
+            error={fields.title}
+          />
+          <SeveritySelect
+            value={severity}
+            onChange={setSeverity}
+            error={fields.severity}
+            placeholder="Choose a severity"
+            usual={known?.usualSeverity}
+          />
+          <TextArea
+            label="Summary"
+            name="summary"
+            optional
+            maxLength={2000}
+            hint="What is known so far: who is affected and how."
+            error={fields.summary}
+          />
+          {choice.kind === "new" && chosen && (
+            <label className="flex items-start gap-3 rounded-md border border-line bg-sunken px-3.5 py-3">
+              <input
+                type="checkbox"
+                checked={save}
+                onChange={(event) => setSave(event.target.checked)}
+                className="mt-0.5 size-4 shrink-0 accent-accent"
+              />
+              <span className="flex flex-col gap-0.5">
+                <span className="text-sm font-medium text-fg">
+                  Save as a known issue for {chosen.name}
+                </span>
+                <span className="text-xs text-fg-muted">
+                  Next time it can be chosen from the list, and its repeats
+                  are counted. The Admin can rename, merge or archive it.
+                </span>
+              </span>
+            </label>
+          )}
+        </>
+      )}
       <DialogActions>
         <SubmitHint id={required.hintId} missing={required.missing} />
         <Button variant="secondary" onClick={onCancel}>

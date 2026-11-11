@@ -81,6 +81,9 @@ export const queryKeys = {
     ["organization", organizationId, "teams", teamId, "members"] as const,
   services: (organizationId: string) =>
     ["organization", organizationId, "services"] as const,
+  /** Every known issue in the organization; each service's list sits under it. */
+  knownIssues: (organizationId: string) =>
+    ["organization", organizationId, "known-issues"] as const,
   incidents: (organizationId: string) =>
     ["organization", organizationId, "incidents"] as const,
   incidentList: (
