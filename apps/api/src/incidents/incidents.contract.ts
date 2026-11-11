@@ -44,6 +44,9 @@ export interface IncidentResponse {
   summary: string | null;
   severity: IncidentSeverity;
   status: IncidentStatus;
+  responseAccess: IncidentResponseAccess;
+  /** The people assigned, in the order they were; empty unless ASSIGNED. */
+  assignees: { membershipId: string; name: string }[];
   service: {
     id: string;
     name: string;
@@ -76,6 +79,12 @@ export type IncidentResponderStatus = 'INVESTIGATING' | 'COMPLETED';
  * membership id. Identity only: never an email. `completedAt` is set exactly
  * when `status` is COMPLETED.
  */
+/**
+ * Who may start responding: nobody until the Admin chooses (PENDING), anyone
+ * on the responsible team (OPEN), or only the people assigned (ASSIGNED).
+ */
+export type IncidentResponseAccess = 'PENDING' | 'OPEN' | 'ASSIGNED';
+
 export interface IncidentResponderResponse {
   membershipId: string;
   name: string;
@@ -114,7 +123,8 @@ export type IncidentActivityType =
   | 'STATUS_CHANGED'
   | 'TEAM_CHANGED'
   | 'RESPONSE_STARTED'
-  | 'RESPONSE_COMPLETED';
+  | 'RESPONSE_COMPLETED'
+  | 'RESPONSE_ACCESS_CHANGED';
 
 /**
  * One entry on an incident's timeline. History, not state: the incident

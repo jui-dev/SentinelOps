@@ -3648,6 +3648,164 @@ describe('incidents (integration)', () => {
     });
   });
 
+  describe('who may respond', () => {
+    const accessPath = (number: number) =>
+      `${fx.orgA}/incidents/${number}/response-access`;
+    const assign = (number: number, membershipIds: string[]) =>
+      call('put', accessPath(number), fx.alice, {
+        mode: 'ASSIGNED',
+        membershipIds,
+      });
+    const entries = (number: number) =>
+      prisma.incidentActivity.findMany({
+        where: {
+          type: 'RESPONSE_ACCESS_CHANGED',
+          incident: { organizationId: fx.orgA, number },
+        },
+        select: { fromValue: true, toValue: true, message: true },
+        orderBy: { createdAt: 'asc' },
+      });
+
+    beforeEach(async () => {
+      await declare(fx.orgA, fx.alice, fx.apiA);
+    });
+
+    it('should let only the people assigned start, from any team', async () => {
+      const assigned = await assign(1, [fx.erinInA]);
+
+      expect(assigned.status).toBe(200);
+      expect(assigned.body).toMatchObject({
+        responseAccess: 'ASSIGNED',
+        assignees: [{ membershipId: fx.erinInA, name: expect.any(String) }],
+      });
+
+      // Dave is on the responsible team, and still may not start.
+      expectCode(
+        await startAs(fx.orgA, fx.dave, 1),
+        403,
+        'NOT_ASSIGNED_TO_INCIDENT',
+      );
+      // He can still see it.
+      expect(
+        (await call('get', `${fx.orgA}/incidents/1`, fx.dave)).status,
+      ).toBe(200);
+
+      // Erin is on another team: being assigned shows it to her.
+      expect(
+        (await call('get', `${fx.orgA}/incidents/1`, fx.erin)).status,
+      ).toBe(200);
+      expect((await startAs(fx.orgA, fx.erin, 1)).status).toBe(200);
+    });
+
+    it('should let nobody start until a choice is made, leaving it declared', async () => {
+      await assign(1, []);
+
+      expectCode(await startAs(fx.orgA, fx.dave, 1), 409, 'RESPONSE_NOT_OPEN');
+
+      const incident = await call('get', `${fx.orgA}/incidents/1`, fx.dave);
+
+      expect(incident.body).toMatchObject({
+        status: 'DECLARED',
+        responseAccess: 'PENDING',
+        responders: [],
+      });
+    });
+
+    it('should open to the team, taking the view from an assignee who never started', async () => {
+      await assign(1, [fx.erinInA]);
+
+      const opened = await call('put', accessPath(1), fx.alice, {
+        mode: 'OPEN',
+      });
+
+      expect(opened.body).toMatchObject({
+        responseAccess: 'OPEN',
+        assignees: [],
+      });
+      expectCode(
+        await call('get', `${fx.orgA}/incidents/1`, fx.erin),
+        404,
+        'INCIDENT_NOT_FOUND',
+      );
+      expect((await startAs(fx.orgA, fx.dave, 1)).status).toBe(200);
+    });
+
+    it('should never take anyone off work they have begun', async () => {
+      expect((await startAs(fx.orgA, fx.dave, 1)).status).toBe(200);
+
+      const assigned = await assign(1, [fx.erinInA]);
+
+      expect(
+        assigned.body.assignees.map(
+          (a: { membershipId: string }) => a.membershipId,
+        ),
+      ).toEqual(expect.arrayContaining([fx.daveInA, fx.erinInA]));
+
+      const emptied = await assign(1, []);
+
+      expect(emptied.body).toMatchObject({
+        responseAccess: 'ASSIGNED',
+        assignees: [{ membershipId: fx.daveInA }],
+      });
+      expect((await completeAs(fx.orgA, fx.dave, 1)).status).toBe(200);
+    });
+
+    it('should record a change once, with who was assigned, and nothing for a repeat', async () => {
+      await assign(1, [fx.erinInA]);
+      await assign(1, [fx.erinInA]);
+      await call('put', accessPath(1), fx.alice, { mode: 'OPEN' });
+
+      const [assigned, opened, ...rest] = await entries(1);
+
+      expect(rest).toEqual([]);
+      expect(assigned).toMatchObject({
+        fromValue: 'OPEN',
+        toValue: 'ASSIGNED',
+        message: expect.any(String),
+      });
+      expect(opened).toEqual({
+        fromValue: 'ASSIGNED',
+        toValue: 'OPEN',
+        message: null,
+      });
+    });
+
+    it('should let only the Admin choose', async () => {
+      expectCode(
+        await call('put', accessPath(1), fx.dave, { mode: 'OPEN' }),
+        403,
+        'PERMISSION_DENIED',
+      );
+    });
+
+    it('should refuse someone from another organization, changing nothing', async () => {
+      const outsider = await prisma.membership.findFirstOrThrow({
+        where: { organizationId: fx.orgB },
+        select: { id: true },
+      });
+
+      expectCode(await assign(1, [outsider.id]), 404, 'MEMBERSHIP_NOT_FOUND');
+      expect(await entries(1)).toEqual([]);
+    });
+
+    it('should refuse a resolved incident', async () => {
+      expect((await resolve(fx.orgA, fx.alice, 1)).status).toBe(200);
+
+      expectCode(await assign(1, [fx.erinInA]), 409, 'INCIDENT_RESOLVED');
+    });
+
+    it('should clear who was assigned when the responsible team changes', async () => {
+      await assign(1, [fx.erinInA]);
+
+      const moved = await call('patch', `${fx.orgA}/incidents/1`, fx.alice, {
+        teamId: fx.platformA,
+      });
+
+      expect(moved.status).toBe(200);
+      expect(moved.body.assignees).toEqual([]);
+    });
+  });
+
   describe('response flow', () => {
     type Flow = {
       from: string;

@@ -24,6 +24,7 @@ import type {
   IncidentPartsResponse,
   IncidentResponderStatus,
   IncidentResponse,
+  IncidentResponseAccess,
   IncidentSeverity,
   IncidentStatus,
   IncidentSummaryResponse,
@@ -48,6 +49,8 @@ interface IncidentRow {
   summary: string | null;
   severity: IncidentSeverity;
   status: IncidentStatus;
+  responseAccess: IncidentResponseAccess;
+  assignees: readonly { membership: { id: string; user: { name: string } } }[];
   createdAt: Date;
   updatedAt: Date;
   resolvedAt: Date | null;
@@ -72,6 +75,11 @@ export const toIncidentResponse = (
   summary: incident.summary,
   severity: incident.severity,
   status: incident.status,
+  responseAccess: incident.responseAccess,
+  assignees: incident.assignees.map(({ membership }) => ({
+    membershipId: membership.id,
+    name: membership.user.name,
+  })),
   service: {
     id: incident.service.id,
     name: incident.service.name,

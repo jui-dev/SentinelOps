@@ -2314,6 +2314,7 @@ describe('core domain schema (integration)', () => {
         'TEAM_CHANGED',
         'RESPONSE_STARTED',
         'RESPONSE_COMPLETED',
+        'RESPONSE_ACCESS_CHANGED',
       ]);
     });
   });

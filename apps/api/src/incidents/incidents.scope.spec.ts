@@ -22,6 +22,7 @@ describe('incidentReadScope', () => {
       OR: [
         { team: { memberships: { some: { membershipId: MEMBERSHIP } } } },
         { responders: { some: { membershipId: MEMBERSHIP } } },
+        { assignees: { some: { membershipId: MEMBERSHIP } } },
         { analysis: { is: { ownerMembershipId: MEMBERSHIP } } },
       ],
     });

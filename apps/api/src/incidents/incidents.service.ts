@@ -47,12 +47,19 @@ import {
   incidentResolved,
   invalidCursor,
   invalidStatusTransition,
+  notAssignedToIncident,
   notInvestigating,
   notOnResponsibleTeam,
   respondersStillInvestigating,
   responseAlreadyCompleted,
+  responseNotOpen,
   startInvestigatingFirst,
 } from './incidents.errors.js';
+import {
+  INITIAL_RESPONSE_ACCESS,
+  nextResponseAccess,
+  startRefusal,
+} from './incidents.response-access.js';
 import {
   toIncidentActivityResponse,
   toIncidentAttentionResponse,
@@ -88,6 +95,7 @@ import type {
   ListIncidentsQuery,
   MemberResponsesQuery,
   PostIncidentUpdateRequest,
+  SetIncidentResponseAccessRequest,
   UpdateIncidentRequest,
 } from './incidents.schemas.js';
 
@@ -282,6 +290,12 @@ const SEVERITIES: readonly IncidentSeverity[] = [
  * Columns an incident response is built from. Embedded records are identity
  * only: never the declarer's email, and never `team.memberships`.
  */
+/** The people assigned, in the order they were; UUIDv7 ids break a tie. */
+const assigneeOrder: Prisma.IncidentAssigneeOrderByWithRelationInput[] = [
+  { assignedAt: 'asc' },
+  { id: 'asc' },
+];
+
 const incidentSelection = {
   id: true,
   number: true,
@@ -289,6 +303,13 @@ const incidentSelection = {
   summary: true,
   severity: true,
   status: true,
+  responseAccess: true,
+  assignees: {
+    select: {
+      membership: { select: { id: true, user: { select: { name: true } } } },
+    },
+    orderBy: assigneeOrder,
+  },
   createdAt: true,
   updatedAt: true,
   resolvedAt: true,
@@ -1540,6 +1561,7 @@ export class IncidentsService {
             serviceId: input.serviceId,
             teamId: service.ownerTeamId,
             severity: input.severity,
+            responseAccess: INITIAL_RESPONSE_ACCESS,
             createdById: declarerId,
           },
           select: incidentDetailSelection,
@@ -1723,6 +1745,16 @@ export class IncidentsService {
             : []),
         ];
 
+        // A new team's response is decided afresh. Whoever already started
+        // keeps their response; being assigned was about the old team.
+        const newTeam = team !== undefined && team.id !== before.team.id;
+
+        if (newTeam) {
+          await tx.incidentAssignee.deleteMany({
+            where: { organizationId, incidentId },
+          });
+        }
+
         // Looked up only when there is a change to attribute.
         const actorId =
           changes.length > 0
@@ -1741,6 +1773,7 @@ export class IncidentsService {
             severity: input.severity,
             status: input.status,
             teamId: input.teamId,
+            responseAccess: newTeam ? INITIAL_RESPONSE_ACCESS : undefined,
             resolvedAt: resolving ? now : undefined,
             resolution: resolving ? input.resolution : undefined,
           },
@@ -1834,7 +1867,10 @@ export class IncidentsService {
    * also moves a DECLARED incident to INVESTIGATING — nobody moves it by hand.
    *
    * Only a member of the incident's current responsible team may start: 403
-   * NOT_ON_RESPONSIBLE_TEAM otherwise, the Admin included. Starting again
+   * NOT_ON_RESPONSIBLE_TEAM otherwise, the Admin included — while the incident
+   * is open to its team. An assigned incident admits only the people assigned
+   * (403 NOT_ASSIGNED_TO_INCIDENT), and one the Admin has not decided admits
+   * nobody (409 RESPONSE_NOT_OPEN). Starting again
    * while investigating changes and records nothing, whatever team the
    * caller is on now — their response is under way. Starting again after
    * completing is 409 RESPONSE_ALREADY_COMPLETED: a completed response is
@@ -1887,7 +1923,7 @@ export class IncidentsService {
         let statusChanged = false;
 
         if (!existing) {
-          await this.requireResponsibleTeamMember(
+          await this.requireMayStart(
             tx,
             organizationId,
             incidentId,
@@ -1961,6 +1997,126 @@ export class IncidentsService {
         incidentNumber: incident.number,
         membershipId: actor.membershipId,
         ...(statusChanged && { status: incident.status }),
+      });
+    }
+
+    return toIncidentDetailResponse(incident);
+  }
+
+  /**
+   * The Admin chooses who may respond to an active incident: its responsible
+   * team, or the people named, from any team. Replaces whatever was chosen;
+   * see nextResponseAccess for who stays. A choice that changes nothing writes
+   * and records nothing, and a changed one is one timeline entry. Under the
+   * incident's row lock, so a member starting cannot slip between the choice
+   * being read and written.
+   */
+  async setResponseAccess(
+    organizationId: string,
+    incidentNumber: string,
+    input: SetIncidentResponseAccessRequest,
+    actor: IncidentReader,
+  ): Promise<IncidentDetailResponse> {
+    const number = parseIncidentNumber(incidentNumber);
+
+    if (number === undefined) {
+      throw incidentNotFound();
+    }
+
+    const { incident, changed } = await this.prisma.$transaction(async (tx) => {
+      const incidentId = await this.lockActive(
+        tx,
+        organizationId,
+        actor,
+        number,
+      );
+      const current = await tx.incident.findFirstOrThrow({
+        where: { id: incidentId, organizationId },
+        select: {
+          responseAccess: true,
+          assignees: { select: { membershipId: true } },
+          responders: { select: { membershipId: true, status: true } },
+        },
+      });
+      const next = nextResponseAccess(current, input);
+      const people = await tx.membership.findMany({
+        where: { organizationId, id: { in: next.assigneeIds } },
+        select: { id: true, user: { select: { name: true } } },
+      });
+
+      if (people.length !== next.assigneeIds.length) {
+        throw membershipNotFound();
+      }
+
+      const before = new Set(current.assignees.map((a) => a.membershipId));
+      const changed =
+        current.responseAccess !== next.responseAccess ||
+        before.size !== next.assigneeIds.length ||
+        next.assigneeIds.some((id) => !before.has(id));
+
+      if (changed) {
+        const actorId = await this.resolveActor(
+          tx,
+          organizationId,
+          actor.membershipId,
+        );
+        const now = new Date();
+        const named = new Map(people.map((p) => [p.id, p.user.name]));
+
+        // Everyone who stays keeps when they were assigned.
+        await tx.incidentAssignee.deleteMany({
+          where: {
+            organizationId,
+            incidentId,
+            membershipId: { notIn: next.assigneeIds },
+          },
+        });
+        await tx.incidentAssignee.createMany({
+          data: next.assigneeIds
+            .filter((id) => !before.has(id))
+            .map((membershipId) => ({
+              organizationId,
+              incidentId,
+              membershipId,
+              assignedAt: now,
+            })),
+        });
+        await tx.incident.update({
+          where: { id: incidentId },
+          data: { responseAccess: next.responseAccess },
+          select: { id: true },
+        });
+        await tx.incidentActivity.create({
+          data: {
+            organizationId,
+            incidentId,
+            actorId,
+            type: 'RESPONSE_ACCESS_CHANGED',
+            fromValue: current.responseAccess,
+            toValue: next.responseAccess,
+            message:
+              next.assigneeIds.map((id) => named.get(id)).join(', ') || null,
+            createdAt: now,
+          },
+          select: { id: true },
+        });
+      }
+
+      return {
+        incident: await tx.incident.findFirstOrThrow({
+          where: { id: incidentId, organizationId },
+          select: incidentDetailSelection,
+        }),
+        changed,
+      };
+    });
+
+    if (changed) {
+      this.logger.log('Incident response access changed', {
+        incidentId: incident.id,
+        incidentNumber: incident.number,
+        responseAccess: incident.responseAccess,
+        assignees: incident.assignees.length,
       });
     }
 
@@ -2340,23 +2496,39 @@ export class IncidentsService {
    * already committed and is what is judged. One query, joining the incident
    * to its team's members.
    */
-  private async requireResponsibleTeamMember(
+  private async requireMayStart(
     tx: Prisma.TransactionClient,
     organizationId: string,
     incidentId: string,
     membershipId: string,
   ): Promise<void> {
-    const onTeam = await tx.incident.findFirst({
-      where: {
-        id: incidentId,
-        organizationId,
-        team: { memberships: { some: { membershipId } } },
+    const incident = await tx.incident.findFirstOrThrow({
+      where: { id: incidentId, organizationId },
+      select: {
+        responseAccess: true,
+        assignees: { where: { membershipId }, select: { id: true } },
+        team: {
+          select: {
+            memberships: { where: { membershipId }, select: { id: true } },
+          },
+        },
       },
-      select: { id: true },
     });
 
-    if (!onTeam) {
-      throw notOnResponsibleTeam();
+    switch (
+      startRefusal({
+        responseAccess: incident.responseAccess,
+        onResponsibleTeam: incident.team.memberships.length > 0,
+        assigned: incident.assignees.length > 0,
+      })
+    ) {
+      case 'awaiting-decision':
+        throw responseNotOpen();
+      case 'not-assigned':
+        throw notAssignedToIncident();
+      case 'not-on-team':
+        throw notOnResponsibleTeam();
+      case null:
     }
   }
 

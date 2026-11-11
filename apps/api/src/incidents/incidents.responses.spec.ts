@@ -32,6 +32,8 @@ describe('incident responses', () => {
     createdById: 'user-1',
     severity: 'SEV1' as const,
     status: 'RESOLVED' as const,
+    responseAccess: 'OPEN' as const,
+    assignees: [],
     createdAt: CREATED,
     updatedAt: UPDATED,
     resolvedAt: RESOLVED,
@@ -61,6 +63,8 @@ describe('incident responses', () => {
 
   it('should emit exactly the declared fields, identity only on embedded records', () => {
     expect(toIncidentResponse(row)).toStrictEqual({
+      responseAccess: 'OPEN',
+      assignees: [],
       id: 'incident-1',
       number: 42,
       title: 'Card payments failing',

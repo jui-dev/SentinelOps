@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
 } from '@nestjs/common';
 
@@ -35,6 +36,7 @@ import {
   incidentSummaryQuerySchema,
   listIncidentsQuerySchema,
   postIncidentUpdateSchema,
+  setIncidentResponseAccessSchema,
   updateIncidentSchema,
 } from './incidents.schemas.js';
 import type {
@@ -46,6 +48,7 @@ import type {
   IncidentSummaryQuery,
   ListIncidentsQuery,
   PostIncidentUpdateRequest,
+  SetIncidentResponseAccessRequest,
   UpdateIncidentRequest,
 } from './incidents.schemas.js';
 import { IncidentsService } from './incidents.service.js';
@@ -304,8 +307,28 @@ export class IncidentsController {
   }
 
   /**
-   * The caller starts investigating the incident, as a member of its
-   * responsible team. The first to start moves a DECLARED incident to
+   * The Admin chooses who may respond: the responsible team, or the people
+   * named. 200 with the incident, whether or not the choice changed anything.
+   */
+  @Put(':incidentNumber/response-access')
+  @RequirePermission(Permission.INCIDENTS_MANAGE)
+  setResponseAccess(
+    @CurrentMembership() membership: OrganizationContext,
+    @Param('incidentNumber') incidentNumber: string,
+    @Body({ schema: setIncidentResponseAccessSchema })
+    body: SetIncidentResponseAccessRequest,
+  ): Promise<IncidentDetailResponse> {
+    return this.incidents.setResponseAccess(
+      membership.organizationId,
+      incidentNumber,
+      body,
+      { membershipId: membership.membershipId, role: membership.role },
+    );
+  }
+
+  /**
+   * The caller starts investigating the incident, if who may respond lets
+   * them. The first to start moves a DECLARED incident to
    * INVESTIGATING. Starting again while investigating changes nothing, so
    * this answers 200 either way, with the incident. The responder is always
    * the admitted member: there is no body.

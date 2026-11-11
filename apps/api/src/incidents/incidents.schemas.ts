@@ -339,6 +339,27 @@ export const memberResponsesQuerySchema = z.object({
   cursor: z.string().min(1).max(100).optional(),
 });
 
+/**
+ * The Admin's choice of who may respond: the responsible team, or the people
+ * named. Naming nobody leaves the choice to be made.
+ */
+export const setIncidentResponseAccessSchema = z.discriminatedUnion('mode', [
+  z.strictObject({ mode: z.literal('OPEN') }),
+  z.strictObject({
+    mode: z.literal('ASSIGNED'),
+    membershipIds: z
+      .array(resourceIdSchema)
+      .max(200)
+      .refine(
+        (ids) => new Set(ids).size === ids.length,
+        'Name each person once',
+      ),
+  }),
+]);
+
+export type SetIncidentResponseAccessRequest = z.infer<
+  typeof setIncidentResponseAccessSchema
+>;
 export type CreateIncidentRequest = z.infer<typeof createIncidentSchema>;
 export type UpdateIncidentRequest = z.infer<typeof updateIncidentSchema>;
 export type PostIncidentUpdateRequest = z.infer<

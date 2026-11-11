@@ -53,6 +53,8 @@ const incidentRow = (overrides: Record<string, unknown> = {}) => ({
   summary: null,
   severity: 'SEV1' as const,
   status: 'INVESTIGATING' as const,
+  responseAccess: 'OPEN' as const,
+  assignees: [],
   createdAt: CREATED,
   updatedAt: CREATED,
   resolvedAt: null,
@@ -63,7 +65,12 @@ const incidentRow = (overrides: Record<string, unknown> = {}) => ({
     criticality: 'CRITICAL' as const,
     archivedAt: null,
   },
-  team: { id: TEAM, name: 'Payments', slug: 'payments' },
+  team: {
+    id: TEAM,
+    name: 'Payments',
+    slug: 'payments',
+    memberships: [{ id: 'team-membership-1' }],
+  },
   createdBy: { id: USER, name: 'Ada Lovelace' },
   responders: [],
   ...overrides,
@@ -99,6 +106,9 @@ const serviceWith = () => {
       // Both the values update() reads under the lock and the incident the
       // response routes answer with.
       findFirstOrThrow: vi.fn().mockResolvedValue(incidentRow()),
+    },
+    incidentAssignee: {
+      deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
     },
     incidentResponder: {
       count: vi.fn().mockResolvedValue(0),
@@ -196,6 +206,7 @@ describe('IncidentsService', () => {
             serviceId: SERVICE,
             teamId: TEAM,
             severity: 'SEV1',
+            responseAccess: 'OPEN',
             createdById: USER,
           },
         }),
@@ -845,8 +856,7 @@ describe('IncidentsService', () => {
     it('should lock the incident, check the team, create the response, and move a DECLARED incident, recording both', async () => {
       const { service, prisma } = serviceWith();
       prisma.incident.findFirst
-        .mockResolvedValueOnce({ id: 'incident-1', status: 'DECLARED' })
-        .mockResolvedValueOnce({ id: 'incident-1' });
+        .mockResolvedValueOnce({ id: 'incident-1', status: 'DECLARED' });
 
       await service.startResponse(ORG, '1', MEMBER_ACTOR);
 
@@ -855,14 +865,22 @@ describe('IncidentsService', () => {
         where: { id: 'incident-1', organizationId: ORG, status: 'DECLARED' },
         data: { status: 'INVESTIGATING' },
       });
-      expect(prisma.incident.findFirst).toHaveBeenLastCalledWith({
-        where: {
-          id: 'incident-1',
-          organizationId: ORG,
-          team: { memberships: { some: { membershipId: MEMBERSHIP } } },
-        },
-        select: { id: true },
-      });
+      expect(prisma.incident.findFirstOrThrow).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'incident-1', organizationId: ORG },
+          select: expect.objectContaining({
+            responseAccess: true,
+            team: {
+              select: {
+                memberships: {
+                  where: { membershipId: MEMBERSHIP },
+                  select: { id: true },
+                },
+              },
+            },
+          }),
+        }),
+      );
       expect(prisma.incidentResponder.create).toHaveBeenCalledWith({
         data: {
           organizationId: ORG,
@@ -939,8 +957,12 @@ describe('IncidentsService', () => {
     it('should refuse a member not on the responsible team with 403 and write nothing', async () => {
       const { service, prisma } = serviceWith();
       prisma.incident.findFirst
-        .mockResolvedValueOnce({ id: 'incident-1', status: 'DECLARED' })
-        .mockResolvedValueOnce(null);
+        .mockResolvedValueOnce({ id: 'incident-1', status: 'DECLARED' });
+      prisma.incident.findFirstOrThrow.mockResolvedValueOnce({
+        responseAccess: 'OPEN',
+        assignees: [],
+        team: { memberships: [] },
+      });
 
       await expectCode(
         service.startResponse(ORG, '1', MEMBER_ACTOR),

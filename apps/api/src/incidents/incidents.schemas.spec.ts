@@ -9,6 +9,7 @@ import {
   summaryBounds,
   TYPICAL_RESOLUTION_DAYS,
   typicalResolutionWindow,
+  setIncidentResponseAccessSchema,
   updateIncidentSchema,
 } from './incidents.schemas.js';
 
@@ -383,5 +384,25 @@ describe('incident schemas', () => {
     ])('should refuse %s', (_, query) => {
       expect(incidentActivityQuerySchema.safeParse(query).success).toBe(false);
     });
+  });
+});
+
+describe('setIncidentResponseAccessSchema', () => {
+  const id = '0199a1b2-c3d4-7000-8000-0000000000aa';
+  const parse = (body: unknown) =>
+    setIncidentResponseAccessSchema.safeParse(body).success;
+
+  it('should take opening to the team, or the people named', () => {
+    expect(parse({ mode: 'OPEN' })).toBe(true);
+    expect(parse({ mode: 'ASSIGNED', membershipIds: [id] })).toBe(true);
+    expect(parse({ mode: 'ASSIGNED', membershipIds: [] })).toBe(true);
+  });
+
+  it('should refuse anything else', () => {
+    expect(parse({ mode: 'PENDING' })).toBe(false);
+    expect(parse({ mode: 'OPEN', membershipIds: [id] })).toBe(false);
+    expect(parse({ mode: 'ASSIGNED' })).toBe(false);
+    expect(parse({ mode: 'ASSIGNED', membershipIds: [id, id] })).toBe(false);
+    expect(parse({ mode: 'ASSIGNED', membershipIds: ['nope'] })).toBe(false);
   });
 });

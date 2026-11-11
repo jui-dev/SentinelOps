@@ -9,6 +9,7 @@
  *   - its responsible team (Incident.teamId) is one they are on now
  *   - they responded to it: an IncidentResponder row, whatever its status,
  *     which outlives a reassignment of the team
+ *   - the Admin assigned them to it, from whatever team
  *   - they own its analysis
  *
  * The service's owner is deliberately not consulted. Incident.teamId is the
@@ -51,6 +52,7 @@ export const incidentReadScope = (
     OR: [
       { team: { memberships: { some: { membershipId } } } },
       { responders: { some: { membershipId } } },
+      { assignees: { some: { membershipId } } },
       { analysis: { is: { ownerMembershipId: membershipId } } },
     ],
   };

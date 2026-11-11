@@ -23,6 +23,8 @@ export const IncidentsErrorCode = {
   RESPONSE_ALREADY_COMPLETED: 'RESPONSE_ALREADY_COMPLETED',
   NOT_INVESTIGATING: 'NOT_INVESTIGATING',
   RESPONDERS_STILL_INVESTIGATING: 'RESPONDERS_STILL_INVESTIGATING',
+  RESPONSE_NOT_OPEN: 'RESPONSE_NOT_OPEN',
+  NOT_ASSIGNED_TO_INCIDENT: 'NOT_ASSIGNED_TO_INCIDENT',
 } as const;
 
 export type IncidentsErrorCode =
@@ -90,6 +92,20 @@ export const notOnResponsibleTeam = (): ForbiddenException =>
     {
       errorCode: IncidentsErrorCode.NOT_ON_RESPONSIBLE_TEAM,
     },
+  );
+
+/** The Admin has not yet chosen who responds to this incident. */
+export const responseNotOpen = (): ConflictException =>
+  new ConflictException(
+    'The Admin has not yet chosen who responds to this incident',
+    { errorCode: IncidentsErrorCode.RESPONSE_NOT_OPEN },
+  );
+
+/** The incident is assigned to specific people, and the caller is not one. */
+export const notAssignedToIncident = (): ForbiddenException =>
+  new ForbiddenException(
+    'Only the people assigned to this incident can start responding to it',
+    { errorCode: IncidentsErrorCode.NOT_ASSIGNED_TO_INCIDENT },
   );
 
 /**

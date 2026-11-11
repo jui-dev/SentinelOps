@@ -48,6 +48,8 @@ const incidentRow = {
   summary: null,
   severity: 'SEV1',
   status: 'DECLARED',
+  responseAccess: 'OPEN',
+  assignees: [],
   createdAt: CREATED,
   updatedAt: CREATED,
   resolvedAt: null,
@@ -58,7 +60,12 @@ const incidentRow = {
     criticality: 'CRITICAL',
     archivedAt: null,
   },
-  team: { id: TEAM_ID, name: 'Payments', slug: 'payments' },
+  team: {
+    id: TEAM_ID,
+    name: 'Payments',
+    slug: 'payments',
+    memberships: [{ id: 'team-membership-1' }],
+  },
   createdBy: { id: USER_ID, name: 'Ada Lovelace' },
   responders: [],
 };
@@ -476,6 +483,8 @@ describe('Incidents (e2e)', () => {
         summary: null,
         severity: 'SEV1',
         status: 'DECLARED',
+        responseAccess: 'OPEN',
+        assignees: [],
         service: {
           id: SERVICE_ID,
           name: 'Payment API',
@@ -721,10 +730,13 @@ describe('Incidents (e2e)', () => {
 
     it('should refuse starting outside the responsible team with 403 NOT_ON_RESPONSIBLE_TEAM, writing nothing', async () => {
       prisma.incidentResponder.findFirst.mockResolvedValue(null);
-      // Found by lockActive, then not found with the caller on its team.
-      prisma.incident.findFirst
-        .mockResolvedValueOnce(incidentRow)
-        .mockResolvedValueOnce(null);
+      // Found by lockActive, then the caller is not on its team.
+      prisma.incident.findFirst.mockResolvedValueOnce(incidentRow);
+      prisma.incident.findFirstOrThrow.mockResolvedValueOnce({
+        responseAccess: 'OPEN',
+        assignees: [],
+        team: { memberships: [] },
+      });
 
       const response = await send('post', `${base}/1/responders/me`);
 

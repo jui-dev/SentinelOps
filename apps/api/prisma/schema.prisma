@@ -100,6 +100,7 @@ model Organization {
   services           Service[]
   incidents          Incident[]
   incidentResponders IncidentResponder[]
+  incidentAssignees  IncidentAssignee[]
   incidentAnalyses   IncidentAnalysis[]
   notifications      Notification[]
 
@@ -194,6 +195,9 @@ model Membership {
   /// application deletes a membership today; member removal, when it
   /// arrives, decides what happens to that history.
   incidentResponses IncidentResponder[]
+  /// Cascade, unlike the responder key: an assignment is a standing
+  /// instruction, not a record of work done.
+  incidentAssignments IncidentAssignee[]
   /// Restrict, like the responder key: the owner of an incident analysis
   /// cannot be physically deleted. Member removal, when it arrives, decides
   /// whether ownership moves first.
@@ -528,6 +532,9 @@ model Incident {
   teamId         String           @map("team_id") @db.Uuid
   severity       IncidentSeverity
   status         IncidentStatus   @default(DECLARED)
+  /// Who may start responding. The people an ASSIGNED incident names are its
+  /// assignees.
+  responseAccess IncidentResponseAccess @default(OPEN) @map("response_access")
   /// Who declared it: the global User rather than the Membership. A
   /// membership is hard-deleted when access is revoked, and attribution must
   /// outlive the grant; a user is soft-deleted and keeps resolving. Restrict,
@@ -555,6 +562,7 @@ model Incident {
   team         Team                @relation(fields: [organizationId, teamId], references: [organizationId, id], onDelete: Restrict, onUpdate: Restrict)
   createdBy    User                @relation("IncidentsDeclared", fields: [createdById], references: [id], onDelete: Restrict)
   responders   IncidentResponder[]
+  assignees    IncidentAssignee[]
   activity     IncidentActivity[]
   analysis     IncidentAnalysis?
 
@@ -586,6 +594,37 @@ model Incident {
 ///
 /// Completing a response is not resolving the incident — only the Admin
 /// resolves, and only while no responder is INVESTIGATING.
+/// Who may start responding to an incident: nobody until the Admin chooses,
+/// anyone on its responsible team, or only the people assigned.
+enum IncidentResponseAccess {
+  PENDING
+  OPEN
+  ASSIGNED
+
+  @@map("incident_response_access")
+}
+
+/// A member the Admin has named to work on an incident. Being here lets them
+/// start a response; it is not a response. Built like IncidentResponder, with
+/// both foreign keys composite and sharing organizationId.
+model IncidentAssignee {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  incidentId     String   @map("incident_id") @db.Uuid
+  membershipId   String   @map("membership_id") @db.Uuid
+  assignedAt     DateTime @default(now()) @map("assigned_at") @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  incident     Incident     @relation(fields: [organizationId, incidentId], references: [organizationId, id], onDelete: Cascade, onUpdate: Restrict)
+  membership   Membership   @relation(fields: [organizationId, membershipId], references: [organizationId, id], onDelete: Cascade, onUpdate: Restrict)
+
+  @@unique([incidentId, membershipId])
+  /// Serves the read scope's "assigned to them".
+  @@index([membershipId])
+  @@index([organizationId])
+  @@map("incident_assignees")
+}
+
 enum IncidentResponderStatus {
   INVESTIGATING
   COMPLETED
@@ -596,8 +635,7 @@ enum IncidentResponderStatus {
 /// One member's response to an incident: created when they start
 /// investigating, completed when they mark their response complete.
 ///
-/// A member of the incident's responsible team creates their own row; nobody
-/// assigns anyone. At most one row per member per incident, so starting twice
+/// Whoever IncidentResponseAccess lets start creates their own row. At most one row per member per incident, so starting twice
 /// cannot record a second response, and a completed response is not
 /// restarted. A row outlives a reassignment of the incident's team: whoever
 /// started keeps their response and may finish it.
@@ -656,6 +694,8 @@ model IncidentResponder {
 /// reassignment of the responsible team, which changes who may start
 /// investigating. RESPONSE_STARTED and RESPONSE_COMPLETED are a responder
 /// starting and completing their own response, attributed to them.
+/// RESPONSE_ACCESS_CHANGED is the Admin choosing who may respond: from and to
+/// the access, with the people assigned, by name, as its message.
 enum IncidentActivityType {
   DECLARED
   UPDATE
@@ -664,6 +704,7 @@ enum IncidentActivityType {
   TEAM_CHANGED
   RESPONSE_STARTED
   RESPONSE_COMPLETED
+  RESPONSE_ACCESS_CHANGED
 
   @@map("incident_activity_type")
 }
