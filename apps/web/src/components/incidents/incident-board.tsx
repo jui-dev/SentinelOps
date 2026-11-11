@@ -29,6 +29,7 @@ import {
   useIncidentTimeline,
 } from "./incident-queries";
 import { Avatar } from "./incident-people";
+import { ResponseAccessMark } from "./response-access";
 import { incidentKey, SeverityMark, StatusMark } from "./severity";
 
 /** Past this long without an update, an active incident's last one is stale. */
@@ -241,17 +242,22 @@ function CanRespond({ incident }: { incident: IncidentListItemResponse }) {
 }
 
 /**
- * Whether an incident waits on the caller: their team's, active, not started
- * by them, and still wanting someone — nobody on it yet, or someone still
- * investigating. The API's `needs-you`, judged from one row.
+ * Whether an incident waits on the caller: theirs to start — open to their
+ * team, or assigned to them — active, not started by them, and still
+ * wanting someone — nobody on it yet, or someone still investigating. The
+ * API's `needs-you`, judged from one row.
  */
 export const needsYou = (
   incident: IncidentListItemResponse,
   yourTeamIds: ReadonlySet<string>,
+  membershipId: string,
 ) =>
   incident.status !== "RESOLVED" &&
   !incident.yourResponse &&
-  yourTeamIds.has(incident.team.id) &&
+  (incident.responseAccess === "OPEN"
+    ? yourTeamIds.has(incident.team.id)
+    : incident.responseAccess === "ASSIGNED" &&
+      incident.assignees.some((a) => a.membershipId === membershipId)) &&
   (incident.status === "DECLARED" || incident.response.investigating > 0);
 
 /**
@@ -283,8 +289,9 @@ function YourPart({ incident }: { incident: IncidentListItemResponse }) {
 const memberAction = (
   incident: IncidentListItemResponse,
   yourTeamIds: ReadonlySet<string>,
+  membershipId: string,
 ) =>
-  needsYou(incident, yourTeamIds)
+  needsYou(incident, yourTeamIds, membershipId)
     ? { label: "Respond", tone: "primary" as const }
     : incident.status !== "RESOLVED" &&
         incident.yourResponse?.status === "INVESTIGATING"
@@ -321,8 +328,9 @@ export function IncidentCards({
       {incidents.map((incident) => {
         const key = incidentKey(incident.number);
         const action = member
-          ? memberAction(incident, yourTeamIds)
+          ? memberAction(incident, yourTeamIds, organization.membership.id)
           : { label: "View", tone: "accent" as const };
+        const active = incident.status !== "RESOLVED";
         const unstarted =
           incident.status !== "RESOLVED" &&
           incident.response.investigating + incident.response.completed === 0;
@@ -356,6 +364,9 @@ export function IncidentCards({
                 {incident.service.name} · {incident.team.name}
                 {member && <YourPart incident={incident} />}
               </span>
+              {active && (
+                <ResponseAccessMark incident={incident} className="text-xs" />
+              )}
               <span className="mt-1 flex items-center justify-between gap-3 text-sm">
                 <ResponseCell incident={incident} />
                 <span aria-hidden="true" className={rowActionClasses(action.tone)}>
@@ -414,7 +425,7 @@ export function IncidentBoard({
     });
   // A member's active list has no status column: the team's response says it.
   const showStatus = !(member && active);
-  const columns = showStatus ? 7 : 6;
+  const columns = (showStatus ? 7 : 6) + (active ? 1 : 0);
 
   return (
     <Table label={label} variant="operational" stickyHeader fixed>
@@ -425,6 +436,7 @@ export function IncidentBoard({
           <col className={cx("hidden w-34", active ? "sm:table-column" : "lg:table-column")} />
         )}
         <col className={cx("hidden md:table-column", member ? "w-44" : "w-40")} />
+        {active && <col className="hidden w-44 xl:table-column" />}
         <col className="hidden w-28 lg:table-column" />
         <col className="w-19 sm:w-22" />
         <col className={member ? "w-30" : "w-22"} />
@@ -441,6 +453,7 @@ export function IncidentBoard({
           <TH className="hidden md:table-cell">
             {member ? "Team response" : "Responders"}
           </TH>
+          {active && <TH className="hidden xl:table-cell">Who can respond</TH>}
           <TH className="hidden lg:table-cell">Last update</TH>
           <TH align="end">{active ? "Open for" : "Lasted"}</TH>
           <TH align="end">Action</TH>
@@ -458,7 +471,7 @@ export function IncidentBoard({
             incident.status !== "RESOLVED" &&
             incident.response.investigating + incident.response.completed === 0;
           const action = member
-            ? memberAction(incident, yourTeamIds)
+            ? memberAction(incident, yourTeamIds, organization.membership.id)
             : { label: "View", tone: "accent" as const };
 
           return (
@@ -514,6 +527,10 @@ export function IncidentBoard({
                     {incident.service.name} · {incident.team.name}
                     {member && <YourPart incident={incident} />}
                   </span>
+                  {active && (
+                    // Its own column once there is room for one.
+                    <ResponseAccessMark incident={incident} className="text-xs xl:hidden" />
+                  )}
                 </TD>
                 {showStatus && (
                   <TD className={cx("hidden", active ? "sm:table-cell" : "lg:table-cell")}>
@@ -529,6 +546,11 @@ export function IncidentBoard({
                 <TD className="hidden text-sm md:table-cell">
                   <ResponseCell incident={incident} showWait={member} />
                 </TD>
+                {active && (
+                  <TD className="hidden text-sm xl:table-cell">
+                    <ResponseAccessMark incident={incident} />
+                  </TD>
+                )}
                 <TD className="hidden text-sm lg:table-cell">
                   <LastUpdateCell incident={incident} />
                 </TD>

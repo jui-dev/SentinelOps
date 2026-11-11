@@ -85,6 +85,9 @@ describe('toNotificationResponse', () => {
     ['INCIDENT_RESOLVED', 'INVESTIGATING', 'RESOLVED'],
     // A response completing carries no values.
     ['INCIDENT_READY_TO_RESOLVE', null, null],
+    // Who may now respond is the type itself; the recipient is the subject.
+    ['INCIDENT_OPENED_TO_TEAM', 'PENDING', 'OPEN'],
+    ['INCIDENT_ASSIGNED', 'PENDING', 'ASSIGNED'],
   ] as const)(
     'should report no change for %s, but still the incident',
     (type, fromValue, toValue) => {

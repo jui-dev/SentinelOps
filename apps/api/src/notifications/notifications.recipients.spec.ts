@@ -34,6 +34,7 @@ const candidates = (
     { membershipId: CARA, status: 'COMPLETED' },
   ],
   adminIds: [ALICE, GUS],
+  newAssigneeIds: [],
   ...overrides,
 });
 
@@ -89,17 +90,39 @@ describe('incidentRecipients', () => {
     ).toEqual([ALICE, GUS]);
   });
 
+  it('should tell the responsible team that it was opened to them, and nobody else', () => {
+    expect(
+      incidentRecipients(
+        'INCIDENT_OPENED_TO_TEAM',
+        candidates({ teamMemberIds: [BEN, DAN] }),
+      ),
+    ).toEqual([BEN, DAN]);
+  });
+
+  it('should tell only the people just assigned, whatever their team', () => {
+    // Gus is on no team; the team and responders are not told.
+    expect(
+      incidentRecipients(
+        'INCIDENT_ASSIGNED',
+        candidates({ newAssigneeIds: [GUS, DAN] }),
+      ),
+    ).toEqual([DAN, GUS]);
+  });
+
   it.each<IncidentNotificationType>([
     'INCIDENT_DECLARED',
     'INCIDENT_REASSIGNED',
     'INCIDENT_SEVERITY_CHANGED',
     'INCIDENT_RESOLVED',
     'INCIDENT_READY_TO_RESOLVE',
+    'INCIDENT_OPENED_TO_TEAM',
+    'INCIDENT_ASSIGNED',
   ])('should never tell the actor of %s, however they qualify', (type) => {
-    // Alice is on the team, responding, and an Admin.
+    // Alice is on the team, responding, assigned, and an Admin.
     const everywhere = candidates({
       teamMemberIds: [ALICE, EVE],
       responders: [{ membershipId: ALICE, status: 'INVESTIGATING' }],
+      newAssigneeIds: [ALICE],
     });
 
     expect(incidentRecipients(type, everywhere)).not.toContain(ALICE);

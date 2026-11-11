@@ -5,9 +5,11 @@ import {
   ArrowRightLeft,
   ArrowUp,
   CircleCheck,
+  DoorOpen,
   Gauge,
   ListChecks,
   Siren,
+  UserCheck,
   UserMinus,
   UserPlus,
 } from "lucide-react";
@@ -40,6 +42,8 @@ const ICONS: Record<NotificationIcon, LucideIcon> = {
   severity: Gauge,
   resolved: CircleCheck,
   ready: ListChecks,
+  opened: DoorOpen,
+  assigned: UserCheck,
   "team-added": UserPlus,
   "team-removed": UserMinus,
 };

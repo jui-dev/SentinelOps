@@ -285,9 +285,13 @@ export interface IncidentSummaryResponse {
  *
  * Each part is present only with its permission, and null otherwise:
  *
+ *   manage.needsDecision   `incidents:manage`. Nobody may respond until the
+ *                          Admin opens it to its team or assigns people.
  *   manage.readyToResolve  `incidents:manage`. INVESTIGATING, and no
  *                          responder is still investigating — resolvable.
- *   respond.needsYourTeam  `incidents:respond`. On one of the caller's
+ *   respond.assignedToYou  `incidents:respond`. The caller was assigned to
+ *                          it and has not started.
+ *   respond.needsYourTeam  `incidents:respond`. Open to one of the caller's
  *                          teams, and nobody now on that team has responded.
  *   respond.yourResponses  `incidents:respond`. The caller's own response is
  *                          still investigating, whatever team it has now.
@@ -298,8 +302,12 @@ export interface IncidentSummaryResponse {
  * first — and unpaged: it holds active incidents only.
  */
 export interface IncidentAttentionResponse {
-  manage: { readyToResolve: IncidentDetailResponse[] } | null;
+  manage: {
+    needsDecision: IncidentDetailResponse[];
+    readyToResolve: IncidentDetailResponse[];
+  } | null;
   respond: {
+    assignedToYou: IncidentDetailResponse[];
     needsYourTeam: IncidentDetailResponse[];
     yourResponses: IncidentDetailResponse[];
   } | null;

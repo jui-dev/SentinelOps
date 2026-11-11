@@ -53,8 +53,8 @@ const incident = (number: number): IncidentDetailResponse => ({
 
 /** One organization's attention: incident `number` ready to resolve. */
 const readyToResolve = (number: number): IncidentAttentionResponse => ({
-  manage: { readyToResolve: [incident(number)] },
-  respond: { needsYourTeam: [], yourResponses: [] },
+  manage: { needsDecision: [], readyToResolve: [incident(number)] },
+  respond: { assignedToYou: [], needsYourTeam: [], yourResponses: [] },
 });
 
 const attentionPath = (organizationId: string) =>
@@ -241,12 +241,12 @@ describe("incident attention", () => {
 });
 
 describe("the attention count", () => {
-  const empty = { needsYourTeam: [], yourResponses: [] };
+  const empty = { assignedToYou: [], needsYourTeam: [], yourResponses: [] };
 
   it("counts what is ready to resolve", () => {
     expect(
       attentionCount({
-        manage: { readyToResolve: [incident(1), incident(2)] },
+        manage: { needsDecision: [], readyToResolve: [incident(1), incident(2)] },
         respond: empty,
       }),
     ).toBe(2);
@@ -256,7 +256,7 @@ describe("the attention count", () => {
     expect(
       attentionCount({
         manage: null,
-        respond: { needsYourTeam: [incident(1)], yourResponses: [incident(2)] },
+        respond: { assignedToYou: [], needsYourTeam: [incident(1)], yourResponses: [incident(2)] },
       }),
     ).toBe(2);
   });
@@ -265,15 +265,15 @@ describe("the attention count", () => {
     // Resolvable, and reassigned to a team the caller is on.
     expect(
       attentionCount({
-        manage: { readyToResolve: [incident(1)] },
-        respond: { needsYourTeam: [incident(1)], yourResponses: [] },
+        manage: { needsDecision: [], readyToResolve: [incident(1)] },
+        respond: { assignedToYou: [], needsYourTeam: [incident(1)], yourResponses: [] },
       }),
     ).toBe(1);
   });
 
   it("is zero with nothing waiting, or no part at all", () => {
     expect(
-      attentionCount({ manage: { readyToResolve: [] }, respond: empty }),
+      attentionCount({ manage: { needsDecision: [], readyToResolve: [] }, respond: empty }),
     ).toBe(0);
     expect(attentionCount({ manage: null, respond: null })).toBe(0);
   });

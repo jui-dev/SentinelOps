@@ -203,7 +203,7 @@ const api = ({
   teams = [payments, risk],
   attention = {
     manage: null,
-    respond: { needsYourTeam: [unclaimed], yourResponses: [mine] },
+    respond: { assignedToYou: [], needsYourTeam: [unclaimed], yourResponses: [mine] },
   },
   active = [unclaimed, mine, elsewhere],
 }: {
@@ -320,7 +320,7 @@ describe("My Operations", () => {
       await screen.findByRole("heading", { level: 1, name: "My Operations" }),
     ).toBeDefined();
 
-    await waitFor(() => expect(tile("Waiting on your team")).toBe("1no one has started"));
+    await waitFor(() => expect(tile("Ready for you to start")).toBe("1no one has started"));
     expect(tile("You're investigating")).toBe("1INC-74");
     // Only their teams' incidents count, not one they responded to elsewhere.
     await waitFor(() => expect(tile("Active on your teams")).toBe("21 × SEV1"));
@@ -379,7 +379,7 @@ describe("My Operations", () => {
   });
 
   it("says plainly when nothing is waiting and nothing is theirs", async () => {
-    api({ attention: { manage: null, respond: { needsYourTeam: [], yourResponses: [] } } });
+    api({ attention: { manage: null, respond: { assignedToYou: [], needsYourTeam: [], yourResponses: [] } } });
     renderPage();
 
     expect(await screen.findByText("Nothing waiting")).toBeDefined();
@@ -388,10 +388,38 @@ describe("My Operations", () => {
     expect(screen.queryByRole("table", { name: "You're investigating" })).toBeNull();
   });
 
+  it("puts what the Admin assigned them first, and counts it as theirs to start", async () => {
+    api({
+      attention: {
+        manage: null,
+        respond: { assignedToYou: [elsewhere], needsYourTeam: [unclaimed], yourResponses: [] },
+      },
+    });
+    renderPage();
+
+    const assigned = await screen.findByRole("table", { name: "Assigned to you" });
+
+    expect(within(assigned).getByText(elsewhere.title)).toBeDefined();
+    expect(
+      screen.getByText(
+        "The Admin asked you to respond to these. Only the people assigned can start them.",
+      ),
+    ).toBeDefined();
+    await waitFor(() => expect(tile("Ready for you to start")).toBe("21 assigned to you"));
+  });
+
+  it("shows no assigned list when nothing is assigned", async () => {
+    api();
+    renderPage();
+
+    await screen.findByRole("table", { name: "Waiting on your team" });
+    expect(screen.queryByRole("table", { name: "Assigned to you" })).toBeNull();
+  });
+
   it("tells a member on no team why nothing reaches them", async () => {
     api({
       teams: [],
-      attention: { manage: null, respond: { needsYourTeam: [], yourResponses: [] } },
+      attention: { manage: null, respond: { assignedToYou: [], needsYourTeam: [], yourResponses: [] } },
       active: [],
     });
     renderPage();

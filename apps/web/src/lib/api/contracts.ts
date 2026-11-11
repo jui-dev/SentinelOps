@@ -693,14 +693,20 @@ export interface IncidentHistoryFilters {
  * `GET /organizations/:organizationId/incidents/attention`: the active
  * incidents waiting on the caller now. Current state, not a feed — nothing
  * is read or unread. Each part is null without its permission:
- * `readyToResolve` with `incidents:manage`; `needsYourTeam` (their teams'
- * incidents nobody on the team has responded to) and `yourResponses` (their
- * own still investigating) with `incidents:respond`. One incident can be in
+ * `needsDecision` (nobody may respond until the Admin chooses who) and
+ * `readyToResolve` with `incidents:manage`; `assignedToYou` (assigned to
+ * them, not yet started), `needsYourTeam` (open to one of their teams, and
+ * nobody on it has responded) and `yourResponses` (their own still
+ * investigating) with `incidents:respond`. One incident can be in
  * more than one list. Each list is most severe first, then longest-running.
  */
 export interface IncidentAttentionResponse {
-  manage: { readyToResolve: IncidentDetailResponse[] } | null;
+  manage: {
+    needsDecision: IncidentDetailResponse[];
+    readyToResolve: IncidentDetailResponse[];
+  } | null;
   respond: {
+    assignedToYou: IncidentDetailResponse[];
     needsYourTeam: IncidentDetailResponse[];
     yourResponses: IncidentDetailResponse[];
   } | null;
@@ -890,6 +896,8 @@ export type NotificationType =
   | "INCIDENT_SEVERITY_CHANGED"
   | "INCIDENT_RESOLVED"
   | "INCIDENT_READY_TO_RESOLVE"
+  | "INCIDENT_OPENED_TO_TEAM"
+  | "INCIDENT_ASSIGNED"
   | "TEAM_MEMBERSHIP_ADDED"
   | "TEAM_MEMBERSHIP_REMOVED";
 

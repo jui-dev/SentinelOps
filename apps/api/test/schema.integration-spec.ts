@@ -1603,6 +1603,8 @@ describe('core domain schema (integration)', () => {
           'INCIDENT_SEVERITY_CHANGED',
           'INCIDENT_RESOLVED',
           'INCIDENT_READY_TO_RESOLVE',
+          'INCIDENT_OPENED_TO_TEAM',
+          'INCIDENT_ASSIGNED',
         ]) {
           const entry = await prisma.incidentActivity.create({
             data: {
@@ -1624,7 +1626,7 @@ describe('core domain schema (integration)', () => {
           await insertNotification({ ...base, type, teamId: acmePayments.id });
         }
 
-        expect(await prisma.notification.count()).toBe(7);
+        expect(await prisma.notification.count()).toBe(9);
       });
 
       it('should refuse a type outside the enum at the database level', async () => {
@@ -1942,7 +1944,7 @@ describe('core domain schema (integration)', () => {
         );
       });
 
-      it('should know exactly the seven notification types', async () => {
+      it('should know exactly the nine notification types', async () => {
         const labels = await prisma.$queryRaw<{ label: string }[]>`
           SELECT e.enumlabel AS label
           FROM pg_enum e
@@ -1956,6 +1958,8 @@ describe('core domain schema (integration)', () => {
           'INCIDENT_SEVERITY_CHANGED',
           'INCIDENT_RESOLVED',
           'INCIDENT_READY_TO_RESOLVE',
+          'INCIDENT_OPENED_TO_TEAM',
+          'INCIDENT_ASSIGNED',
           'TEAM_MEMBERSHIP_ADDED',
           'TEAM_MEMBERSHIP_REMOVED',
         ]);

@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, Circle, CircleCheck } from "lucide-react";
+import { ArrowRight, Circle, CircleCheck, UserCheck, Users } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
@@ -30,7 +30,11 @@ import { OverviewPanel } from "./overview-panel";
  * live.
  *
  * Which parts show follows the caller's permissions, as the API answered
- * them: `manage` gives "Waiting on you", `respond` gives "Your work". Each
+ * them: `manage` gives "Waiting on you" — who should respond, while that is
+ * undecided, and what is ready to resolve — and `respond` gives "Your
+ * work": what the Admin assigned the caller, what their teams need picked
+ * up, and their own responses. A list that only some readers ever fill —
+ * a decision, an assignment — shows only while it holds something. Each
  * is a panel of the Overview, framed like the ones above it.
  *
  * Side by side on a wide screen when both are shown, as one pair of action
@@ -66,14 +70,46 @@ export function OperationalAttention() {
   const showWork =
     respond !== null &&
     (manage === null ||
-      respond.needsYourTeam.length + respond.yourResponses.length > 0);
+      respond.assignedToYou.length +
+        respond.needsYourTeam.length +
+        respond.yourResponses.length >
+        0);
 
   if (!manage && !showWork) return null;
 
   const both = manage !== null && showWork;
+  // Both of the Admin's lists, each incident once.
+  const waiting = manage
+    ? new Set([...manage.needsDecision, ...manage.readyToResolve].map(({ id }) => id)).size
+    : 0;
 
   const workGroups: GroupProps[] = respond
     ? [
+        ...(respond.assignedToYou.length > 0
+          ? [
+              {
+                id: "assigned-to-you",
+                title: "Assigned to you",
+                strength: "pending" as const,
+                incidents: respond.assignedToYou,
+                empty: "",
+                cue: "Open",
+                row: (incident: IncidentDetailResponse) => ({
+                  headline: (
+                    <>
+                      <UserCheck
+                        aria-hidden="true"
+                        strokeWidth={2.25}
+                        className="size-3.5 text-accent-text"
+                      />
+                      The Admin asked you to respond
+                    </>
+                  ),
+                  detail: <NotStarted incident={incident} />,
+                }),
+              },
+            ]
+          : []),
         {
           id: "needs-your-team",
           title: "Needs your team",
@@ -137,40 +173,90 @@ export function OperationalAttention() {
           // The one frame that says "act" — and only while there is
           // something to act on. Your work stays a plain section: work
           // under way, not a decision.
-          tone={manage.readyToResolve.length > 0 ? "action" : "default"}
+          tone={waiting > 0 ? "action" : "default"}
           // How much is waiting, where the other panels say what period
           // they cover — solid, as the header's one strong cue. Nothing
           // waiting is said by the line inside, not by a nought here.
           label={
-            manage.readyToResolve.length > 0 ? (
-              <span className="numeric inline-flex min-w-5 items-center justify-center rounded-full border border-status-resolved-text bg-status-resolved-solid px-1.5 py-0.5 text-xs font-semibold text-on-accent">
-                {manage.readyToResolve.length}
+            waiting > 0 ? (
+              <span
+                className={cx(
+                  "numeric inline-flex min-w-5 items-center justify-center rounded-full border px-1.5 py-0.5 text-xs font-semibold text-on-accent",
+                  // Teal only when all it counts is ready to resolve.
+                  manage.needsDecision.length > 0
+                    ? "border-accent bg-accent"
+                    : "border-status-resolved-text bg-status-resolved-solid",
+                )}
+              >
+                {waiting}
               </span>
             ) : undefined
           }
           description="Incidents that need your decision to move forward."
         >
-          <AttentionGroup
-            id="ready-to-resolve"
-            title="Ready to resolve"
-            strength="resolve"
-            incidents={manage.readyToResolve}
-            empty="Nothing is waiting for your action."
-            cue="Review"
-            row={(incident) => ({
-              headline: (
-                <>
-                  <CircleCheck
-                    aria-hidden="true"
-                    strokeWidth={2.25}
-                    className="size-3.5 text-status-resolved-text"
-                  />
-                  Response work complete — ready to resolve
-                </>
-              ),
-              detail: <ResponseComplete incident={incident} />,
-            })}
-          />
+          <div className="flex flex-col gap-5">
+            {manage.needsDecision.length > 0 && (
+              <AttentionGroup
+                id="needs-a-decision"
+                title="Needs a decision"
+                strength="pending"
+                incidents={manage.needsDecision}
+                empty=""
+                cue="Decide"
+                row={(incident) => ({
+                  headline: (
+                    <>
+                      <Users
+                        aria-hidden="true"
+                        strokeWidth={2.25}
+                        className="size-3.5 text-warning-text"
+                      />
+                      Choose who responds
+                    </>
+                  ),
+                  detail: (
+                    <>
+                      <span>
+                        {incident.team.name} can see it, but nobody can start yet.
+                      </span>
+                      <Dot />
+                      <span>
+                        Open{" "}
+                        <span className="data">
+                          <Duration from={incident.createdAt} />
+                        </span>
+                      </span>
+                    </>
+                  ),
+                })}
+              />
+            )}
+            <AttentionGroup
+              id="ready-to-resolve"
+              title="Ready to resolve"
+              strength="resolve"
+              incidents={manage.readyToResolve}
+              empty={
+                manage.needsDecision.length > 0
+                  ? "Nothing is ready to resolve."
+                  : "Nothing is waiting for your action."
+              }
+              cue="Review"
+              row={(incident) => ({
+                headline: (
+                  <>
+                    <CircleCheck
+                      aria-hidden="true"
+                      strokeWidth={2.25}
+                      className="size-3.5 text-status-resolved-text"
+                    />
+                    Response work complete — ready to resolve
+                  </>
+                ),
+                detail: <ResponseComplete incident={incident} />,
+              })}
+            />
+          </div>
         </OverviewPanel>
       )}
       {showWork && (
@@ -179,7 +265,7 @@ export function OperationalAttention() {
           title="Your work"
           // No label: each group already carries its own count, and two
           // numbers in one header would say nothing the lists do not.
-          description="What your teams need picked up, and what you are working on."
+          description="What you were asked to do, what your teams need picked up, and what you are working on."
         >
           {/* Closer than the panel's own rhythm: these are two halves of
               one question, not two sections. */}
@@ -414,7 +500,7 @@ function ResponseComplete({ incident }: { incident: IncidentDetailResponse }) {
   );
 }
 
-/** Nobody on the team has started; how long the incident has been open. */
+/** Nobody has started; how long the incident has been open. */
 function NotStarted({ incident }: { incident: IncidentDetailResponse }) {
   return (
     <>

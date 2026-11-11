@@ -169,8 +169,9 @@ export const useIncidentAttention = (
 
 /**
  * How many incidents are waiting on the caller: every list their
- * permissions give them — ready to resolve, their teams' unclaimed ones,
- * their own responses under way — each incident once, however many lists
+ * permissions give them — awaiting their decision, ready to resolve,
+ * assigned to them, their teams' unclaimed ones, their own responses under
+ * way — each incident once, however many lists
  * hold it (resolvable and reassigned to their team is one incident).
  */
 export const attentionCount = ({
@@ -179,7 +180,9 @@ export const attentionCount = ({
 }: IncidentAttentionResponse): number =>
   new Set(
     [
+      ...(manage?.needsDecision ?? []),
       ...(manage?.readyToResolve ?? []),
+      ...(respond?.assignedToYou ?? []),
       ...(respond?.needsYourTeam ?? []),
       ...(respond?.yourResponses ?? []),
     ].map(({ id }) => id),

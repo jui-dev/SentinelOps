@@ -241,8 +241,9 @@ describe('Incidents (e2e)', () => {
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual({
-        manage: role === 'ADMIN' ? { readyToResolve: [] } : null,
-        respond: { needsYourTeam: [], yourResponses: [] },
+        manage:
+          role === 'ADMIN' ? { needsDecision: [], readyToResolve: [] } : null,
+        respond: { assignedToYou: [], needsYourTeam: [], yourResponses: [] },
       });
       expect(prisma.incident.findFirst).not.toHaveBeenCalled();
       // The caller's teams are found by their admitted membership, within
@@ -696,6 +697,7 @@ describe('Incidents (e2e)', () => {
       expect(response.body).toEqual({
         manage: null,
         respond: {
+          assignedToYou: [],
           needsYourTeam: [expect.objectContaining({ number: 1 })],
           yourResponses: [],
         },

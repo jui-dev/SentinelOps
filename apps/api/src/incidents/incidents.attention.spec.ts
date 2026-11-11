@@ -1,6 +1,7 @@
 import { classifyAttention } from './incidents.attention.js';
 import type { AttentionCaller } from './incidents.attention.js';
 import type {
+  IncidentResponseAccess,
   IncidentResponderStatus,
   IncidentSeverity,
   IncidentStatus,
@@ -53,11 +54,15 @@ const incident = (
   status: IncidentStatus,
   responders: [string, IncidentResponderStatus][] = [],
   severity: IncidentSeverity = 'SEV2',
+  responseAccess: IncidentResponseAccess = 'OPEN',
+  assigned: string[] = [],
 ) => ({
   number,
   severity,
   status,
   team: { id: team },
+  responseAccess,
+  assignees: assigned.map((id) => ({ membership: { id } })),
   responders: responders.map(([id, responderStatus]) => ({
     status: responderStatus,
     membership: { id },
@@ -270,6 +275,68 @@ describe('operational attention', () => {
     });
   });
 
+  describe('who may respond', () => {
+    const pending = (number: number) =>
+      incident(number, PAYMENTS, 'DECLARED', [], 'SEV2', 'PENDING');
+    const assignedTo = (number: number, people: string[]) =>
+      incident(number, PAYMENTS, 'DECLARED', [], 'SEV2', 'ASSIGNED', people);
+
+    it('should ask the Admin to decide each incident nobody may respond to yet', () => {
+      const incidents = [pending(1), incident(2, PAYMENTS, 'DECLARED')];
+
+      expect(
+        numbers(classifyAttention(incidents, admin()).manage?.needsDecision),
+      ).toEqual([1]);
+    });
+
+    it("should leave an undecided incident off its team's list", () => {
+      expect(
+        classifyAttention([pending(1)], member('priya')).respond?.needsYourTeam,
+      ).toEqual([]);
+    });
+
+    it('should hold an assigned incident for those assigned only, whatever their team', () => {
+      // Lee is on Platform; Priya is on Payments but not assigned.
+      const incidents = [assignedTo(1, ['lee'])];
+
+      expect(
+        numbers(
+          classifyAttention(incidents, member('lee')).respond?.assignedToYou,
+        ),
+      ).toEqual([1]);
+      expect(
+        classifyAttention(incidents, member('lee')).respond?.needsYourTeam,
+      ).toEqual([]);
+      expect(classifyAttention(incidents, member('priya')).respond).toEqual({
+        assignedToYou: [],
+        needsYourTeam: [],
+        yourResponses: [],
+      });
+    });
+
+    it('should move an assigned incident to your responses once you start', () => {
+      const incidents = [
+        incident(
+          1,
+          PAYMENTS,
+          'INVESTIGATING',
+          [['lee', 'INVESTIGATING']],
+          'SEV2',
+          'ASSIGNED',
+          ['lee'],
+        ),
+      ];
+      const { respond } = classifyAttention(incidents, member('lee'));
+
+      expect(respond?.assignedToYou).toEqual([]);
+      expect(numbers(respond?.yourResponses)).toEqual([1]);
+    });
+
+    it('should be null without the matching permission', () => {
+      expect(classifyAttention([pending(1)], member('sam')).manage).toBeNull();
+    });
+  });
+
   it('should ignore resolved incidents in every section', () => {
     const incidents = [
       incident(1, PAYMENTS, 'RESOLVED', [['priya', 'COMPLETED']]),
@@ -277,8 +344,8 @@ describe('operational attention', () => {
     ];
 
     expect(classifyAttention(incidents, admin([PLATFORM]))).toEqual({
-      manage: { readyToResolve: [] },
-      respond: { needsYourTeam: [], yourResponses: [] },
+      manage: { needsDecision: [], readyToResolve: [] },
+      respond: { assignedToYou: [], needsYourTeam: [], yourResponses: [] },
     });
   });
 

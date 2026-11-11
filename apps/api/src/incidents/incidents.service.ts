@@ -140,13 +140,29 @@ export const partCondition = (
   switch (part) {
     case 'needs-you':
       return {
-        team: { memberships: { some: { membershipId } } },
         responders: { none: { membershipId } },
-        OR: [
-          { status: 'DECLARED' },
+        AND: [
+          // They may start it: open to their team, or assigned to them.
           {
-            status: 'INVESTIGATING',
-            responders: { some: { status: 'INVESTIGATING' } },
+            OR: [
+              {
+                responseAccess: 'OPEN',
+                team: { memberships: { some: { membershipId } } },
+              },
+              {
+                responseAccess: 'ASSIGNED',
+                assignees: { some: { membershipId } },
+              },
+            ],
+          },
+          {
+            OR: [
+              { status: 'DECLARED' },
+              {
+                status: 'INVESTIGATING',
+                responders: { some: { status: 'INVESTIGATING' } },
+              },
+            ],
           },
         ],
       };
@@ -2033,6 +2049,7 @@ export class IncidentsService {
       const current = await tx.incident.findFirstOrThrow({
         where: { id: incidentId, organizationId },
         select: {
+          teamId: true,
           responseAccess: true,
           assignees: { select: { membershipId: true } },
           responders: { select: { membershipId: true, status: true } },
@@ -2086,7 +2103,7 @@ export class IncidentsService {
           data: { responseAccess: next.responseAccess },
           select: { id: true },
         });
-        await tx.incidentActivity.create({
+        const entry = await tx.incidentActivity.create({
           data: {
             organizationId,
             incidentId,
@@ -2098,8 +2115,32 @@ export class IncidentsService {
               next.assigneeIds.map((id) => named.get(id)).join(', ') || null,
             createdAt: now,
           },
-          select: { id: true },
+          select: { id: true, createdAt: true },
         });
+        const newAssigneeIds = next.assigneeIds.filter((id) => !before.has(id));
+
+        // Whoever may now start is told so: the whole team when it was just
+        // opened to them, otherwise only the people just assigned.
+        const opened =
+          next.responseAccess === 'OPEN' && current.responseAccess !== 'OPEN';
+        const type = opened
+          ? ('INCIDENT_OPENED_TO_TEAM' as const)
+          : newAssigneeIds.length > 0
+            ? ('INCIDENT_ASSIGNED' as const)
+            : undefined;
+
+        if (type) {
+          await this.notifications.incidentActivities(tx, {
+            organizationId,
+            incidentId,
+            teamId: current.teamId,
+            actor: { userId: actorId, membershipId: actor.membershipId },
+            events: [
+              { type, activityId: entry.id, createdAt: entry.createdAt },
+            ],
+            newAssigneeIds,
+          });
+        }
       }
 
       return {

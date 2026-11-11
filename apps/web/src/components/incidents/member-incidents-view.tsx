@@ -55,7 +55,7 @@ const VIEWS: readonly {
   {
     value: "needs-you",
     label: "Needs you",
-    note: "your team's, not joined yet",
+    note: "yours to start, not joined yet",
     tone: "text-warning-text",
   },
   {

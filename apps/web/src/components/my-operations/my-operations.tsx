@@ -71,11 +71,14 @@ const keysOf = (incidents: readonly { number: number }[]) =>
 
 /** The member's figures now, in four tiles. */
 function YourWorkNow({
+  assigned,
   waiting,
   investigating,
   active,
   teams,
 }: {
+  /** Assigned to the member by the Admin, not yet started. */
+  assigned?: readonly IncidentDetailResponse[];
   waiting?: readonly IncidentDetailResponse[];
   investigating?: readonly IncidentDetailResponse[];
   /** Active incidents on the member's teams, once known. */
@@ -84,13 +87,24 @@ function YourWorkNow({
 }) {
   const sev1 = active?.filter(({ severity }) => severity === "SEV1").length ?? 0;
   const services = teams?.reduce((sum, team) => sum + team.serviceCount, 0) ?? 0;
+  // Theirs to start: assigned to them, or open to their team. Each once.
+  const ready =
+    assigned && waiting
+      ? new Set([...assigned, ...waiting].map(({ id }) => id)).size
+      : undefined;
 
   return (
     <Glance label="Your work now" columns={4}>
       <GlanceTile
-        label="Waiting on your team"
-        value={waiting?.length ?? "—"}
-        note={waiting && waiting.length > 0 ? "no one has started" : undefined}
+        label="Ready for you to start"
+        value={ready ?? "—"}
+        note={
+          assigned && assigned.length > 0
+            ? `${assigned.length} assigned to you`
+            : ready
+              ? "no one has started"
+              : undefined
+        }
         icon={CircleDashed}
         tone="warning"
         noteTone
@@ -274,6 +288,7 @@ function YourOperations() {
         <ErrorAlert error={attention.error} />
       )}
       <YourWorkNow
+        assigned={respond?.assignedToYou}
         waiting={respond?.needsYourTeam}
         investigating={respond?.yourResponses}
         active={teams.data ? active : undefined}
@@ -281,59 +296,78 @@ function YourOperations() {
       />
       {onNoTeam && (
         <EmptyNote title="You're not on a team yet">
-          Incidents reach you through the teams you are on. Once the Admin
-          places you on one, its incidents appear here.
+          Incidents reach you through the teams you are on, or when the Admin
+          assigns you to one. Once the Admin places you on a team, its
+          incidents appear here.
         </EmptyNote>
       )}
       {!attention.data && !attention.isError ? (
         <Spinner label="Loading your work…" />
       ) : (
         respond && (
-          <CardRow layout="halves">
-            <WorkCard
-              id="waiting-on-your-team"
-              title="Waiting on your team"
-              aside="Start from the incident's page"
-              footer="Active incidents on your teams that nobody on the team has started yet."
-              when="Open for"
-              incidents={respond.needsYourTeam}
-              moment={(incident) => (
-                <span className="text-warning-text">
-                  <Duration from={incident.createdAt} />
-                </span>
-              )}
-              empty={{
-                title: "Nothing waiting",
-                body: "Every incident on your teams has someone on it.",
-              }}
-            />
-            <WorkCard
-              id="you-are-investigating"
-              title="You're investigating"
-              aside="Post updates and finish from the incident's page"
-              footer="Your own responses still under way, whichever team has the incident now."
-              when="You started"
-              incidents={respond.yourResponses}
-              moment={(incident) => {
-                const started = yourStart(
-                  incident,
-                  organization.membership.id,
-                );
+          <>
+            {respond.assignedToYou.length > 0 && (
+              <WorkCard
+                id="assigned-to-you"
+                title="Assigned to you"
+                aside="Start from the incident's page"
+                footer="The Admin asked you to respond to these. Only the people assigned can start them."
+                when="Open for"
+                incidents={respond.assignedToYou}
+                moment={(incident) => (
+                  <span className="text-warning-text">
+                    <Duration from={incident.createdAt} />
+                  </span>
+                )}
+                empty={{ title: "", body: "" }}
+              />
+            )}
+            <CardRow layout="halves">
+              <WorkCard
+                id="waiting-on-your-team"
+                title="Waiting on your team"
+                aside="Start from the incident's page"
+                footer="Incidents open to your teams that nobody on the team has started yet."
+                when="Open for"
+                incidents={respond.needsYourTeam}
+                moment={(incident) => (
+                  <span className="text-warning-text">
+                    <Duration from={incident.createdAt} />
+                  </span>
+                )}
+                empty={{
+                  title: "Nothing waiting",
+                  body: "Every incident on your teams has someone on it.",
+                }}
+              />
+              <WorkCard
+                id="you-are-investigating"
+                title="You're investigating"
+                aside="Post updates and finish from the incident's page"
+                footer="Your own responses still under way, whichever team has the incident now."
+                when="You started"
+                incidents={respond.yourResponses}
+                moment={(incident) => {
+                  const started = yourStart(
+                    incident,
+                    organization.membership.id,
+                  );
 
-                return started ? (
-                  <>
-                    <Duration from={started} /> ago
-                  </>
-                ) : (
-                  "—"
-                );
-              }}
-              empty={{
-                title: "Nothing under way",
-                body: "Incidents you start investigating appear here until you finish.",
-              }}
-            />
-          </CardRow>
+                  return started ? (
+                    <>
+                      <Duration from={started} /> ago
+                    </>
+                  ) : (
+                    "—"
+                  );
+                }}
+                empty={{
+                  title: "Nothing under way",
+                  body: "Incidents you start investigating appear here until you finish.",
+                }}
+              />
+            </CardRow>
+          </>
         )
       )}
       {teams.data && teams.data.length > 0 && <IncidentFlow scope="teams" />}

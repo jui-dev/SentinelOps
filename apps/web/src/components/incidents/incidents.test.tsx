@@ -301,6 +301,7 @@ const api = (
     // The caller and Daniel respond for Payments, the default team.
     teamMembers = [onTeam(ada), onTeam(daniel)],
     services = [paymentApi],
+    needsDecision = [] as IncidentDetailResponse[],
     handler = () => undefined,
   }: {
     active?: IncidentResponse[];
@@ -309,6 +310,8 @@ const api = (
     timeline?: IncidentActivityResponse[];
     teamMembers?: ReturnType<typeof onTeam>[];
     services?: (typeof paymentApi)[];
+    /** What waits on the Admin to choose who responds. */
+    needsDecision?: IncidentDetailResponse[];
     handler?: Handler;
   } = {},
 ) =>
@@ -347,6 +350,11 @@ const api = (
         return jsonResponse(200, teamMembers);
       case `GET ${base}/memberships`:
         return jsonResponse(200, [ada, daniel]);
+      case `GET ${base}/incidents/attention`:
+        return jsonResponse(200, {
+          manage: { needsDecision, readyToResolve: [] },
+          respond: { assignedToYou: [], needsYourTeam: [], yourResponses: [] },
+        });
       default:
         return apiError(404, "INCIDENT_NOT_FOUND");
     }
@@ -673,9 +681,50 @@ describe("incidents", () => {
         within(band).getByText(label).nextElementSibling?.textContent;
 
       await waitFor(() => expect(figure("Active")).toBe("41 × SEV1"));
+      await waitFor(() => expect(figure("Needs a decision")).toBe("0choose who responds"));
       expect(figure("Needs a responder")).toBe("1no one has started");
       expect(figure("Ready to resolve")).toBe("1everyone is done");
       expect(figure("Resolved")).toBe("9in the last 30 days");
+    });
+
+    it("counts what waits on the Admin's decision apart from what waits on a responder", async () => {
+      api(OVERSIGHT, {
+        needsDecision: [incident({ status: "DECLARED", responseAccess: "PENDING" })],
+      });
+
+      inOrganization(<IncidentsView />);
+
+      const band = await screen.findByLabelText("Incidents now");
+      const figure = (label: string) =>
+        within(band).getByText(label).nextElementSibling?.textContent;
+
+      await waitFor(() => expect(figure("Needs a decision")).toBe("1choose who responds"));
+      // The one declared incident waits on the Admin, not on a responder.
+      expect(figure("Needs a responder")).toBe("0no one has started");
+    });
+
+    it("says who can respond to each active incident, in the reader's words", async () => {
+      api(ADMIN, {
+        active: [
+          incident({ id: "0199a1b2-c3d4-7000-8000-0000000001a1", number: 1, responseAccess: "PENDING" }),
+          incident({ id: "0199a1b2-c3d4-7000-8000-0000000001a2", number: 2, responseAccess: "OPEN" }),
+          incident({
+            id: "0199a1b2-c3d4-7000-8000-0000000001a3",
+            number: 3,
+            responseAccess: "ASSIGNED",
+            assignees: [{ membershipId: daniel.id, name: daniel.user.name }],
+          }),
+        ],
+      });
+
+      inOrganization(<IncidentsView />);
+
+      const table = await screen.findByRole("table", { name: "Active incidents" });
+
+      expect(within(table).getByRole("columnheader", { name: "Who can respond" })).toBeDefined();
+      expect(within(table).getAllByText("Needs a decision").length).toBeGreaterThan(0);
+      expect(within(table).getAllByText("Open to team").length).toBeGreaterThan(0);
+      expect(within(table).getAllByText("Assigned · 1 person").length).toBeGreaterThan(0);
     });
 
     it("opens the resolved tab into the URL, keeping the filters", async () => {
@@ -1781,6 +1830,35 @@ describe("incidents", () => {
       expect(screen.queryByRole("combobox", { name: "Service" })).toBeNull();
       expect(screen.queryByRole("combobox", { name: "Responsible team" })).toBeNull();
       expect(screen.queryByRole("button", { name: "Declare incident" })).toBeNull();
+    });
+
+    it("offers Respond only on what the member may start, and says who can respond", async () => {
+      navigation.search = "view=active";
+      memberApi({
+        active: [
+          // Payments' and the member is on Payments, but the Admin hasn't chosen.
+          incident({ status: "DECLARED", responseAccess: "PENDING" }),
+          // Platform's, but the Admin assigned the member.
+          incident({
+            id: "0199a1b2-c3d4-7000-8000-0000000000f3",
+            number: 44,
+            title: "Reports delayed",
+            status: "DECLARED",
+            team: { id: platform.id, name: platform.name, slug: platform.slug },
+            responseAccess: "ASSIGNED",
+            assignees: [{ membershipId: ada.id, name: ada.user.name }],
+          }),
+        ],
+      });
+
+      inOrganization(<IncidentsView />);
+
+      const table = await screen.findByRole("table", { name: "All active" });
+
+      expect(within(table).getByRole("link", { name: "View INC-42" })).toBeDefined();
+      expect(within(table).getByRole("link", { name: "Respond INC-44" })).toBeDefined();
+      expect(within(table).getAllByText("Waiting for the Admin").length).toBeGreaterThan(0);
+      expect(within(table).getAllByText("Assigned to you").length).toBeGreaterThan(0);
     });
 
     it("counts each team and severity pill for the chosen part, and filters by one at once", async () => {

@@ -48,7 +48,7 @@ describe('incident notifications (integration)', () => {
   let fx: Fixture;
 
   const call = async (
-    method: 'get' | 'post' | 'patch',
+    method: 'get' | 'post' | 'patch' | 'put',
     path: string,
     userId: string,
     body?: object,
@@ -62,7 +62,11 @@ describe('incident notifications (integration)', () => {
 
   const as = (person: Person) => fx.users[person];
 
-  const declare = async (serviceId = fx.paymentApi, orgId = fx.orgA) => {
+  const declare = async (
+    serviceId = fx.paymentApi,
+    orgId = fx.orgA,
+    access: 'OPEN' | 'PENDING' = 'OPEN',
+  ) => {
     const response = await call(
       'post',
       `${orgId}/incidents`,
@@ -72,7 +76,7 @@ describe('incident notifications (integration)', () => {
 
     expect(response.status).toBe(201);
     await prisma.$executeRaw`
-      UPDATE incidents SET response_access = 'OPEN'
+      UPDATE incidents SET response_access = ${access}::incident_response_access
       WHERE organization_id = ${orgId}::uuid
         AND number = ${response.body.number as number}`;
 
@@ -293,6 +297,75 @@ describe('incident notifications (integration)', () => {
         where: { recipientMembershipId: fx.carolInB },
       }),
     ).toBe(0);
+  });
+
+  describe('who may respond', () => {
+    const choose = async (number: number, body: object) => {
+      const response = await call(
+        'put',
+        `${fx.orgA}/incidents/${number}/response-access`,
+        as('alice'),
+        body,
+      );
+
+      expect(response.status).toBe(200);
+    };
+    const assign = (number: number, people: Person[]) =>
+      choose(number, {
+        mode: 'ASSIGNED',
+        membershipIds: people.map((person) => fx.inA[person]),
+      });
+
+    it('should tell the responsible team once the Admin opens it to them', async () => {
+      const number = await declare(fx.paymentApi, fx.orgA, 'PENDING');
+
+      await choose(number, { mode: 'OPEN' });
+
+      expect(await toldOf('INCIDENT_OPENED_TO_TEAM')).toEqual([
+        {
+          activityId: expect.any(String),
+          recipients: ['ben', 'cara', 'carol', 'dan'],
+        },
+      ]);
+      expect(await toldOf('INCIDENT_ASSIGNED')).toEqual([]);
+    });
+
+    it('should tell only the people just assigned, from any team, and nobody of a removal', async () => {
+      const number = await declare(fx.paymentApi, fx.orgA, 'PENDING');
+
+      // Eve is on Platform, not the responsible team.
+      await assign(number, ['cara', 'eve']);
+      await assign(number, ['cara', 'eve', 'ben']);
+      await assign(number, ['ben']);
+
+      expect(await toldOf('INCIDENT_ASSIGNED')).toEqual([
+        { activityId: expect.any(String), recipients: ['cara', 'eve'] },
+        { activityId: expect.any(String), recipients: ['ben'] },
+      ]);
+      expect(await toldOf('INCIDENT_OPENED_TO_TEAM')).toEqual([]);
+
+      // Opened to the team after all: the team is told, Eve is not.
+      await choose(number, { mode: 'OPEN' });
+
+      expect(await toldOf('INCIDENT_OPENED_TO_TEAM')).toEqual([
+        {
+          activityId: expect.any(String),
+          recipients: ['ben', 'cara', 'carol', 'dan'],
+        },
+      ]);
+    });
+
+    it('should not tell anyone when an open incident is chosen open again', async () => {
+      const number = await declare();
+
+      await choose(number, { mode: 'OPEN' });
+
+      expect(
+        await prisma.notification.count({
+          where: { type: 'INCIDENT_OPENED_TO_TEAM' },
+        }),
+      ).toBe(0);
+    });
   });
 
   it('should take each notification’s time from its timeline entry', async () => {

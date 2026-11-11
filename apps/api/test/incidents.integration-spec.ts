@@ -1127,6 +1127,45 @@ describe('incidents (integration)', () => {
         ).toEqual(['part']);
       });
 
+      it('should count as needing you only what you may start: open to your team, or assigned to you', async () => {
+        // 1 awaits the Admin; 2 is open to Payments; 3 is Payments' but
+        // assigned to Erin, who is on Platform.
+        for (let n = 0; n < 3; n += 1) {
+          expect((await declare(fx.orgA, fx.alice, fx.apiA)).status).toBe(201);
+        }
+        await prisma.$executeRaw`
+          UPDATE incidents SET response_access = 'PENDING'
+          WHERE organization_id = ${fx.orgA}::uuid AND number = 1`;
+        expect(
+          (
+            await call('put', `${fx.orgA}/incidents/3/response-access`, fx.alice, {
+              mode: 'ASSIGNED',
+              membershipIds: [fx.erinInA],
+            })
+          ).status,
+        ).toBe(200);
+
+        const needsYou = async (userId: string) =>
+          (
+            (
+              await call(
+                'get',
+                `${fx.orgA}/incidents?state=active&part=needs-you`,
+                userId,
+              )
+            ).body.items as { number: number }[]
+          ).map(({ number }) => number);
+        const counted = async (userId: string) =>
+          (await call('get', `${fx.orgA}/incidents/parts`, userId)).body[
+            'needs-you'
+          ].total as number;
+
+        expect(await needsYou(fx.dave)).toEqual([2]);
+        expect(await counted(fx.dave)).toBe(1);
+        expect(await needsYou(fx.erin)).toEqual([3]);
+        expect(await counted(fx.erin)).toBe(1);
+      });
+
       it('should search titles case-insensitively, taking % and _ literally, and find an incident by its number', async () => {
         for (const title of [
           'Checkout latency',
@@ -4055,8 +4094,12 @@ describe('incidents (integration)', () => {
       expect(response.status).toBe(200);
 
       return response.body as {
-        manage: { readyToResolve: Listed } | null;
-        respond: { needsYourTeam: Listed; yourResponses: Listed } | null;
+        manage: { needsDecision: Listed; readyToResolve: Listed } | null;
+        respond: {
+          assignedToYou: Listed;
+          needsYourTeam: Listed;
+          yourResponses: Listed;
+        } | null;
       };
     };
 
@@ -4067,7 +4110,9 @@ describe('incidents (integration)', () => {
     const nothingFor = async (organizationId: string, userId: string) => {
       const attention = await attentionOf(organizationId, userId);
 
+      expect(attention.manage?.needsDecision ?? []).toEqual([]);
       expect(attention.manage?.readyToResolve ?? []).toEqual([]);
+      expect(attention.respond?.assignedToYou).toEqual([]);
       expect(attention.respond?.needsYourTeam).toEqual([]);
       expect(attention.respond?.yourResponses).toEqual([]);
     };
@@ -4084,8 +4129,8 @@ describe('incidents (integration)', () => {
       }
       await nothingFor(fx.orgA, fx.erin);
       expect(await attentionOf(fx.orgA, fx.alice)).toEqual({
-        manage: { readyToResolve: [] },
-        respond: { needsYourTeam: [], yourResponses: [] },
+        manage: { needsDecision: [], readyToResolve: [] },
+        respond: { assignedToYou: [], needsYourTeam: [], yourResponses: [] },
       });
 
       // Dave starts: his response, and no longer unclaimed for Finn.
@@ -4157,6 +4202,7 @@ describe('incidents (integration)', () => {
       await call('patch', `${fx.orgA}/incidents/1`, fx.alice, {
         teamId: fx.platformA,
       });
+      await openToTeam(fx.orgA, 1);
 
       const dave = await attentionOf(fx.orgA, fx.dave);
 
@@ -4209,7 +4255,7 @@ describe('incidents (integration)', () => {
       // Admin in A, on no team there: nothing of B's, and no team work.
       const carolA = await attentionOf(fx.orgA, fx.carol);
 
-      expect(carolA.manage).toEqual({ readyToResolve: [] });
+      expect(carolA.manage).toEqual({ needsDecision: [], readyToResolve: [] });
       expect(carolA.respond?.needsYourTeam).toEqual([]);
 
       // Member in B, on B's Payments: B's incident and no management.
@@ -4242,8 +4288,49 @@ describe('incidents (integration)', () => {
           .attention(fx.orgA, { membershipId: fx.carolInB, role: 'MEMBER' }),
       ).toEqual({
         manage: null,
-        respond: { needsYourTeam: [], yourResponses: [] },
+        respond: { assignedToYou: [], needsYourTeam: [], yourResponses: [] },
       });
+    });
+
+    it('should ask the Admin to decide, then hold an assigned incident for the people assigned only', async () => {
+      await declare(fx.orgA, fx.alice, fx.apiA);
+      await prisma.$executeRaw`
+        UPDATE incidents SET response_access = 'PENDING'
+        WHERE organization_id = ${fx.orgA}::uuid AND number = 1`;
+
+      // Undecided: the Admin's to decide, and nobody's to pick up.
+      expect(
+        numbers((await attentionOf(fx.orgA, fx.alice)).manage?.needsDecision),
+      ).toEqual([1]);
+      await nothingFor(fx.orgA, fx.dave);
+
+      // Erin, on Platform, is assigned to Payments' incident.
+      expect(
+        (
+          await call(
+            'put',
+            `${fx.orgA}/incidents/1/response-access`,
+            fx.alice,
+            {
+              mode: 'ASSIGNED',
+              membershipIds: [fx.erinInA],
+            },
+          )
+        ).status,
+      ).toBe(200);
+
+      expect(
+        numbers((await attentionOf(fx.orgA, fx.erin)).respond?.assignedToYou),
+      ).toEqual([1]);
+      await nothingFor(fx.orgA, fx.dave);
+      await nothingFor(fx.orgA, fx.alice);
+
+      // Once she starts, it is her response under way.
+      expect((await startAs(fx.orgA, fx.erin, 1)).status).toBe(200);
+      const erin = await attentionOf(fx.orgA, fx.erin);
+
+      expect(erin.respond?.assignedToYou).toEqual([]);
+      expect(numbers(erin.respond?.yourResponses)).toEqual([1]);
     });
 
     it("should make a soft-deleted organization's attention unreachable", async () => {

@@ -27,6 +27,8 @@ export type NotificationIcon =
   | "severity"
   | "resolved"
   | "ready"
+  | "opened"
+  | "assigned"
   | "team-added"
   | "team-removed";
 
@@ -197,6 +199,20 @@ export const describeNotification = (
         "Ready to resolve",
         ["All responses complete", `last by ${by}`],
         ["All responses complete", `the last by ${by}`],
+      );
+    case "INCIDENT_OPENED_TO_TEAM":
+      return describe(
+        "opened",
+        "Open to your team",
+        ["You can start responding", by],
+        ["You can start responding", `opened by ${by}`],
+      );
+    case "INCIDENT_ASSIGNED":
+      return describe(
+        "assigned",
+        "Assigned to you",
+        ["You can start responding", by],
+        ["You can start responding", `assigned by ${by}`],
       );
   }
 };

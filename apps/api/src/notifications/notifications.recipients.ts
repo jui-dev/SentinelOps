@@ -15,6 +15,9 @@
  *   INCIDENT_RESOLVED          the responsible team, and everyone who
  *                              responded
  *   INCIDENT_READY_TO_RESOLVE  whoever runs incidents' lifecycles (Admins)
+ *   INCIDENT_OPENED_TO_TEAM    the responsible team
+ *   INCIDENT_ASSIGNED          the people just assigned, and nobody already
+ *                              assigned before this choice
  *
  * Never the actor — whoever did it knows — whichever way they would
  * otherwise qualify. Qualifying twice for one entry is still one recipient.
@@ -33,7 +36,9 @@ export type IncidentNotificationType =
   | 'INCIDENT_REASSIGNED'
   | 'INCIDENT_SEVERITY_CHANGED'
   | 'INCIDENT_RESOLVED'
-  | 'INCIDENT_READY_TO_RESOLVE';
+  | 'INCIDENT_READY_TO_RESOLVE'
+  | 'INCIDENT_OPENED_TO_TEAM'
+  | 'INCIDENT_ASSIGNED';
 
 /** Who could be told, as membership ids. */
 export interface IncidentCandidates {
@@ -48,18 +53,57 @@ export interface IncidentCandidates {
   }[];
   /** Everyone whose role runs incidents' lifecycles. */
   adminIds: readonly string[];
+  /** Everyone this change assigned who was not assigned before it. */
+  newAssigneeIds: readonly string[];
 }
 
 /** Which candidates each type needs, so no more are read than are used. */
 export const CANDIDATES_NEEDED: Record<
   IncidentNotificationType,
-  { team: boolean; responders: boolean; admins: boolean }
+  { team: boolean; responders: boolean; admins: boolean; assigned: boolean }
 > = {
-  INCIDENT_DECLARED: { team: true, responders: false, admins: false },
-  INCIDENT_REASSIGNED: { team: true, responders: true, admins: false },
-  INCIDENT_SEVERITY_CHANGED: { team: true, responders: true, admins: false },
-  INCIDENT_RESOLVED: { team: true, responders: true, admins: false },
-  INCIDENT_READY_TO_RESOLVE: { team: false, responders: false, admins: true },
+  INCIDENT_DECLARED: {
+    team: true,
+    responders: false,
+    admins: false,
+    assigned: false,
+  },
+  INCIDENT_REASSIGNED: {
+    team: true,
+    responders: true,
+    admins: false,
+    assigned: false,
+  },
+  INCIDENT_SEVERITY_CHANGED: {
+    team: true,
+    responders: true,
+    admins: false,
+    assigned: false,
+  },
+  INCIDENT_RESOLVED: {
+    team: true,
+    responders: true,
+    admins: false,
+    assigned: false,
+  },
+  INCIDENT_READY_TO_RESOLVE: {
+    team: false,
+    responders: false,
+    admins: true,
+    assigned: false,
+  },
+  INCIDENT_OPENED_TO_TEAM: {
+    team: true,
+    responders: false,
+    admins: false,
+    assigned: false,
+  },
+  INCIDENT_ASSIGNED: {
+    team: false,
+    responders: false,
+    admins: false,
+    assigned: true,
+  },
 };
 
 const investigating = (candidates: IncidentCandidates) =>
@@ -79,6 +123,8 @@ const RULES: Record<
   INCIDENT_SEVERITY_CHANGED: (c) => [...c.teamMemberIds, ...investigating(c)],
   INCIDENT_RESOLVED: (c) => [...c.teamMemberIds, ...everyResponder(c)],
   INCIDENT_READY_TO_RESOLVE: (c) => c.adminIds,
+  INCIDENT_OPENED_TO_TEAM: (c) => c.teamMemberIds,
+  INCIDENT_ASSIGNED: (c) => c.newAssigneeIds,
 };
 
 /** The membership ids to tell of one entry: unique, sorted, never the actor. */

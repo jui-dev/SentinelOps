@@ -6,14 +6,20 @@
  * appears when the work exists and is gone once it does not — resolved,
  * reassigned, or picked up. The timeline is where what happened is kept.
  *
+ *   needsDecision   incidents:manage. Nobody may respond until the Admin
+ *                   opens it to its team or assigns people.
  *   readyToResolve  incidents:manage. INVESTIGATING, and no responder is
  *                   still investigating: the same rule the resolution
  *                   itself enforces.
- *   needsYourTeam   incidents:respond. On one of the caller's teams, and
- *                   nobody now on that team has responded — so a
+ *   assignedToYou   incidents:respond. The Admin assigned the caller, and
+ *                   they have not started.
+ *   needsYourTeam   incidents:respond. Open to one of the caller's teams,
+ *                   and nobody now on that team has responded — so a
  *                   reassignment brings it to the new team even when the
  *                   old team's responders are still listed, and it leaves
- *                   the other members' lists once one of them starts.
+ *                   the other members' lists once one of them starts. An
+ *                   incident awaiting the Admin, or assigned to particular
+ *                   people, is nobody's to pick up from the team.
  *   yourResponses   incidents:respond. The caller's own response is still
  *                   INVESTIGATING, whatever team the incident has now.
  *
@@ -22,6 +28,7 @@
  */
 
 import type {
+  IncidentResponseAccess,
   IncidentResponderStatus,
   IncidentSeverity,
   IncidentStatus,
@@ -32,6 +39,8 @@ interface AttentionRow {
   severity: IncidentSeverity;
   status: IncidentStatus;
   team: { id: string };
+  responseAccess: IncidentResponseAccess;
+  assignees: readonly { membership: { id: string } }[];
   responders: readonly {
     status: IncidentResponderStatus;
     membership: { id: string };
@@ -53,8 +62,12 @@ export interface AttentionCaller {
 
 /** Each section is null when the caller lacks its permission. */
 export interface Attention<Row extends AttentionRow> {
-  manage: { readyToResolve: Row[] } | null;
-  respond: { needsYourTeam: Row[]; yourResponses: Row[] } | null;
+  manage: { needsDecision: Row[]; readyToResolve: Row[] } | null;
+  respond: {
+    assignedToYou: Row[];
+    needsYourTeam: Row[];
+    yourResponses: Row[];
+  } | null;
 }
 
 /** Most severe first — the order the database enum declares them in. */
@@ -103,18 +116,32 @@ export const classifyAttention = <Row extends AttentionRow>(
     const team = caller.teams.get(incident.team.id);
 
     return (
+      incident.responseAccess === 'OPEN' &&
       team !== undefined &&
       ownStatus(incident) === undefined &&
       !incident.responders.some(({ membership }) => team.has(membership.id))
     );
   };
 
+  const assignedToCaller = (incident: Row): boolean =>
+    incident.responseAccess === 'ASSIGNED' &&
+    ownStatus(incident) === undefined &&
+    incident.assignees.some(
+      ({ membership }) => membership.id === caller.membershipId,
+    );
+
   return {
     manage: caller.canManage
-      ? { readyToResolve: active.filter(readyToResolve) }
+      ? {
+          needsDecision: active.filter(
+            ({ responseAccess }) => responseAccess === 'PENDING',
+          ),
+          readyToResolve: active.filter(readyToResolve),
+        }
       : null,
     respond: caller.canRespond
       ? {
+          assignedToYou: active.filter(assignedToCaller),
           needsYourTeam: active.filter(needsTeam),
           yourResponses: active.filter(
             (incident) => ownStatus(incident) === 'INVESTIGATING',

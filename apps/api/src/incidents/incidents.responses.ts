@@ -227,11 +227,15 @@ export const toIncidentAttentionResponse = (
   attention: Attention<IncidentDetailRow>,
 ): IncidentAttentionResponse => ({
   manage: attention.manage && {
+    needsDecision: attention.manage.needsDecision.map(toIncidentDetailResponse),
     readyToResolve: attention.manage.readyToResolve.map(
       toIncidentDetailResponse,
     ),
   },
   respond: attention.respond && {
+    assignedToYou: attention.respond.assignedToYou.map(
+      toIncidentDetailResponse,
+    ),
     needsYourTeam: attention.respond.needsYourTeam.map(
       toIncidentDetailResponse,
     ),

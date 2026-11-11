@@ -30,8 +30,9 @@ export const incidentSeveritySchema = z.enum(['SEV1', 'SEV2', 'SEV3', 'SEV4']);
  * The caller's own part in an incident, as the list's `part` filter and the
  * parts counts name it. Each is about the caller alone, never a teammate:
  *
- *   - `needs-you`: their team is responsible, they have not started on it,
- *     and it still wants someone — nobody has started, or someone is still
+ *   - `needs-you`: they may start it — it is open to their team, or the
+ *     Admin assigned them — they have not started on it, and it still wants
+ *     someone — nobody has started, or someone is still
  *     investigating. An incident everyone has finished on is waiting for
  *     resolution, not for them.
  *   - `investigating`: they started and have not completed.

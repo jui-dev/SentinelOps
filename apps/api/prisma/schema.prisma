@@ -890,6 +890,11 @@ enum NotificationType {
   INCIDENT_RESOLVED
   /// The last response under way completed; the Admin may now resolve it.
   INCIDENT_READY_TO_RESOLVE
+  /// The Admin opened the incident to the recipient's team: anyone on it
+  /// may now start.
+  INCIDENT_OPENED_TO_TEAM
+  /// The Admin assigned the recipient to the incident: they may now start.
+  INCIDENT_ASSIGNED
   TEAM_MEMBERSHIP_ADDED
   TEAM_MEMBERSHIP_REMOVED
 

@@ -2647,8 +2647,8 @@ describe("the operations overview", () => {
       it("reads from the state down to the work, both panels side by side", async () => {
         api(MANAGE, {
           attention: {
-            manage: { readyToResolve: [complete] },
-            respond: { needsYourTeam: [unclaimed], yourResponses: [mine] },
+            manage: { needsDecision: [], readyToResolve: [complete] },
+            respond: { assignedToYou: [], needsYourTeam: [unclaimed], yourResponses: [mine] },
           },
         });
         const { container } = renderOverview();
@@ -2693,8 +2693,8 @@ describe("the operations overview", () => {
       it("frames Waiting on you as a decision only while one is waiting", async () => {
         api(MANAGE, {
           attention: {
-            manage: { readyToResolve: [complete] },
-            respond: { needsYourTeam: [unclaimed], yourResponses: [mine] },
+            manage: { needsDecision: [], readyToResolve: [complete] },
+            respond: { assignedToYou: [], needsYourTeam: [unclaimed], yourResponses: [mine] },
           },
         });
         renderOverview();
@@ -2730,11 +2730,59 @@ describe("the operations overview", () => {
         ).toBe("primary");
       });
 
+      it("asks the Admin to choose who responds, beside what is ready to resolve", async () => {
+        api(MANAGE, {
+          attention: {
+            manage: { needsDecision: [unclaimed], readyToResolve: [] },
+            respond: { assignedToYou: [], needsYourTeam: [], yourResponses: [] },
+          },
+        });
+        renderOverview();
+
+        const waiting = await screen.findByRole("region", {
+          name: "Waiting on you",
+        });
+        const decide = within(waiting).getByRole("list", {
+          name: "Needs a decision",
+        });
+
+        expect(waiting.getAttribute("data-tone")).toBe("action");
+        expect(within(decide).getByText("Choose who responds")).toBeDefined();
+        expect(
+          within(waiting).getByText("Nothing is ready to resolve."),
+        ).toBeDefined();
+        await expectNoAxeViolations(waiting);
+      });
+
+      it("puts what the Admin assigned a member first in their work", async () => {
+        api(RESPOND, {
+          attention: {
+            manage: null,
+            respond: {
+              assignedToYou: [unclaimed],
+              needsYourTeam: [],
+              yourResponses: [mine],
+            },
+          },
+        });
+        renderOverview();
+
+        const work = await screen.findByRole("region", { name: "Your work" });
+        const lists = within(work).getAllByRole("list");
+
+        expect(lists[0].getAttribute("aria-labelledby")).toBe(
+          "assigned-to-you-title",
+        );
+        expect(
+          within(lists[0]).getByText("The Admin asked you to respond"),
+        ).toBeDefined();
+      });
+
       it("drops the decision frame when nothing is waiting", async () => {
         api(MANAGE, {
           attention: {
-            manage: { readyToResolve: [] },
-            respond: { needsYourTeam: [], yourResponses: [] },
+            manage: { needsDecision: [], readyToResolve: [] },
+            respond: { assignedToYou: [], needsYourTeam: [], yourResponses: [] },
           },
         });
         renderOverview();
@@ -2750,8 +2798,8 @@ describe("the operations overview", () => {
         // On no team: the work lists would never fill, so they are not shown.
         api(MANAGE, {
           attention: {
-            manage: { readyToResolve: [complete] },
-            respond: { needsYourTeam: [], yourResponses: [] },
+            manage: { needsDecision: [], readyToResolve: [complete] },
+            respond: { assignedToYou: [], needsYourTeam: [], yourResponses: [] },
           },
         });
         renderOverview();
@@ -2770,8 +2818,8 @@ describe("the operations overview", () => {
       });
 
       it.each([
-        ["with work to show", { needsYourTeam: [unclaimed], yourResponses: [] }],
-        ["with nothing yet", { needsYourTeam: [], yourResponses: [] }],
+        ["with work to show", { assignedToYou: [], needsYourTeam: [unclaimed], yourResponses: [] }],
+        ["with nothing yet", { assignedToYou: [], needsYourTeam: [], yourResponses: [] }],
       ])(
         "gives a member their work at the whole width, %s",
         async (_, respond) => {
@@ -2820,8 +2868,8 @@ describe("the operations overview", () => {
       it("has no accessibility violations as a whole page", async () => {
         api(MANAGE, {
           attention: {
-            manage: { readyToResolve: [complete] },
-            respond: { needsYourTeam: [unclaimed], yourResponses: [mine] },
+            manage: { needsDecision: [], readyToResolve: [complete] },
+            respond: { assignedToYou: [], needsYourTeam: [unclaimed], yourResponses: [mine] },
           },
         });
         const { container } = renderOverview();
@@ -2836,8 +2884,8 @@ describe("the operations overview", () => {
     it("shows the admin what is ready to resolve, and no empty work of their own", async () => {
       api(MANAGE, {
         attention: {
-          manage: { readyToResolve: [complete] },
-          respond: { needsYourTeam: [], yourResponses: [] },
+          manage: { needsDecision: [], readyToResolve: [complete] },
+          respond: { assignedToYou: [], needsYourTeam: [], yourResponses: [] },
         },
       });
       const { container } = renderOverview();
@@ -2875,8 +2923,8 @@ describe("the operations overview", () => {
     it("tells the admin plainly when nothing is waiting", async () => {
       api(MANAGE, {
         attention: {
-          manage: { readyToResolve: [] },
-          respond: { needsYourTeam: [], yourResponses: [] },
+          manage: { needsDecision: [], readyToResolve: [] },
+          respond: { assignedToYou: [], needsYourTeam: [], yourResponses: [] },
         },
       });
       renderOverview();
@@ -2896,7 +2944,7 @@ describe("the operations overview", () => {
         role: "MEMBER",
         attention: {
           manage: null,
-          respond: { needsYourTeam: [unclaimed], yourResponses: [mine] },
+          respond: { assignedToYou: [], needsYourTeam: [unclaimed], yourResponses: [mine] },
         },
       });
       const { container } = renderOverview();
@@ -2938,7 +2986,7 @@ describe("the operations overview", () => {
         role: "MEMBER",
         attention: {
           manage: null,
-          respond: { needsYourTeam: [], yourResponses: [] },
+          respond: { assignedToYou: [], needsYourTeam: [], yourResponses: [] },
         },
       });
       const { container } = renderOverview();
@@ -2961,7 +3009,7 @@ describe("the operations overview", () => {
         role: "MEMBER",
         attention: {
           manage: null,
-          respond: { needsYourTeam: [], yourResponses: [mine] },
+          respond: { assignedToYou: [], needsYourTeam: [], yourResponses: [mine] },
         },
       });
       const { container } = renderOverview();
@@ -2984,8 +3032,8 @@ describe("the operations overview", () => {
     it("shows an admin on a team both what waits on them and their own work", async () => {
       api(MANAGE, {
         attention: {
-          manage: { readyToResolve: [] },
-          respond: { needsYourTeam: [unclaimed], yourResponses: [] },
+          manage: { needsDecision: [], readyToResolve: [] },
+          respond: { assignedToYou: [], needsYourTeam: [unclaimed], yourResponses: [] },
         },
       });
       renderOverview();
@@ -3008,7 +3056,7 @@ describe("the operations overview", () => {
         role: "MEMBER",
         attention: {
           manage: null,
-          respond: { needsYourTeam: [], yourResponses: [] },
+          respond: { assignedToYou: [], needsYourTeam: [], yourResponses: [] },
         },
       });
       const { queryClient } = renderOverview();
@@ -3034,7 +3082,7 @@ describe("the operations overview", () => {
       act(() =>
         queryClient.setQueryData(key, {
           manage: null,
-          respond: { needsYourTeam: [unclaimed], yourResponses: [] },
+          respond: { assignedToYou: [], needsYourTeam: [unclaimed], yourResponses: [] },
         }),
       );
 

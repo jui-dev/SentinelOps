@@ -609,8 +609,9 @@ describe("WorkspaceShell", () => {
       needs?: string[];
       yours?: string[];
     }): IncidentAttentionResponse => ({
-      manage: ready ? { readyToResolve: ready.map(item) } : null,
+      manage: ready ? { needsDecision: [], readyToResolve: ready.map(item) } : null,
       respond: {
+        assignedToYou: [],
         needsYourTeam: needs.map(item),
         yourResponses: yours.map(item),
       },

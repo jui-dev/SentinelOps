@@ -580,6 +580,7 @@ const signedIn = (permissions: string[]) =>
         return jsonResponse(200, {
           manage: null,
           respond: {
+            assignedToYou: [],
             needsYourTeam: [{ ...majorIncident, resolution: null, responders: [] }],
             yourResponses: [],
           },

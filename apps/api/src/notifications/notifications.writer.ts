@@ -58,6 +58,12 @@ export class NotificationsWriter {
       teamId: string;
       actor: { userId: string; membershipId: string };
       events: readonly IncidentNotificationEvent[];
+      /**
+       * Whom this change newly assigned to the incident: an INCIDENT_ASSIGNED
+       * event tells them, and only them. Ids the caller already checked
+       * belong to this organization; a departed member among them is not told.
+       */
+      newAssigneeIds?: readonly string[];
     },
   ): Promise<number> {
     if (change.events.length === 0) {
@@ -140,6 +146,7 @@ export class NotificationsWriter {
       teamId: string;
       actor: { membershipId: string };
       events: readonly IncidentNotificationEvent[];
+      newAssigneeIds?: readonly string[];
     },
   ): Promise<IncidentCandidates> {
     const needs = change.events.map(({ type }) => CANDIDATES_NEEDED[type]);
@@ -178,11 +185,25 @@ export class NotificationsWriter {
         })
       : [];
 
+    const assigned =
+      needs.some(({ assigned }) => assigned) &&
+      (change.newAssigneeIds ?? []).length > 0
+        ? await tx.membership.findMany({
+            where: {
+              organizationId,
+              id: { in: [...(change.newAssigneeIds ?? [])] },
+              ...activeMember,
+            },
+            select: { id: true },
+          })
+        : [];
+
     return {
       actorMembershipId: change.actor.membershipId,
       teamMemberIds: team.map(({ membershipId }) => membershipId),
       responders,
       adminIds: admins.map(({ id }) => id),
+      newAssigneeIds: assigned.map(({ id }) => id),
     };
   }
 }

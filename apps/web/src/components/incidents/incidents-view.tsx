@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { CircleCheck, CircleDashed, Flame, History } from "lucide-react";
+import { CircleCheck, CircleDashed, Flame, History, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -55,6 +55,7 @@ import {
 import {
   incidentHref,
   storeIncident,
+  useIncidentAttention,
   useIncidentList,
 } from "./incident-queries";
 import { IncidentBoard, IncidentCards } from "./incident-board";
@@ -405,21 +406,32 @@ function IncidentList({
 
 /**
  * Where incident response stands now, across the organization: active
- * incidents and how many are SEV1, how many wait on someone to start, how
- * many are ready to resolve, and how many were resolved in the last thirty
- * days. The Overview's own figures, from the one summary they share.
+ * incidents and how many are SEV1, how many wait on the Admin to choose who
+ * responds, how many wait on someone to start, how many are ready to
+ * resolve, and how many were resolved in the last thirty days. The
+ * Overview's own figures, from the one summary they share, with the
+ * Admin's own decisions from what waits on them.
  */
 function NowBand() {
   const organization = useOrganization();
   const now = useCurrentOperations(organization.id);
+  const attention = useIncidentAttention(organization.id);
   const figures = now.data;
   const sev1 = figures?.activeBySeverity.SEV1 ?? 0;
-  const unclaimed = figures?.activeByStatus.DECLARED ?? 0;
+  const undecided = attention.data?.manage?.needsDecision;
+  const decisions = undecided?.length ?? 0;
+  // Declared and nobody started — less those nobody may start yet: they
+  // wait on the Admin, not on a responder.
+  const unclaimed = Math.max(
+    0,
+    (figures?.activeByStatus.DECLARED ?? 0) -
+      (undecided?.filter(({ status }) => status === "DECLARED").length ?? 0),
+  );
 
   if (now.isError) return <ErrorAlert error={now.error} />;
 
   return (
-    <Glance label="Incidents now" columns={4}>
+    <Glance label="Incidents now" columns={5}>
       <GlanceTile
         label="Active"
         icon={Flame}
@@ -429,10 +441,18 @@ function NowBand() {
         noteTone={sev1 > 0}
       />
       <GlanceTile
+        label="Needs a decision"
+        icon={Users}
+        tone={decisions > 0 ? "warning" : "neutral"}
+        value={undecided ? decisions : "—"}
+        note="choose who responds"
+        noteTone={decisions > 0}
+      />
+      <GlanceTile
         label="Needs a responder"
         icon={CircleDashed}
         tone={unclaimed > 0 ? "warning" : "neutral"}
-        value={figures ? unclaimed : "—"}
+        value={figures && undecided ? unclaimed : "—"}
         note="no one has started"
       />
       <GlanceTile

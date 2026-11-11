@@ -152,6 +152,35 @@ describe("describeNotification", () => {
     );
   });
 
+  it.each([
+    [
+      "INCIDENT_OPENED_TO_TEAM",
+      "opened",
+      "Open to your team",
+      "Open to your team. INC-104 Login failures. You can start responding, opened by Alice Anders.",
+    ],
+    [
+      "INCIDENT_ASSIGNED",
+      "assigned",
+      "Assigned to you",
+      "Assigned to you. INC-104 Login failures. You can start responding, assigned by Alice Anders.",
+    ],
+  ] as const)(
+    "should tell a member of %s that they can now start, and who decided",
+    (type, icon, headline, spoken) => {
+      const description = describeNotification(
+        incidentNotification({ type, change: null }),
+        SLUG,
+      );
+
+      expect(description.icon).toBe(icon);
+      expect(description.headline).toBe(headline);
+      expect(description.detail).toEqual(["You can start responding", "Alice Anders"]);
+      expect(description.spoken).toBe(spoken);
+      expect(description.href).toBe("/orgs/acme-ops/incidents/104");
+    },
+  );
+
   it("should mark an incident resolved since, on every notification but its resolution", () => {
     const resolved = {
       number: 104,
@@ -166,6 +195,8 @@ describe("describeNotification", () => {
       "INCIDENT_REASSIGNED",
       "INCIDENT_SEVERITY_CHANGED",
       "INCIDENT_READY_TO_RESOLVE",
+      "INCIDENT_OPENED_TO_TEAM",
+      "INCIDENT_ASSIGNED",
     ] as const) {
       const description = describeNotification(
         incidentNotification({ type, incident: resolved }),
