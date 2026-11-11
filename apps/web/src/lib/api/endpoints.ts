@@ -37,6 +37,9 @@ import type {
   InvitationLookupResponse,
   InvitationResponse,
   KnownIssueResponse,
+  CreateKnownIssueRequest,
+  UpdateKnownIssueRequest,
+  MergeKnownIssueRequest,
   LoginRequest,
   MembershipResponse,
   OperationalActivityResponse,
@@ -226,15 +229,57 @@ const servicePath = (organizationId: string, serviceId: string) =>
 export const listServices = (organizationId: string) =>
   authenticatedRequest<ServiceResponse[]>(servicesPath(organizationId));
 
-/** One service's known issues, or every one's; most frequent first. */
+const knownIssuesPath = (organizationId: string) =>
+  `${organizationPath(organizationId)}/known-issues`;
+
+/**
+ * One service's known issues, or every one's; most frequent first. Archived
+ * ones only with `archived: "include"`.
+ */
 export const listKnownIssues = (
   organizationId: string,
-  { serviceId }: { serviceId?: string } = {},
+  {
+    serviceId,
+    archived,
+  }: { serviceId?: string; archived?: "include" | "exclude" } = {},
+) => {
+  const query = new URLSearchParams();
+
+  if (serviceId) query.set("serviceId", serviceId);
+  if (archived) query.set("archived", archived);
+
+  return authenticatedRequest<KnownIssueResponse[]>(
+    `${knownIssuesPath(organizationId)}${query.size > 0 ? `?${query}` : ""}`,
+  );
+};
+
+export const createKnownIssue = (
+  organizationId: string,
+  body: CreateKnownIssueRequest,
 ) =>
-  authenticatedRequest<KnownIssueResponse[]>(
-    `${organizationPath(organizationId)}/known-issues${
-      serviceId ? `?${new URLSearchParams({ serviceId })}` : ""
-    }`,
+  authenticatedRequest<KnownIssueResponse>(knownIssuesPath(organizationId), {
+    method: "POST",
+    body,
+  });
+
+export const updateKnownIssue = (
+  organizationId: string,
+  id: string,
+  body: UpdateKnownIssueRequest,
+) =>
+  authenticatedRequest<KnownIssueResponse>(
+    `${knownIssuesPath(organizationId)}/${encodeURIComponent(id)}`,
+    { method: "PATCH", body },
+  );
+
+export const mergeKnownIssue = (
+  organizationId: string,
+  id: string,
+  body: MergeKnownIssueRequest,
+) =>
+  authenticatedRequest<KnownIssueResponse>(
+    `${knownIssuesPath(organizationId)}/${encodeURIComponent(id)}/merge`,
+    { method: "POST", body },
   );
 
 export const createService = (

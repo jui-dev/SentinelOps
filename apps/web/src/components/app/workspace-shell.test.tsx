@@ -190,6 +190,31 @@ describe("WorkspaceShell", () => {
           .getAllByRole("link")
           .map((link) => link.textContent),
       ).toContain("Services");
+      // Known issues are the Admin's, and services:read alone is not that.
+      expect(within(primaryNav()).queryByRole("link", { name: "Known issues" })).toBeNull();
+    });
+
+    it("offers Known issues to the Admin, beneath Services, and marks it on its page", async () => {
+      at("/orgs/acme-ops/known-issues", "acme-ops");
+      api({ permissions: [...READ, "services:read", "services:manage"] });
+
+      renderShell();
+
+      const known = await within(primaryNav()).findByRole("link", {
+        name: "Known issues",
+      });
+      const links = within(sectionOf("Organization"))
+        .getAllByRole("link")
+        .map((link) => link.textContent);
+
+      expect(known.getAttribute("href")).toBe("/orgs/acme-ops/known-issues");
+      expect(known.getAttribute("aria-current")).toBe("page");
+      expect(links.indexOf("Known issues")).toBe(links.indexOf("Services") + 1);
+      expect(
+        within(primaryNav())
+          .getByRole("link", { name: "Services" })
+          .getAttribute("aria-current"),
+      ).toBeNull();
     });
 
     it("orders the rail as home, then Organization in setup order, then Response", async () => {

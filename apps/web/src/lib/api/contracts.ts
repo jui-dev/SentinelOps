@@ -1015,6 +1015,31 @@ export interface KnownIssueResponse {
   createdAt: string;
 }
 
+/** The Admin adds a known issue by hand. */
+export interface CreateKnownIssueRequest {
+  serviceId: string;
+  name: string;
+  description?: string | null;
+  usualSeverity: IncidentSeverity;
+}
+
+/**
+ * Renaming, describing, re-rating, archiving or restoring. Any change marks
+ * it reviewed; `reviewed: true` alone keeps one saved while declaring.
+ */
+export interface UpdateKnownIssueRequest {
+  name?: string;
+  description?: string | null;
+  usualSeverity?: IncidentSeverity;
+  archived?: boolean;
+  reviewed?: true;
+}
+
+/** Moves its incidents into another known issue of the same service. */
+export interface MergeKnownIssueRequest {
+  intoId: string;
+}
+
 /**
  * `status: "RESOLVED"` resolves an INVESTIGATING incident once no responder
  * is still investigating (409 RESPONDERS_STILL_INVESTIGATING otherwise), and

@@ -35,11 +35,14 @@ function RailLink({
   icon: Icon,
   current,
   count = 0,
+  nested = false,
 }: {
   href: string;
   label: string;
   icon: LucideIcon;
   current: boolean;
+  /** Indented beneath the item it belongs to, on a guide line. */
+  nested?: boolean;
   /** How many things behind the item wait on the caller; none shows nothing. */
   count?: number;
 }) {
@@ -49,7 +52,10 @@ function RailLink({
       aria-current={current ? "page" : undefined}
       className={cx(
         // Items run from the rail's edge: the current one grows out of it.
-        "group relative flex h-8 items-center gap-2.5 rounded-r-md pr-2.5 pl-5 text-base transition-colors duration-(--duration-fast) focus-visible:-outline-offset-2",
+        "group relative flex h-8 items-center gap-2.5 rounded-r-md pr-2.5 text-base transition-colors duration-(--duration-fast) focus-visible:-outline-offset-2",
+        nested
+          ? "pl-11 before:absolute before:inset-y-0 before:left-7 before:w-px before:bg-line"
+          : "pl-5",
         current
           ? "bg-nav-selected font-medium text-fg"
           : "text-fg-muted hover:bg-rail-hover hover:text-fg",
@@ -138,6 +144,7 @@ function SectionLinks({
                 icon={item.icon}
                 current={item.id === currentId}
                 count={counts[item.id]}
+                nested={item.nested}
               />
             </li>
           );

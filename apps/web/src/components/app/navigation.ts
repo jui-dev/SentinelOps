@@ -1,4 +1,5 @@
 import {
+  BookMarked,
   Boxes,
   History,
   LayoutPanelTop,
@@ -38,6 +39,8 @@ export interface NavItem {
    * everyone else (see organization-landing.tsx).
    */
   labelWithout?: { permission: string; label: string };
+  /** Drawn indented beneath the item before it, which it belongs to. */
+  nested?: boolean;
 }
 
 /** The item's name for a caller with these permissions. */
@@ -117,6 +120,16 @@ export const ORGANIZATION_NAVIGATION: NavSection[] = [
         href: (slug) => `${organizationPath(slug)}/services`,
         match: "prefix",
         requires: Permission.SERVICES_READ,
+      },
+      {
+        id: "known-issues",
+        label: "Known issues",
+        icon: BookMarked,
+        href: (slug) => `${organizationPath(slug)}/known-issues`,
+        match: "prefix",
+        // Kept by the Admin; declaring offers them to whoever declares.
+        requires: Permission.SERVICES_MANAGE,
+        nested: true,
       },
     ],
   },
