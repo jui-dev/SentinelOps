@@ -255,6 +255,17 @@ export type IncidentStatus = "DECLARED" | "INVESTIGATING" | "RESOLVED";
  * service's owner when the incident was declared, unless reassigned since.
  * Its members are who may start investigating it.
  */
+/**
+ * Who may start responding: nobody until the Admin chooses (PENDING), anyone
+ * on the responsible team (OPEN), or only the people assigned (ASSIGNED).
+ */
+export type IncidentResponseAccess = "PENDING" | "OPEN" | "ASSIGNED";
+
+/** The Admin's choice: the responsible team, or the people named. */
+export type SetIncidentResponseAccessRequest =
+  | { mode: "OPEN" }
+  | { mode: "ASSIGNED"; membershipIds: string[] };
+
 export interface IncidentResponse {
   id: string;
   number: number;
@@ -262,6 +273,9 @@ export interface IncidentResponse {
   summary: string | null;
   severity: IncidentSeverity;
   status: IncidentStatus;
+  responseAccess: IncidentResponseAccess;
+  /** The people assigned, in the order they were; empty unless ASSIGNED. */
+  assignees: { membershipId: string; name: string }[];
   service: {
     id: string;
     name: string;
@@ -363,7 +377,8 @@ export type IncidentActivityType =
   | "STATUS_CHANGED"
   | "TEAM_CHANGED"
   | "RESPONSE_STARTED"
-  | "RESPONSE_COMPLETED";
+  | "RESPONSE_COMPLETED"
+  | "RESPONSE_ACCESS_CHANGED";
 
 /**
  * One entry on an incident's timeline. `message` is set for UPDATE, and on
@@ -1055,6 +1070,8 @@ export const ApiErrorCode = {
   ANALYSIS_CHANGED: "ANALYSIS_CHANGED",
   ANALYSIS_SUMMARY_REQUIRED: "ANALYSIS_SUMMARY_REQUIRED",
   ANALYSIS_SECTION_NOT_WRITTEN: "ANALYSIS_SECTION_NOT_WRITTEN",
+  RESPONSE_NOT_OPEN: "RESPONSE_NOT_OPEN",
+  NOT_ASSIGNED_TO_INCIDENT: "NOT_ASSIGNED_TO_INCIDENT",
 } as const;
 
 export interface ValidationErrorDetail {

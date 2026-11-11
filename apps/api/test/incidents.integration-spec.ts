@@ -110,18 +110,33 @@ describe('incidents (integration)', () => {
     expect(response.body.code).toBe(code);
   };
 
-  const declare = (
+  /** Opens an incident to its team, as the Admin's choice would, unrecorded. */
+  const openToTeam = (organizationId: string, number: number) =>
+    prisma.$executeRaw`
+      UPDATE incidents SET response_access = 'OPEN'
+      WHERE organization_id = ${organizationId}::uuid AND number = ${number}`;
+
+  /** Declared and opened to its team, which is what most tests start from. */
+  const declare = async (
     organizationId: string,
     userId: string,
     serviceId: string,
     extra: object = {},
-  ) =>
-    call('post', `${organizationId}/incidents`, userId, {
+  ) => {
+    const declared = await call('post', `${organizationId}/incidents`, userId, {
       title: 'Card payments failing',
       serviceId,
       severity: 'SEV1',
       ...extra,
     });
+
+    if (declared.status === 201) {
+      await openToTeam(organizationId, declared.body.number);
+      declared.body.responseAccess = 'OPEN';
+    }
+
+    return declared;
+  };
 
   /** The caller starts investigating incident `number`. */
   const startAs = (organizationId: string, userId: string, number: number) =>
@@ -1218,6 +1233,7 @@ describe('incidents (integration)', () => {
       await call('patch', `${fx.orgA}/incidents/2`, fx.alice, {
         teamId: fx.platformA,
       });
+      await openToTeam(fx.orgA, 2);
       expect((await startAs(fx.orgA, fx.erin, 2)).status).toBe(200);
       expect((await startAs(fx.orgA, fx.dave, 3)).status).toBe(200);
 
@@ -2619,6 +2635,7 @@ describe('incidents (integration)', () => {
       await call('patch', `${fx.orgA}/incidents/2`, fx.alice, {
         teamId: fx.platformA,
       });
+      await openToTeam(fx.orgA, 2);
       expect((await startAs(fx.orgA, fx.erin, 2)).status).toBe(200);
       await call('post', `${fx.orgA}/incidents/2/updates`, fx.erin, {
         message: 'Signing keys rotated an hour early.',
@@ -3531,6 +3548,7 @@ describe('incidents (integration)', () => {
       expect(reassigned.status).toBe(200);
       expect(reassigned.body.team.name).toBe('Platform');
       expect(reassigned.body.responders).toHaveLength(1);
+      await openToTeam(fx.orgA, 1);
 
       // Payments can no longer start — Finn, who never responded, no longer
       // sees it at all; Platform can.
@@ -3670,6 +3688,34 @@ describe('incidents (integration)', () => {
       await declare(fx.orgA, fx.alice, fx.apiA);
     });
 
+    it('should declare an incident undecided, visible to its team, and open only by choice', async () => {
+      const declared = await call('post', `${fx.orgA}/incidents`, fx.alice, {
+        title: 'Awaiting a decision',
+        serviceId: fx.apiA,
+        severity: 'SEV2',
+      });
+
+      expect(declared.body).toMatchObject({
+        responseAccess: 'PENDING',
+        assignees: [],
+      });
+
+      const number: number = declared.body.number;
+
+      expect(
+        (await call('get', `${fx.orgA}/incidents/${number}`, fx.dave)).status,
+      ).toBe(200);
+      expectCode(
+        await startAs(fx.orgA, fx.dave, number),
+        409,
+        'RESPONSE_NOT_OPEN',
+      );
+
+      await call('put', accessPath(number), fx.alice, { mode: 'OPEN' });
+
+      expect((await startAs(fx.orgA, fx.dave, number)).status).toBe(200);
+    });
+
     it('should let only the people assigned start, from any team', async () => {
       const assigned = await assign(1, [fx.erinInA]);
 
@@ -3802,7 +3848,10 @@ describe('incidents (integration)', () => {
       });
 
       expect(moved.status).toBe(200);
-      expect(moved.body.assignees).toEqual([]);
+      expect(moved.body).toMatchObject({
+        responseAccess: 'PENDING',
+        assignees: [],
+      });
     });
   });
 
@@ -4081,6 +4130,7 @@ describe('incidents (integration)', () => {
       await call('patch', `${fx.orgA}/incidents/1`, fx.alice, {
         teamId: fx.platformA,
       });
+      await openToTeam(fx.orgA, 1);
 
       // Two facts about one incident: resolvable, and not yet picked up by
       // anyone on Platform.

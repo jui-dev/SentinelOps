@@ -162,6 +162,8 @@ const incident = (
   id: "0199a1b2-c3d4-7000-8000-0000000000f1",
   number: 42,
   title: "Card payments failing",
+  responseAccess: "OPEN",
+  assignees: [],
   summary: "Card declines since 14:02.",
   resolution: null,
   severity: "SEV1",
@@ -921,7 +923,7 @@ describe("incidents", () => {
         // Everyone on the team, and where each stands — once the team is here.
         await waitFor(() =>
           expect(
-            within(within(response).getByRole("list", { name: "Payments" }))
+            within(within(screen.getByRole("region", { name: "Responders" })).getByRole("list", { name: "Payments" }))
               .getAllByRole("listitem")
               .map((item) => item.textContent),
           ).toEqual([
@@ -951,7 +953,7 @@ describe("incidents", () => {
 
         expect(tile("Investigating")).toBe("1");
         expect(tile("Completed")).toBe("1");
-        expect(within(response).getByText("done")).toBeDefined();
+        expect(screen.getByText("done")).toBeDefined();
         expect(
           within(response).getByText(
             "Daniel Okafor is still investigating. Resolve opens when everyone who started has completed.",

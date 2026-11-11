@@ -19,7 +19,7 @@ import type { SetIncidentResponseAccessRequest } from './incidents.schemas.js';
  * How an incident's access begins, when it is declared and when its
  * responsible team changes.
  */
-export const INITIAL_RESPONSE_ACCESS: IncidentResponseAccess = 'OPEN';
+export const INITIAL_RESPONSE_ACCESS: IncidentResponseAccess = 'PENDING';
 
 /** Why a member may not start responding, or `null` when they may. */
 export type StartRefusal = 'awaiting-decision' | 'not-assigned' | 'not-on-team';

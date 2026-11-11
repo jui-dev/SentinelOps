@@ -119,6 +119,7 @@ describe('incident logging (integration)', () => {
     });
 
     expect(declared.status).toBe(201);
+    await prisma.$executeRaw`UPDATE incidents SET response_access = 'OPEN'`;
 
     // A mix of successes and failures on every route.
     await server()

@@ -167,6 +167,8 @@ const activeIncident = {
   id: "0199a1b2-c3d4-7000-8000-0000000000f1",
   number: 42,
   title: "Card payments failing",
+  responseAccess: "OPEN",
+  assignees: [],
   summary: "Card declines since 14:02.",
   severity: "SEV1",
   status: "INVESTIGATING",

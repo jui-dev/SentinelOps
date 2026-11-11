@@ -77,6 +77,16 @@ function describe(
           <SeverityMark severity={entry.toValue as IncidentSeverity} />
         </>
       );
+    case "RESPONSE_ACCESS_CHANGED":
+      return entry.toValue === "OPEN" ? (
+        <>opened the incident to the responsible team</>
+      ) : entry.toValue === "ASSIGNED" ? (
+        <>
+          assigned <span className="font-medium text-fg">{entry.message}</span> to respond
+        </>
+      ) : (
+        <>removed everyone assigned, so who responds is undecided</>
+      );
     case "TEAM_CHANGED":
       return (
         <>
@@ -152,6 +162,7 @@ const eventMarker = (entry: IncidentActivityResponse): EventMarker | undefined =
     case "SEVERITY_CHANGED":
       return EVENT_MARKERS.severityChanged;
     case "TEAM_CHANGED":
+    case "RESPONSE_ACCESS_CHANGED":
       return EVENT_MARKERS.teamChanged;
     case "RESPONSE_STARTED":
       return EVENT_MARKERS.responseStarted;

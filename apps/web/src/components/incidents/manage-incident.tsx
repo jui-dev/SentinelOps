@@ -105,7 +105,7 @@ function SeverityAndTeamForm({ incident }: { incident: IncidentResponse }) {
               setSaved(false);
               setTeamId(event.target.value);
             }}
-            hint="Its members are who can start investigating. Anyone already investigating keeps their response."
+            hint="Moving it clears who was assigned, and you choose again who responds. Anyone already investigating keeps their response."
             error={
               teamGone
                 ? "That team no longer exists. The list of teams has been refreshed."

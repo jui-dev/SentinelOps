@@ -91,7 +91,7 @@ export const firstStartOf = (incident: IncidentDetailResponse) =>
  * small caps title, a headline, a line beneath, and whatever the role does.
  * Teal for a member's own response, blue for oversight, quiet for a reader.
  */
-function Panel({
+export function Panel({
   id,
   title,
   headline,
@@ -103,7 +103,7 @@ function Panel({
   id: string;
   title: string;
   headline: ReactNode;
-  tone: "teal" | "blue" | "quiet";
+  tone: "teal" | "blue" | "amber" | "quiet";
   aside?: ReactNode;
   action?: ReactNode;
   children?: ReactNode;
@@ -120,6 +120,8 @@ function Panel({
           "border-status-resolved-line bg-linear-to-b from-status-resolved-subtle to-surface",
         tone === "blue" &&
           "border-status-investigating-line bg-linear-to-b from-status-investigating-subtle to-surface",
+        tone === "amber" &&
+          "border-warning-line bg-linear-to-b from-warning-subtle to-surface",
         tone === "quiet" && "border-line bg-surface",
       )}
     >
@@ -131,6 +133,7 @@ function Panel({
               "label-caps",
               tone === "teal" && "text-status-resolved-text",
               tone === "blue" && "text-status-investigating-text",
+              tone === "amber" && "text-warning-text",
               tone === "quiet" && "text-fg-subtle",
             )}
           >
@@ -147,7 +150,7 @@ function Panel({
 }
 
 /** A panel's lower band: a rule above it, and a darker ground. */
-function Band({ children, className }: { children: ReactNode; className?: string }) {
+export function Band({ children, className }: { children: ReactNode; className?: string }) {
   return (
     <div
       className={cx(
@@ -169,6 +172,10 @@ export const responseErrorMessage = (error: unknown): string | undefined => {
       return "This incident was resolved meanwhile, so it no longer takes responses. It has been refreshed.";
     case ApiErrorCode.NOT_ON_RESPONSIBLE_TEAM:
       return "This incident is no longer your team's to respond to — it may have been reassigned. It has been refreshed.";
+    case ApiErrorCode.RESPONSE_NOT_OPEN:
+      return "The Admin hasn't chosen who responds to this incident yet. It has been refreshed.";
+    case ApiErrorCode.NOT_ASSIGNED_TO_INCIDENT:
+      return "This incident is assigned to specific people, and you aren't one of them. It has been refreshed.";
     case ApiErrorCode.RESPONSE_ALREADY_COMPLETED:
       return "Your response to this incident is already complete. It has been refreshed.";
     case ApiErrorCode.NOT_INVESTIGATING:
@@ -547,26 +554,46 @@ export function OversightPanel({
   const [confirming, setConfirming] = useState(false);
   const organization = useOrganization();
   const timeline = useIncidentTimeline(organization.id, incident.number);
-  const people = usePeople(incident);
   const lockId = useId();
   const { state, list, investigating, complete } = responseStateOf(incident);
   const firstStart = firstStartOf(incident);
   const wait = firstStart ? Date.parse(firstStart) - Date.parse(incident.createdAt) : undefined;
   const updates = timeline.data?.filter(({ type }) => type === "UPDATE").length;
   const ready = canManage && state === "complete";
+  // Told before resolving: someone was asked to help and never began.
+  const notStarted = incident.assignees.filter(
+    ({ membershipId }) =>
+      !list.some((responder) => responder.membershipId === membershipId),
+  );
+  const notStartedNote =
+    notStarted.length > 0
+      ? ` ${nameList(notStarted.map(({ name }) => name))} ${
+          notStarted.length === 1 ? "hasn't" : "haven't"
+        } started.`
+      : "";
+  const waitingFor = {
+    PENDING: canManage ? "your decision" : "the Admin",
+    OPEN: `${incident.team.name} to start`,
+    ASSIGNED: `${nameList(incident.assignees.map(({ name }) => name))} to start`,
+  }[incident.responseAccess];
 
   const headline = {
-    awaiting: `Waiting for ${incident.team.name} to start.`,
+    awaiting: `Waiting for ${waitingFor}.`,
     "in-progress": "Not ready to resolve yet.",
     complete: "Everyone has completed. Ready to resolve.",
     resolved: "Resolved.",
   }[state];
   const aside = {
-    awaiting: `${incident.team.name} has not started investigating yet.`,
+    awaiting:
+      incident.responseAccess === "PENDING"
+        ? "The response begins once you choose who responds."
+        : incident.responseAccess === "ASSIGNED"
+          ? "Nobody assigned has started yet."
+          : `${incident.team.name} has not started investigating yet.`,
     "in-progress": `${nameList(investigating.map(({ name }) => name))} ${
       investigating.length === 1 ? "is" : "are"
-    } still investigating. Resolve opens when everyone who started has completed.`,
-    complete: `${responders(list.length)} completed their response. Write what was wrong and what fixed it; the note stays with the incident.`,
+    } still investigating.${notStartedNote} Resolve opens when everyone who started has completed.`,
+    complete: `${responders(list.length)} completed their response.${notStartedNote} Write what was wrong and what fixed it; the note stays with the incident.`,
     resolved:
       list.length === 0
         ? "No one responded to this incident."
@@ -622,11 +649,6 @@ export function OversightPanel({
       {ready && confirming && (
         <ResolveForm incident={incident} onCancel={() => setConfirming(false)} />
       )}
-      {people.length > 0 && (
-        <Band>
-          <PeopleRow label={incident.team.name} people={people} tone="blue" />
-        </Band>
-      )}
       {canManage && state !== "resolved" && (
         <UpdateComposer
           incident={incident}
@@ -653,7 +675,14 @@ export function FollowPanel({ incident }: { incident: IncidentDetailResponse }) 
       tone="quiet"
       headline={
         {
-          awaiting: `Waiting for ${incident.team.name} to start.`,
+          awaiting:
+            incident.responseAccess === "PENDING"
+              ? "Waiting for the Admin."
+              : `Waiting for ${
+                  incident.responseAccess === "ASSIGNED"
+                    ? "the people assigned"
+                    : incident.team.name
+                } to start.`,
           "in-progress": "Response in progress.",
           complete: "Everyone has completed.",
           resolved: "Resolved.",
@@ -661,7 +690,12 @@ export function FollowPanel({ incident }: { incident: IncidentDetailResponse }) 
       }
       aside={
         {
-          awaiting: `${incident.team.name} has not started investigating yet.`,
+          awaiting:
+            incident.responseAccess === "PENDING"
+              ? "The Admin will choose who responds."
+              : incident.responseAccess === "ASSIGNED"
+                ? "Nobody assigned has started yet."
+                : `${incident.team.name} has not started investigating yet.`,
           "in-progress": `${investigating.length} investigating · ${complete} complete`,
           complete: `${responders(list.length)} completed their response.`,
           resolved:

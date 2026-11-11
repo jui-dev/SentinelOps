@@ -20,6 +20,7 @@ import type {
   IncidentAttentionResponse,
   IncidentPartsResponse,
   IncidentDetailResponse,
+  SetIncidentResponseAccessRequest,
   IncidentFilters,
   IncidentOccurrenceResponse,
   IncidentPeriod,
@@ -398,6 +399,17 @@ export const startIncidentResponse = (organizationId: string, number: number) =>
   authenticatedRequest<IncidentDetailResponse>(
     `${incidentPath(organizationId, number)}/responders/me`,
     { method: "POST" },
+  );
+
+/** The Admin chooses who may respond to an active incident. */
+export const setIncidentResponseAccess = (
+  organizationId: string,
+  number: number,
+  body: SetIncidentResponseAccessRequest,
+) =>
+  authenticatedRequest<IncidentDetailResponse>(
+    `${incidentPath(organizationId, number)}/response-access`,
+    { method: "PUT", body },
   );
 
 /** The caller marks their own response complete. It resolves nothing. */

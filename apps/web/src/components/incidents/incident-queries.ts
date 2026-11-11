@@ -18,6 +18,7 @@ import type {
   IncidentPeriod,
   IncidentResponse,
   IncidentState,
+  SetIncidentResponseAccessRequest,
   UpdateIncidentRequest,
 } from "@/lib/api/contracts";
 import {
@@ -28,6 +29,7 @@ import {
   listIncidents,
   listMemberResponses,
   updateIncident,
+  setIncidentResponseAccess,
 } from "@/lib/api/endpoints";
 import { isApiError } from "@/lib/api/errors";
 import { queryKeys } from "@/lib/api/query-keys";
@@ -273,6 +275,24 @@ export const useUpdateIncident = (incident: IncidentResponse) => {
           queryKey: queryKeys.incidents(organization.id),
         });
       }
+    },
+  });
+};
+
+/** The Admin choosing who may respond. A refusal means the page was out of date. */
+export const useSetResponseAccess = (incident: IncidentResponse) => {
+  const organization = useOrganization();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (body: SetIncidentResponseAccessRequest) =>
+      setIncidentResponseAccess(organization.id, incident.number, body),
+    onSuccess: (updated) =>
+      storeIncident(queryClient, organization.id, updated),
+    onError: () => {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.incidents(organization.id),
+      });
     },
   });
 };

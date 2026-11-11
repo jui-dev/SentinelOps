@@ -135,6 +135,9 @@ describe('incident analyses (integration)', () => {
     const incident = `${organizationId}/incidents/${number}`;
 
     expect(declared.status).toBe(201);
+    await prisma.$executeRaw`
+      UPDATE incidents SET response_access = 'OPEN'
+      WHERE organization_id = ${organizationId}::uuid AND number = ${number}`;
     expect(
       (await call('post', `${incident}/responders/me`, responder)).status,
     ).toBe(200);

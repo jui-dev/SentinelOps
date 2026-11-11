@@ -49,6 +49,7 @@ import {
   useOwnResponse,
   YourResponse,
 } from "./incident-response";
+import { RespondersPanel } from "./responders-panel";
 import { IncidentTimeline } from "./incident-timeline";
 import { LiveStatus } from "./live-status";
 import { ManageIncident } from "./manage-incident";
@@ -116,6 +117,17 @@ const usePerspective = (
   if (own) return { perspective: "responder", own };
   if (!canRespond || incident.status === "RESOLVED") {
     return { perspective: "observer" };
+  }
+  // Who the Admin has let start decides who is offered it.
+  if (incident.responseAccess === "PENDING") return { perspective: "observer" };
+  if (incident.responseAccess === "ASSIGNED") {
+    return {
+      perspective: incident.assignees.some(
+        ({ membershipId }) => membershipId === organization.membership.id,
+      )
+        ? "eligible"
+        : "observer",
+    };
   }
   if (members.isError) return { perspective: "observer" };
   if (!members.data) return { perspective: undefined };
@@ -751,7 +763,10 @@ function IncidentPage({
               <AnalysisEntry incident={incident} />
             </>
           ) : canManage || (oversees && !working) ? (
-            <OversightPanel incident={incident} canManage={canManage} />
+            <>
+              {canManage && <RespondersPanel incident={incident} />}
+              <OversightPanel incident={incident} canManage={canManage} />
+            </>
           ) : working ? (
             <YourResponse incident={incident} own={own} actions={actions} pinned={pinned} />
           ) : (

@@ -71,6 +71,10 @@ describe('incident notifications (integration)', () => {
     );
 
     expect(response.status).toBe(201);
+    await prisma.$executeRaw`
+      UPDATE incidents SET response_access = 'OPEN'
+      WHERE organization_id = ${orgId}::uuid
+        AND number = ${response.body.number as number}`;
 
     return response.body.number as number;
   };
@@ -393,6 +397,9 @@ describe('incident notifications (integration)', () => {
     await respond('ben', number);
     await respond('ben', number, '/complete');
     await change(number, { teamId: fx.platform });
+    await prisma.$executeRaw`
+      UPDATE incidents SET response_access = 'OPEN'
+      WHERE organization_id = ${fx.orgA}::uuid AND number = ${number}`;
     await respond('eve', number);
     await respond('eve', number, '/complete');
 

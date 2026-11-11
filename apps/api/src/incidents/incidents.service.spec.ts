@@ -206,7 +206,7 @@ describe('IncidentsService', () => {
             serviceId: SERVICE,
             teamId: TEAM,
             severity: 'SEV1',
-            responseAccess: 'OPEN',
+            responseAccess: 'PENDING',
             createdById: USER,
           },
         }),
@@ -855,8 +855,10 @@ describe('IncidentsService', () => {
   describe('startResponse', () => {
     it('should lock the incident, check the team, create the response, and move a DECLARED incident, recording both', async () => {
       const { service, prisma } = serviceWith();
-      prisma.incident.findFirst
-        .mockResolvedValueOnce({ id: 'incident-1', status: 'DECLARED' });
+      prisma.incident.findFirst.mockResolvedValueOnce({
+        id: 'incident-1',
+        status: 'DECLARED',
+      });
 
       await service.startResponse(ORG, '1', MEMBER_ACTOR);
 
@@ -956,8 +958,10 @@ describe('IncidentsService', () => {
 
     it('should refuse a member not on the responsible team with 403 and write nothing', async () => {
       const { service, prisma } = serviceWith();
-      prisma.incident.findFirst
-        .mockResolvedValueOnce({ id: 'incident-1', status: 'DECLARED' });
+      prisma.incident.findFirst.mockResolvedValueOnce({
+        id: 'incident-1',
+        status: 'DECLARED',
+      });
       prisma.incident.findFirstOrThrow.mockResolvedValueOnce({
         responseAccess: 'OPEN',
         assignees: [],

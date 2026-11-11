@@ -26,6 +26,8 @@ const incident = (number: number): IncidentDetailResponse => ({
   id: `0199a1b2-c3d4-7000-8000-0000000000e${number}`,
   number,
   title: "Card payments failing",
+  responseAccess: "OPEN",
+  assignees: [],
   summary: null,
   resolution: null,
   severity: "SEV1",
