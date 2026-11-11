@@ -63,6 +63,8 @@ export interface IncidentResponse {
     id: string;
     name: string;
   };
+  /** The known issue it is an occurrence of; null for a one-off. */
+  knownIssue: { id: string; name: string } | null;
   createdAt: string;
   updatedAt: string;
   resolvedAt: string | null;

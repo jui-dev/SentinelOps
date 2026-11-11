@@ -208,6 +208,8 @@ describe('IncidentsService', () => {
             severity: 'SEV1',
             responseAccess: 'PENDING',
             createdById: USER,
+            // A one-off: no known issue chosen, none saved.
+            knownIssueId: null,
           },
         }),
       );
@@ -1560,13 +1562,30 @@ describe('IncidentsService', () => {
       [
         'needs-you',
         {
-          team: { memberships: { some: { membershipId: MEMBERSHIP } } },
           responders: { none: { membershipId: MEMBERSHIP } },
-          OR: [
-            { status: 'DECLARED' },
+          AND: [
             {
-              status: 'INVESTIGATING',
-              responders: { some: { status: 'INVESTIGATING' } },
+              OR: [
+                {
+                  responseAccess: 'OPEN',
+                  team: {
+                    memberships: { some: { membershipId: MEMBERSHIP } },
+                  },
+                },
+                {
+                  responseAccess: 'ASSIGNED',
+                  assignees: { some: { membershipId: MEMBERSHIP } },
+                },
+              ],
+            },
+            {
+              OR: [
+                { status: 'DECLARED' },
+                {
+                  status: 'INVESTIGATING',
+                  responders: { some: { status: 'INVESTIGATING' } },
+                },
+              ],
             },
           ],
         },

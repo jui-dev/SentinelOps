@@ -9,6 +9,8 @@ import type { Role } from '../generated/prisma/enums.js';
 import { NotificationsWriter } from '../notifications/notifications.writer.js';
 import type { IncidentNotificationType } from '../notifications/notifications.recipients.js';
 import { membershipNotFound } from '../organizations/organizations.errors.js';
+import { knownIssueForDeclaration } from '../known-issues/known-issues.declare.js';
+import { knownIssueNotFound } from '../known-issues/known-issues.errors.js';
 import {
   serviceArchived,
   serviceNotFound,
@@ -340,6 +342,7 @@ const incidentSelection = {
   },
   team: { select: { id: true, name: true, slug: true } },
   createdBy: { select: { id: true, name: true } },
+  knownIssue: { select: { id: true, name: true } },
 } as const;
 
 /**
@@ -1566,6 +1569,16 @@ export class IncidentsService {
           throw serviceArchived();
         }
 
+        const knownIssueId = await knownIssueForDeclaration(tx, {
+          organizationId,
+          serviceId: input.serviceId,
+          title: input.title,
+          summary: input.summary ?? null,
+          severity: input.severity,
+          knownIssueId: input.knownIssueId,
+          saveAsKnownIssue: input.saveAsKnownIssue,
+        });
+
         // Scalar ids, not nested connects: both relations share
         // organizationId, and it is that shared column the keys check.
         const created = await tx.incident.create({
@@ -1579,6 +1592,7 @@ export class IncidentsService {
             severity: input.severity,
             responseAccess: INITIAL_RESPONSE_ACCESS,
             createdById: declarerId,
+            knownIssueId,
           },
           select: incidentDetailSelection,
         });
@@ -1620,6 +1634,12 @@ export class IncidentsService {
       // the honest answer.
       const foreignKey = foreignKeyViolationHint(error);
 
+      // A known issue merged away between being chosen and the insert: the
+      // incidents' key names service_id too, so it is told apart first.
+      if (foreignKey !== undefined && foreignKey.includes('known_issue')) {
+        throw knownIssueNotFound();
+      }
+
       if (foreignKey !== undefined && violatesServiceKey(foreignKey)) {
         throw serviceNotFound();
       }
@@ -1633,6 +1653,7 @@ export class IncidentsService {
       serviceId: incident.service.id,
       teamId: incident.team.id,
       severity: incident.severity,
+      knownIssueId: incident.knownIssue?.id ?? null,
     });
 
     return toIncidentDetailResponse(incident);

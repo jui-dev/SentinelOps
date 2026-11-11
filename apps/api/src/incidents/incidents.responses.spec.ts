@@ -59,6 +59,13 @@ describe('incident responses', () => {
       email: 'ada@example.com',
       deletedAt: new Date(),
     },
+    // Identity only: never whether it awaits review, nor its service.
+    knownIssue: {
+      id: 'known-1',
+      name: 'Card payments failing at checkout',
+      pendingReview: true,
+      serviceId: 'service-1',
+    },
   };
 
   it('should emit exactly the declared fields, identity only on embedded records', () => {
@@ -80,6 +87,7 @@ describe('incident responses', () => {
       },
       team: { id: 'team-1', name: 'Payments', slug: 'payments' },
       createdBy: { id: 'user-1', name: 'Ada Lovelace' },
+      knownIssue: { id: 'known-1', name: 'Card payments failing at checkout' },
       createdAt: '2026-09-18T12:00:00.000Z',
       updatedAt: '2026-09-18T12:30:00.000Z',
       resolvedAt: '2026-09-18T13:00:00.000Z',

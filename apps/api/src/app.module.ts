@@ -15,6 +15,7 @@ import { InvitationsModule } from './invitations/invitations.module.js';
 import { LoggerModule } from './logger/logger.module.js';
 import { NotificationsModule } from './notifications/notifications.module.js';
 import { OrganizationsModule } from './organizations/organizations.module.js';
+import { KnownIssuesModule } from './known-issues/known-issues.module.js';
 import { ServicesModule } from './services/services.module.js';
 import { TeamsModule } from './teams/teams.module.js';
 
@@ -52,6 +53,7 @@ import { TeamsModule } from './teams/teams.module.js';
     InvitationsModule,
     TeamsModule,
     ServicesModule,
+    KnownIssuesModule,
     IncidentsModule,
     IncidentAnalysesModule,
     NotificationsModule,

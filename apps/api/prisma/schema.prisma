@@ -103,6 +103,7 @@ model Organization {
   incidentAssignees  IncidentAssignee[]
   incidentAnalyses   IncidentAnalysis[]
   notifications      Notification[]
+  knownIssues        KnownIssue[]
 
   @@map("organizations")
 }
@@ -437,6 +438,7 @@ model Service {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   ownerTeam    Team         @relation(fields: [organizationId, ownerTeamId], references: [organizationId, id], onDelete: Restrict, onUpdate: Restrict)
   incidents    Incident[]
+  knownIssues  KnownIssue[]
 
   @@unique([organizationId, slug])
   @@unique([organizationId, name])
@@ -556,6 +558,10 @@ model Incident {
   /// active incidents, and on incidents resolved before notes were required:
   /// those are not given one after the fact.
   resolution String?
+  /// The known issue this incident is an occurrence of, when it is one:
+  /// always one of the incident's own service's, which the composite key
+  /// below holds the database to. Null for a one-off.
+  knownIssueId String? @map("known_issue_id") @db.Uuid
 
   organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   service      Service             @relation(fields: [organizationId, serviceId], references: [organizationId, id], onDelete: Restrict, onUpdate: Restrict)
@@ -565,6 +571,7 @@ model Incident {
   assignees    IncidentAssignee[]
   activity     IncidentActivity[]
   analysis     IncidentAnalysis?
+  knownIssue   KnownIssue?         @relation(fields: [organizationId, serviceId, knownIssueId], references: [organizationId, serviceId, id], onDelete: Restrict, onUpdate: Restrict)
 
   /// The addressing key: the API names an incident by its number within the
   /// organization. Also serves keyset pages ordered by number.
@@ -582,7 +589,53 @@ model Incident {
   @@index([organizationId, createdAt])
   /// Serves the overview's resolved-in-a-period count and its most recent.
   @@index([organizationId, resolvedAt])
+  /// Serves a known issue's occurrences, and the Restrict check when one is
+  /// removed by a merge.
+  @@index([organizationId, knownIssueId])
   @@map("incidents")
+}
+
+/// A problem a service has had before, kept so the next time it happens it
+/// can be declared by choosing it rather than retyping it, and so its
+/// repeats are counted. One service's: an incident links to a known issue
+/// of its own service only.
+///
+/// usualSeverity is a suggestion the declare form starts from, never a rule:
+/// each incident keeps the severity it was declared with.
+///
+/// pendingReview marks one saved while declaring something new, for the
+/// Admin to keep, rename, or merge into another; one the Admin made or has
+/// looked at is not pending. Archived ones are no longer offered when
+/// declaring, and keep their incidents. A known issue is only ever removed
+/// by merging it into another, which first moves its incidents.
+model KnownIssue {
+  id             String           @id @default(uuid(7)) @db.Uuid
+  organizationId String           @map("organization_id") @db.Uuid
+  serviceId      String           @map("service_id") @db.Uuid
+  name           String
+  /// Null when there is none; blank is normalised to null at the Zod boundary.
+  description    String?
+  usualSeverity  IncidentSeverity @map("usual_severity")
+  pendingReview  Boolean          @default(false) @map("pending_review")
+  archivedAt     DateTime?        @map("archived_at") @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// A service with no incidents may be deleted, and takes its known issues
+  /// with it; one with incidents cannot be.
+  service      Service      @relation(fields: [organizationId, serviceId], references: [organizationId, id], onDelete: Cascade, onUpdate: Restrict)
+  incidents    Incident[]
+
+  /// One name per service, as written. Case-insensitive duplicates are
+  /// refused by KnownIssuesService.
+  @@unique([serviceId, name])
+  @@unique([organizationId, id])
+  /// The target of the incidents' key, which holds a link to the same service.
+  @@unique([organizationId, serviceId, id])
+  @@index([organizationId, serviceId])
+  @@map("known_issues")
 }
 
 /// Where one responder's own part of the response stands. Two values, and

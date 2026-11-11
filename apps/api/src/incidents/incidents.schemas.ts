@@ -64,12 +64,27 @@ export const incidentStatusTargetSchema = z.enum(['RESOLVED']);
  * declaration, and is reassigned explicitly afterwards if needed. Severity
  * has no default: declaring one is a judgement the declarer makes.
  */
-export const createIncidentSchema = z.strictObject({
-  title: incidentTitleSchema,
-  summary: incidentSummarySchema.optional(),
-  serviceId: resourceIdSchema,
-  severity: incidentSeveritySchema,
-});
+/**
+ * Declaring. `knownIssueId` makes it an occurrence of one of the service's
+ * known issues; `saveAsKnownIssue` keeps something new as one for next time.
+ * Neither is a one-off; both at once is refused.
+ */
+export const createIncidentSchema = z
+  .strictObject({
+    title: incidentTitleSchema,
+    summary: incidentSummarySchema.optional(),
+    serviceId: resourceIdSchema,
+    severity: incidentSeveritySchema,
+    knownIssueId: resourceIdSchema.optional(),
+    saveAsKnownIssue: z.boolean().optional(),
+  })
+  .refine(
+    (body) => !(body.knownIssueId !== undefined && body.saveAsKnownIssue),
+    {
+      message: 'Choose a known issue, or save a new one — not both',
+      path: ['saveAsKnownIssue'],
+    },
+  );
 
 /**
  * How an incident ended, in a few sentences: what fixed it, or why it no

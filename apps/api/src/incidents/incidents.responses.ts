@@ -63,6 +63,7 @@ interface IncidentRow {
   };
   team: { id: string; name: string; slug: string };
   createdBy: { id: string; name: string };
+  knownIssue: { id: string; name: string } | null;
 }
 
 /** Embedded records are identity only — never a user's email or memberships. */
@@ -96,6 +97,9 @@ export const toIncidentResponse = (
     id: incident.createdBy.id,
     name: incident.createdBy.name,
   },
+  knownIssue: incident.knownIssue
+    ? { id: incident.knownIssue.id, name: incident.knownIssue.name }
+    : null,
   createdAt: incident.createdAt.toISOString(),
   updatedAt: incident.updatedAt.toISOString(),
   resolvedAt: incident.resolvedAt?.toISOString() ?? null,
