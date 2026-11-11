@@ -6,6 +6,7 @@
 
 import type { IncidentSeverity } from '../incidents/incidents.contract.js';
 import type { IncidentKeyMomentKind } from './incident-analyses.facts.js';
+import type { AnalysisSection } from './incident-analyses.schemas.js';
 
 export type IncidentAnalysisStatus = 'DRAFT' | 'PUBLISHED';
 
@@ -47,7 +48,8 @@ export interface IncidentKeyMomentResponse {
 /**
  * One incident's analysis. `version` identifies this state of it: a write
  * names the version it was based on. The written sections are null until
- * written. `owner` is a membership of the organization; `createdBy` and
+ * written, and `doneSections` names, in reading order, those the writer has
+ * said are finished. `owner` is a membership of the organization; `createdBy` and
  * `publishedBy` are attribution, and name their user even after the account
  * is deleted, as an incident's `createdBy` does.
  */
@@ -59,6 +61,7 @@ export interface IncidentAnalysisResponse {
   impact: string | null;
   cause: string | null;
   lessons: string | null;
+  doneSections: AnalysisSection[];
   createdBy: { id: string; name: string };
   createdAt: string;
   publishedBy: { id: string; name: string } | null;

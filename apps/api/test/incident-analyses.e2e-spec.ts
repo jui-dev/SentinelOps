@@ -47,6 +47,7 @@ const analysisRow = {
   impact: null,
   cause: null,
   lessons: null,
+  doneSections: [],
   createdAt: RESOLVED,
   updatedAt: RESOLVED,
   publishedAt: null,
@@ -335,6 +336,11 @@ describe('Incident analyses (e2e)', () => {
         status: 'DRAFT',
         version: 1,
         ownerMembershipId: OWNER_MEMBERSHIP_ID,
+        summary: null,
+        impact: null,
+        cause: null,
+        lessons: null,
+        doneSections: [],
         ...overrides,
       });
 
@@ -358,7 +364,11 @@ describe('Incident analyses (e2e)', () => {
           status: 'DRAFT',
           version: 1,
         },
-        data: { cause: 'An expired certificate.', version: { increment: 1 } },
+        data: {
+          cause: 'An expired certificate.',
+          doneSections: [],
+          version: { increment: 1 },
+        },
       });
     });
 
@@ -382,6 +392,7 @@ describe('Incident analyses (e2e)', () => {
       expect(prisma.incidentAnalysis.updateMany.mock.calls[0][0].data).toEqual({
         impact: null,
         lessons: null,
+        doneSections: [],
         version: { increment: 1 },
       });
     });

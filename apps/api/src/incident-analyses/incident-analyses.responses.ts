@@ -6,6 +6,7 @@ import type {
   IncidentFacts,
   IncidentKeyMoment,
 } from './incident-analyses.facts.js';
+import { ANALYSIS_SECTIONS } from './incident-analyses.schemas.js';
 
 /**
  * Row-to-wire mapper for incident analyses. Same rules as
@@ -22,6 +23,7 @@ export interface IncidentAnalysisRow {
   impact: string | null;
   cause: string | null;
   lessons: string | null;
+  doneSections: string[];
   createdAt: Date;
   updatedAt: Date;
   publishedAt: Date | null;
@@ -44,6 +46,9 @@ export const toIncidentAnalysisResponse = (
   impact: analysis.impact,
   cause: analysis.cause,
   lessons: analysis.lessons,
+  doneSections: ANALYSIS_SECTIONS.filter((section) =>
+    analysis.doneSections.includes(section),
+  ),
   createdBy: { id: analysis.createdBy.id, name: analysis.createdBy.name },
   createdAt: analysis.createdAt.toISOString(),
   publishedBy: analysis.publishedBy && {

@@ -55,11 +55,21 @@ export const analysisSectionSchema = z
   .transform((value) => (value === '' ? null : value))
   .nullable();
 
+/** Some of the sections, by name, each at most once. */
+const sectionNamesSchema = z
+  .array(z.enum(ANALYSIS_SECTIONS))
+  .max(ANALYSIS_SECTIONS.length)
+  .refine(
+    (names) => new Set(names).size === names.length,
+    'Name each section once',
+  );
+
 /**
- * Editing a draft analysis's sections. A section left out is unchanged; at
- * least one must be named. `version` is the version the edit was based on —
- * the one the caller last read — and the edit applies only if the analysis
- * is still at it.
+ * Editing a draft analysis: the text of the sections it names — a section
+ * left out is unchanged — and which of them are finished: `markDone` says a
+ * section is, `reopen` that it is not. Something must be named. `version`
+ * is the version the edit was based on — the one the caller last read — and
+ * the edit applies only if the analysis is still at it.
  */
 export const editIncidentAnalysisSchema = z
   .strictObject({
@@ -68,10 +78,19 @@ export const editIncidentAnalysisSchema = z
     impact: analysisSectionSchema.optional(),
     cause: analysisSectionSchema.optional(),
     lessons: analysisSectionSchema.optional(),
+    markDone: sectionNamesSchema.optional(),
+    reopen: sectionNamesSchema.optional(),
   })
   .refine(
-    (body) => ANALYSIS_SECTIONS.some((section) => body[section] !== undefined),
-    'Provide a summary, impact, cause, or lessons to change',
+    (body) =>
+      ANALYSIS_SECTIONS.some((section) => body[section] !== undefined) ||
+      (body.markDone?.length ?? 0) > 0 ||
+      (body.reopen?.length ?? 0) > 0,
+    'Provide a summary, impact, cause, or lessons to change, or a section to mark',
+  )
+  .refine(
+    (body) => !body.markDone?.some((section) => body.reopen?.includes(section)),
+    { message: 'A section cannot be both done and reopened', path: ['reopen'] },
   );
 
 export type EditIncidentAnalysisRequest = z.infer<

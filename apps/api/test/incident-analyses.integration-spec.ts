@@ -323,6 +323,7 @@ describe('incident analyses (integration)', () => {
         impact: true,
         cause: true,
         lessons: true,
+        doneSections: true,
         updatedAt: true,
       },
     });
@@ -439,6 +440,7 @@ describe('incident analyses (integration)', () => {
         impact: null,
         cause: null,
         lessons: null,
+        doneSections: [],
         createdBy: { id: fx.alice, name: 'Alice Anders' },
         createdAt: expect.any(String),
         publishedBy: null,
@@ -729,6 +731,91 @@ describe('incident analyses (integration)', () => {
         version: 3,
         summary: null,
         cause: null,
+      });
+    });
+
+    it('should record which sections are done, one version at a time', async () => {
+      const number = await aDraftDaveOwns();
+
+      // Text alone does not make a section done.
+      const written = await editAnalysis(fx.orgA, fx.dave, number, {
+        version: 1,
+        summary: 'Card payments failed for two hours.',
+      });
+
+      expect(written.status).toBe(200);
+      expect(written.body.doneSections).toEqual([]);
+
+      // Marking one done is an edit like any other, and may carry its text.
+      const marked = await editAnalysis(fx.orgA, fx.dave, number, {
+        version: 2,
+        cause: 'An expired certificate.',
+        markDone: ['cause', 'summary'],
+      });
+
+      expect(marked.status).toBe(200);
+      expect(marked.body).toMatchObject({
+        version: 3,
+        cause: 'An expired certificate.',
+        doneSections: ['summary', 'cause'],
+      });
+
+      // Saved, not just answered.
+      expect((await stored(fx.orgA, number)).doneSections.sort()).toEqual([
+        'cause',
+        'summary',
+      ]);
+
+      // Changing a done section's words un-marks it; the other stays done.
+      const changed = await editAnalysis(fx.orgA, fx.dave, number, {
+        version: 3,
+        summary: 'Card payments failed for three hours.',
+      });
+
+      expect(changed.body.doneSections).toEqual(['cause']);
+
+      const reopened = await editAnalysis(fx.orgA, fx.dave, number, {
+        version: 4,
+        reopen: ['cause'],
+      });
+
+      expect(reopened.status).toBe(200);
+      expect(reopened.body).toMatchObject({
+        version: 5,
+        cause: 'An expired certificate.',
+        doneSections: [],
+      });
+    });
+
+    it('should refuse to mark done a section with no text, or against an older version, changing nothing', async () => {
+      const number = await aDraftDaveOwns();
+
+      expectCode(
+        await editAnalysis(fx.orgA, fx.dave, number, {
+          version: 1,
+          markDone: ['lessons'],
+        }),
+        409,
+        'ANALYSIS_SECTION_NOT_WRITTEN',
+      );
+
+      await editAnalysis(fx.orgA, fx.dave, number, {
+        version: 1,
+        summary: 'Card payments failed.',
+      });
+
+      expectCode(
+        await editAnalysis(fx.orgA, fx.dave, number, {
+          version: 1,
+          markDone: ['summary'],
+        }),
+        409,
+        'ANALYSIS_CHANGED',
+      );
+
+      expect(await stored(fx.orgA, number)).toMatchObject({
+        version: 2,
+        doneSections: [],
       });
     });
 

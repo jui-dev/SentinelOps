@@ -20,6 +20,7 @@ export const IncidentAnalysesErrorCode = {
   ANALYSIS_PUBLISHED: 'ANALYSIS_PUBLISHED',
   ANALYSIS_CHANGED: 'ANALYSIS_CHANGED',
   ANALYSIS_SUMMARY_REQUIRED: 'ANALYSIS_SUMMARY_REQUIRED',
+  ANALYSIS_SECTION_NOT_WRITTEN: 'ANALYSIS_SECTION_NOT_WRITTEN',
 } as const;
 
 export type IncidentAnalysesErrorCode =
@@ -76,6 +77,12 @@ export const analysisPublished = (): ConflictException =>
 export const analysisChanged = (): ConflictException =>
   new ConflictException('This analysis has changed since you last read it', {
     errorCode: IncidentAnalysesErrorCode.ANALYSIS_CHANGED,
+  });
+
+/** A section is finished only once something is written in it. */
+export const analysisSectionNotWritten = (): ConflictException =>
+  new ConflictException('Write this section before marking it done', {
+    errorCode: IncidentAnalysesErrorCode.ANALYSIS_SECTION_NOT_WRITTEN,
   });
 
 /**

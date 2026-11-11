@@ -15,16 +15,21 @@ import {
   analysisChanged,
   analysisNotStarted,
   analysisPublished,
+  analysisSectionNotWritten,
   analysisSummaryRequired,
   incidentNotResolved,
   notAnalysisOwner,
 } from './incident-analyses.errors.js';
 import { deriveIncidentFacts } from './incident-analyses.facts.js';
-import { mayWriteAnalysis } from './incident-analyses.policy.js';
+import {
+  mayWriteAnalysis,
+  nextDoneSections,
+} from './incident-analyses.policy.js';
 import type { AnalysisCaller } from './incident-analyses.policy.js';
 import { toIncidentAnalysisResponse } from './incident-analyses.responses.js';
 import { ANALYSIS_SECTIONS } from './incident-analyses.schemas.js';
 import type {
+  AnalysisSection,
   EditIncidentAnalysisRequest,
   PublishIncidentAnalysisRequest,
   ReassignIncidentAnalysisOwnerRequest,
@@ -43,6 +48,7 @@ const analysisSelection = {
   impact: true,
   cause: true,
   lessons: true,
+  doneSections: true,
   createdAt: true,
   updatedAt: true,
   publishedAt: true,
@@ -94,6 +100,7 @@ interface DraftChange {
   impact?: string | null;
   cause?: string | null;
   lessons?: string | null;
+  doneSections?: AnalysisSection[];
   ownerMembershipId?: string;
   status?: 'PUBLISHED';
   publishedAt?: Date;
@@ -261,16 +268,17 @@ export class IncidentAnalysesService {
   }
 
   /**
-   * Edits a draft analysis's sections: those the request names, and no
-   * others. Applies only if the analysis is still at the version the caller
+   * Edits a draft analysis's sections — the text of those the request names,
+   * and no others, and which of them are done. Applies only if the analysis is still at the version the caller
    * read, and makes it the next version.
    *
    * Judged in the order that reveals least: the incident (404), its analysis
    * (404 ANALYSIS_NOT_STARTED), whether the caller may write it (403
    * NOT_ANALYSIS_OWNER — its owner, or whoever holds `incidents:manage`),
    * then its state: published (409 ANALYSIS_PUBLISHED) or moved past the
-   * caller's version (409 ANALYSIS_CHANGED). Those reads give the precise
-   * answer; they do not make the guarantee.
+   * caller's version (409 ANALYSIS_CHANGED), and last whether a section it
+   * marks done would hold any text (409 ANALYSIS_SECTION_NOT_WRITTEN). Those
+   * reads give the precise answer; they do not make the guarantee.
    *
    * The guarantee is applyToDraft's conditional UPDATE: of two edits based
    * on one version, only one applies, and nothing is written to a published
@@ -285,7 +293,7 @@ export class IncidentAnalysesService {
     caller: AnalysisCaller,
     input: EditIncidentAnalysisRequest,
   ): Promise<IncidentAnalysisResponse> {
-    const { version, ...sections } = input;
+    const { version, markDone, reopen, ...sections } = input;
 
     const { incident, analysis } = await this.prisma.$transaction(
       async (tx) => {
@@ -304,6 +312,11 @@ export class IncidentAnalysesService {
                 status: true,
                 version: true,
                 ownerMembershipId: true,
+                summary: true,
+                impact: true,
+                cause: true,
+                lessons: true,
+                doneSections: true,
               },
             },
           },
@@ -331,6 +344,16 @@ export class IncidentAnalysesService {
           throw analysisChanged();
         }
 
+        const doneSections = nextDoneSections(current, {
+          ...sections,
+          markDone,
+          reopen,
+        });
+
+        if (doneSections === null) {
+          throw analysisSectionNotWritten();
+        }
+
         return {
           incident,
           // A section left undefined is not written.
@@ -339,7 +362,7 @@ export class IncidentAnalysesService {
             organizationId,
             current.id,
             version,
-            sections,
+            { ...sections, doneSections },
           ),
         };
       },
@@ -352,6 +375,8 @@ export class IncidentAnalysesService {
       sections: ANALYSIS_SECTIONS.filter(
         (section) => sections[section] !== undefined,
       ),
+      markDone: markDone ?? [],
+      reopen: reopen ?? [],
     });
 
     return this.respond(incident, analysis);

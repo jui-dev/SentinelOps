@@ -51,6 +51,25 @@ describe('editIncidentAnalysisSchema', () => {
     ).toEqual({ version: 3, cause: 'Expired cert.' });
   });
 
+  it('should take sections to mark done or reopen, alone or with text', () => {
+    expect(parse({ version: 1, markDone: ['summary'] }).success).toBe(true);
+    expect(parse({ version: 1, reopen: ['cause'] }).success).toBe(true);
+    expect(
+      parse({ version: 1, impact: 'Everyone.', markDone: ['impact'] }).success,
+    ).toBe(true);
+  });
+
+  it('should refuse marks that say nothing, or contradict themselves', () => {
+    expect(parse({ version: 1, markDone: [] }).success).toBe(false);
+    expect(parse({ version: 1, markDone: ['title'] }).success).toBe(false);
+    expect(parse({ version: 1, markDone: ['cause', 'cause'] }).success).toBe(
+      false,
+    );
+    expect(
+      parse({ version: 1, markDone: ['cause'], reopen: ['cause'] }).success,
+    ).toBe(false);
+  });
+
   it('should require a positive integer version within the column', () => {
     for (const version of [undefined, 0, -1, 1.5, '2', 2_147_483_648]) {
       expect(parse({ version, summary: 'Summary' }).success).toBe(false);

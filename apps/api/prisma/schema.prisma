@@ -793,6 +793,11 @@ model IncidentAnalysis {
   cause   String?
   lessons String?
 
+  /// Which sections their writer has said are finished, by name. Holding text
+  /// does not make a section done: a draft is work in progress until someone
+  /// says otherwise. A CHECK keeps this to the four section names.
+  doneSections String[] @default([]) @map("done_sections")
+
   /// Who started it, and who published it: global Users, since attribution
   /// must outlive the membership, as Incident.createdById explains. Restrict,
   /// like it. Taken from the admitted membership, never from a body.
