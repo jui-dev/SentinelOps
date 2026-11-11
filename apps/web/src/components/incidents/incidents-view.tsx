@@ -21,6 +21,7 @@ import { ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Glance, GlanceTile } from "@/components/ui/detail-layout";
 import { DialogActions, FormDialog } from "@/components/ui/dialog";
+import { FormExample } from "@/components/ui/form-example";
 import { EmptyNote, EmptyState } from "@/components/ui/empty-state";
 import { Field, TextArea } from "@/components/ui/field";
 import { PageBody, PageHeader } from "@/components/ui/page";
@@ -132,6 +133,16 @@ const useDeclareIncident = (organizationId: string) => {
   });
 };
 
+const INCIDENT_EXAMPLE = [
+  { label: "Title", value: "Card payments failing at checkout" },
+  { label: "Service", value: "Payment API", half: true },
+  { label: "Severity", value: "SEV1 Critical", half: true },
+  {
+    label: "Summary",
+    value: "Customers can't pay by card since about 14:10. Refunds still work.",
+  },
+];
+
 function DeclareIncidentForm({ onCancel }: { onCancel: () => void }) {
   const organization = useOrganization();
   const router = useRouter();
@@ -209,6 +220,7 @@ function DeclareIncidentForm({ onCancel }: { onCancel: () => void }) {
       noValidate
       className="flex flex-col gap-4"
     >
+      <FormExample fields={INCIDENT_EXAMPLE} />
       <RequiredNote />
       {declare.isError &&
         !serviceUnavailable &&

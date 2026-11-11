@@ -8,6 +8,7 @@ import { ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { DialogActions } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
+import { FormExample } from "@/components/ui/form-example";
 import {
   RequiredNote,
   SubmitHint,
@@ -21,6 +22,11 @@ import { queryKeys } from "@/lib/api/query-keys";
 
 export const NAME_TAKEN_MESSAGE =
   "A team with this name, or a very similar one, already exists.";
+
+const TEAM_EXAMPLE = [
+  { label: "Name", value: "Payments" },
+  { label: "Description", value: "Keeps card payments and payouts running." },
+];
 
 /**
  * Creates a team. The new team is put into the cached list, so the list
@@ -75,6 +81,7 @@ export function CreateTeamForm({ onClose }: { onClose: () => void }) {
       noValidate
       className="flex flex-col gap-4"
     >
+      <FormExample fields={TEAM_EXAMPLE} />
       <RequiredNote />
       {create.isError && !nameTaken && Object.keys(fields).length === 0 && (
         <ErrorAlert error={create.error} />

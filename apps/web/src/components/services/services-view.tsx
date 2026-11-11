@@ -16,6 +16,7 @@ import { ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { cx } from "@/components/ui/cx";
 import { DialogActions, FormDialog } from "@/components/ui/dialog";
+import { FormExample } from "@/components/ui/form-example";
 import { EmptyNote, EmptyState } from "@/components/ui/empty-state";
 import { Field } from "@/components/ui/field";
 import { PageBody, PageHeader } from "@/components/ui/page";
@@ -88,6 +89,16 @@ const useCreateService = (organizationId: string) => {
   });
 };
 
+const SERVICE_EXAMPLE = [
+  { label: "Name", value: "Payment API" },
+  {
+    label: "Description",
+    value: "Takes card payments at checkout and sends them to the bank.",
+  },
+  { label: "Owner team", value: "Payments", half: true },
+  { label: "Criticality", value: "Critical", half: true },
+];
+
 function CreateServiceForm({ onClose }: { onClose: () => void }) {
   const organization = useOrganization();
   const teams = useTeams(organization.id);
@@ -158,6 +169,7 @@ function CreateServiceForm({ onClose }: { onClose: () => void }) {
       noValidate
       className="flex flex-col gap-4"
     >
+      <FormExample fields={SERVICE_EXAMPLE} />
       <RequiredNote />
       {create.isError &&
         !nameTaken &&
