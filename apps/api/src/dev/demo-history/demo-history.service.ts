@@ -11,6 +11,7 @@ import {
   DEV_TEAMS,
 } from '../dev-account.js';
 import { buildDemoHistory } from './build-demo-history.js';
+import { buildDemoKnownIssues } from './demo-known-issues.js';
 import { checkDemoHistory } from './check-demo-history.js';
 import { ADMIN } from './demo-story.js';
 
@@ -22,6 +23,8 @@ export interface DemoHistoryResult {
   active: number;
   responders: number;
   activities: number;
+  /** Known issues written, each linked to its incidents. */
+  knownIssues: number;
 }
 
 /** The organization is not the one the story was written for. */
@@ -83,6 +86,32 @@ export class DemoHistoryService {
         const { count: removed } = await tx.incident.deleteMany({
           where: { organizationId },
         });
+        // Its known issues are the history's too; only once nothing links
+        // to them can they go.
+        await tx.knownIssue.deleteMany({ where: { organizationId } });
+
+        // The known issues first, so each incident is written already
+        // linked. Each was created when its first incident was, so the
+        // list reads as it would have grown.
+        const knownIssues = buildDemoKnownIssues(history);
+        const knownIssueOf = new Map<number, string>();
+
+        for (const issue of knownIssues) {
+          const { id } = await tx.knownIssue.create({
+            data: {
+              organizationId,
+              serviceId: ids.services[issue.service],
+              name: issue.name,
+              description: issue.description,
+              usualSeverity: issue.usualSeverity,
+              pendingReview: issue.pendingReview,
+              createdAt: history[issue.incidents[0] - 1].createdAt,
+            },
+            select: { id: true },
+          });
+
+          for (const number of issue.incidents) knownIssueOf.set(number, id);
+        }
 
         // Scalar ids throughout, as IncidentsService writes them.
         const incidents = await tx.incident.createManyAndReturn({
@@ -100,6 +129,7 @@ export class DemoHistoryService {
             updatedAt: incident.updatedAt,
             resolvedAt: incident.resolvedAt,
             resolution: incident.resolution,
+            knownIssueId: knownIssueOf.get(incident.number) ?? null,
           })),
           select: { id: true, number: true },
         });
@@ -134,6 +164,7 @@ export class DemoHistoryService {
 
         await tx.incidentResponder.createMany({ data: responders });
         await tx.incidentActivity.createMany({ data: activities });
+
         await tx.organization.update({
           where: { id: organizationId },
           data: { lastIncidentNumber: history.length },
@@ -148,6 +179,7 @@ export class DemoHistoryService {
             .length,
           responders: responders.length,
           activities: activities.length,
+          knownIssues: knownIssues.length,
         };
       },
       // Well under a second in practice; the default 5 s is tight on a cold

@@ -1052,3 +1052,30 @@ export const ADMIN_UPDATES: readonly string[] = [
   'Next update on the status page in 30 minutes.',
   'Status page moved to monitoring.',
 ];
+
+/**
+ * Known issues. Every everyday scenario that happens more than once becomes
+ * one, reviewed, linked to each of its incidents; one that happens once is
+ * left a one-off, as it would be until it came back. Beyond those, the
+ * present ties in: an active incident can be another time of an earlier
+ * scenario's (KNOWN_ISSUE_LINKS), or one the Admin has yet to review, saved
+ * while it was declared (SAVED_WHILE_DECLARING).
+ */
+export const KNOWN_ISSUE_LINKS: readonly {
+  service: DemoService;
+  /** The active incident's title. */
+  title: string;
+  /** The everyday scenario whose known issue it is another time of. */
+  knownIssue: string;
+}[] = [
+  {
+    service: 'Payment API',
+    title: 'Webhook retries backing up for some merchants',
+    knownIssue: 'Merchant webhook deliveries delayed',
+  },
+];
+
+/** Active incidents declared as something new, kept for the Admin to review. */
+export const SAVED_WHILE_DECLARING: readonly string[] = [
+  'Elevated card declines from one acquirer',
+];

@@ -5,6 +5,7 @@ import { AppModule } from './../src/app.module.js';
 import { PrismaService } from './../src/database/prisma.service.js';
 import { DEV_ORGANIZATION, DEV_PERSONAS } from './../src/dev/dev-account.js';
 import { DevAccountService } from './../src/dev/dev-account.service.js';
+import { buildDemoKnownIssues } from './../src/dev/demo-history/demo-known-issues.js';
 import { buildDemoHistory } from './../src/dev/demo-history/build-demo-history.js';
 import {
   DemoHistoryService,
@@ -120,6 +121,7 @@ describe('demo history (integration)', () => {
       active: 4,
       responders: history.flatMap((incident) => incident.responders).length,
       activities: history.flatMap((incident) => incident.activity).length,
+      knownIssues: buildDemoKnownIssues(history).length,
     });
 
     // Read as the dev Admin, who oversees every incident.
@@ -312,13 +314,67 @@ describe('demo history (integration)', () => {
     await incidents.create(
       organizationId,
       { membershipId: admin.id },
-      { title: 'Made by hand', serviceId: service.id, severity: 'SEV3' },
+      {
+        title: 'Made by hand',
+        serviceId: service.id,
+        severity: 'SEV3',
+        saveAsKnownIssue: true,
+      },
     );
 
     const second = await demo.replace(anchor);
 
     expect(second.removed).toBe(history.length + 1);
     expect(await snapshot()).toEqual(first);
+    // The known issue saved by hand went with the incident that saved it.
+    expect(
+      await prisma.knownIssue.count({
+        where: { organizationId, name: 'Made by hand' },
+      }),
+    ).toBe(0);
+  });
+
+  it('should keep a known issue for each recurring problem, with today tied in', async () => {
+    await demo.replace(anchor);
+
+    const built = buildDemoKnownIssues(history);
+    const written = await prisma.knownIssue.findMany({
+      where: { organizationId },
+      select: {
+        name: true,
+        pendingReview: true,
+        incidents: { select: { number: true }, orderBy: { number: 'asc' } },
+      },
+    });
+
+    expect(written).toHaveLength(built.length);
+    for (const issue of built) {
+      expect(written).toContainEqual({
+        name: issue.name,
+        pendingReview: issue.pendingReview,
+        incidents: issue.incidents.map((number) => ({ number })),
+      });
+    }
+
+    // The active webhook incident is another time of an earlier problem.
+    const admin = await membershipOf('admin@example.com');
+    const webhooks = history.find(
+      (incident) =>
+        incident.title === 'Webhook retries backing up for some merchants',
+    )!;
+    const repeats = await incidents.repeats(
+      organizationId,
+      { membershipId: admin.id, role: 'ADMIN' },
+      String(webhooks.number),
+    );
+
+    expect(repeats.knownIssue?.name).toBe(
+      'Merchant webhook deliveries delayed',
+    );
+    expect(repeats.others.length).toBeGreaterThan(0);
+    expect(repeats.others.every(({ status }) => status === 'RESOLVED')).toBe(
+      true,
+    );
   });
 
   it('should touch no other organization', async () => {

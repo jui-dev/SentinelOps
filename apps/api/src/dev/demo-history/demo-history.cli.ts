@@ -69,6 +69,7 @@ try {
       `  incidents:   ${result.incidents} (${result.active} active)`,
       `  responders:  ${result.responders}`,
       `  activities:  ${result.activities}`,
+      `  known issues: ${result.knownIssues}`,
     ].join('\n'),
   );
 } catch (error) {
