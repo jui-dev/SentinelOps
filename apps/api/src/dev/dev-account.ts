@@ -41,7 +41,7 @@ export const DEV_PERSONAS: readonly {
 }[] = [
   {
     email: 'admin@example.com',
-    name: 'Morgan Reyes',
+    name: 'Dev Admin',
     role: 'ADMIN',
     teams: [],
   },

@@ -255,7 +255,7 @@ it ensures a small organization to work in, and the web login page lists its peo
 
 | Persona | Email | Role | Teams |
 | --- | --- | --- | --- |
-| Morgan Reyes | `admin@example.com` | `ADMIN` | — |
+| Dev Admin | `admin@example.com` | `ADMIN` | — |
 | Ava Kim | `ava@example.com` | `INCIDENT_MANAGER` | — |
 | Alex Rivera | `alex@example.com` | `REPORTER` | — |
 | Priya Shah | `priya@example.com` | `RESPONDER` | Payments |

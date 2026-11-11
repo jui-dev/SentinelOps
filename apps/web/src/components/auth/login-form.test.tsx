@@ -81,7 +81,7 @@ describe("LoginForm", () => {
       expect(await screen.findByText("Demo personas")).toBeDefined();
 
       for (const name of [
-        "Morgan Reyes",
+        "Dev Admin",
         "Priya Shah",
         "Sam Okafor",
         "Lee Chen",
