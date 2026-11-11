@@ -5,21 +5,26 @@ import { useEffect, useState } from "react";
 import { useOrganization } from "@/components/organizations/organization-scope";
 import type {
   AnalysisSection,
+  EditIncidentAnalysisRequest,
   IncidentAnalysisResponse,
 } from "@/lib/api/contracts";
 
 import { analysisRefusalOf, useEditIncidentAnalysis } from "./analysis-queries";
 import { clearDraft, readDraft, writeDraft } from "./draft-storage";
 import {
+  canMarkDone,
   canSave,
   dirtySections,
   discarded,
   initialDraft,
   keepMine,
+  markDoneRequest,
   publishBlock,
   reconcile,
+  reopenRequest,
   saveFailed,
   saveRequest,
+  sectionProgress,
   startSaving,
   takeSaved,
   typed,
@@ -135,11 +140,7 @@ export const useAnalysisDraft = (
   const settle = (from: string, next: (current: Draft) => Draft) =>
     setDraft((current) => (current.identity === from ? next(current) : current));
 
-  const save = () => {
-    if (!canSave(state)) return;
-
-    const request = saveRequest(state);
-
+  const send = (request: EditIncidentAnalysisRequest) => {
     update((current) => startSaving(current, request));
     edit.mutate(request, {
       // The answer also reaches the draft through the cache; applied here as
@@ -162,6 +163,10 @@ export const useAnalysisDraft = (
     });
   };
 
+  const save = () => {
+    if (canSave(state)) send(saveRequest(state));
+  };
+
   const failure =
     edit.isError && analysisRefusalOf(edit.error) === undefined ? edit.error : null;
 
@@ -171,6 +176,8 @@ export const useAnalysisDraft = (
     unsaved,
     saving: state.saving !== null,
     canSave: canSave(state),
+    /** Each section's standing: not started, in progress, or done. */
+    progress: sectionProgress(state, analysis.doneSections),
     /** Why it cannot be published now; null when it can. */
     publishBlock: publishBlock(state),
     /** A save that failed for a reason other than the analysis itself. */
@@ -180,6 +187,14 @@ export const useAnalysisDraft = (
     change: (section: AnalysisSection, text: string) =>
       update((current) => typed(current, section, text)),
     save,
+    /** Saves this section, and this section alone, as finished. */
+    markDone: (section: AnalysisSection) => {
+      if (canMarkDone(state, section)) send(markDoneRequest(state, section));
+    },
+    /** Takes a done section back to work on. */
+    reopen: (section: AnalysisSection) => {
+      if (state.saving === null) send(reopenRequest(state, section));
+    },
     discard: () =>
       setDraft((current) => ({
         ...current,

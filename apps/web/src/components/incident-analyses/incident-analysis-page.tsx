@@ -1,6 +1,5 @@
 "use client";
 
-import { Check, Circle } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
@@ -38,13 +37,15 @@ import { isApiError } from "@/lib/api/errors";
 import { AnalysisDocument, SECTION_TITLES } from "./analysis-document";
 import { AnalysisEditor } from "./analysis-editor";
 import { useAnalysisAccess, useIncidentAnalysis } from "./analysis-queries";
+import { savedProgress } from "./draft-state";
+import type { SectionProgress } from "./draft-state";
 import { AnalysisStatusMark } from "./analysis-status";
 import { ChangeOwner } from "./change-owner";
 import { UnsavedText } from "./draft-recovery";
 import { FactsStrip } from "./facts-strip";
 import { KeyMoments } from "./key-moments";
 import { PublishOutcomeNotice } from "./publish-dialog";
-import { sectionAnchor } from "./section-editor";
+import { PROGRESS_WORDS, sectionAnchor, SectionMark } from "./section-editor";
 import type { PublishOutcome } from "./publish-dialog";
 import { StartAnalysis } from "./start-analysis";
 import { useAnalysisDraft } from "./use-analysis-draft";
@@ -136,18 +137,54 @@ function StatusLine({
   );
 }
 
+const JUMP_LINK_CLASSES: Record<SectionProgress, string> = {
+  done: "border-status-resolved-line bg-status-resolved-subtle text-fg",
+  "in-progress": "border-warning-line bg-warning-subtle text-fg",
+  "not-started": "border-line bg-surface text-fg-muted hover:text-fg",
+};
+
+/** "Impact", or "Impact and cause": sections named inside a sentence. */
+const inSentence = (sections: readonly AnalysisSection[]) => {
+  const names = sections.map((section, index) =>
+    index === 0 ? SECTION_TITLES[section] : SECTION_TITLES[section].toLowerCase(),
+  );
+  const last = names.pop();
+
+  return names.length > 0 ? `${names.join(", ")} and ${last}` : last;
+};
+
+/** What the sections' standing means for publishing. */
+const progressMessage = (progress: Record<AnalysisSection, SectionProgress>) => {
+  const open = ANALYSIS_SECTIONS.filter((section) => progress[section] === "in-progress");
+
+  if (ANALYSIS_SECTIONS.every((section) => progress[section] === "done")) {
+    return "Every section is done. Publish it when it reads right.";
+  }
+  if (progress.summary === "done") {
+    const said = "The summary is done, so this can be published.";
+
+    return open.length > 0
+      ? `${said} ${inSentence(open)} ${open.length === 1 ? "is" : "are"} still in progress.`
+      : `${said} Impact, cause and lessons are optional.`;
+  }
+
+  return progress.summary === "in-progress"
+    ? "Mark the summary as done when it is finished: it is all a draft needs to be published."
+    : "Start with the summary: it is all a draft needs to be published.";
+};
+
 /**
  * How far the draft has come, read at a glance: a ring filled by the share
- * of its four sections written, what that means for publishing, and a link
- * to each section — ticked once written — so the writer can go straight to
- * what is left. Counted from what is on the page while it is written.
+ * of its four sections marked done, what that means for publishing, and a
+ * link to each section showing where it stands, so the writer can go
+ * straight to what is left. Only a section its writer has finished counts.
  */
 function DraftProgress({
-  written,
+  progress,
 }: {
-  written: Record<AnalysisSection, boolean>;
+  progress: Record<AnalysisSection, SectionProgress>;
 }) {
-  const count = ANALYSIS_SECTIONS.filter((section) => written[section]).length;
+  const count = ANALYSIS_SECTIONS.filter((section) => progress[section] === "done").length;
   const share = (count / ANALYSIS_SECTIONS.length) * 100;
 
   return (
@@ -157,7 +194,7 @@ function DraftProgress({
     >
       <span
         role="img"
-        aria-label={`${count} of ${ANALYSIS_SECTIONS.length} sections written`}
+        aria-label={`${count} of ${ANALYSIS_SECTIONS.length} sections done`}
         className="grid size-18 shrink-0 place-items-center rounded-full"
         style={{
           background: `conic-gradient(var(--color-status-resolved-text) 0 ${share}%, var(--color-line) ${share}% 100%)`,
@@ -169,15 +206,9 @@ function DraftProgress({
       </span>
       <div className="flex min-w-0 flex-1 basis-60 flex-col gap-1">
         <p className="text-base font-semibold text-fg">
-          {count} of {ANALYSIS_SECTIONS.length} sections written
+          {count} of {ANALYSIS_SECTIONS.length} sections done
         </p>
-        <p className="text-sm text-fg-muted">
-          {count === ANALYSIS_SECTIONS.length
-            ? "Every section is written. Save it, then publish when it reads right."
-            : written.summary
-              ? "The summary is in, so it can be published. Impact, cause and lessons are optional."
-              : "Start with the summary: it is all a draft needs to be published."}
-        </p>
+        <p className="text-sm text-fg-muted">{progressMessage(progress)}</p>
       </div>
       <nav aria-label="Sections" className="flex flex-wrap gap-2">
         {ANALYSIS_SECTIONS.map((section) => (
@@ -186,18 +217,12 @@ function DraftProgress({
             href={`#${sectionAnchor(section)}`}
             className={cx(
               "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-sm transition-colors duration-(--duration-fast) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
-              written[section]
-                ? "border-status-resolved-line bg-status-resolved-subtle text-fg"
-                : "border-line bg-surface text-fg-muted hover:text-fg",
+              JUMP_LINK_CLASSES[progress[section]],
             )}
           >
-            {written[section] ? (
-              <Check aria-hidden="true" strokeWidth={3} className="size-3.5 text-status-resolved-text" />
-            ) : (
-              <Circle aria-hidden="true" strokeWidth={2} className="size-3.5 text-fg-subtle" />
-            )}
+            <SectionMark progress={progress[section]} className="size-3.5" />
             {SECTION_TITLES[section]}
-            <span className="sr-only">{written[section] ? ", written" : ", not written"}</span>
+            <span className="sr-only">, {PROGRESS_WORDS[progress[section]].toLowerCase()}</span>
           </a>
         ))}
       </nav>
@@ -257,19 +282,13 @@ function Workspace({
   const draft = useAnalysisDraft(analysis, incident.number);
   const editing = canWrite && analysis.status === "DRAFT";
   const [outcome, setOutcome] = useState<PublishOutcome | null>(null);
-  // What is written: from the page while it is written, else as saved.
-  const written = Object.fromEntries(
-    ANALYSIS_SECTIONS.map((section) => [
-      section,
-      editing ? draft.state.text[section].trim() !== "" : analysis[section] !== null,
-    ]),
-  ) as Record<AnalysisSection, boolean>;
+  const progress = editing ? draft.progress : savedProgress(analysis);
 
   // One column, read top to bottom: how far it has come, what the record
   // says and when things happened, then the document.
   return (
     <div className="flex flex-col gap-6">
-      {analysis.status === "DRAFT" && <DraftProgress written={written} />}
+      {analysis.status === "DRAFT" && <DraftProgress progress={progress} />}
       <FactsStrip analysis={analysis}>
         <KeyMoments
           analysis={analysis}

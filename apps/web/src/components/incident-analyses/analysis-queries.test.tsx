@@ -49,6 +49,7 @@ const analysis = (
   impact: null,
   cause: null,
   lessons: null,
+  doneSections: [],
   createdBy: { id: idOf(1), name: "Alex Kim" },
   createdAt: "2026-09-21T10:00:00.000Z",
   publishedBy: null,

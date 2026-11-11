@@ -127,6 +127,7 @@ export const draft = (
   impact: "Checkout unavailable for an hour.",
   cause: null,
   lessons: null,
+  doneSections: [],
   createdBy: { id: currentUser.id, name: "Ada Lovelace" },
   createdAt: "2026-09-19T09:00:00.000Z",
   publishedBy: null,

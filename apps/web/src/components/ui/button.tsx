@@ -20,10 +20,10 @@ const variants: Record<ButtonVariant, string> = {
   primary:
     "border border-accent-rim bg-accent text-on-accent shadow-[inset_0_1px_0_rgb(255_255_255/0.08),inset_0_-1px_0_rgb(0_0_0/0.25)] hover:bg-accent-hover active:bg-accent-pressed active:shadow-[inset_0_1px_2px_rgb(0_0_0/0.35)] disabled:border-transparent disabled:bg-sunken disabled:text-fg-disabled disabled:shadow-none",
   // The primary button in teal, the colour of work done: for the one act
-  // that finishes a member's part. White on the solid teal reads in both
+  // that finishes a piece of work. White on the solid teal reads in both
   // themes.
   complete:
-    "border border-status-resolved-line bg-status-resolved-solid text-white shadow-[inset_0_1px_0_rgb(255_255_255/0.1),inset_0_-1px_0_rgb(0_0_0/0.25)] hover:brightness-110 active:brightness-95 active:shadow-[inset_0_1px_2px_rgb(0_0_0/0.35)] disabled:border-transparent disabled:bg-sunken disabled:text-fg-disabled disabled:shadow-none",
+    "border border-status-resolved-line bg-status-resolved-solid text-on-accent shadow-[inset_0_1px_0_rgb(255_255_255/0.1),inset_0_-1px_0_rgb(0_0_0/0.25)] hover:brightness-110 active:brightness-95 active:shadow-[inset_0_1px_2px_rgb(0_0_0/0.35)] disabled:border-transparent disabled:bg-sunken disabled:text-fg-disabled disabled:shadow-none",
   secondary:
     "border border-line-strong bg-surface text-fg shadow-control hover:border-line-control hover:bg-hover active:bg-sunken disabled:border-line disabled:bg-surface disabled:text-fg-disabled disabled:shadow-none",
   quiet:

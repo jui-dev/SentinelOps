@@ -4,15 +4,19 @@ import type { IncidentAnalysisResponse } from "@/lib/api/contracts";
 
 import { draft } from "./analysis.fixtures";
 import {
+  canMarkDone,
   canSave,
   dirtySections,
   discarded,
   initialDraft,
   keepMine,
+  markDoneRequest,
   publishBlock,
   reconcile,
+  reopenRequest,
   saveFailed,
   saveRequest,
+  sectionProgress,
   startSaving,
   takeSaved,
   typed,
@@ -31,6 +35,88 @@ const later = (
 
 const writing = (...edits: [keyof DraftState["text"], string][]) =>
   edits.reduce((state, [section, text]) => typed(state, section, text), initialDraft(v3));
+
+describe("a section's standing", () => {
+  it("is not started, in progress, or done only when the server says so", () => {
+    expect(sectionProgress(initialDraft(v3), ["summary"])).toEqual({
+      summary: "done",
+      impact: "in-progress",
+      cause: "not-started",
+      lessons: "not-started",
+    });
+  });
+
+  it("is in progress from the first character typed", () => {
+    expect(sectionProgress(writing(["cause", "A"]), []).cause).toBe("in-progress");
+    expect(sectionProgress(writing(["cause", "   "]), []).cause).toBe("not-started");
+  });
+
+  it("never shows as done while it holds unsaved text or a choice", () => {
+    expect(sectionProgress(writing(["summary", "Rewritten."]), ["summary"]).summary).toBe(
+      "in-progress",
+    );
+
+    const { state } = reconcile(
+      writing(["summary", "Mine."]),
+      later(4, { summary: "Theirs." }),
+    );
+
+    expect(sectionProgress(state, ["summary"]).summary).toBe("in-progress");
+  });
+
+  it("can be marked done once it holds text, unless a save or a choice is pending", () => {
+    const state = writing(["cause", "A deploy."]);
+
+    expect(canMarkDone(state, "cause")).toBe(true);
+    expect(canMarkDone(state, "lessons")).toBe(false);
+    expect(canMarkDone(startSaving(state, saveRequest(state)), "cause")).toBe(false);
+
+    const { state: conflicted } = reconcile(
+      writing(["summary", "Mine."]),
+      later(4, { summary: "Theirs." }),
+    );
+
+    expect(canMarkDone(conflicted, "summary")).toBe(false);
+    expect(canMarkDone(conflicted, "impact")).toBe(true);
+  });
+
+  it("is finished with its own text only, leaving the rest unsaved", () => {
+    const state = writing(["cause", "  A deploy. "], ["lessons", "Roll back sooner."]);
+    const request = markDoneRequest(state, "cause");
+
+    expect(request).toEqual({ version: 3, cause: "A deploy.", markDone: ["cause"] });
+
+    const { state: next } = reconcile(
+      startSaving(state, request),
+      later(4, { cause: "A deploy." }),
+    );
+
+    expect(next.saving).toBeNull();
+    expect(next.conflicts).toEqual({});
+    expect(dirtySections(next)).toEqual(["lessons"]);
+  });
+
+  it("sends no text when finishing a section already saved", () => {
+    expect(markDoneRequest(initialDraft(v3), "summary")).toEqual({
+      version: 3,
+      markDone: ["summary"],
+    });
+  });
+
+  it("is reopened without touching text, or counting as someone else's change", () => {
+    const state = writing(["cause", "Unsaved."]);
+    const request = reopenRequest(state, "summary");
+
+    expect(request).toEqual({ version: 3, reopen: ["summary"] });
+    expect(startSaving(state, request).saving).toEqual({ from: 3, sent: {} });
+
+    const { state: next, merged } = reconcile(startSaving(state, request), later(4, {}));
+
+    expect(merged).toBe(false);
+    expect(next.text.cause).toBe("Unsaved.");
+    expect(next.saving).toBeNull();
+  });
+});
 
 describe("an analysis draft", () => {
   describe("while it is written", () => {

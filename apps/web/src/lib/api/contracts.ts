@@ -467,6 +467,8 @@ export interface IncidentAnalysisResponse {
   impact: string | null;
   cause: string | null;
   lessons: string | null;
+  /** The sections their writer has said are finished, in reading order. */
+  doneSections: AnalysisSection[];
   createdBy: { id: string; name: string };
   createdAt: string;
   publishedBy: { id: string; name: string } | null;
@@ -487,6 +489,8 @@ export interface StartIncidentAnalysisRequest {
  */
 export type EditIncidentAnalysisRequest = {
   version: number;
+  markDone?: AnalysisSection[];
+  reopen?: AnalysisSection[];
 } & Partial<Record<AnalysisSection, string | null>>;
 
 /** Handing a draft to another member, based on `version`. */
@@ -1050,6 +1054,7 @@ export const ApiErrorCode = {
   ANALYSIS_PUBLISHED: "ANALYSIS_PUBLISHED",
   ANALYSIS_CHANGED: "ANALYSIS_CHANGED",
   ANALYSIS_SUMMARY_REQUIRED: "ANALYSIS_SUMMARY_REQUIRED",
+  ANALYSIS_SECTION_NOT_WRITTEN: "ANALYSIS_SECTION_NOT_WRITTEN",
 } as const;
 
 export interface ValidationErrorDetail {

@@ -70,6 +70,45 @@ export const isDirty = (state: DraftState, section: AnalysisSection) =>
 export const dirtySections = (state: DraftState): AnalysisSection[] =>
   ANALYSIS_SECTIONS.filter((section) => isDirty(state, section));
 
+/**
+ * Where a section stands. Text alone never makes one done: the writer says
+ * so, and the server keeps it.
+ */
+export type SectionProgress = "not-started" | "in-progress" | "done";
+
+/**
+ * Each section's standing, given which the server holds as done. Unsaved
+ * text, or a choice still to make, is never shown as finished: a section
+ * holding either stays open, so what is typed there is never hidden.
+ */
+export const sectionProgress = (
+  state: DraftState,
+  doneSections: readonly AnalysisSection[],
+): Record<AnalysisSection, SectionProgress> =>
+  Object.fromEntries(
+    ANALYSIS_SECTIONS.map((section) => {
+      const open = isDirty(state, section) || section in state.conflicts;
+      const progress: SectionProgress =
+        doneSections.includes(section) && !open
+          ? "done"
+          : stored(state.text[section]) === ""
+            ? "not-started"
+            : "in-progress";
+
+      return [section, progress];
+    }),
+  ) as Record<AnalysisSection, SectionProgress>;
+
+/** A saved analysis's sections, for whoever reads it rather than writes it. */
+export const savedProgress = (analysis: IncidentAnalysisResponse) =>
+  sectionProgress(initialDraft(analysis), analysis.doneSections);
+
+/** Whether a section can be marked done now. */
+export const canMarkDone = (state: DraftState, section: AnalysisSection) =>
+  state.saving === null &&
+  !(section in state.conflicts) &&
+  stored(state.text[section]) !== "";
+
 /** Whether there is anything to save, and nothing stands in the way. */
 export const canSave = (state: DraftState) =>
   state.saving === null &&
@@ -103,18 +142,43 @@ export const saveRequest = (state: DraftState): EditIncidentAnalysisRequest => (
   ),
 });
 
+/**
+ * Finishing a section: its unsaved text, if it has any, and the mark, in one
+ * write. Unsaved text in other sections stays unsaved.
+ */
+export const markDoneRequest = (
+  state: DraftState,
+  section: AnalysisSection,
+): EditIncidentAnalysisRequest => ({
+  version: state.base.version,
+  ...(isDirty(state, section) ? { [section]: stored(state.text[section]) } : {}),
+  markDone: [section],
+});
+
+/** Taking a done section back to work on. Its text is untouched. */
+export const reopenRequest = (
+  state: DraftState,
+  section: AnalysisSection,
+): EditIncidentAnalysisRequest => ({
+  version: state.base.version,
+  reopen: [section],
+});
+
 /** A save has been sent. */
 export const startSaving = (
   state: DraftState,
   request: EditIncidentAnalysisRequest,
-): DraftState => {
-  const { version, ...sent } = request;
-
-  return {
-    ...state,
-    saving: { from: version, sent: sent as Partial<Sections> },
-  };
-};
+): DraftState => ({
+  ...state,
+  saving: {
+    from: request.version,
+    sent: Object.fromEntries(
+      ANALYSIS_SECTIONS.filter((section) => request[section] !== undefined).map(
+        (section) => [section, request[section]],
+      ),
+    ) as Partial<Sections>,
+  },
+});
 
 /** A save failed: nothing was applied, and the text is as it was. */
 export const saveFailed = (state: DraftState): DraftState => ({

@@ -75,6 +75,10 @@ export function AnalysisEditor({
             section={section}
             value={draft.state.text[section]}
             onChange={(text) => draft.change(section, text)}
+            progress={draft.progress[section]}
+            saving={draft.saving}
+            onMarkDone={() => draft.markDone(section)}
+            onEdit={() => draft.reopen(section)}
             notice={
               saved !== undefined && (
                 <ConflictNotice section={section} saved={saved} draft={draft} />
