@@ -233,12 +233,13 @@ describe("WorkspaceShell", () => {
 
       await within(primaryNav()).findByRole("link", { name: "Incidents" });
 
-      // Teams before the members placed on them and the services they own.
+      // Teams before the members placed on them, what their roles mean,
+      // and the services they own.
       expect(
         within(sectionOf("Organization"))
           .getAllByRole("link")
           .map((link) => link.textContent),
-      ).toEqual(["Teams", "Members", "Services"]);
+      ).toEqual(["Teams", "Members", "Roles", "Services"]);
       expect(
         within(sectionOf("Response"))
           .getAllByRole("link")
@@ -253,6 +254,7 @@ describe("WorkspaceShell", () => {
         "Overview",
         "Teams",
         "Members",
+        "Roles",
         "Services",
         "Incidents",
         "Incident history",

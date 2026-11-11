@@ -94,6 +94,17 @@ export interface CreateMemberRequest {
   teamIds?: string[];
 }
 
+/**
+ * `GET /organizations/:id/roles`: one of the organization's roles, what it
+ * permits, and how many hold it. Who holds it is the member list's to say.
+ */
+export interface OrganizationRoleResponse {
+  role: Role;
+  /** Sorted, from the same table every route is authorized by. */
+  permissions: string[];
+  memberCount: number;
+}
+
 /** `PUT /organizations/:id/memberships/:membershipId/role`. */
 export interface ChangeRoleRequest {
   role: Role;

@@ -7,19 +7,21 @@ import { PasswordService } from '../auth/password.service.js';
 import { Permission } from '../authorization/permissions.js';
 import {
   hasPermission,
+  permissionsFor,
   rolesHolding,
 } from '../authorization/role-permissions.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { foreignKeyViolationHint } from '../database/foreign-key-violation.js';
 import { uniqueViolationHint } from '../database/unique-violation.js';
 import { Prisma } from '../generated/prisma/client.js';
-import type { Role } from '../generated/prisma/enums.js';
+import { Role } from '../generated/prisma/enums.js';
 import { teamNotFound } from '../teams/teams.errors.js';
 import { organizationNotFound } from '../tenancy/tenancy.errors.js';
 import { isResourceId } from '../tenancy/tenancy.schemas.js';
 import type {
   OrganizationDetailResponse,
   OrganizationMembershipResponse,
+  OrganizationRoleResponse,
 } from './organizations.contract.js';
 import { lastAdmin, membershipNotFound } from './organizations.errors.js';
 import {
@@ -213,6 +215,34 @@ export class OrganizationsService {
     return memberships.map((membership) =>
       toOrganizationMembershipResponse(membership, { accountSetup }),
     );
+  }
+
+  /**
+   * Every role the organization has, in the enum's order — who sets up,
+   * decides, raises, works — each with what it permits and how many hold
+   * it. Every role is listed, held by nobody or not, so a reader learns
+   * what each role is before anyone is given it.
+   *
+   * Counts only: who holds each role is the member list's to say, within
+   * the reader's own scope.
+   */
+  async listRoles(organizationId: string): Promise<OrganizationRoleResponse[]> {
+    const counts = await this.prisma.membership.groupBy({
+      by: ['role'],
+      where: {
+        organizationId,
+        organization: { deletedAt: null },
+        user: { deletedAt: null },
+      },
+      _count: { _all: true },
+    });
+    const held = new Map(counts.map((row) => [row.role, row._count._all]));
+
+    return Object.values(Role).map((role) => ({
+      role,
+      permissions: permissionsFor(role),
+      memberCount: held.get(role) ?? 0,
+    }));
   }
 
   /**

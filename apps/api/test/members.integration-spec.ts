@@ -180,6 +180,38 @@ describe('members (integration)', () => {
     },
   );
 
+  it('should list every role to any member, with what each permits and how many hold it in this organization alone', async () => {
+    const response = await request(app.getHttpServer())
+      .get(`/api/v1/organizations/${fx.orgA}/roles`)
+      .set('Authorization', `Bearer ${await tokens.signAccessToken(fx.dave)}`);
+
+    expect(response.status).toBe(200);
+    expect(leakedKeys(response.body)).toEqual([]);
+    expect(
+      response.body.map(
+        ({ role, memberCount }: { role: string; memberCount: number }) => [
+          role,
+          memberCount,
+        ],
+      ),
+    ).toEqual([
+      ['ADMIN', 1],
+      ['INCIDENT_MANAGER', 0],
+      ['REPORTER', 0],
+      ['RESPONDER', 1],
+    ]);
+    expect(response.body[3].permissions).toContain('responses:work');
+    expect(response.body[0].permissions).not.toContain('responses:work');
+  });
+
+  it("should not list another organization's roles", async () => {
+    const response = await request(app.getHttpServer())
+      .get(`/api/v1/organizations/${fx.orgB}/roles`)
+      .set('Authorization', `Bearer ${await tokens.signAccessToken(fx.dave)}`);
+
+    expect(response.status).toBe(404);
+  });
+
   describe('changing a role', () => {
     const changeRole = async (
       callerId: string,

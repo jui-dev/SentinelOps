@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 
+import { rolesHref } from "@/components/roles/role-content";
 import { teamsHref } from "@/components/teams/team-scope";
 import { Button } from "@/components/ui/button";
 import { EmptyNote } from "@/components/ui/empty-state";
@@ -63,7 +64,10 @@ function Directory() {
           <>
             Everyone in {organization.name}, you included, grouped by role.
             A role decides what someone can do; their teams decide which
-            incidents.
+            incidents.{" "}
+            <Link href={rolesHref(organization.slug)} className={linkClasses}>
+              What each role does
+            </Link>
           </>
         }
         actions={

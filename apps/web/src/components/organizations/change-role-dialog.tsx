@@ -153,6 +153,9 @@ export function ChangeRoleDialog({
       void queryClient.invalidateQueries({
         queryKey: queryKeys.memberships(organization.id),
       });
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.roles(organization.id),
+      });
       // Their own role: what this organization lets them do has changed.
       if (member.user.id === me.data?.id) {
         void queryClient.invalidateQueries({

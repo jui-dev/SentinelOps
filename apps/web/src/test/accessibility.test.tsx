@@ -15,6 +15,8 @@ import { InvitationAcceptance } from "@/components/invitations/invitation-accept
 import { MemberDetail } from "@/components/organizations/member-detail";
 import { ChangeRoleDialog } from "@/components/organizations/change-role-dialog";
 import { MembersView } from "@/components/organizations/members-view";
+import { RolePage } from "@/components/roles/role-page";
+import { RolesView } from "@/components/roles/roles-view";
 import { OrganizationLanding } from "@/components/organizations/organization-landing";
 import { OrganizationOverview } from "@/components/organizations/organization-overview";
 import { OrganizationPicker } from "@/components/organizations/organization-picker";
@@ -54,6 +56,7 @@ const navigation = vi.hoisted(() => ({
     serviceSlug?: string;
     incidentNumber?: string;
     membershipId?: string;
+    role?: string;
   },
   pathname: "/",
 }));
@@ -489,6 +492,13 @@ const signedIn = (permissions: string[]) =>
         return jsonResponse(200, currentUser);
       case `GET ${base}`:
         return jsonResponse(200, organizationDetail(permissions));
+      case `GET ${base}/roles`:
+        return jsonResponse(
+          200,
+          ["ADMIN", "INCIDENT_MANAGER", "REPORTER", "RESPONDER"].map(
+            (role) => ({ role, permissions: [], memberCount: role === "ADMIN" ? 1 : 0 }),
+          ),
+        );
       case `GET ${base}/memberships`:
         return jsonResponse(200, [
           {
@@ -829,6 +839,26 @@ describe("accessibility", () => {
 
       await userEvent.click(await screen.findByRole("button", { name: "Custom" }));
       await screen.findByRole("dialog", { name: "Choose dates (UTC)" });
+      await expectNoAxeViolations(container);
+    });
+
+    it("Roles", async () => {
+      signedIn(ADMIN);
+      const { container } = inWorkspace(<RolesView />);
+
+      await screen.findByRole("table", {
+        name: "What each role does at each step",
+      });
+      await screen.findAllByRole("article");
+      await expectNoAxeViolations(container);
+    });
+
+    it("A role's page", async () => {
+      signedIn(ADMIN);
+      navigation.params = { orgSlug: organization.slug, role: "incident-manager" };
+      const { container } = inWorkspace(<RolePage />);
+
+      await screen.findByRole("heading", { level: 1, name: "Incident Manager" });
       await expectNoAxeViolations(container);
     });
 

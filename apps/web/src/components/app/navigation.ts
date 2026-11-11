@@ -1,5 +1,6 @@
 import {
   BookMarked,
+  IdCard,
   Boxes,
   History,
   LayoutPanelTop,
@@ -112,6 +113,16 @@ export const ORGANIZATION_NAVIGATION: NavSection[] = [
         // The whole organization's people, for whoever oversees them. A
         // member finds their teammates on each of their teams' pages.
         requires: Permission.MEMBERSHIPS_READ_ALL,
+      },
+      {
+        id: "roles",
+        label: "Roles",
+        icon: IdCard,
+        href: (slug) => `${organizationPath(slug)}/roles`,
+        match: "prefix",
+        // Everyone's: each person learns what their own role, and everyone
+        // else's, is for.
+        requires: Permission.ORGANIZATION_READ,
       },
       {
         id: "services",

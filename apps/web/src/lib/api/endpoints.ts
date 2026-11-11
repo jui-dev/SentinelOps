@@ -47,6 +47,7 @@ import type {
   OperationalActivityResponse,
   OrganizationDetailResponse,
   OrganizationMembershipResponse,
+  OrganizationRoleResponse,
   OrganizationResponse,
   Page,
   PostIncidentUpdateRequest,
@@ -141,6 +142,12 @@ export const createMember = (
   authenticatedRequest<OrganizationMembershipResponse>(
     `${organizationPath(organizationId)}/memberships`,
     { method: "POST", body },
+  );
+
+/** Every role the organization has, with what each permits and how many hold it. */
+export const listRoles = (organizationId: string) =>
+  authenticatedRequest<OrganizationRoleResponse[]>(
+    `${organizationPath(organizationId)}/roles`,
   );
 
 /** Gives a member another role; answers with their membership. */

@@ -74,3 +74,15 @@ export interface OrganizationMembershipResponse {
   user: MemberUserResponse;
   teams: MemberTeamResponse[];
 }
+
+/**
+ * One of the organization's roles: what it lets its holders do, read from
+ * the same table every route is authorized by, and how many people hold
+ * it. Who they are is the member list's to say, within its own scope.
+ */
+export interface OrganizationRoleResponse {
+  role: string;
+  /** Sorted. What the API will let a holder do. */
+  permissions: string[];
+  memberCount: number;
+}

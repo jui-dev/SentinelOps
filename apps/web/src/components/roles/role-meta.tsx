@@ -55,8 +55,11 @@ export interface RoleMeta {
   purpose: string;
   icon: LucideIcon;
   abilities: Ability[];
-  /** Its colour, as classes: text, tint, edge. */
-  tone: { text: string; subtle: string; line: string };
+  /**
+   * Its colour, as classes: text, tint, edge, and `wash` — the tint as a
+   * gradient's start, for a role's header.
+   */
+  tone: { text: string; subtle: string; line: string; wash: string };
 }
 
 export const ROLE_META: Record<Role, RoleMeta> = {
@@ -78,6 +81,7 @@ export const ROLE_META: Record<Role, RoleMeta> = {
       text: "text-role-admin-text",
       subtle: "bg-role-admin-subtle",
       line: "border-role-admin-line",
+      wash: "from-role-admin-subtle",
     },
   },
   INCIDENT_MANAGER: {
@@ -93,6 +97,7 @@ export const ROLE_META: Record<Role, RoleMeta> = {
       text: "text-role-manager-text",
       subtle: "bg-role-manager-subtle",
       line: "border-role-manager-line",
+      wash: "from-role-manager-subtle",
     },
   },
   REPORTER: {
@@ -108,6 +113,7 @@ export const ROLE_META: Record<Role, RoleMeta> = {
       text: "text-role-reporter-text",
       subtle: "bg-role-reporter-subtle",
       line: "border-role-reporter-line",
+      wash: "from-role-reporter-subtle",
     },
   },
   RESPONDER: {
@@ -123,6 +129,7 @@ export const ROLE_META: Record<Role, RoleMeta> = {
       text: "text-role-responder-text",
       subtle: "bg-role-responder-subtle",
       line: "border-role-responder-line",
+      wash: "from-role-responder-subtle",
     },
   },
 };

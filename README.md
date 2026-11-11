@@ -1115,6 +1115,7 @@ put slugs in its own URLs.
 | --- | --- | --- |
 | `GET /api/v1/organizations/:organizationId` | The organization, and the caller's membership and permissions in it | `organization:read` |
 | `PATCH /api/v1/organizations/:organizationId` | Rename the organization: `{ "name": "…" }`, nothing else | `organization:update` |
+| `GET /api/v1/organizations/:organizationId/roles` | Every role, in order, with its sorted permissions and how many hold it — counts, never names | `organization:read` |
 | `GET /api/v1/organizations/:organizationId/memberships` | Every membership record, oldest first | `memberships:read` |
 | `GET /api/v1/organizations/:organizationId/memberships/:membershipId` | One membership record | `memberships:read` |
 | `POST /api/v1/organizations/:organizationId/memberships` | Add a person with a one-time password, in a role, optionally on teams: `{ "name", "email", "temporaryPassword", "role"?, "teamIds"? }` — see [Adding a member](#adding-a-member) | `members:manage` |

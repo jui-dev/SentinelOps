@@ -73,6 +73,9 @@ export const queryKeys = {
     ["organization", organizationId, "memberships"] as const,
   membership: (organizationId: string, membershipId: string) =>
     ["organization", organizationId, "memberships", membershipId] as const,
+  /** The organization's roles; a role change stales their counts. */
+  roles: (organizationId: string) =>
+    ["organization", organizationId, "roles"] as const,
   invitations: (organizationId: string) =>
     ["organization", organizationId, "invitations"] as const,
   teams: (organizationId: string) =>

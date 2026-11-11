@@ -9,6 +9,7 @@ import { OrganizationController } from '../tenancy/organization-controller.decor
 import type {
   OrganizationDetailResponse,
   OrganizationMembershipResponse,
+  OrganizationRoleResponse,
 } from './organizations.contract.js';
 import {
   changeRoleSchema,
@@ -66,6 +67,19 @@ export class OrganizationsController {
       membership.organizationId,
       body,
     );
+  }
+
+  /**
+   * The organization's roles: what each permits, and how many hold it.
+   * Every member may read them, to know what their own role and everyone
+   * else's is for.
+   */
+  @Get('roles')
+  @RequirePermission(Permission.ORGANIZATION_READ)
+  listRoles(
+    @CurrentMembership() membership: OrganizationContext,
+  ): Promise<OrganizationRoleResponse[]> {
+    return this.organizations.listRoles(membership.organizationId);
   }
 
   /** Every membership record in the organization. */
