@@ -5,7 +5,11 @@ import { CircleCheck, Lock } from "lucide-react";
 import { useId, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 
-import { useOrganization } from "@/components/organizations/organization-scope";
+import {
+  useCan,
+  useOrganization,
+} from "@/components/organizations/organization-scope";
+import { Permission } from "@/lib/api/contracts";
 import { Alert, ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { cx } from "@/components/ui/cx";
@@ -149,6 +153,28 @@ export function Panel({
   );
 }
 
+/** Who may respond, as a small label beside a panel's headline. */
+export function AccessBadge({
+  tone,
+  children,
+}: {
+  tone: "amber" | "blue";
+  children: ReactNode;
+}) {
+  return (
+    <span
+      className={cx(
+        "ml-2.5 inline-flex h-6.5 items-center rounded-full border px-2.5 align-middle text-xs font-medium",
+        tone === "amber"
+          ? "border-warning-line bg-warning-subtle text-warning-text"
+          : "border-status-investigating-line bg-status-investigating-subtle text-status-investigating-text",
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
 /** A panel's lower band: a rule above it, and a darker ground. */
 export function Band({ children, className }: { children: ReactNode; className?: string }) {
   return (
@@ -268,7 +294,13 @@ export function YourResponse({
   );
   const active = incident.status !== "RESOLVED";
   const pending = actions.start.isPending || actions.complete.isPending;
-  const team = <PeopleRow label={`${incident.team.name} on this`} people={people} />;
+  const assigned = incident.responseAccess === "ASSIGNED";
+  const team = (
+    <PeopleRow
+      label={assigned ? "On this incident" : `${incident.team.name} on this`}
+      people={people}
+    />
+  );
   const tally =
     updates &&
     `${updates.count} ${updates.count === 1 ? "update" : "updates"} from you${
@@ -284,11 +316,20 @@ export function YourResponse({
         title="Your response"
         tone="teal"
         headline={
-          others.length > 0
-            ? `${incident.team.name} is on this. You haven't joined yet.`
-            : `Nobody on ${incident.team.name} has started yet.`
+          assigned ? (
+            "Assigned to you"
+          ) : (
+            <>
+              Open to your team
+              <AccessBadge tone="blue">Open to team</AccessBadge>
+            </>
+          )
         }
-        aside="Join to post updates as you work. Complete your part when you're done."
+        aside={
+          assigned
+            ? "The Admin asked you to work on this incident. Start when you pick it up."
+            : `Anyone on ${incident.team.name} can pick this up. Start when you are ready to work on it.`
+        }
         action={
           <Button size="lg" disabled={pending} onClick={() => actions.start.mutate()}>
             {actions.start.isPending ? "Starting…" : "Start investigating"}
@@ -662,11 +703,79 @@ export function OversightPanel({
 
 /**
  * A reader's panel — someone who follows the incident without a part in
- * it: where the response stands, and who is on it.
+ * it: where the response stands, and who is on it. While the Admin has not
+ * chosen who responds, or has chosen other people, it says that first, so
+ * nobody wonders why there is nothing for them to press.
  */
 export function FollowPanel({ incident }: { incident: IncidentDetailResponse }) {
   const people = usePeople(incident);
   const { state, list, investigating, complete } = responseStateOf(incident);
+  const canRespond = useCan(Permission.INCIDENTS_RESPOND);
+
+  if (incident.status !== "RESOLVED" && incident.responseAccess === "PENDING") {
+    return (
+      <Panel
+        id="response"
+        title={canRespond ? "Your response" : "Response"}
+        tone="amber"
+        headline={
+          <>
+            Waiting for the Admin
+            <AccessBadge tone="amber">Not open yet</AccessBadge>
+          </>
+        }
+        aside={`The Admin will open this to ${incident.team.name} or assign specific people.${
+          canRespond ? " You'll be told as soon as you can respond." : ""
+        }`}
+      >
+        <Band>
+          <span className="text-sm text-fg-muted">Nobody has started yet.</span>
+        </Band>
+      </Panel>
+    );
+  }
+
+  if (incident.status !== "RESOLVED" && incident.responseAccess === "ASSIGNED") {
+    const standing = (names: readonly string[], one: string, many: string) =>
+      names.length > 0
+        ? [`${nameList(names)} ${names.length === 1 ? one : many}.`]
+        : [];
+    const notStarted = incident.assignees.filter(
+      ({ membershipId }) => !list.some((r) => r.membershipId === membershipId),
+    );
+
+    return (
+      <Panel
+        id="response"
+        title="Responders"
+        tone="quiet"
+        headline={`Assigned to ${nameList(incident.assignees.map(({ name }) => name))}`}
+        aside="You can follow this incident. The Admin can add you if you are needed."
+      >
+        <Band>
+          <span className="text-sm text-fg-muted">
+            {[
+              ...standing(
+                investigating.map(({ name }) => name),
+                "is investigating",
+                "are investigating",
+              ),
+              ...standing(
+                list.filter(({ status }) => status === "COMPLETED").map(({ name }) => name),
+                "has completed",
+                "have completed",
+              ),
+              ...standing(
+                notStarted.map(({ name }) => name),
+                "hasn't started",
+                "haven't started",
+              ),
+            ].join(" ")}
+          </span>
+        </Band>
+      </Panel>
+    );
+  }
 
   return (
     <Panel

@@ -15,28 +15,7 @@ import type { IncidentDetailResponse } from "@/lib/api/contracts";
 import { AssignPeopleDialog } from "./assign-people-dialog";
 import { Avatar, PeopleRow, usePeople } from "./incident-people";
 import { useSetResponseAccess } from "./incident-queries";
-import { Band, Panel } from "./incident-response";
-
-function AccessBadge({
-  tone,
-  children,
-}: {
-  tone: "amber" | "blue";
-  children: ReactNode;
-}) {
-  return (
-    <span
-      className={cx(
-        "ml-2.5 inline-flex h-6.5 items-center rounded-full border px-2.5 align-middle text-xs font-medium",
-        tone === "amber"
-          ? "border-warning-line bg-warning-subtle text-warning-text"
-          : "border-status-investigating-line bg-status-investigating-subtle text-status-investigating-text",
-      )}
-    >
-      {children}
-    </span>
-  );
-}
+import { AccessBadge, Band, Panel } from "./incident-response";
 
 /** One of the two ways to answer "who should respond?". */
 function Choice({

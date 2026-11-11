@@ -1149,7 +1149,7 @@ describe("incidents", () => {
         const yours = await sectionOf("Your response");
 
         expect(
-          within(yours).getByText("Nobody on Payments has started yet."),
+          within(yours).getByText("Open to your team"),
         ).toBeDefined();
         expect(
           within(within(yours).getByRole("list", { name: "How a response goes" }))

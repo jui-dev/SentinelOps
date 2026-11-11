@@ -63,8 +63,8 @@ export interface Person {
 
 /**
  * Everyone who can respond and where each stands: whoever is investigating,
- * whoever is done, then the rest of the responsible team, who have not
- * joined. Someone who started before a reassignment stays, though no longer
+ * whoever is done, then those who have not joined — the people assigned,
+ * when the incident is assigned, else its responsible team. Someone who started before a reassignment stays, though no longer
  * on the team. Once resolved, only those who responded; when the caller
  * cannot see the team's members, only the responders. The caller first,
  * when they are among them.
@@ -85,13 +85,15 @@ export const usePeople = (incident: IncidentDetailResponse): Person[] => {
       .map((responder) => ({ ...responder, state: "complete" as const })),
     ...(resolved
       ? []
-      : (members.data ?? [])
+      : (incident.responseAccess === "ASSIGNED"
+          ? incident.assignees
+          : (members.data ?? []).map(({ membershipId, user }) => ({
+              membershipId,
+              name: user.name,
+            }))
+        )
           .filter(({ membershipId }) => !responding.has(membershipId))
-          .map(({ membershipId, user }) => ({
-            membershipId,
-            name: user.name,
-            state: "not-joined" as const,
-          }))),
+          .map((person) => ({ ...person, state: "not-joined" as const }))),
   ];
 
   return [

@@ -267,7 +267,13 @@ describe("who responds to an incident", () => {
       as(daniel.id, active());
       inOrganization(<IncidentDetail />);
 
-      expect(await screen.findByText("Waiting for the Admin.")).toBeDefined();
+      expect(await screen.findByText("Waiting for the Admin")).toBeDefined();
+      expect(screen.getByText("Not open yet")).toBeDefined();
+      expect(
+        screen.getByText(
+          "The Admin will open this to Payments or assign specific people. You'll be told as soon as you can respond.",
+        ),
+      ).toBeDefined();
       expect(screen.queryByRole("button", { name: "Start investigating" })).toBeNull();
       expect(screen.queryByRole("button", { name: "Assign people" })).toBeNull();
     });
@@ -277,6 +283,13 @@ describe("who responds to an incident", () => {
       inOrganization(<IncidentDetail />);
 
       expect(await screen.findByRole("button", { name: "Start investigating" })).toBeDefined();
+      expect(screen.getByText("Open to your team")).toBeDefined();
+      expect(
+        screen.getByText(
+          "Anyone on Payments can pick this up. Start when you are ready to work on it.",
+        ),
+      ).toBeDefined();
+      await expectNoAxeViolations(document.body);
     });
 
     it("offers it only to the people assigned, whatever their team", async () => {
@@ -289,13 +302,22 @@ describe("who responds to an incident", () => {
       const first = inOrganization(<IncidentDetail />);
 
       expect(await screen.findByRole("button", { name: "Start investigating" })).toBeDefined();
+      expect(screen.getByText("Assigned to you")).toBeDefined();
+      expect(
+        within(await screen.findByRole("list", { name: "On this incident" })).getByText("You"),
+      ).toBeDefined();
       first.unmount();
 
       as(daniel.id, assigned);
       inOrganization(<IncidentDetail />);
 
-      expect(await screen.findByText("Waiting for the people assigned to start.")).toBeDefined();
+      expect(await screen.findByText("Assigned to Sam Okafor")).toBeDefined();
+      expect(
+        screen.getByText("You can follow this incident. The Admin can add you if you are needed."),
+      ).toBeDefined();
+      expect(screen.getByText("Sam Okafor hasn't started.")).toBeDefined();
       expect(screen.queryByRole("button", { name: "Start investigating" })).toBeNull();
+      await expectNoAxeViolations(document.body);
     });
   });
 });
