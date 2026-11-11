@@ -52,7 +52,7 @@ const expiredInvitation = {
   ...openInvitation,
   id: "0199a1b2-c3d4-7000-8000-0000000000c2",
   email: "linus@example.com",
-  role: "MEMBER",
+  role: "RESPONDER",
   status: "expired",
 };
 
@@ -141,7 +141,7 @@ describe("invitation management", () => {
   });
 
   describe("creating an invitation", () => {
-    const fillAndSubmit = async (email: string, role: "Member" | "Admin") => {
+    const fillAndSubmit = async (email: string, role: "Responder" | "Admin") => {
       const user = userEvent.setup();
 
       await user.type(await screen.findByLabelText("Email"), email);
@@ -239,7 +239,7 @@ describe("invitation management", () => {
 
       renderMembers();
       await screen.findByText("grace@example.com");
-      await fillAndSubmit("grace@example.com", "Member");
+      await fillAndSubmit("grace@example.com", "Responder");
 
       expect(
         await screen.findByText(/was just created by someone else/),
@@ -256,7 +256,7 @@ describe("invitation management", () => {
       );
 
       renderMembers();
-      await fillAndSubmit("ada@example.com", "Member");
+      await fillAndSubmit("ada@example.com", "Responder");
 
       expect(
         await screen.findByText(
@@ -275,7 +275,7 @@ describe("invitation management", () => {
       );
 
       renderMembers();
-      await fillAndSubmit("nope", "Member");
+      await fillAndSubmit("nope", "Responder");
 
       expect(await screen.findByText("Invalid email address")).toBeDefined();
     });

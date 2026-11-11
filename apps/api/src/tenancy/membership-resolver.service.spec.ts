@@ -64,7 +64,7 @@ describe('MembershipResolver', () => {
     const { resolver, findFirst } = resolverWith({
       id: MEMBERSHIP_ID,
       organizationId: ORG_ID,
-      role: 'MEMBER',
+      role: 'RESPONDER',
       user: { passwordChangeRequired: false },
     });
 

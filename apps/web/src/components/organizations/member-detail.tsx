@@ -120,7 +120,7 @@ function Teams({
     >
       {member.teams.length === 0 ? (
         <EmptyNote title="Not on any team yet">
-          {member.role === "MEMBER"
+          {member.role === "RESPONDER"
             ? `${first} responds to incidents through their teams.`
             : "An Admin oversees every team without being on one."}
         </EmptyNote>
@@ -336,7 +336,7 @@ function MemberPage({ member }: { member: Member }) {
       <PageBody width="full">
         <div className="flex flex-col gap-6">
           {canManageMembers &&
-            member.role === "MEMBER" &&
+            member.role === "RESPONDER" &&
             member.teams.length === 0 && (
             <Alert tone="warning" title={`${first} is on no team`}>
               <p>

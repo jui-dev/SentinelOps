@@ -710,7 +710,7 @@ export function OversightPanel({
 export function FollowPanel({ incident }: { incident: IncidentDetailResponse }) {
   const people = usePeople(incident);
   const { state, list, investigating, complete } = responseStateOf(incident);
-  const canRespond = useCan(Permission.INCIDENTS_RESPOND);
+  const canRespond = useCan(Permission.RESPONSES_WORK);
 
   if (incident.status !== "RESOLVED" && incident.responseAccess === "PENDING") {
     return (

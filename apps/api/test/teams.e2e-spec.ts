@@ -163,7 +163,7 @@ describe('Teams (e2e)', () => {
     await app.close();
   });
 
-  describe.each<Role>(['ADMIN', 'MEMBER'])('reads as %s', (role) => {
+  describe.each<Role>(['ADMIN', 'RESPONDER'])('reads as %s', (role) => {
     it.each(READS)('should serve %s', async (path) => {
       admitAs(role);
 
@@ -181,7 +181,7 @@ describe('Teams (e2e)', () => {
     };
 
     it('should narrow a MEMBER to their own teams on every read', async () => {
-      admitAs('MEMBER');
+      admitAs('RESPONDER');
 
       await send('get', base);
       expect(prisma.team.findMany).toHaveBeenCalledWith(
@@ -221,7 +221,7 @@ describe('Teams (e2e)', () => {
     });
 
     it('should answer a team the scope does not match with 404', async () => {
-      admitAs('MEMBER');
+      admitAs('RESPONDER');
       prisma.team.findFirst.mockResolvedValue(null);
 
       const team = await send('get', `${base}/${TEAM_ID}`);
@@ -299,7 +299,7 @@ describe('Teams (e2e)', () => {
     it.each(WRITES)(
       'should refuse $method $path with 403 before validating the body',
       async ({ method, path }) => {
-        admitAs('MEMBER');
+        admitAs('RESPONDER');
 
         const response = await send(
           method,

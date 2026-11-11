@@ -48,22 +48,30 @@ generator client {
   previewFeatures = ["partialIndexes"]
 }
 
-/// A member's capacity in an organization. Two, deliberately:
+/// A member's capacity in an organization: one role each, named for the job it
+/// does in an incident.
 ///
-///   ADMIN   sets the organization up — its members, teams, and services — and
-///           may act on anything within it. Whoever creates an organization
-///           is its first admin.
-///   MEMBER  does the operational work.
+///   ADMIN             sets the organization up — its members, teams,
+///                     services, and roles — and may decide on any incident.
+///                     Whoever creates an organization is its first admin.
+///   INCIDENT_MANAGER  decides on incidents: severity, who responds, the
+///                     responsible team, resolution, and the analysis.
+///   REPORTER          raises incidents, and follows the ones they raised.
+///   RESPONDER         does the operational work on their teams' incidents.
+///                     Was MEMBER; renamed in place, so every existing member
+///                     is a responder.
 ///
 /// There was once an OWNER as well. It held exactly what ADMIN held, so it
 /// distinguished nothing, and was merged into ADMIN.
 ///
-/// This does not commit the eventual authorization model to any shape. A later stage
+/// What each role may do is role-permissions.ts, not this enum. A later stage
 /// may introduce dedicated Role, Permission, or RolePermission structures that read
 /// this value, supersede it, or migrate it away — nothing here should constrain that.
 enum Role {
   ADMIN
-  MEMBER
+  INCIDENT_MANAGER
+  REPORTER
+  RESPONDER
 
   @@map("role")
 }
@@ -183,7 +191,7 @@ model Membership {
   id             String @id @default(uuid(7)) @db.Uuid
   organizationId String @map("organization_id") @db.Uuid
   userId         String @map("user_id") @db.Uuid
-  role           Role   @default(MEMBER)
+  role           Role   @default(RESPONDER)
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -241,7 +249,7 @@ model Invitation {
   organizationId String @map("organization_id") @db.Uuid
   /// Stored lowercase, normalised at the Zod boundary like users.email.
   email          String
-  /// ADMIN or MEMBER. OWNER is refused by the request schema, not here.
+  /// Any role. OWNER no longer exists.
   role           Role
   /// SHA-256 of the opaque token, hex encoded. The token itself is never
   /// stored; it is returned once, in the response that created the invitation.

@@ -39,7 +39,7 @@ interface Fixture {
   paymentsB: string;
 }
 
-type Role = 'ADMIN' | 'MEMBER';
+type Role = 'ADMIN' | 'RESPONDER';
 
 /** The error body with the per-request fields removed, for comparison. */
 const comparable = (body: Record<string, unknown>) => {
@@ -140,8 +140,8 @@ describe('services (integration)', () => {
     await grant(orgA, alice, 'ADMIN');
     await grant(orgB, bob, 'ADMIN');
     await grant(orgA, carol, 'ADMIN');
-    await grant(orgB, carol, 'MEMBER');
-    await grant(orgA, dave, 'MEMBER');
+    await grant(orgB, carol, 'RESPONDER');
+    await grant(orgA, dave, 'RESPONDER');
 
     return {
       orgA,

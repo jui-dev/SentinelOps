@@ -28,10 +28,10 @@ const TEAM = '0199a1b2-c3d4-7000-8000-0000000000c1';
 const OTHER_TEAM = '0199a1b2-c3d4-7000-8000-0000000000c2';
 const SERVICE = '0199a1b2-c3d4-7000-8000-0000000000d1';
 const CREATED = new Date('2026-09-18T12:00:00.000Z');
-const ACTOR = { membershipId: MEMBERSHIP };
+const ACTOR = { membershipId: MEMBERSHIP, role: 'ADMIN' as const };
 /** A resolution, with the note every one requires. */
 const RESOLVE = { status: 'RESOLVED', resolution: 'Rolled back.' } as const;
-const MEMBER_ACTOR = { membershipId: MEMBERSHIP, role: 'MEMBER' as const };
+const MEMBER_ACTOR = { membershipId: MEMBERSHIP, role: 'RESPONDER' as const };
 const ADMIN_ACTOR = { membershipId: MEMBERSHIP, role: 'ADMIN' as const };
 
 const activityRow = (overrides: Record<string, unknown> = {}) => ({
@@ -177,11 +177,7 @@ describe('IncidentsService', () => {
     it('should allocate the number, resolve the declarer, lock the service, then insert the owner as the responsible team', async () => {
       const { service, prisma } = serviceWith();
 
-      const created = await service.create(
-        ORG,
-        { membershipId: MEMBERSHIP },
-        declaration,
-      );
+      const created = await service.create(ORG, ACTOR, declaration);
 
       expect(prisma.organization.update).toHaveBeenCalledWith({
         where: { id: ORG, deletedAt: null },
@@ -237,7 +233,7 @@ describe('IncidentsService', () => {
     it('should lock the service row with a parameterized FOR SHARE read scoped by organization', async () => {
       const { service, prisma } = serviceWith();
 
-      await service.create(ORG, { membershipId: MEMBERSHIP }, declaration);
+      await service.create(ORG, ACTOR, declaration);
 
       const [strings, ...values] = prisma.$queryRaw.mock.calls[0] as [
         TemplateStringsArray,
@@ -253,7 +249,7 @@ describe('IncidentsService', () => {
     it('should take the organization lock before the service lock', async () => {
       const { service, prisma } = serviceWith();
 
-      await service.create(ORG, { membershipId: MEMBERSHIP }, declaration);
+      await service.create(ORG, ACTOR, declaration);
 
       expect(
         prisma.organization.update.mock.invocationCallOrder[0],
@@ -265,7 +261,7 @@ describe('IncidentsService', () => {
       prisma.organization.update.mockRejectedValue(knownError('P2025'));
 
       await expectCode(
-        service.create(ORG, { membershipId: MEMBERSHIP }, declaration),
+        service.create(ORG, ACTOR, declaration),
         404,
         TenancyErrorCode.ORGANIZATION_NOT_FOUND,
       );
@@ -277,7 +273,7 @@ describe('IncidentsService', () => {
       prisma.membership.findFirst.mockResolvedValue(null);
 
       await expectCode(
-        service.create(ORG, { membershipId: MEMBERSHIP }, declaration),
+        service.create(ORG, ACTOR, declaration),
         404,
         TenancyErrorCode.ORGANIZATION_NOT_FOUND,
       );
@@ -289,7 +285,7 @@ describe('IncidentsService', () => {
       prisma.$queryRaw.mockResolvedValue([]);
 
       await expectCode(
-        service.create(ORG, { membershipId: MEMBERSHIP }, declaration),
+        service.create(ORG, ACTOR, declaration),
         404,
         ServicesErrorCode.SERVICE_NOT_FOUND,
       );
@@ -303,7 +299,7 @@ describe('IncidentsService', () => {
       ]);
 
       await expectCode(
-        service.create(ORG, { membershipId: MEMBERSHIP }, declaration),
+        service.create(ORG, ACTOR, declaration),
         409,
         ServicesErrorCode.SERVICE_ARCHIVED,
       );
@@ -317,7 +313,7 @@ describe('IncidentsService', () => {
       );
 
       await expectCode(
-        service.create(ORG, { membershipId: MEMBERSHIP }, declaration),
+        service.create(ORG, ACTOR, declaration),
         404,
         ServicesErrorCode.SERVICE_NOT_FOUND,
       );
@@ -331,9 +327,9 @@ describe('IncidentsService', () => {
       );
       prisma.incident.create.mockRejectedValue(violation);
 
-      await expect(
-        service.create(ORG, { membershipId: MEMBERSHIP }, declaration),
-      ).rejects.toBe(violation);
+      await expect(service.create(ORG, ACTOR, declaration)).rejects.toBe(
+        violation,
+      );
       expect(prisma.$transaction).toHaveBeenCalledOnce();
     });
   });
@@ -686,6 +682,14 @@ describe('IncidentsService', () => {
   describe('postUpdate', () => {
     const update = { message: 'Connection pool exhaustion identified.' };
 
+    /** The incident locked, then found not to be the actor's declaration. */
+    const notDeclaredByActor = (
+      prisma: ReturnType<typeof serviceWith>['prisma'],
+    ) =>
+      prisma.incident.findFirst
+        .mockResolvedValueOnce(incidentRow())
+        .mockResolvedValueOnce(null);
+
     it('should lock the active incident, then record the update attributed to the actor', async () => {
       const { service, prisma } = serviceWith();
       prisma.incidentResponder.findFirst.mockResolvedValue({
@@ -732,6 +736,7 @@ describe('IncidentsService', () => {
 
     it('should admit a member only once the incident is locked, and only while their own response is investigating', async () => {
       const { service, prisma } = serviceWith();
+      notDeclaredByActor(prisma);
       prisma.incidentResponder.findFirst.mockResolvedValue({
         id: 'responder-1',
         status: 'INVESTIGATING',
@@ -758,6 +763,7 @@ describe('IncidentsService', () => {
 
     it('should refuse a member who has not started investigating with 403 and write nothing', async () => {
       const { service, prisma } = serviceWith();
+      notDeclaredByActor(prisma);
 
       await expectCode(
         service.postUpdate(ORG, '1', update, MEMBER_ACTOR),
@@ -769,6 +775,7 @@ describe('IncidentsService', () => {
 
     it('should refuse a member whose response is complete with 409 and write nothing', async () => {
       const { service, prisma } = serviceWith();
+      notDeclaredByActor(prisma);
       prisma.incidentResponder.findFirst.mockResolvedValue({
         id: 'responder-1',
         status: 'COMPLETED',
@@ -780,6 +787,22 @@ describe('IncidentsService', () => {
         IncidentsErrorCode.RESPONSE_ALREADY_COMPLETED,
       );
       expect(prisma.incidentActivity.create).not.toHaveBeenCalled();
+    });
+
+    it('should let whoever declared the incident post without responding', async () => {
+      const { service, prisma } = serviceWith();
+
+      await service.postUpdate(ORG, '1', update, {
+        membershipId: MEMBERSHIP,
+        role: 'REPORTER',
+      });
+
+      expect(prisma.incident.findFirst).toHaveBeenLastCalledWith({
+        where: { id: 'incident-1', organizationId: ORG, createdById: USER },
+        select: { id: true },
+      });
+      expect(prisma.incidentResponder.findFirst).not.toHaveBeenCalled();
+      expect(prisma.incidentActivity.create).toHaveBeenCalled();
     });
 
     it('should let the Admin post to any incident without responding', async () => {

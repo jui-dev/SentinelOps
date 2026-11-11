@@ -132,7 +132,7 @@ describe('Services (e2e)', () => {
     await app.close();
   });
 
-  describe.each<Role>(['ADMIN', 'MEMBER'])('reads as %s', (role) => {
+  describe.each<Role>(['ADMIN', 'RESPONDER'])('reads as %s', (role) => {
     it.each(READS)('should serve %s', async (path) => {
       admitAs(role);
 
@@ -224,7 +224,7 @@ describe('Services (e2e)', () => {
     it.each(WRITES)(
       'should refuse $method $path with 403 before validating the body',
       async ({ method, path }) => {
-        admitAs('MEMBER');
+        admitAs('RESPONDER');
 
         const response = await send(
           method,

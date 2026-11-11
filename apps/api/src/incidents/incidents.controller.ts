@@ -224,14 +224,14 @@ export class IncidentsController {
    * them can be supplied.
    */
   @Post()
-  @RequirePermission(Permission.INCIDENTS_MANAGE)
+  @RequirePermission(Permission.INCIDENTS_DECLARE)
   create(
     @CurrentMembership() membership: OrganizationContext,
     @Body({ schema: createIncidentSchema }) body: CreateIncidentRequest,
   ): Promise<IncidentDetailResponse> {
     return this.incidents.create(
       membership.organizationId,
-      { membershipId: membership.membershipId },
+      { membershipId: membership.membershipId, role: membership.role },
       body,
     );
   }
@@ -350,7 +350,7 @@ export class IncidentsController {
    */
   @Post(':incidentNumber/responders/me')
   @HttpCode(HttpStatus.OK)
-  @RequirePermission(Permission.INCIDENTS_RESPOND)
+  @RequirePermission(Permission.RESPONSES_WORK)
   startResponse(
     @CurrentMembership() membership: OrganizationContext,
     @Param('incidentNumber') incidentNumber: string,
@@ -368,7 +368,7 @@ export class IncidentsController {
    */
   @Post(':incidentNumber/responders/me/complete')
   @HttpCode(HttpStatus.OK)
-  @RequirePermission(Permission.INCIDENTS_RESPOND)
+  @RequirePermission(Permission.RESPONSES_WORK)
   completeResponse(
     @CurrentMembership() membership: OrganizationContext,
     @Param('incidentNumber') incidentNumber: string,

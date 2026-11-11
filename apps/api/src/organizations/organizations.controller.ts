@@ -1,4 +1,4 @@
-import { Body, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Get, Param, Patch, Post, Put } from '@nestjs/common';
 
 import type { OrganizationResponse } from '../auth/auth.contract.js';
 import { Permission } from '../authorization/permissions.js';
@@ -11,10 +11,12 @@ import type {
   OrganizationMembershipResponse,
 } from './organizations.contract.js';
 import {
+  changeRoleSchema,
   createMemberSchema,
   updateOrganizationSchema,
 } from './organizations.schemas.js';
 import type {
+  ChangeRoleRequest,
   CreateMemberRequest,
   UpdateOrganizationRequest,
 } from './organizations.schemas.js';
@@ -79,7 +81,7 @@ export class OrganizationsController {
   }
 
   /**
-   * Adds a person as a Member: creates their account with a one-time
+   * Adds a person in the role chosen for them: creates their account with a one-time
    * password, their membership here, and — optionally — their places on
    * this organization's teams, all or nothing. They must choose their own password before they can do
    * anything else. 201, with the new membership as the list shows one; the
@@ -92,6 +94,24 @@ export class OrganizationsController {
     @Body({ schema: createMemberSchema }) body: CreateMemberRequest,
   ): Promise<OrganizationMembershipResponse> {
     return this.organizations.createMember(membership.organizationId, body);
+  }
+
+  /**
+   * Gives a member a different role. 200 with the member as the list shows
+   * one; 409 LAST_ADMIN for the organization's only Admin.
+   */
+  @Put('memberships/:membershipId/role')
+  @RequirePermission(Permission.MEMBERS_MANAGE)
+  changeRole(
+    @CurrentMembership() membership: OrganizationContext,
+    @Param('membershipId') membershipId: string,
+    @Body({ schema: changeRoleSchema }) body: ChangeRoleRequest,
+  ): Promise<OrganizationMembershipResponse> {
+    return this.organizations.changeRole(
+      membership.organizationId,
+      membershipId,
+      body,
+    );
   }
 
   /**

@@ -40,7 +40,7 @@ interface Fixture {
   carolInB: string;
 }
 
-type Role = 'ADMIN' | 'MEMBER';
+type Role = 'ADMIN' | 'RESPONDER';
 
 /**
  * A reader who may see every team there is. Tenant isolation is proven
@@ -156,8 +156,8 @@ describe('teams (integration)', () => {
       aliceInA: await grant(orgA, alice, 'ADMIN'),
       bobInB: await grant(orgB, bob, 'ADMIN'),
       carolInA: await grant(orgA, carol, 'ADMIN'),
-      carolInB: await grant(orgB, carol, 'MEMBER'),
-      daveInA: await grant(orgA, dave, 'MEMBER'),
+      carolInB: await grant(orgB, carol, 'RESPONDER'),
+      daveInA: await grant(orgA, dave, 'RESPONDER'),
     };
   };
 

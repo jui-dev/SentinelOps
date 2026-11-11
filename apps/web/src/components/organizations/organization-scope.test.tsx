@@ -141,7 +141,7 @@ describe("OrganizationScope", () => {
 
     it("hides both when the API does not report organization:update", async () => {
       signedInApi(() =>
-        jsonResponse(200, organizationDetail(READ, "MEMBER")),
+        jsonResponse(200, organizationDetail(READ, "RESPONDER")),
       );
 
       renderSettings();
@@ -214,7 +214,7 @@ describe("useRenameOrganization", () => {
 
   it("changes no cache when the API refuses", async () => {
     const queryClient = createQueryClient();
-    const detail = organizationDetail(READ, "MEMBER");
+    const detail = organizationDetail(READ, "RESPONDER");
 
     queryClient.setQueryData(queryKeys.me, currentUser);
     queryClient.setQueryData(queryKeys.organization(organization.id), detail);

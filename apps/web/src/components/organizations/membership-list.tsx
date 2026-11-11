@@ -37,12 +37,12 @@ export const useMemberships = (organizationId: string) =>
 const SHOWN_TEAMS = 2;
 
 /**
- * A Member on no team responds to nothing and sees no incidents — the one
+ * A Responder on no team responds to nothing and sees no incidents — the one
  * state on this page that wants an Admin's attention. An Admin is not
  * bound by teams, so it is no warning for them.
  */
 const isUnplaced = (member: Member) =>
-  member.role === "MEMBER" && member.teams.length === 0;
+  member.role === "RESPONDER" && member.teams.length === 0;
 
 // ── Filters ────────────────────────────────────────────────────────────────
 
@@ -59,7 +59,11 @@ const FILTERS: {
 }[] = [
   { id: "all", label: "All", matches: () => true },
   { id: "admins", label: "Admins", matches: (m) => m.role === "ADMIN" },
-  { id: "members", label: "Members", matches: (m) => m.role === "MEMBER" },
+  {
+    id: "members",
+    label: "Responders",
+    matches: (m) => m.role === "RESPONDER",
+  },
   {
     id: "awaiting",
     label: "Awaiting sign-in",

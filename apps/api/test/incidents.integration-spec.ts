@@ -63,7 +63,7 @@ interface Fixture {
   apiB: string;
 }
 
-type Role = 'ADMIN' | 'MEMBER';
+type Role = 'ADMIN' | 'RESPONDER';
 
 /** The error body with the per-request fields removed, for comparison. */
 const comparable = (body: Record<string, unknown>) => {
@@ -178,7 +178,7 @@ describe('incidents (integration)', () => {
       select: { id: true },
     });
     const membership = await prisma.membership.create({
-      data: { organizationId: fx.orgA, userId: user.id, role: 'MEMBER' },
+      data: { organizationId: fx.orgA, userId: user.id, role: 'RESPONDER' },
       select: { id: true },
     });
 
@@ -252,9 +252,9 @@ describe('incidents (integration)', () => {
     await grant(orgA, alice, 'ADMIN');
     await grant(orgB, bob, 'ADMIN');
     await grant(orgA, carol, 'ADMIN');
-    const carolInB = await grant(orgB, carol, 'MEMBER');
-    const daveInA = await grant(orgA, dave, 'MEMBER');
-    const erinInA = await grant(orgA, erin, 'MEMBER');
+    const carolInB = await grant(orgB, carol, 'RESPONDER');
+    const daveInA = await grant(orgA, dave, 'RESPONDER');
+    const erinInA = await grant(orgA, erin, 'RESPONDER');
 
     const paymentsA = await aTeam(orgA, 'Payments');
     const platformA = await aTeam(orgA, 'Platform');
@@ -1138,10 +1138,15 @@ describe('incidents (integration)', () => {
           WHERE organization_id = ${fx.orgA}::uuid AND number = 1`;
         expect(
           (
-            await call('put', `${fx.orgA}/incidents/3/response-access`, fx.alice, {
-              mode: 'ASSIGNED',
-              membershipIds: [fx.erinInA],
-            })
+            await call(
+              'put',
+              `${fx.orgA}/incidents/3/response-access`,
+              fx.alice,
+              {
+                mode: 'ASSIGNED',
+                membershipIds: [fx.erinInA],
+              },
+            )
           ).status,
         ).toBe(200);
 
@@ -1477,7 +1482,7 @@ describe('incidents (integration)', () => {
       await expect(
         service.memberResponses(
           fx.orgA,
-          { membershipId: fx.erinInA, role: 'MEMBER' },
+          { membershipId: fx.erinInA, role: 'RESPONDER' },
           fx.daveInA,
           {},
         ),
@@ -2955,7 +2960,7 @@ describe('incidents (integration)', () => {
       const caught = await incidents
         .create(
           fx.orgA,
-          { membershipId: fx.carolInB },
+          { membershipId: fx.carolInB, role: 'ADMIN' },
           {
             title: 'x',
             serviceId: fx.apiA,
@@ -3407,16 +3412,12 @@ describe('incidents (integration)', () => {
       expect(await count('RESPONSE_STARTED')).toBe(2);
     });
 
-    it('should refuse starting to anyone off the responsible team, the admin included, leaving the admin able to read', async () => {
+    it('should refuse starting to the admin by role and to anyone off the team, leaving the admin able to read', async () => {
       await declare(fx.orgA, fx.alice, fx.apiA);
 
-      // The admin sees the incident and is refused by the team rule; Erin,
-      // on another team, cannot see it at all.
-      expectCode(
-        await startAs(fx.orgA, fx.carol, 1),
-        403,
-        'NOT_ON_RESPONSIBLE_TEAM',
-      );
+      // The admin sees the incident but does not work responses; Erin, on
+      // another team, cannot see it at all.
+      expectCode(await startAs(fx.orgA, fx.carol, 1), 403, 'PERMISSION_DENIED');
       expectCode(await startAs(fx.orgA, fx.erin, 1), 404, 'INCIDENT_NOT_FOUND');
       expect(await prisma.incidentResponder.count()).toBe(0);
       // The admin oversees every incident; Erin, on another team, sees none
@@ -4112,9 +4113,9 @@ describe('incidents (integration)', () => {
 
       expect(attention.manage?.needsDecision ?? []).toEqual([]);
       expect(attention.manage?.readyToResolve ?? []).toEqual([]);
-      expect(attention.respond?.assignedToYou).toEqual([]);
-      expect(attention.respond?.needsYourTeam).toEqual([]);
-      expect(attention.respond?.yourResponses).toEqual([]);
+      expect(attention.respond?.assignedToYou ?? []).toEqual([]);
+      expect(attention.respond?.needsYourTeam ?? []).toEqual([]);
+      expect(attention.respond?.yourResponses ?? []).toEqual([]);
     };
 
     it('should follow an incident through each list as its response moves, and drop it once resolved', async () => {
@@ -4128,9 +4129,10 @@ describe('incidents (integration)', () => {
         ).toEqual([1]);
       }
       await nothingFor(fx.orgA, fx.erin);
+      // The admin decides; working responses is not their job.
       expect(await attentionOf(fx.orgA, fx.alice)).toEqual({
         manage: { needsDecision: [], readyToResolve: [] },
-        respond: { assignedToYou: [], needsYourTeam: [], yourResponses: [] },
+        respond: null,
       });
 
       // Dave starts: his response, and no longer unclaimed for Finn.
@@ -4223,7 +4225,8 @@ describe('incidents (integration)', () => {
 
       await nothingFor(fx.orgA, fx.dave);
 
-      // Alice joins Payments: an admin on a team is told what it needs.
+      // Alice joins Payments: an admin on a team still decides rather than
+      // responds, so the team's work is not put to her.
       const aliceInA = await prisma.membership.findFirstOrThrow({
         where: { organizationId: fx.orgA, userId: fx.alice },
       });
@@ -4237,7 +4240,7 @@ describe('incidents (integration)', () => {
 
       expect(await attentionOf(fx.orgA, fx.alice)).toMatchObject({
         manage: { readyToResolve: [] },
-        respond: { needsYourTeam: [{ number: 1 }], yourResponses: [] },
+        respond: null,
       });
     });
 
@@ -4256,7 +4259,7 @@ describe('incidents (integration)', () => {
       const carolA = await attentionOf(fx.orgA, fx.carol);
 
       expect(carolA.manage).toEqual({ needsDecision: [], readyToResolve: [] });
-      expect(carolA.respond?.needsYourTeam).toEqual([]);
+      expect(carolA.respond).toBeNull();
 
       // Member in B, on B's Payments: B's incident and no management.
       const carolB = await attentionOf(fx.orgB, fx.carol);
@@ -4285,7 +4288,7 @@ describe('incidents (integration)', () => {
       expect(
         await app
           .get(IncidentsService)
-          .attention(fx.orgA, { membershipId: fx.carolInB, role: 'MEMBER' }),
+          .attention(fx.orgA, { membershipId: fx.carolInB, role: 'RESPONDER' }),
       ).toEqual({
         manage: null,
         respond: { assignedToYou: [], needsYourTeam: [], yourResponses: [] },
@@ -5033,6 +5036,153 @@ describe('incidents (integration)', () => {
           'ORGANIZATION_NOT_FOUND',
         );
       }
+    });
+  });
+  describe('roles', () => {
+    /** Someone in A with `role`, on no team. */
+    const aPerson = async (
+      role: 'INCIDENT_MANAGER' | 'REPORTER',
+      name: string,
+    ) => {
+      const user = await prisma.user.create({
+        data: { email: `${name.toLowerCase()}@acme.example`, name },
+        select: { id: true },
+      });
+      const membership = await prisma.membership.create({
+        data: { organizationId: fx.orgA, userId: user.id, role },
+        select: { id: true },
+      });
+
+      return { userId: user.id, membershipId: membership.id };
+    };
+
+    it('should let a reporter declare, and refuse a responder', async () => {
+      const rita = await aPerson('REPORTER', 'Rita');
+
+      expect((await declare(fx.orgA, rita.userId, fx.apiA)).status).toBe(201);
+      expectCode(
+        await declare(fx.orgA, fx.dave, fx.apiA),
+        403,
+        'PERMISSION_DENIED',
+      );
+    });
+
+    it('should show a reporter the incidents they declared, and no others', async () => {
+      const rita = await aPerson('REPORTER', 'Rita');
+      await declare(fx.orgA, fx.alice, fx.apiA);
+      await declare(fx.orgA, rita.userId, fx.apiA);
+
+      const list = await call(
+        'get',
+        `${fx.orgA}/incidents?state=active`,
+        rita.userId,
+      );
+
+      expect(list.status).toBe(200);
+      expect(
+        list.body.items.map(({ number }: { number: number }) => number),
+      ).toEqual([2]);
+      expect(
+        (await call('get', `${fx.orgA}/incidents/2`, rita.userId)).status,
+      ).toBe(200);
+      expectCode(
+        await call('get', `${fx.orgA}/incidents/1`, rita.userId),
+        404,
+        'INCIDENT_NOT_FOUND',
+      );
+    });
+
+    it('should let a reporter post on what they declared, but never work a response', async () => {
+      const rita = await aPerson('REPORTER', 'Rita');
+      await declare(fx.orgA, rita.userId, fx.apiA);
+
+      expect(
+        (
+          await call('post', `${fx.orgA}/incidents/1/updates`, rita.userId, {
+            message: 'Customers in the EU are affected too.',
+          })
+        ).status,
+      ).toBe(201);
+      expectCode(
+        await startAs(fx.orgA, rita.userId, 1),
+        403,
+        'PERMISSION_DENIED',
+      );
+    });
+
+    it('should keep saving a new known issue to whoever manages services', async () => {
+      const rita = await aPerson('REPORTER', 'Rita');
+      const ian = await aPerson('INCIDENT_MANAGER', 'Ian');
+
+      for (const userId of [rita.userId, ian.userId]) {
+        expectCode(
+          await declare(fx.orgA, userId, fx.apiA, { saveAsKnownIssue: true }),
+          403,
+          'PERMISSION_DENIED',
+        );
+      }
+      expect(await prisma.incident.count()).toBe(0);
+      expect(await prisma.knownIssue.count()).toBe(0);
+    });
+
+    it('should let an incident manager decide on an incident, but not work its response', async () => {
+      const ian = await aPerson('INCIDENT_MANAGER', 'Ian');
+      await declare(fx.orgA, fx.alice, fx.apiA);
+
+      expect(
+        (
+          await call('patch', `${fx.orgA}/incidents/1`, ian.userId, {
+            severity: 'SEV2',
+          })
+        ).status,
+      ).toBe(200);
+      expect(
+        (
+          await call(
+            'put',
+            `${fx.orgA}/incidents/1/response-access`,
+            ian.userId,
+            { mode: 'ASSIGNED', membershipIds: [fx.daveInA] },
+          )
+        ).status,
+      ).toBe(200);
+      expectCode(
+        await startAs(fx.orgA, ian.userId, 1),
+        403,
+        'PERMISSION_DENIED',
+      );
+    });
+
+    it('should refuse assigning anyone who does not work responses with 409', async () => {
+      const rita = await aPerson('REPORTER', 'Rita');
+      const ian = await aPerson('INCIDENT_MANAGER', 'Ian');
+      await declare(fx.orgA, fx.alice, fx.apiA);
+
+      for (const membershipId of [rita.membershipId, ian.membershipId]) {
+        expectCode(
+          await call(
+            'put',
+            `${fx.orgA}/incidents/1/response-access`,
+            fx.alice,
+            { mode: 'ASSIGNED', membershipIds: [membershipId] },
+          ),
+          409,
+          'ASSIGNEE_CANNOT_RESPOND',
+        );
+      }
+      expect(await prisma.incidentAssignee.count()).toBe(0);
+    });
+
+    it('should show a responder whoever decides on incidents, as it shows the admin', async () => {
+      const ian = await aPerson('INCIDENT_MANAGER', 'Ian');
+      const rita = await aPerson('REPORTER', 'Rita');
+
+      const members = await call('get', `${fx.orgA}/memberships`, fx.dave);
+      const ids = members.body.map(({ id }: { id: string }) => id);
+
+      expect(members.status).toBe(200);
+      expect(ids).toContain(ian.membershipId);
+      expect(ids).not.toContain(rita.membershipId);
     });
   });
 });

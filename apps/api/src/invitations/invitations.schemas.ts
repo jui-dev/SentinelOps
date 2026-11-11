@@ -14,7 +14,12 @@ import { Role } from '../generated/prisma/enums.js';
  */
 
 /** The roles an invitation may offer: every role there is. */
-export const invitableRoleSchema = z.enum([Role.ADMIN, Role.MEMBER]);
+export const invitableRoleSchema = z.enum([
+  Role.ADMIN,
+  Role.INCIDENT_MANAGER,
+  Role.REPORTER,
+  Role.RESPONDER,
+]);
 
 /**
  * A presented invitation token. Opaque, so the only rule is a bound on what the

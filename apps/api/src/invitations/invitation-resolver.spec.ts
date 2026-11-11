@@ -19,7 +19,7 @@ const resolved = (
   id: 'invitation-1',
   organizationId: 'org-1',
   email: 'grace@example.com',
-  role: 'MEMBER',
+  role: 'RESPONDER',
   expiresAt: LATER,
   acceptedAt: null,
   revokedAt: null,

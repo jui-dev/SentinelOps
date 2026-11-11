@@ -33,6 +33,7 @@ describe('organization response mappers', () => {
           role: 'ADMIN',
           permissions: [
             'incident-analyses:write',
+            'incidents:declare',
             'incidents:manage',
             'incidents:read',
             'incidents:read-all',
@@ -63,7 +64,7 @@ describe('organization response mappers', () => {
           slug: 'acme-operations',
           createdAt: CREATED,
         },
-        { membershipId: 'membership-2', role: 'MEMBER' },
+        { membershipId: 'membership-2', role: 'RESPONDER' },
       );
 
       expect(response.membership.permissions).toEqual([
@@ -73,6 +74,7 @@ describe('organization response mappers', () => {
         'memberships:read',
         'notifications:read',
         'organization:read',
+        'responses:work',
         'services:read',
         'teams:read',
       ]);
@@ -83,7 +85,7 @@ describe('organization response mappers', () => {
     it('should emit exactly the declared fields, including on the nested user', () => {
       const row = {
         id: 'membership-1',
-        role: 'MEMBER',
+        role: 'RESPONDER',
         createdAt: CREATED,
         organizationId: 'org-1',
         userId: 'user-1',
@@ -120,7 +122,7 @@ describe('organization response mappers', () => {
         toOrganizationMembershipResponse(row, { accountSetup: true }),
       ).toStrictEqual({
         id: 'membership-1',
-        role: 'MEMBER',
+        role: 'RESPONDER',
         createdAt: '2026-09-01T12:00:00.000Z',
         user: {
           id: 'user-1',
@@ -136,7 +138,7 @@ describe('organization response mappers', () => {
       const response = toOrganizationMembershipResponse(
         {
           id: 'membership-1',
-          role: 'MEMBER',
+          role: 'RESPONDER',
           createdAt: CREATED,
           user: {
             id: 'user-1',
@@ -159,7 +161,7 @@ describe('organization response mappers', () => {
 
     const baseRow = {
       id: 'membership-1',
-      role: 'MEMBER',
+      role: 'RESPONDER',
       createdAt: CREATED,
       user: {
         id: 'user-1',

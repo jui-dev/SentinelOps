@@ -72,15 +72,15 @@ describe("Field", () => {
 describe("Select", () => {
   it("is a labelled native select", () => {
     render(
-      <Select label="Role" defaultValue="MEMBER">
-        <option value="MEMBER">Member</option>
+      <Select label="Role" defaultValue="RESPONDER">
+        <option value="RESPONDER">Member</option>
         <option value="ADMIN">Admin</option>
       </Select>,
     );
 
     expect(
       (screen.getByRole("combobox", { name: "Role" }) as HTMLSelectElement).value,
-    ).toBe("MEMBER");
+    ).toBe("RESPONDER");
   });
 });
 

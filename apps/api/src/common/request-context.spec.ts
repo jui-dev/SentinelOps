@@ -11,7 +11,7 @@ import type { OrganizationContext } from './request-context.js';
 const ORGANIZATION: OrganizationContext = {
   organizationId: 'org-a',
   membershipId: 'membership-a',
-  role: 'MEMBER',
+  role: 'RESPONDER',
 };
 
 describe('request context', () => {

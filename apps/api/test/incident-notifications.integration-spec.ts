@@ -154,7 +154,7 @@ describe('incident notifications (integration)', () => {
     const grant = async (
       organizationId: string,
       userId: string,
-      role: 'ADMIN' | 'MEMBER',
+      role: 'ADMIN' | 'RESPONDER',
     ) =>
       (
         await prisma.membership.create({
@@ -201,13 +201,13 @@ describe('incident notifications (integration)', () => {
     const inA = {
       alice: await grant(orgA, users.alice, 'ADMIN'),
       gus: await grant(orgA, users.gus, 'ADMIN'),
-      ben: await grant(orgA, users.ben, 'MEMBER'),
-      cara: await grant(orgA, users.cara, 'MEMBER'),
-      dan: await grant(orgA, users.dan, 'MEMBER'),
-      eve: await grant(orgA, users.eve, 'MEMBER'),
-      carol: await grant(orgA, users.carol, 'MEMBER'),
+      ben: await grant(orgA, users.ben, 'RESPONDER'),
+      cara: await grant(orgA, users.cara, 'RESPONDER'),
+      dan: await grant(orgA, users.dan, 'RESPONDER'),
+      eve: await grant(orgA, users.eve, 'RESPONDER'),
+      carol: await grant(orgA, users.carol, 'RESPONDER'),
     };
-    const carolInB = await grant(orgB, users.carol, 'MEMBER');
+    const carolInB = await grant(orgB, users.carol, 'RESPONDER');
     const bobInB = await grant(orgB, users.bob, 'ADMIN');
     const payments = await team(orgA, 'Payments');
     const platform = await team(orgA, 'Platform');

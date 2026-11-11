@@ -49,7 +49,7 @@ const team = (memberCount: number, serviceCount: number, n = 1) => ({
 
 const member = (n: number) => ({
   id: `0199a1b2-c3d4-7000-8000-0000000000a${n}`,
-  role: n === 0 ? "ADMIN" : "MEMBER",
+  role: n === 0 ? "ADMIN" : "RESPONDER",
   createdAt: "2026-09-01T12:00:00.000Z",
   user: {
     id: `0199a1b2-c3d4-7000-8000-00000000010${n}`,

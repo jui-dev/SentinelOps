@@ -10,7 +10,9 @@
 export const DEV_PASSWORD = "dev-password-123";
 
 export const DEV_PERSONAS = [
-  { email: "admin@example.com", name: "Dev Admin", label: "Admin" },
+  { email: "admin@example.com", name: "Morgan Reyes", label: "Admin" },
+  { email: "ava@example.com", name: "Ava Kim", label: "Incident Manager" },
+  { email: "alex@example.com", name: "Alex Rivera", label: "Reporter" },
   { email: "priya@example.com", name: "Priya Shah", label: "Payments" },
   { email: "sam@example.com", name: "Sam Okafor", label: "Payments · Risk" },
   { email: "lee@example.com", name: "Lee Chen", label: "Platform" },

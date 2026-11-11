@@ -27,7 +27,9 @@ import { queryKeys } from "@/lib/api/query-keys";
 import { useCan, useOrganizationId } from "./organization-scope";
 
 const ROLES: { value: InvitableRole; label: string }[] = [
-  { value: "MEMBER", label: "Member" },
+  { value: "RESPONDER", label: "Responder" },
+  { value: "REPORTER", label: "Reporter" },
+  { value: "INCIDENT_MANAGER", label: "Incident Manager" },
   { value: "ADMIN", label: "Admin" },
 ];
 
@@ -152,7 +154,7 @@ export function InviteMemberForm() {
     const form = event.currentTarget;
     const data = new FormData(form);
     const email = String(data.get("email") ?? "");
-    const role = String(data.get("role") ?? "MEMBER") as InvitableRole;
+    const role = String(data.get("role") ?? "RESPONDER") as InvitableRole;
 
     setIssued(null);
     create.mutate(
@@ -205,7 +207,7 @@ export function InviteMemberForm() {
             />
           </div>
           <div className="w-36">
-            <Select label="Role" name="role" defaultValue="MEMBER">
+            <Select label="Role" name="role" defaultValue="RESPONDER">
               {ROLES.map(({ value, label }) => (
                 <option key={value} value={value}>
                   {label}

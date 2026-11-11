@@ -223,7 +223,7 @@ describe('Incidents (e2e)', () => {
     await app.close();
   });
 
-  describe.each<Role>(['ADMIN', 'MEMBER'])('as %s', (role) => {
+  describe.each<Role>(['ADMIN', 'RESPONDER'])('as %s', (role) => {
     beforeEach(() => admitAs(role));
 
     it('should list a page in the collection envelope', async () => {
@@ -243,7 +243,10 @@ describe('Incidents (e2e)', () => {
       expect(response.body).toEqual({
         manage:
           role === 'ADMIN' ? { needsDecision: [], readyToResolve: [] } : null,
-        respond: { assignedToYou: [], needsYourTeam: [], yourResponses: [] },
+        respond:
+          role === 'ADMIN'
+            ? null
+            : { assignedToYou: [], needsYourTeam: [], yourResponses: [] },
       });
       expect(prisma.incident.findFirst).not.toHaveBeenCalled();
       // The caller's teams are found by their admitted membership, within
@@ -381,9 +384,7 @@ describe('Incidents (e2e)', () => {
       prisma.organization.findFirst.mockResolvedValue({
         createdAt: new Date('2026-01-01T00:00:00.000Z'),
       });
-      prisma.$queryRaw.mockResolvedValue([
-        { day: '2026-09-15', declared: 2 },
-      ]);
+      prisma.$queryRaw.mockResolvedValue([{ day: '2026-09-15', declared: 2 }]);
 
       const response = await send(
         'get',
@@ -534,9 +535,7 @@ describe('Incidents (e2e)', () => {
         status: 'INVESTIGATING',
       });
 
-      expect(
-        (await send('patch', `${base}/1`, RESOLVE)).status,
-      ).toBe(200);
+      expect((await send('patch', `${base}/1`, RESOLVE)).status).toBe(200);
     });
 
     it('should refuse resolving without a note with 400 naming it, before reading anything', async () => {
@@ -580,7 +579,7 @@ describe('Incidents (e2e)', () => {
   });
 
   describe('as MEMBER', () => {
-    beforeEach(() => admitAs('MEMBER'));
+    beforeEach(() => admitAs('RESPONDER'));
 
     it.each([
       {
@@ -650,20 +649,17 @@ describe('Incidents (e2e)', () => {
       { name: 'the summary', path: 'summary' },
       { name: 'the activity calendar', path: 'activity' },
       { name: 'occurrence', path: 'occurrence' },
-    ])(
-      'should refuse $name with 403, reading nothing',
-      async ({ path }) => {
-        const response = await send(
-          'get',
-          `${base}/${path}?from=2026-09-13&to=2026-09-19`,
-        );
+    ])('should refuse $name with 403, reading nothing', async ({ path }) => {
+      const response = await send(
+        'get',
+        `${base}/${path}?from=2026-09-13&to=2026-09-19`,
+      );
 
-        expect(response.status).toBe(403);
-        expect(response.body.code).toBe('PERMISSION_DENIED');
-        expect(prisma.$transaction).not.toHaveBeenCalled();
-        expect(prisma.incidentActivity.findMany).not.toHaveBeenCalled();
-      },
-    );
+      expect(response.status).toBe(403);
+      expect(response.body.code).toBe('PERMISSION_DENIED');
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(prisma.incidentActivity.findMany).not.toHaveBeenCalled();
+    });
 
     // Authorization runs before the handler, so the period is never looked
     // at: a refusal, not a complaint about the request.
@@ -707,6 +703,10 @@ describe('Incidents (e2e)', () => {
 
     it('should refuse an update before starting to investigate with 403 START_INVESTIGATING_FIRST, writing nothing', async () => {
       prisma.incidentResponder.findFirst.mockResolvedValue(null);
+      // Locked, then found not to be theirs: they did not declare it.
+      prisma.incident.findFirst
+        .mockResolvedValueOnce(await prisma.incident.findFirst())
+        .mockResolvedValueOnce(null);
 
       const response = await send('post', `${base}/1/updates`, {
         message: 'Seeing timeouts from the card processor.',
@@ -999,7 +999,7 @@ describe('Incidents (e2e)', () => {
     const responses = (membershipId: string) =>
       `/api/v1/organizations/${ORG_ID}/memberships/${membershipId}/responses`;
 
-    it.each(['ADMIN', 'MEMBER'] as const)(
+    it.each(['ADMIN', 'RESPONDER'] as const)(
       'should let a %s read their own, as a page',
       async (role) => {
         admitAs(role);
@@ -1033,7 +1033,7 @@ describe('Incidents (e2e)', () => {
     });
 
     it("should answer a MEMBER asking for another member's with 404, reading nothing", async () => {
-      admitAs('MEMBER');
+      admitAs('RESPONDER');
 
       const response = await send('get', responses(ANOTHER_MEMBERSHIP_ID));
 
@@ -1050,7 +1050,7 @@ describe('Incidents (e2e)', () => {
     });
 
     it('should answer a malformed membership id with 404, reading no responses', async () => {
-      admitAs('MEMBER');
+      admitAs('RESPONDER');
 
       const response = await send('get', responses('not-a-membership'));
 
@@ -1060,7 +1060,7 @@ describe('Incidents (e2e)', () => {
     });
 
     it('should refuse a malformed cursor with 400', async () => {
-      admitAs('MEMBER');
+      admitAs('RESPONDER');
 
       const response = await send(
         'get',
@@ -1077,7 +1077,7 @@ describe('Incidents (e2e)', () => {
     const activity = (membershipId: string, query = PERIOD) =>
       `/api/v1/organizations/${ORG_ID}/memberships/${membershipId}/activity?${query}`;
 
-    it.each(['ADMIN', 'MEMBER'] as const)(
+    it.each(['ADMIN', 'RESPONDER'] as const)(
       'should let a %s read their own, as a calendar of days',
       async (role) => {
         admitAs(role);
@@ -1098,7 +1098,7 @@ describe('Incidents (e2e)', () => {
     );
 
     it('should read the entries this member wrote in the admitted organization', async () => {
-      admitAs('MEMBER');
+      admitAs('RESPONDER');
 
       const response = await send('get', activity(MEMBERSHIP_ID));
 
@@ -1142,7 +1142,7 @@ describe('Incidents (e2e)', () => {
     });
 
     it("should answer a MEMBER asking for another member's with 404, reading nothing", async () => {
-      admitAs('MEMBER');
+      admitAs('RESPONDER');
 
       const response = await send('get', activity(ANOTHER_MEMBERSHIP_ID));
 
@@ -1157,7 +1157,7 @@ describe('Incidents (e2e)', () => {
     });
 
     it('should answer a malformed membership id with 404, reading no activity', async () => {
-      admitAs('MEMBER');
+      admitAs('RESPONDER');
 
       const response = await send('get', activity('not-a-membership'));
 
@@ -1192,7 +1192,7 @@ describe('Incidents (e2e)', () => {
       'from=2026-09-19&to=2026-09-13',
       'from=2025-01-01&to=2026-09-19',
     ])('should refuse the period %s with 400', async (query) => {
-      admitAs('MEMBER');
+      admitAs('RESPONDER');
 
       const response = await send('get', activity(MEMBERSHIP_ID, query));
 

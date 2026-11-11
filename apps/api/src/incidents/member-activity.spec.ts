@@ -49,16 +49,14 @@ describe('what counts as one member’s response activity', () => {
    * incident, not participation in its response. The Admin's own updates are
    * participation, and are counted by the rule above.
    */
-  it.each([
-    'DECLARED',
-    'STATUS_CHANGED',
-    'SEVERITY_CHANGED',
-    'TEAM_CHANGED',
-  ])('should not count %s', (type) => {
-    expect(
-      memberCategoryOf({ type: type as IncidentActivityType }),
-    ).toBeUndefined();
-  });
+  it.each(['DECLARED', 'STATUS_CHANGED', 'SEVERITY_CHANGED', 'TEAM_CHANGED'])(
+    'should not count %s',
+    (type) => {
+      expect(
+        memberCategoryOf({ type: type as IncidentActivityType }),
+      ).toBeUndefined();
+    },
+  );
 
   /**
    * The server writes it a millisecond after the member's own
@@ -134,7 +132,10 @@ describe('a member’s activity levels', () => {
 
   it('should reach a higher band than the organization would for the same day', () => {
     const busy = Array.from({ length: 6 }, (_, index) =>
-      entry('UPDATE', `2026-09-16T${String(9 + index).padStart(2, '0')}:00:00Z`),
+      entry(
+        'UPDATE',
+        `2026-09-16T${String(9 + index).padStart(2, '0')}:00:00Z`,
+      ),
     );
 
     // Six events: the top band for a person, the middle one for an
@@ -186,7 +187,10 @@ describe('the member activity calendar', () => {
     ]);
 
     expect(
-      day?.incidents.map(({ incident: { number }, events }) => [number, events]),
+      day?.incidents.map(({ incident: { number }, events }) => [
+        number,
+        events,
+      ]),
     ).toEqual([
       [7, 2],
       [9, 1],

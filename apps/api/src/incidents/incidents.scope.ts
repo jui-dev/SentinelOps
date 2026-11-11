@@ -9,8 +9,11 @@
  *   - its responsible team (Incident.teamId) is one they are on now
  *   - they responded to it: an IncidentResponder row, whatever its status,
  *     which outlives a reassignment of the team
- *   - the Admin assigned them to it, from whatever team
+ *   - they were assigned to it, from whatever team
  *   - they own its analysis
+ *   - they declared it: how a Reporter, who is on no team, follows what
+ *     they raised. The declarer is a user, so this matches whoever holds the
+ *     reader's membership.
  *
  * The service's owner is deliberately not consulted. Incident.teamId is the
  * recorded responsibility, the same relation that decides who may start
@@ -54,6 +57,7 @@ export const incidentReadScope = (
       { responders: { some: { membershipId } } },
       { assignees: { some: { membershipId } } },
       { analysis: { is: { ownerMembershipId: membershipId } } },
+      { createdBy: { memberships: { some: { id: membershipId } } } },
     ],
   };
 };

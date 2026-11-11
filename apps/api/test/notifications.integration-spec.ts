@@ -133,7 +133,7 @@ describe('notifications (integration)', () => {
     const grant = async (
       organizationId: string,
       userId: string,
-      role: 'ADMIN' | 'MEMBER',
+      role: 'ADMIN' | 'RESPONDER',
     ) =>
       (
         await prisma.membership.create({
@@ -212,9 +212,9 @@ describe('notifications (integration)', () => {
       dave,
       carol,
       aliceInA: await grant(orgA, alice, 'ADMIN'),
-      daveInA: await grant(orgA, dave, 'MEMBER'),
+      daveInA: await grant(orgA, dave, 'RESPONDER'),
       carolInA: await grant(orgA, carol, 'ADMIN'),
-      carolInB: await grant(orgB, carol, 'MEMBER'),
+      carolInB: await grant(orgB, carol, 'RESPONDER'),
       bobInB: await grant(orgB, bob, 'ADMIN'),
       paymentsA,
       paymentsB,

@@ -114,7 +114,9 @@ export function AssignPeopleDialog({
       return next;
     });
 
-  const people = (memberships.data ?? []).filter(({ role }) => role !== "ADMIN");
+  const people = (memberships.data ?? []).filter(
+    ({ role }) => role === "RESPONDER",
+  );
   const onTeam = (member: OrganizationMembershipResponse) =>
     member.teams.some(({ id }) => id === incident.team.id);
   const teamsOf = (member: OrganizationMembershipResponse) =>

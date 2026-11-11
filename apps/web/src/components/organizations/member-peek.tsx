@@ -53,7 +53,7 @@ export function MemberPeek({ member }: { member: OrganizationMembershipResponse 
       >
         {member.teams.length === 0 ? (
           <PeekEmpty>
-            {member.role === "MEMBER"
+            {member.role === "RESPONDER"
               ? `${first} is on no team, so sees no incidents.`
               : `${first} is on no team.`}
           </PeekEmpty>

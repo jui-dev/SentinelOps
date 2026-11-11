@@ -144,7 +144,7 @@ describe('Notifications (e2e)', () => {
     vi.resetAllMocks();
   });
 
-  describe.each(['ADMIN', 'MEMBER'] as const)('as %s', (role) => {
+  describe.each(['ADMIN', 'RESPONDER'] as const)('as %s', (role) => {
     beforeEach(() => admitAs(role));
 
     it('should list the caller’s notifications in the page envelope', async () => {
@@ -190,7 +190,7 @@ describe('Notifications (e2e)', () => {
   });
 
   describe('the recipient', () => {
-    beforeEach(() => admitAs('MEMBER'));
+    beforeEach(() => admitAs('RESPONDER'));
 
     it('should be the admitted membership on every route, whatever the request names', async () => {
       const elsewhere = `recipientMembershipId=${SOMEONE_ELSE}&membershipId=${SOMEONE_ELSE}`;
@@ -253,7 +253,7 @@ describe('Notifications (e2e)', () => {
   });
 
   describe('validation', () => {
-    beforeEach(() => admitAs('MEMBER'));
+    beforeEach(() => admitAs('RESPONDER'));
 
     it.each([
       ['no bound', {}],
@@ -311,7 +311,7 @@ describe('Notifications (e2e)', () => {
     it.each(ROUTES().map((route) => [route.method, route.path, route]))(
       'should refuse %s %s with 403 while the password must be changed',
       async (_method, _path, route) => {
-        admitAs('MEMBER', true);
+        admitAs('RESPONDER', true);
 
         const response = await send(route, 403);
 

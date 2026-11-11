@@ -97,18 +97,30 @@ export const Permission = {
    */
   INCIDENTS_READ_ALL: 'incidents:read-all',
   /**
-   * Run an incident's lifecycle: declare it, change it, reassign it, and
-   * resolve it. Whoever holds it also oversees every incident's response,
-   * and may respond to any.
+   * Declare an incident against any of the organization's services. Separate
+   * from `incidents:manage`, because raising an incident and deciding on it
+   * are different jobs: a Reporter declares and an Incident Manager decides.
+   */
+  INCIDENTS_DECLARE: 'incidents:declare',
+  /**
+   * Decide on an incident: change it, choose who may respond, reassign it,
+   * and resolve it. Whoever holds it also oversees every incident's
+   * response, and may post updates on any.
    */
   INCIDENTS_MANAGE: 'incidents:manage',
   /**
-   * Take part in an incident's response: post operational updates. Scoped by
-   * IncidentsService to the incidents the caller's team is responsible for —
-   * a permission this table grants to a role, and the service narrows to
-   * the incident.
+   * Post operational updates on an incident. Scoped by IncidentsService: a
+   * caller without `incidents:manage` posts only on an incident they are
+   * responding to, or one they declared.
    */
   INCIDENTS_RESPOND: 'incidents:respond',
+  /**
+   * Work an incident's response: start your own, and mark it complete. The
+   * Responder's job alone — whoever decides on an incident, or raised it,
+   * does not also work it. Narrowed further by IncidentsService to the
+   * incidents the response access lets the caller start.
+   */
+  RESPONSES_WORK: 'responses:work',
   /**
    * Write an incident analysis: its sections, and publishing it. Scoped by
    * IncidentAnalysesService to the analysis's owner, unless the caller also

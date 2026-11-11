@@ -79,10 +79,12 @@ describe('development organization (integration)', () => {
     ).toEqual(
       [
         ['admin@example.com', 'ADMIN'],
-        ['jordan@example.com', 'MEMBER'],
-        ['lee@example.com', 'MEMBER'],
-        ['priya@example.com', 'MEMBER'],
-        ['sam@example.com', 'MEMBER'],
+        ['alex@example.com', 'REPORTER'],
+        ['ava@example.com', 'INCIDENT_MANAGER'],
+        ['jordan@example.com', 'RESPONDER'],
+        ['lee@example.com', 'RESPONDER'],
+        ['priya@example.com', 'RESPONDER'],
+        ['sam@example.com', 'RESPONDER'],
       ].map(([email, role]) => ({
         role,
         user: { email, passwordChangeRequired: false },
@@ -115,6 +117,8 @@ describe('development organization (integration)', () => {
       },
     ]);
     expect(await teamsOf('admin@example.com')).toEqual([]);
+    expect(await teamsOf('ava@example.com')).toEqual([]);
+    expect(await teamsOf('alex@example.com')).toEqual([]);
     expect(await teamsOf('priya@example.com')).toEqual(['Payments']);
     expect(await teamsOf('sam@example.com')).toEqual(['Payments', 'Risk']);
     expect(await teamsOf('lee@example.com')).toEqual(['Platform']);

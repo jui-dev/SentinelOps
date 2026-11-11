@@ -65,7 +65,7 @@ const ref = ({ id, name, slug }: typeof PAYMENTS) => ({ id, name, slug });
 
 const grace = (teams: (typeof PAYMENTS)[], passwordChangeRequired = false) => ({
   id: GRACE,
-  role: "MEMBER",
+  role: "RESPONDER",
   createdAt: "2026-09-19T12:00:00.000Z",
   user: {
     id: "0199a1b2-c3d4-7000-8000-000000000002",
@@ -191,7 +191,7 @@ describe("a member's page", () => {
     const value = (term: string) =>
       within(glance).getByText(term).nextSibling?.textContent;
 
-    expect(value("Role")).toBe("Member");
+    expect(value("Role")).toBe("Responder");
     expect(value("Teams")).toBe("2");
     expect(value("Joined")).toMatch(/2026/);
     // Nothing that counts or compares their work.

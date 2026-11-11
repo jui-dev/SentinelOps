@@ -29,12 +29,36 @@ const EXPECTED: Record<Role, Record<Permission, boolean>> = {
     'services:manage': true,
     'incidents:read': true,
     'incidents:read-all': true,
+    'incidents:declare': true,
     'incidents:manage': true,
     'incidents:respond': true,
+    'responses:work': false,
     'incident-analyses:write': true,
     'notifications:read': true,
   },
-  MEMBER: {
+  INCIDENT_MANAGER: {
+    'organization:read': true,
+    'organization:update': false,
+    'memberships:read': true,
+    'memberships:read-all': true,
+    'members:manage': false,
+    'invitations:read': false,
+    'invitations:manage': false,
+    'teams:read': true,
+    'teams:read-all': true,
+    'teams:manage': false,
+    'services:read': true,
+    'services:manage': false,
+    'incidents:read': true,
+    'incidents:read-all': true,
+    'incidents:declare': true,
+    'incidents:manage': true,
+    'incidents:respond': true,
+    'responses:work': false,
+    'incident-analyses:write': true,
+    'notifications:read': true,
+  },
+  REPORTER: {
     'organization:read': true,
     'organization:update': false,
     'memberships:read': true,
@@ -49,8 +73,32 @@ const EXPECTED: Record<Role, Record<Permission, boolean>> = {
     'services:manage': false,
     'incidents:read': true,
     'incidents:read-all': false,
+    'incidents:declare': true,
     'incidents:manage': false,
     'incidents:respond': true,
+    'responses:work': false,
+    'incident-analyses:write': false,
+    'notifications:read': true,
+  },
+  RESPONDER: {
+    'organization:read': true,
+    'organization:update': false,
+    'memberships:read': true,
+    'memberships:read-all': false,
+    'members:manage': false,
+    'invitations:read': false,
+    'invitations:manage': false,
+    'teams:read': true,
+    'teams:read-all': false,
+    'teams:manage': false,
+    'services:read': true,
+    'services:manage': false,
+    'incidents:read': true,
+    'incidents:read-all': false,
+    'incidents:declare': false,
+    'incidents:manage': false,
+    'incidents:respond': true,
+    'responses:work': true,
     'incident-analyses:write': true,
     'notifications:read': true,
   },
@@ -72,72 +120,87 @@ describe('role permissions', () => {
     );
   });
 
-  it('should not let a member rename the organization', () => {
-    expect(hasPermission('MEMBER', Permission.ORGANIZATION_UPDATE)).toBe(false);
+  it('should have exactly four roles', () => {
+    expect([...ROLES].sort()).toEqual([
+      'ADMIN',
+      'INCIDENT_MANAGER',
+      'REPORTER',
+      'RESPONDER',
+    ]);
   });
 
-  it('should not let a member add people to the organization', () => {
-    expect(hasPermission('MEMBER', Permission.MEMBERS_MANAGE)).toBe(false);
-    expect(hasPermission('ADMIN', Permission.MEMBERS_MANAGE)).toBe(true);
-  });
-
-  it('should not let a member see or manage invitations', () => {
-    // Open invitations name people who are not members yet.
-    expect(hasPermission('MEMBER', Permission.INVITATIONS_READ)).toBe(false);
-    expect(hasPermission('MEMBER', Permission.INVITATIONS_MANAGE)).toBe(false);
-  });
-
-  it('should let every role read teams, but only admins manage them', () => {
-    for (const role of ROLES) {
-      expect(hasPermission(role, Permission.TEAMS_READ)).toBe(true);
-    }
-
-    expect(hasPermission('MEMBER', Permission.TEAMS_MANAGE)).toBe(false);
-  });
-
-  it('should let every role read services, but only admins manage them', () => {
-    // Owning a service grants the owning team nothing: this is the whole rule.
-    for (const role of ROLES) {
-      expect(hasPermission(role, Permission.SERVICES_READ)).toBe(true);
-    }
-
-    expect(hasPermission('MEMBER', Permission.SERVICES_MANAGE)).toBe(false);
-  });
-
-  it('should let every role read and respond to incidents', () => {
-    for (const role of ROLES) {
-      expect(hasPermission(role, Permission.INCIDENTS_READ)).toBe(true);
-      expect(hasPermission(role, Permission.INCIDENTS_RESPOND)).toBe(true);
+  it('should let only admins set the organization up', () => {
+    for (const permission of [
+      Permission.ORGANIZATION_UPDATE,
+      Permission.MEMBERS_MANAGE,
+      Permission.INVITATIONS_READ,
+      Permission.INVITATIONS_MANAGE,
+      Permission.TEAMS_MANAGE,
+      Permission.SERVICES_MANAGE,
+    ]) {
+      expect(ROLES.filter((role) => hasPermission(role, permission))).toEqual([
+        'ADMIN',
+      ]);
     }
   });
 
-  it('should let only admins oversee every incident', () => {
-    // Everyone else reads their own incidents: incidents.scope.ts.
-    expect(hasPermission('ADMIN', Permission.INCIDENTS_READ_ALL)).toBe(true);
-    expect(hasPermission('MEMBER', Permission.INCIDENTS_READ_ALL)).toBe(false);
+  it('should let admins and incident managers decide on incidents, and nobody else', () => {
+    expect(
+      ROLES.filter((role) => hasPermission(role, Permission.INCIDENTS_MANAGE)),
+    ).toEqual(['ADMIN', 'INCIDENT_MANAGER']);
   });
 
-  it('should let whoever runs incident lifecycles oversee every incident', () => {
-    // A lifecycle can be run only on an incident its runner can read.
+  it('should let everyone but responders declare', () => {
+    expect(
+      ROLES.filter((role) => hasPermission(role, Permission.INCIDENTS_DECLARE)),
+    ).toEqual(['ADMIN', 'INCIDENT_MANAGER', 'REPORTER']);
+  });
+
+  it('should let only responders work a response', () => {
+    expect(
+      ROLES.filter((role) => hasPermission(role, Permission.RESPONSES_WORK)),
+    ).toEqual(['RESPONDER']);
+  });
+
+  it('should give admins everything an incident manager holds', () => {
+    // A checked property of today's table, not a rule the code relies on.
+    for (const permission of ROLE_PERMISSIONS.INCIDENT_MANAGER) {
+      expect(hasPermission('ADMIN', permission)).toBe(true);
+    }
+  });
+
+  it('should let whoever decides on incidents oversee every incident, team and member', () => {
+    // Deciding is done on an incident its decider can read, and assigning
+    // anyone needs everyone in view.
     for (const role of ROLES) {
       if (hasPermission(role, Permission.INCIDENTS_MANAGE)) {
         expect(hasPermission(role, Permission.INCIDENTS_READ_ALL)).toBe(true);
+        expect(hasPermission(role, Permission.TEAMS_READ_ALL)).toBe(true);
+        expect(hasPermission(role, Permission.MEMBERSHIPS_READ_ALL)).toBe(true);
       }
     }
   });
 
-  it("should let only admins run an incident's lifecycle", () => {
-    // Declaring, changing, assigning people, and resolving.
-    expect(hasPermission('ADMIN', Permission.INCIDENTS_MANAGE)).toBe(true);
-    expect(hasPermission('MEMBER', Permission.INCIDENTS_MANAGE)).toBe(false);
+  it('should let every role read incidents, teams, services, the organization and its members', () => {
+    for (const role of ROLES) {
+      expect(hasPermission(role, Permission.INCIDENTS_READ)).toBe(true);
+      expect(hasPermission(role, Permission.TEAMS_READ)).toBe(true);
+      expect(hasPermission(role, Permission.SERVICES_READ)).toBe(true);
+      expect(hasPermission(role, Permission.ORGANIZATION_READ)).toBe(true);
+      expect(hasPermission(role, Permission.MEMBERSHIPS_READ)).toBe(true);
+    }
   });
 
-  it('should let every role write an incident analysis, which the service narrows to its owner', () => {
+  it('should let every role post updates, which the service narrows', () => {
     for (const role of ROLES) {
-      expect(hasPermission(role, Permission.INCIDENT_ANALYSES_WRITE)).toBe(
-        true,
-      );
+      expect(hasPermission(role, Permission.INCIDENTS_RESPOND)).toBe(true);
     }
+  });
+
+  it('should keep analyses from reporters', () => {
+    expect(hasPermission('REPORTER', Permission.INCIDENT_ANALYSES_WRITE)).toBe(
+      false,
+    );
   });
 
   it('should let an analysis writer read the incident it analyses', () => {
@@ -163,24 +226,6 @@ describe('role permissions', () => {
         expect(hasPermission(role, Permission.INCIDENTS_READ)).toBe(true);
         expect(hasPermission(role, Permission.TEAMS_READ)).toBe(true);
       }
-    }
-  });
-
-  it('should let every role read the organization and its memberships', () => {
-    for (const role of ROLES) {
-      expect(hasPermission(role, Permission.ORGANIZATION_READ)).toBe(true);
-      expect(hasPermission(role, Permission.MEMBERSHIPS_READ)).toBe(true);
-    }
-  });
-
-  it('should have exactly two roles, ADMIN and MEMBER', () => {
-    expect([...ROLES].sort()).toEqual(['ADMIN', 'MEMBER']);
-  });
-
-  it('should currently order the roles ADMIN ⊇ MEMBER', () => {
-    // A checked property of today's table, not a rule the code relies on.
-    for (const permission of ROLE_PERMISSIONS.MEMBER) {
-      expect(hasPermission('ADMIN', permission)).toBe(true);
     }
   });
 
@@ -239,9 +284,9 @@ describe('role permissions', () => {
     });
 
     it('should return a copy the caller cannot use to change the policy', () => {
-      permissionsFor('MEMBER').push(Permission.ORGANIZATION_UPDATE);
+      permissionsFor('RESPONDER').push(Permission.ORGANIZATION_UPDATE);
 
-      expect(hasPermission('MEMBER', Permission.ORGANIZATION_UPDATE)).toBe(
+      expect(hasPermission('RESPONDER', Permission.ORGANIZATION_UPDATE)).toBe(
         false,
       );
     });

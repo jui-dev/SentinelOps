@@ -4,49 +4,45 @@ import { Permission } from './permissions.js';
 /**
  * The permissions each membership role holds.
  *
- * Written out in full per role rather than derived from a hierarchy. Today
- * ADMIN ⊇ MEMBER, and a spec asserts exactly that — but as a checked property
- * of this table, not an assumption built into the code, so a later role that
- * does not sit on the ladder is a change here and nowhere else.
+ * Written out in full per role rather than derived from a hierarchy. ADMIN
+ * holds everything INCIDENT_MANAGER does, and a spec asserts exactly that —
+ * but as a checked property of this table, not an assumption built into the
+ * code. The roles do not form a ladder: only RESPONDER works a response.
  *
  * Keyed by `Role`, so adding an enum value without deciding what it may do is
  * a compile error rather than a role that silently holds nothing.
  *
- * Configuration — members, teams, services, invitations — is governed by
- * ADMIN. Reading teams (`teams:read`) is every role's, scoped by
- * teams.scope.ts to the teams the caller is on now unless they also hold
- * `teams:read-all`, which only ADMIN does: the Admin sees the organization's
- * teams, a MEMBER sees the ones they belong to. That scope is current
- * placement only — responding to an incident, or owning its analysis, does
- * not make the team now responsible for it visible, and neither does a
- * placement the member used to have.
+ * One job per role, in the order an incident needs them:
  *
- * So is an incident's lifecycle (`incidents:manage`): declaring it,
- * changing its status, severity, or responsible team, and resolving it.
- * Taking part in the response (`incidents:respond`) is every role's work —
- * posting operational updates — but a MEMBER's is scoped to the incidents
- * their team is responsible for. That scope depends on the incident, so it
- * is IncidentsService's check, not this table's.
+ *   REPORTER          raises incidents (`incidents:declare`), sees the ones
+ *                     they declared, and posts updates on them.
+ *   INCIDENT_MANAGER  decides on incidents (`incidents:manage`): severity,
+ *                     who may respond, the responsible team, resolution, and
+ *                     starting the analysis. Oversees every incident and
+ *                     every team, and sees every member, so they can assign
+ *                     anyone. Declares too.
+ *   RESPONDER         works the response (`responses:work`): starts and
+ *                     completes their own, on the incidents their teams are
+ *                     responsible for or they are assigned to.
+ *   ADMIN             sets the organization up — members, roles, teams,
+ *                     services, invitations, settings — and can do
+ *                     everything an Incident Manager does. Does not work a
+ *                     response.
  *
- * Writing an incident analysis (`incident-analyses:write`) is every role's
- * too, scoped by IncidentAnalysesService to the analysis's owner unless the
- * caller also runs incidents' lifecycles. Starting one and choosing its owner
- * are part of that lifecycle, `incidents:manage`.
+ * Reading is every role's, scoped by the read services unless the caller
+ * also holds the matching `:read-all`: `incidents:read` by incidents.scope.ts
+ * (their teams', assigned, responded to, analysis owned, or declared),
+ * `teams:read` by teams.scope.ts (current placement only), and
+ * `memberships:read` by OrganizationsService (teammates, and whoever decides).
  *
- * Reading incidents (`incidents:read`) is every role's, scoped by
- * incidents.scope.ts to the caller's own incidents unless they also hold
- * `incidents:read-all`, which only ADMIN does: the Admin oversees the whole
- * organization, a MEMBER sees the incidents they are responsible for or
- * took part in.
+ * `incidents:read-all` is also what the organization-wide aggregates require
+ * — the summary, the activity calendar, occurrence. A figure counted across
+ * every incident cannot be narrowed to a reader, so a role holding only
+ * `incidents:read` does not see the organization's totals.
  *
- * That same `incidents:read-all` is what the organization-wide aggregates
- * require — the summary, the activity calendar, occurrence. A figure counted
- * across every incident cannot be narrowed to a reader, so a MEMBER holding
- * `incidents:read` does not thereby see the organization's totals; giving
- * them a reading of their own is their own surface's work, not this table's.
- *
- * Declaring is ADMIN-only as the current rule, not a settled one: letting a
- * MEMBER declare against services their own teams own may be reconsidered.
+ * Writing an incident analysis (`incident-analyses:write`) is scoped by
+ * IncidentAnalysesService to the analysis's owner, unless the caller also
+ * holds `incidents:manage`. A Reporter does not write analyses.
  */
 export const ROLE_PERMISSIONS: Readonly<Record<Role, ReadonlySet<Permission>>> =
   {
@@ -65,18 +61,45 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, ReadonlySet<Permission>>> =
       Permission.SERVICES_MANAGE,
       Permission.INCIDENTS_READ,
       Permission.INCIDENTS_READ_ALL,
+      Permission.INCIDENTS_DECLARE,
       Permission.INCIDENTS_MANAGE,
       Permission.INCIDENTS_RESPOND,
       Permission.INCIDENT_ANALYSES_WRITE,
       Permission.NOTIFICATIONS_READ,
     ]),
-    MEMBER: new Set([
+    INCIDENT_MANAGER: new Set([
+      Permission.ORGANIZATION_READ,
+      Permission.MEMBERSHIPS_READ,
+      Permission.MEMBERSHIPS_READ_ALL,
+      Permission.TEAMS_READ,
+      Permission.TEAMS_READ_ALL,
+      Permission.SERVICES_READ,
+      Permission.INCIDENTS_READ,
+      Permission.INCIDENTS_READ_ALL,
+      Permission.INCIDENTS_DECLARE,
+      Permission.INCIDENTS_MANAGE,
+      Permission.INCIDENTS_RESPOND,
+      Permission.INCIDENT_ANALYSES_WRITE,
+      Permission.NOTIFICATIONS_READ,
+    ]),
+    REPORTER: new Set([
+      Permission.ORGANIZATION_READ,
+      Permission.MEMBERSHIPS_READ,
+      Permission.TEAMS_READ,
+      Permission.SERVICES_READ,
+      Permission.INCIDENTS_READ,
+      Permission.INCIDENTS_DECLARE,
+      Permission.INCIDENTS_RESPOND,
+      Permission.NOTIFICATIONS_READ,
+    ]),
+    RESPONDER: new Set([
       Permission.ORGANIZATION_READ,
       Permission.MEMBERSHIPS_READ,
       Permission.TEAMS_READ,
       Permission.SERVICES_READ,
       Permission.INCIDENTS_READ,
       Permission.INCIDENTS_RESPOND,
+      Permission.RESPONSES_WORK,
       Permission.INCIDENT_ANALYSES_WRITE,
       Permission.NOTIFICATIONS_READ,
     ]),

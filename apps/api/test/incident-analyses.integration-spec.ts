@@ -182,7 +182,7 @@ describe('incident analyses (integration)', () => {
     const grant = async (
       organizationId: string,
       userId: string,
-      role: 'ADMIN' | 'MEMBER',
+      role: 'ADMIN' | 'RESPONDER',
     ) =>
       (
         await prisma.membership.create({
@@ -226,9 +226,9 @@ describe('incident analyses (integration)', () => {
     const aliceInA = await grant(orgA, alice, 'ADMIN');
     await grant(orgB, bob, 'ADMIN');
     await grant(orgA, carol, 'ADMIN');
-    const carolInB = await grant(orgB, carol, 'MEMBER');
-    const daveInA = await grant(orgA, dave, 'MEMBER');
-    const erinInA = await grant(orgA, erin, 'MEMBER');
+    const carolInB = await grant(orgB, carol, 'RESPONDER');
+    const daveInA = await grant(orgA, dave, 'RESPONDER');
+    const erinInA = await grant(orgA, erin, 'RESPONDER');
 
     return {
       orgA,

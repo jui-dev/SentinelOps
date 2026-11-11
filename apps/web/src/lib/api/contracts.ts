@@ -146,7 +146,10 @@ export interface InvitationLookupResponse {
 }
 
 /** Roles an invitation may offer. */
-export type InvitableRole = "ADMIN" | "MEMBER";
+/** Every role a person can hold in an organization: one each. */
+export type Role = "ADMIN" | "INCIDENT_MANAGER" | "REPORTER" | "RESPONDER";
+
+export type InvitableRole = Role;
 
 export interface CreateInvitationRequest {
   email: string;
@@ -1104,8 +1107,12 @@ export const Permission = {
    * incident, which the API answers only to a caller holding this.
    */
   INCIDENTS_READ_ALL: "incidents:read-all",
+  /** Declaring an incident: Admins, Incident Managers and Reporters. */
+  INCIDENTS_DECLARE: "incidents:declare",
   INCIDENTS_MANAGE: "incidents:manage",
   INCIDENTS_RESPOND: "incidents:respond",
+  /** Starting and completing one's own response: Responders alone. */
+  RESPONSES_WORK: "responses:work",
   INCIDENT_ANALYSES_WRITE: "incident-analyses:write",
   NOTIFICATIONS_READ: "notifications:read",
 } as const;

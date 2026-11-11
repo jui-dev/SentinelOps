@@ -34,7 +34,7 @@ describe('invitation schemas', () => {
       expect(
         createInvitationSchema.safeParse({
           email: 'g@example.com',
-          role: 'MEMBER',
+          role: 'RESPONDER',
           ...extra,
         }).success,
       ).toBe(false);
@@ -42,7 +42,7 @@ describe('invitation schemas', () => {
 
     it('should refuse an invalid email', () => {
       expect(
-        createInvitationSchema.safeParse({ email: 'nope', role: 'MEMBER' })
+        createInvitationSchema.safeParse({ email: 'nope', role: 'RESPONDER' })
           .success,
       ).toBe(false);
     });

@@ -52,6 +52,7 @@ vi.mock("next/navigation", () => ({
 
 /** What the ADMIN holds: everything, the incident lifecycle included. */
 const ADMIN = [
+  "incidents:declare",
   "incidents:manage",
   "incidents:read",
   "incidents:read-all",
@@ -67,10 +68,11 @@ const ADMIN = [
   "teams:manage",
   "teams:read",
 ];
-/** What a MEMBER holds: every read, and posting operational updates. */
+/** What a RESPONDER holds: every read, working a response, and posting updates. */
 const MEMBER = [
   "incidents:read",
   "incidents:respond",
+  "responses:work",
   "memberships:read",
   "organization:read",
   "services:read",
@@ -166,7 +168,7 @@ const ada = {
 };
 const daniel = {
   id: "0199a1b2-c3d4-7000-8000-0000000000ab",
-  role: "MEMBER",
+  role: "RESPONDER",
   createdAt: "2026-09-02T12:00:00.000Z",
   user: {
     id: "0199a1b2-c3d4-7000-8000-000000000002",

@@ -53,7 +53,7 @@ const ada = {
 
 const grace = {
   id: "0199a1b2-c3d4-7000-8000-0000000000bb",
-  role: "MEMBER",
+  role: "RESPONDER",
   createdAt: "2026-09-19T12:00:00.000Z",
   user: {
     id: "0199a1b2-c3d4-7000-8000-000000000002",
@@ -193,7 +193,7 @@ describe("the members overview", () => {
     // An Admin is not bound by teams: no team is no warning for them.
     expect(within(adaRow).queryByText(/sees no incidents/)).toBeNull();
 
-    expect(within(graceRow).getByText("Member")).toBeDefined();
+    expect(within(graceRow).getByText("Responder")).toBeDefined();
     expect(
       within(graceRow).getAllByText("Awaiting first sign-in").length,
     ).toBeGreaterThan(0);
@@ -690,7 +690,7 @@ describe("adding a member", () => {
     await user.click(submit(dialog));
 
     const panel = await within(dialog).findByRole("status");
-    expect(panel.textContent).toContain("Grace Hopper was added as a Member.");
+    expect(panel.textContent).toContain("Grace Hopper was added as a Responder.");
     expect(
       (within(panel).getByLabelText("Sign-in email") as HTMLInputElement).value,
     ).toBe("grace@example.com");

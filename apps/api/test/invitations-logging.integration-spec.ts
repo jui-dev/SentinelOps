@@ -95,7 +95,7 @@ describe('invitation logging (integration)', () => {
     const forNew = await server()
       .post(path)
       .set('Authorization', await as(alice.id))
-      .send({ email: NEW_EMAIL, role: 'MEMBER' });
+      .send({ email: NEW_EMAIL, role: 'RESPONDER' });
     const forExisting = await server()
       .post(path)
       .set('Authorization', await as(alice.id))

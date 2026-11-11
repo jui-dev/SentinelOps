@@ -178,7 +178,7 @@ describe('Incident analyses (e2e)', () => {
     await app.close();
   });
 
-  describe.each<Role>(['ADMIN', 'MEMBER'])('as %s', (role) => {
+  describe.each<Role>(['ADMIN', 'RESPONDER'])('as %s', (role) => {
     beforeEach(() => admitAs(role));
 
     it('should read the analysis, with facts and key moments derived from the incident', async () => {
@@ -204,7 +204,7 @@ describe('Incident analyses (e2e)', () => {
       expect(prisma.incident.findFirst.mock.calls[0][0].where).toEqual({
         AND: [
           { organizationId: ORG_ID, organization: { deletedAt: null } },
-          ...(role === 'MEMBER'
+          ...(role === 'RESPONDER'
             ? [incidentReadScope({ membershipId: MEMBERSHIP_ID, role })]
             : []),
           expect.objectContaining({ organizationId: ORG_ID, number: 1 }),
@@ -308,7 +308,7 @@ describe('Incident analyses (e2e)', () => {
   });
 
   describe('as MEMBER', () => {
-    beforeEach(() => admitAs('MEMBER'));
+    beforeEach(() => admitAs('RESPONDER'));
 
     it('should refuse starting an analysis with 403, before reading or writing anything', async () => {
       const response = await send('post', base, {
@@ -373,7 +373,7 @@ describe('Incident analyses (e2e)', () => {
     });
 
     it('should let a MEMBER edit the draft they own', async () => {
-      admitAs('MEMBER');
+      admitAs('RESPONDER');
       prisma.incident.findFirst.mockResolvedValue(
         draft({ ownerMembershipId: MEMBERSHIP_ID }),
       );
@@ -398,7 +398,7 @@ describe('Incident analyses (e2e)', () => {
     });
 
     it('should refuse a MEMBER who does not own it with 403 NOT_ANALYSIS_OWNER, writing nothing', async () => {
-      admitAs('MEMBER');
+      admitAs('RESPONDER');
       prisma.incident.findFirst.mockResolvedValue(draft());
 
       const response = await send('patch', base, edit);
@@ -537,7 +537,7 @@ describe('Incident analyses (e2e)', () => {
     });
 
     it('should refuse a MEMBER — even the current owner — with 403, before reading anything', async () => {
-      admitAs('MEMBER');
+      admitAs('RESPONDER');
 
       const response = await send('put', ownerPath, {
         ownerMembershipId: MEMBERSHIP_ID,
@@ -719,7 +719,7 @@ describe('Incident analyses (e2e)', () => {
     });
 
     it('should let a MEMBER publish the draft they own', async () => {
-      admitAs('MEMBER');
+      admitAs('RESPONDER');
       prisma.incident.findFirst.mockResolvedValue(
         draft({ ownerMembershipId: MEMBERSHIP_ID }),
       );
@@ -730,7 +730,7 @@ describe('Incident analyses (e2e)', () => {
     });
 
     it('should refuse a MEMBER who does not own it with 403 NOT_ANALYSIS_OWNER, writing nothing', async () => {
-      admitAs('MEMBER');
+      admitAs('RESPONDER');
       prisma.incident.findFirst.mockResolvedValue(draft());
 
       const response = await send('post', publishPath, publish);

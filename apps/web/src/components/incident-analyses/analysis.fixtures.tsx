@@ -25,6 +25,7 @@ import { renderWithSession } from "@/test/render";
 
 export const ADMIN = [
   "incident-analyses:write",
+  "incidents:declare",
   "incidents:manage",
   "incidents:read",
   "incidents:respond",
@@ -36,6 +37,7 @@ export const MEMBER = [
   "incident-analyses:write",
   "incidents:read",
   "incidents:respond",
+  "responses:work",
   "memberships:read",
   "organization:read",
   "teams:read",
@@ -62,7 +64,7 @@ export const ada = {
 export const daniel = {
   ...ada,
   id: "0199a1b2-c3d4-7000-8000-0000000000ab",
-  role: "MEMBER",
+  role: "RESPONDER",
   user: {
     ...ada.user,
     id: "0199a1b2-c3d4-7000-8000-000000000002",
@@ -180,7 +182,7 @@ export const api = (
       case `GET ${base}`:
         return jsonResponse(
           200,
-          organizationDetail(permissions, permissions === ADMIN ? "ADMIN" : "MEMBER"),
+          organizationDetail(permissions, permissions === ADMIN ? "ADMIN" : "RESPONDER"),
         );
       case `GET ${base}/incidents/42`:
         return jsonResponse(200, detail);
@@ -211,8 +213,8 @@ export const asMember = (membershipId: string) => {
     handler: ((request: SentRequest) =>
       route(request) === `GET ${base}`
         ? jsonResponse(200, {
-            ...organizationDetail(permissions, "MEMBER"),
-            membership: { id: membershipId, role: "MEMBER", permissions },
+            ...organizationDetail(permissions, "RESPONDER"),
+            membership: { id: membershipId, role: "RESPONDER", permissions },
           })
         : undefined) as Handler,
   };

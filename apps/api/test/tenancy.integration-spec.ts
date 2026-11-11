@@ -108,7 +108,7 @@ describe('tenancy (integration)', () => {
     const grant = async (
       organizationId: string,
       userId: string,
-      role: 'ADMIN' | 'MEMBER',
+      role: 'ADMIN' | 'RESPONDER',
     ) =>
       (
         await prisma.membership.create({
@@ -120,7 +120,7 @@ describe('tenancy (integration)', () => {
     const aliceInA = await grant(orgA.id, alice.id, 'ADMIN');
     const bobInB = await grant(orgB.id, bob.id, 'ADMIN');
     const carolInA = await grant(orgA.id, carol.id, 'ADMIN');
-    const carolInB = await grant(orgB.id, carol.id, 'MEMBER');
+    const carolInB = await grant(orgB.id, carol.id, 'RESPONDER');
 
     return {
       orgA,
@@ -195,6 +195,7 @@ describe('tenancy (integration)', () => {
           role: 'ADMIN',
           permissions: [
             'incident-analyses:write',
+            'incidents:declare',
             'incidents:manage',
             'incidents:read',
             'incidents:read-all',
@@ -269,7 +270,7 @@ describe('tenancy (integration)', () => {
       });
       expect(inB.body.membership).toMatchObject({
         id: fx.carolInB,
-        role: 'MEMBER',
+        role: 'RESPONDER',
       });
     });
   });
@@ -399,7 +400,7 @@ describe('tenancy (integration)', () => {
           membershipId: fx.aliceInA,
           role: 'ADMIN',
         }),
-      ).resolves.toMatchObject({ id: fx.carolInB, role: 'MEMBER' });
+      ).resolves.toMatchObject({ id: fx.carolInB, role: 'RESPONDER' });
     });
   });
 

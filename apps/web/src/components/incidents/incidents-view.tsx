@@ -228,7 +228,7 @@ function DeclareIncidentForm({ onCancel }: { onCancel: () => void }) {
         severity: severity as IncidentSeverity,
         ...(known
           ? { knownIssueId: known.id }
-          : choice?.kind === "new" && save
+          : choice?.kind === "new" && save && canManageServices
             ? { saveAsKnownIssue: true }
             : {}),
       },
@@ -356,7 +356,7 @@ function DeclareIncidentForm({ onCancel }: { onCancel: () => void }) {
             hint={
               known
                 ? "From the known issue. Change it if this time is different."
-                : save
+                : save && canManageServices
                   ? "What is happening, in a few words. It also names the new known issue."
                   : "What is happening, in a few words."
             }
@@ -377,7 +377,7 @@ function DeclareIncidentForm({ onCancel }: { onCancel: () => void }) {
             hint="What is known so far: who is affected and how."
             error={fields.summary}
           />
-          {choice.kind === "new" && chosen && (
+          {choice.kind === "new" && chosen && canManageServices && (
             <label className="flex items-start gap-3 rounded-md border border-line bg-sunken px-3.5 py-3">
               <input
                 type="checkbox"
@@ -614,7 +614,7 @@ export function IncidentsView() {
  */
 function OrganizationIncidentsView() {
   const organization = useOrganization();
-  const canManage = useCan(Permission.INCIDENTS_MANAGE);
+  const canDeclare = useCan(Permission.INCIDENTS_DECLARE);
   const [declaring, setDeclaring] = useState(false);
   const searchParams = useSearchParams();
   const replace = useReplaceParams();
@@ -688,7 +688,7 @@ function OrganizationIncidentsView() {
               updatedAt={shown.dataUpdatedAt}
               failed={shown.isRefetchError}
             />
-            {canManage && (
+            {canDeclare && (
               <Button onClick={() => setDeclaring(true)}>
                 Declare incident
               </Button>
@@ -745,7 +745,7 @@ function OrganizationIncidentsView() {
           </Tabs>
         </div>
       </PageBody>
-      {canManage && declaring && (
+      {canDeclare && declaring && (
         <FormDialog
           title="Declare an incident"
           description="An operational problem affecting one of this organization's services. It starts as Declared."

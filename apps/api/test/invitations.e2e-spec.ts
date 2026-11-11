@@ -154,7 +154,7 @@ describe('Invitations (e2e)', () => {
     it.each(ADMIN_ROUTES)(
       'should refuse a MEMBER on %s %s with 403, before the body is validated',
       async (method, path) => {
-        admitAs('MEMBER');
+        admitAs('RESPONDER');
 
         // An invalid body, so a 400 would mean validation ran first.
         const response = await send(
@@ -179,10 +179,10 @@ describe('Invitations (e2e)', () => {
           { email: 'grace@example.com', role: 'OWNER' },
           {
             email: 'grace@example.com',
-            role: 'MEMBER',
+            role: 'RESPONDER',
             organizationId: ORG_ID,
           },
-          { email: 'not-an-email', role: 'MEMBER' },
+          { email: 'not-an-email', role: 'RESPONDER' },
           {},
         ]) {
           const response = await send(

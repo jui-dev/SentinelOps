@@ -412,7 +412,7 @@ describe("WorkspaceShell", () => {
       api({
         memberships: [
           ...currentUser.memberships,
-          { id: "m-2", role: "MEMBER", organization: other },
+          { id: "m-2", role: "RESPONDER", organization: other },
         ],
       });
 
@@ -663,7 +663,7 @@ describe("WorkspaceShell", () => {
               ...currentUser,
               memberships: [
                 ...currentUser.memberships,
-                { id: "m-2", role: "MEMBER", organization: other },
+                { id: "m-2", role: "RESPONDER", organization: other },
               ],
             });
           case `GET /organizations/${orgId}`:

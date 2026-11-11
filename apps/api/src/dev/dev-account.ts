@@ -1,6 +1,6 @@
 /**
  * TEMPORARY — a small, fixed organization for local development: known
- * logins for one Admin and four Members, and the teams and services they work
+ * logins for an Admin, an Incident Manager, a Reporter and four Responders, and the teams and services they work
  * in. It exists only when the API runs with NODE_ENV=development;
  * DevAccountService ensures it at boot and nothing else reads these values.
  *
@@ -32,36 +32,53 @@ export const DEV_SERVICES: readonly {
   { name: 'Fraud Detection', ownerTeam: 'Risk', criticality: 'HIGH' },
 ];
 
-/** Exactly one ADMIN, as in any organization; everyone else is a MEMBER. */
+/** One of each role that decides or raises, and four Responders. */
 export const DEV_PERSONAS: readonly {
   email: string;
   name: string;
-  role: 'ADMIN' | 'MEMBER';
+  role: 'ADMIN' | 'INCIDENT_MANAGER' | 'REPORTER' | 'RESPONDER';
   teams: readonly DevTeam[];
 }[] = [
-  { email: 'admin@example.com', name: 'Dev Admin', role: 'ADMIN', teams: [] },
+  {
+    email: 'admin@example.com',
+    name: 'Morgan Reyes',
+    role: 'ADMIN',
+    teams: [],
+  },
+  {
+    email: 'ava@example.com',
+    name: 'Ava Kim',
+    role: 'INCIDENT_MANAGER',
+    teams: [],
+  },
+  {
+    email: 'alex@example.com',
+    name: 'Alex Rivera',
+    role: 'REPORTER',
+    teams: [],
+  },
   {
     email: 'priya@example.com',
     name: 'Priya Shah',
-    role: 'MEMBER',
+    role: 'RESPONDER',
     teams: ['Payments'],
   },
   {
     email: 'sam@example.com',
     name: 'Sam Okafor',
-    role: 'MEMBER',
+    role: 'RESPONDER',
     teams: ['Payments', 'Risk'],
   },
   {
     email: 'lee@example.com',
     name: 'Lee Chen',
-    role: 'MEMBER',
+    role: 'RESPONDER',
     teams: ['Platform'],
   },
   {
     email: 'jordan@example.com',
     name: 'Jordan Diaz',
-    role: 'MEMBER',
+    role: 'RESPONDER',
     teams: ['Risk'],
   },
 ];

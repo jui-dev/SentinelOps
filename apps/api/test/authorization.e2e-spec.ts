@@ -60,7 +60,7 @@ class UnscopedPermissionProbeController {
   }
 }
 
-const ROLES: Role[] = ['ADMIN', 'MEMBER'];
+const ROLES: Role[] = ['ADMIN', 'RESPONDER'];
 
 describe('Authorization (e2e)', () => {
   let app: INestApplication;
@@ -232,14 +232,14 @@ describe('Authorization (e2e)', () => {
 
     describe('as MEMBER', () => {
       it('should refuse with 403 PERMISSION_DENIED and write nothing', async () => {
-        admitAs('MEMBER');
+        admitAs('RESPONDER');
 
         expectDenied(await patch());
         expect(prisma.organization.update).not.toHaveBeenCalled();
       });
 
       it('should admit before refusing, with exactly one membership lookup', async () => {
-        admitAs('MEMBER');
+        admitAs('RESPONDER');
 
         await patch();
 
@@ -255,7 +255,7 @@ describe('Authorization (e2e)', () => {
       it('should refuse before validating the body', async () => {
         // Guards run before pipes: an unauthorized caller learns nothing about
         // what a valid body would look like.
-        admitAs('MEMBER');
+        admitAs('RESPONDER');
 
         for (const body of [{}, { name: '' }, { name: 'x', slug: 'y' }]) {
           expectDenied(await patch(body));
@@ -263,7 +263,7 @@ describe('Authorization (e2e)', () => {
       });
 
       it('should not be raised to a better role by anything in the request', async () => {
-        admitAs('MEMBER');
+        admitAs('RESPONDER');
 
         const response = await request(app.getHttpServer())
           .patch(`/api/v1/organizations/${ORG_ID}?role=ADMIN&membershipId=x`)

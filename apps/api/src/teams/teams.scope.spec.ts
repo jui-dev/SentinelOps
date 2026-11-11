@@ -5,7 +5,7 @@ const OTHER_ORG = '0199a1b2-c3d4-7000-8000-00000000000b';
 const MEMBERSHIP = '0199a1b2-c3d4-7000-8000-0000000000aa';
 const TEAM = '0199a1b2-c3d4-7000-8000-0000000000ba';
 const ADMIN = { membershipId: MEMBERSHIP, role: 'ADMIN' as const };
-const MEMBER = { membershipId: MEMBERSHIP, role: 'MEMBER' as const };
+const MEMBER = { membershipId: MEMBERSHIP, role: 'RESPONDER' as const };
 const ISOLATION = { organizationId: ORG, organization: { deletedAt: null } };
 
 describe('teamReadScope', () => {

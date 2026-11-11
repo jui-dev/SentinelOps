@@ -5,7 +5,10 @@ import { emailAlreadyRegistered } from '../auth/auth.errors.js';
 import { toOrganizationResponse } from '../auth/auth.responses.js';
 import { PasswordService } from '../auth/password.service.js';
 import { Permission } from '../authorization/permissions.js';
-import { hasPermission } from '../authorization/role-permissions.js';
+import {
+  hasPermission,
+  rolesHolding,
+} from '../authorization/role-permissions.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { foreignKeyViolationHint } from '../database/foreign-key-violation.js';
 import { uniqueViolationHint } from '../database/unique-violation.js';
@@ -18,12 +21,13 @@ import type {
   OrganizationDetailResponse,
   OrganizationMembershipResponse,
 } from './organizations.contract.js';
-import { membershipNotFound } from './organizations.errors.js';
+import { lastAdmin, membershipNotFound } from './organizations.errors.js';
 import {
   toOrganizationDetailResponse,
   toOrganizationMembershipResponse,
 } from './organizations.responses.js';
 import type {
+  ChangeRoleRequest,
   CreateMemberRequest,
   UpdateOrganizationRequest,
 } from './organizations.schemas.js';
@@ -86,8 +90,9 @@ export interface MembershipReader {
 
 /**
  * Which members a reader may see. With `memberships:read-all`, all of them;
- * otherwise themselves, anyone on a team they are on now, and the
- * organization's admins — the people they respond with, and whom to ask.
+ * otherwise themselves, anyone on a team they are on now, and whoever
+ * decides on incidents — the Admins and Incident Managers: the people they
+ * respond with, and whom to ask.
  * A condition joined to every read, so a member outside it is not found,
  * the same as one that does not exist.
  */
@@ -99,7 +104,7 @@ export const membershipScope = (
     : {
         OR: [
           { id: reader.membershipId },
-          { role: 'ADMIN' },
+          { role: { in: rolesHolding(Permission.INCIDENTS_MANAGE) } },
           {
             teamMemberships: {
               some: {
@@ -250,7 +255,7 @@ export class OrganizationsService {
   }
 
   /**
-   * Adds a person to the organization as a MEMBER: creates their account with
+   * Adds a person to the organization in the role chosen for them: creates their account with
    * the one-time password the Admin chose, and the membership that places
    * them here, in one transaction — an account with no membership could do
    * nothing, so either both exist or neither does.
@@ -265,8 +270,7 @@ export class OrganizationsService {
    * nothing that exists in this product needs it. The unique index decides,
    * not a check made first, so two admins adding one address cannot both win.
    *
-   * Always MEMBER, never taken from the request: the organization has one
-   * Admin — whoever created it — and adding people does not make another.
+   * The role is the one the request names, a Responder when it names none.
    *
    * Optionally places them on teams, in the same transaction, through the
    * ordinary TeamMembership rows. Every team must be one of this
@@ -312,7 +316,7 @@ export class OrganizationsService {
         });
 
         const created = await tx.membership.create({
-          data: { organizationId, userId: user.id, role: 'MEMBER' },
+          data: { organizationId, userId: user.id, role: input.role },
           select: { id: true },
         });
 
@@ -371,6 +375,88 @@ export class OrganizationsService {
     });
 
     // Only whoever manages members adds one, so they are told its setup.
+    return toOrganizationMembershipResponse(membership, { accountSetup: true });
+  }
+
+  /**
+   * Gives a member a different role. One role each, so this replaces theirs.
+   *
+   * The organization always keeps an Admin: the last one cannot be given
+   * another role (409 LAST_ADMIN). The Admins' rows are locked first, in one
+   * statement, so two changes racing to demote the last two Admins take
+   * turns — the second sees the first's result and is refused.
+   *
+   * What the member has under way is left as it is. A Responder who becomes
+   * an Incident Manager keeps the response they started, to complete; an
+   * assignment stands. A role decides what they may do from now on, not what
+   * they already did.
+   *
+   * Asking for the role they already hold changes nothing and answers 200
+   * with the member.
+   */
+  async changeRole(
+    organizationId: string,
+    membershipId: string,
+    input: ChangeRoleRequest,
+  ): Promise<OrganizationMembershipResponse> {
+    if (!isResourceId(membershipId)) {
+      throw membershipNotFound();
+    }
+
+    const { membership, from } = await this.prisma.$transaction(async (tx) => {
+      const admins = await tx.$queryRaw<{ id: string }[]>`
+        SELECT id FROM memberships
+        WHERE organization_id = ${organizationId}::uuid AND role = 'ADMIN'
+        ORDER BY id
+        FOR UPDATE`;
+
+      const current = await tx.membership.findFirst({
+        where: {
+          id: membershipId,
+          organizationId,
+          organization: { deletedAt: null },
+          user: { deletedAt: null },
+        },
+        select: { id: true, role: true },
+      });
+
+      if (!current) {
+        throw membershipNotFound();
+      }
+
+      if (
+        current.role === 'ADMIN' &&
+        input.role !== 'ADMIN' &&
+        admins.length <= 1
+      ) {
+        throw lastAdmin();
+      }
+
+      const membership =
+        current.role === input.role
+          ? await tx.membership.findUniqueOrThrow({
+              where: { id: current.id },
+              select: membershipSelection,
+            })
+          : await tx.membership.update({
+              where: { id: current.id },
+              data: { role: input.role },
+              select: membershipSelection,
+            });
+
+      return { membership, from: current.role };
+    });
+
+    if (from !== membership.role) {
+      this.logger.log("Changed a member's role", {
+        organizationId,
+        membershipId: membership.id,
+        from,
+        to: membership.role,
+      });
+    }
+
+    // Only whoever manages members changes a role, so they are told its setup.
     return toOrganizationMembershipResponse(membership, { accountSetup: true });
   }
 }

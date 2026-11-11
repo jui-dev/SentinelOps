@@ -9,7 +9,7 @@ const OTHER_ORG = '0199a1b2-c3d4-7000-8000-00000000000b';
 const MEMBERSHIP = '0199a1b2-c3d4-7000-8000-0000000000aa';
 const OTHER_MEMBERSHIP = '0199a1b2-c3d4-7000-8000-0000000000ab';
 const ADMIN = { membershipId: MEMBERSHIP, role: 'ADMIN' as const };
-const MEMBER = { membershipId: MEMBERSHIP, role: 'MEMBER' as const };
+const MEMBER = { membershipId: MEMBERSHIP, role: 'RESPONDER' as const };
 const ISOLATION = { organizationId: ORG, organization: { deletedAt: null } };
 
 describe('incidentReadScope', () => {
@@ -17,13 +17,14 @@ describe('incidentReadScope', () => {
     expect(incidentReadScope(ADMIN)).toBeUndefined();
   });
 
-  it("should narrow a member to their teams', responses', and analyses' incidents", () => {
+  it("should narrow a member to their teams', responses', assignments', analyses' and declarations' incidents", () => {
     expect(incidentReadScope(MEMBER)).toEqual({
       OR: [
         { team: { memberships: { some: { membershipId: MEMBERSHIP } } } },
         { responders: { some: { membershipId: MEMBERSHIP } } },
         { assignees: { some: { membershipId: MEMBERSHIP } } },
         { analysis: { is: { ownerMembershipId: MEMBERSHIP } } },
+        { createdBy: { memberships: { some: { id: MEMBERSHIP } } } },
       ],
     });
   });

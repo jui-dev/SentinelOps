@@ -81,8 +81,8 @@ describe('OrganizationPermissionGuard', () => {
   describe('allowing', () => {
     it.each<[Role, Permission]>([
       ['ADMIN', Permission.ORGANIZATION_UPDATE],
-      ['MEMBER', Permission.ORGANIZATION_READ],
-      ['MEMBER', Permission.MEMBERSHIPS_READ],
+      ['RESPONDER', Permission.ORGANIZATION_READ],
+      ['RESPONDER', Permission.MEMBERSHIPS_READ],
     ])('should let %s through to a %s handler', (role, permission) => {
       expect(
         inRequest(membershipAs(role), () =>
@@ -104,7 +104,7 @@ describe('OrganizationPermissionGuard', () => {
 
   describe('denying', () => {
     const denial = (request: RequestShape = {}) =>
-      inRequest(membershipAs('MEMBER'), () =>
+      inRequest(membershipAs('RESPONDER'), () =>
         thrownBy(() =>
           guard.canActivate(
             contextWith(

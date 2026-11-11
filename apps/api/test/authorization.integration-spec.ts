@@ -42,7 +42,7 @@ interface Fixture {
   carolInB: string;
 }
 
-type Role = 'ADMIN' | 'MEMBER';
+type Role = 'ADMIN' | 'RESPONDER';
 
 const comparable = (body: Record<string, unknown>) => {
   const {
@@ -58,6 +58,7 @@ const comparable = (body: Record<string, unknown>) => {
 /** What the role-to-permission table grants, as the API reports it: sorted. */
 const FULL_PERMISSIONS: readonly string[] = [
   'incident-analyses:write',
+  'incidents:declare',
   'incidents:manage',
   'incidents:read',
   'incidents:read-all',
@@ -77,8 +78,9 @@ const FULL_PERMISSIONS: readonly string[] = [
   'teams:read-all',
 ];
 /**
- * What a MEMBER holds: every read, incident response, writing the incident
- * analyses they own, and its own notifications.
+ * What a RESPONDER holds: every read, working their own response and posting
+ * updates on it, writing the incident analyses they own, and its own
+ * notifications.
  */
 const MEMBER_PERMISSIONS: readonly string[] = [
   'incident-analyses:write',
@@ -87,6 +89,7 @@ const MEMBER_PERMISSIONS: readonly string[] = [
   'memberships:read',
   'notifications:read',
   'organization:read',
+  'responses:work',
   'services:read',
   'teams:read',
 ];
@@ -181,8 +184,8 @@ describe('authorization (integration)', () => {
       aliceInA: await grant(orgA.id, alice.id, 'ADMIN'),
       bobInB: await grant(orgB.id, bob.id, 'ADMIN'),
       carolInA: await grant(orgA.id, carol.id, 'ADMIN'),
-      carolInB: await grant(orgB.id, carol.id, 'MEMBER'),
-      daveInA: await grant(orgA.id, dave.id, 'MEMBER'),
+      carolInB: await grant(orgB.id, carol.id, 'RESPONDER'),
+      daveInA: await grant(orgA.id, dave.id, 'RESPONDER'),
     };
   };
 
@@ -327,7 +330,7 @@ describe('authorization (integration)', () => {
           .status,
       ).toBe(200);
 
-      await setRole(fx.carolInA, 'MEMBER');
+      await setRole(fx.carolInA, 'RESPONDER');
 
       expectDenied(
         await rename(fx.orgA.id, fx.carol.id, { name: 'Second' }, token),
@@ -371,7 +374,7 @@ describe('authorization (integration)', () => {
   describe('advertised permissions', () => {
     it.each([
       ['ADMIN', 'carol', FULL_PERMISSIONS],
-      ['MEMBER', 'dave', MEMBER_PERMISSIONS],
+      ['RESPONDER', 'dave', MEMBER_PERMISSIONS],
     ] as const)(
       'should tell an %s what the API will let them do',
       async (_role, who, expected) => {
@@ -548,7 +551,7 @@ describe('authorization (integration)', () => {
             : read(fx.orgB.id, token).then((response) => ({
                 expected: {
                   id: fx.carolInB,
-                  role: 'MEMBER',
+                  role: 'RESPONDER',
                   permissions: MEMBER_PERMISSIONS,
                 },
                 response,

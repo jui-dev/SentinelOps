@@ -9,6 +9,7 @@ import type { Role } from '../generated/prisma/enums.js';
 import { NotificationsWriter } from '../notifications/notifications.writer.js';
 import type { IncidentNotificationType } from '../notifications/notifications.recipients.js';
 import { membershipNotFound } from '../organizations/organizations.errors.js';
+import { permissionDenied } from '../authorization/authorization.errors.js';
 import { knownIssueForDeclaration } from '../known-issues/known-issues.declare.js';
 import {
   knownIssueArchived,
@@ -54,6 +55,7 @@ import {
   invalidCursor,
   invalidStatusTransition,
   notAssignedToIncident,
+  assigneeCannotRespond,
   notInvestigating,
   notOnResponsibleTeam,
   respondersStillInvestigating,
@@ -1283,7 +1285,7 @@ export class IncidentsService {
     actor: { membershipId: string; role: Role },
   ): Promise<IncidentAttentionResponse> {
     const canManage = hasPermission(actor.role, Permission.INCIDENTS_MANAGE);
-    const canRespond = hasPermission(actor.role, Permission.INCIDENTS_RESPOND);
+    const canRespond = hasPermission(actor.role, Permission.RESPONSES_WORK);
 
     const [incidents, teamMembers] = await this.prisma.$transaction(
       [
@@ -1620,9 +1622,18 @@ export class IncidentsService {
    */
   async create(
     organizationId: string,
-    actor: { membershipId: string },
+    actor: { membershipId: string; role: Role },
     input: CreateIncidentRequest,
   ): Promise<IncidentDetailResponse> {
+    // Known issues are kept with the services, by whoever manages them.
+    // Anyone who declares may pick one; saving a new one is that job.
+    if (
+      input.saveAsKnownIssue &&
+      !hasPermission(actor.role, Permission.SERVICES_MANAGE)
+    ) {
+      throw permissionDenied();
+    }
+
     let incident;
 
     try {
@@ -2183,7 +2194,7 @@ export class IncidentsService {
       const next = nextResponseAccess(current, input);
       const people = await tx.membership.findMany({
         where: { organizationId, id: { in: next.assigneeIds } },
-        select: { id: true, user: { select: { name: true } } },
+        select: { id: true, role: true, user: { select: { name: true } } },
       });
 
       if (people.length !== next.assigneeIds.length) {
@@ -2191,6 +2202,19 @@ export class IncidentsService {
       }
 
       const before = new Set(current.assignees.map((a) => a.membershipId));
+
+      // Only someone who works responses can be newly assigned. One who was
+      // assigned before their role changed stays, as a responder whose
+      // team moves keeps their response.
+      if (
+        people.some(
+          (p) =>
+            !before.has(p.id) &&
+            !hasPermission(p.role, Permission.RESPONSES_WORK),
+        )
+      ) {
+        throw assigneeCannotRespond();
+      }
       const changed =
         current.responseAccess !== next.responseAccess ||
         before.size !== next.assigneeIds.length ||
@@ -2479,7 +2503,12 @@ export class IncidentsService {
         actor.membershipId,
       );
 
-      if (!hasPermission(actor.role, Permission.INCIDENTS_MANAGE)) {
+      // Whoever decides posts on any incident, and whoever declared one on
+      // theirs. Everyone else posts while their own response is under way.
+      if (
+        !hasPermission(actor.role, Permission.INCIDENTS_MANAGE) &&
+        !(await this.declaredBy(tx, organizationId, incidentId, actorId))
+      ) {
         const response = await this.ownResponse(
           tx,
           organizationId,
@@ -2640,6 +2669,21 @@ export class IncidentsService {
    * The caller's own response to the incident, or null when they have not
    * started one. Scoped by organization, like every query.
    */
+  /** Whether the user behind the acting membership declared the incident. */
+  private async declaredBy(
+    tx: Prisma.TransactionClient,
+    organizationId: string,
+    incidentId: string,
+    userId: string,
+  ): Promise<boolean> {
+    const incident = await tx.incident.findFirst({
+      where: { id: incidentId, organizationId, createdById: userId },
+      select: { id: true },
+    });
+
+    return incident !== null;
+  }
+
   private async ownResponse(
     tx: Prisma.TransactionClient,
     organizationId: string,

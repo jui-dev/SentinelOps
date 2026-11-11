@@ -12,13 +12,14 @@ import { resolveTestDatabaseUrl } from './test-database.js';
 /**
  * Adding a member with a one-time password, against a real database.
  *
- * Two tenants. Alice is ADMIN of A, Dave a MEMBER of A, Bob ADMIN of B.
+ * Two tenants. Alice is ADMIN of A, Dave a RESPONDER of A, Bob ADMIN of B.
  *
  * What is proven here: that the account and membership are written together
  * and flagged for a password change; that the stored hash verifies the
  * one-time password and nothing stores it in the clear; that the new person
  * can sign in with it; that only an admin of the organization may do this;
- * that an address with an account anywhere is refused; and that a member's
+ * that an address with an account anywhere is refused; that a role is
+ * given and changed only by an admin, and the last Admin keeps theirs; and that a member's
  * record lists every team they are on — by name, empty when none, and only
  * from the organization being read.
  */
@@ -88,7 +89,7 @@ describe('members (integration)', () => {
     const member = async (
       organizationId: string,
       email: string,
-      role: 'ADMIN' | 'MEMBER',
+      role: 'ADMIN' | 'RESPONDER',
     ) => {
       const user = await prisma.user.create({
         data: { email, name: email },
@@ -108,7 +109,7 @@ describe('members (integration)', () => {
       orgA,
       orgB,
       alice: await member(orgA, 'alice@acme.example', 'ADMIN'),
-      dave: await member(orgA, 'dave@acme.example', 'MEMBER'),
+      dave: await member(orgA, 'dave@acme.example', 'RESPONDER'),
       bob: await member(orgB, 'bob@bravo.example', 'ADMIN'),
     };
   });
@@ -123,7 +124,7 @@ describe('members (integration)', () => {
     expect(response.status).toBe(201);
     expect(response.body).toEqual({
       id: expect.any(String),
-      role: 'MEMBER',
+      role: 'RESPONDER',
       createdAt: expect.any(String),
       user: {
         id: expect.any(String),
@@ -144,7 +145,7 @@ describe('members (integration)', () => {
       expect.objectContaining({
         id: response.body.id,
         organizationId: fx.orgA,
-        role: 'MEMBER',
+        role: 'RESPONDER',
       }),
     ]);
     expect(user.passwordHash).not.toContain(ONE_TIME_PASSWORD);
@@ -153,20 +154,168 @@ describe('members (integration)', () => {
     ).toBe(true);
   });
 
-  it.each(['ADMIN', 'MEMBER', 'OWNER'])(
-    'should refuse a body naming a role (%s) with 400: everyone added is a MEMBER',
+  it.each(['ADMIN', 'INCIDENT_MANAGER', 'REPORTER', 'RESPONDER'] as const)(
+    'should add a person in the role the body names (%s)',
+    async (role) => {
+      const response = await addMember(fx.orgA, fx.alice, { ...grace, role });
+
+      expect(response.status).toBe(201);
+      expect(response.body.role).toBe(role);
+      expect(
+        await prisma.membership.findUniqueOrThrow({
+          where: { id: response.body.id },
+          select: { role: true },
+        }),
+      ).toEqual({ role });
+    },
+  );
+
+  it.each(['OWNER', 'MEMBER', 'admin', ''])(
+    'should refuse a role that does not exist (%j) with 400 and add nobody',
     async (role) => {
       const response = await addMember(fx.orgA, fx.alice, { ...grace, role });
 
       expect(response.status).toBe(400);
       expect(await prisma.user.count()).toBe(3);
+    },
+  );
+
+  describe('changing a role', () => {
+    const changeRole = async (
+      callerId: string,
+      membershipId: string,
+      body: object,
+      organizationId = fx.orgA,
+    ): Promise<request.Response> => {
+      const response = await request(app.getHttpServer())
+        .put(
+          `/api/v1/organizations/${organizationId}/memberships/${membershipId}/role`,
+        )
+        .set(
+          'Authorization',
+          `Bearer ${await tokens.signAccessToken(callerId)}`,
+        )
+        .send(body);
+
+      expect(leakedKeys(response.body)).toEqual([]);
+
+      return response;
+    };
+
+    const membershipOf = async (userId: string, organizationId = fx.orgA) =>
+      prisma.membership.findFirstOrThrow({
+        where: { userId, organizationId },
+        select: { id: true, role: true },
+      });
+
+    it('should give a member the new role, answering with the member', async () => {
+      const dave = await membershipOf(fx.dave);
+
+      const response = await changeRole(fx.alice, dave.id, {
+        role: 'INCIDENT_MANAGER',
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual(
+        expect.objectContaining({ id: dave.id, role: 'INCIDENT_MANAGER' }),
+      );
+      expect((await membershipOf(fx.dave)).role).toBe('INCIDENT_MANAGER');
+    });
+
+    it('should change nothing when the role is the one they hold', async () => {
+      const dave = await membershipOf(fx.dave);
+
+      const response = await changeRole(fx.alice, dave.id, {
+        role: 'RESPONDER',
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.body.role).toBe('RESPONDER');
+    });
+
+    it('should keep the only Admin an Admin with 409 LAST_ADMIN', async () => {
+      const alice = await membershipOf(fx.alice);
+
+      const response = await changeRole(fx.alice, alice.id, {
+        role: 'RESPONDER',
+      });
+
+      expect(response.status).toBe(409);
+      expect(response.body.code).toBe('LAST_ADMIN');
+      expect((await membershipOf(fx.alice)).role).toBe('ADMIN');
+    });
+
+    it('should let an Admin step down once there is another', async () => {
+      const dave = await membershipOf(fx.dave);
+      const alice = await membershipOf(fx.alice);
+
+      await changeRole(fx.alice, dave.id, { role: 'ADMIN' }).then((r) =>
+        expect(r.status).toBe(200),
+      );
+
+      const response = await changeRole(fx.alice, alice.id, {
+        role: 'REPORTER',
+      });
+
+      expect(response.status).toBe(200);
+      expect((await membershipOf(fx.alice)).role).toBe('REPORTER');
+    });
+
+    it('should leave one Admin when the last two are demoted at once', async () => {
+      const dave = await membershipOf(fx.dave);
+      const alice = await membershipOf(fx.alice);
+      await prisma.membership.update({
+        where: { id: dave.id },
+        data: { role: 'ADMIN' },
+      });
+
+      const results = await Promise.all([
+        changeRole(fx.alice, alice.id, { role: 'RESPONDER' }),
+        changeRole(fx.dave, dave.id, { role: 'RESPONDER' }),
+      ]);
+
+      expect(results.map((r) => r.status).sort()).toEqual([200, 409]);
       expect(
         await prisma.membership.count({
           where: { organizationId: fx.orgA, role: 'ADMIN' },
         }),
       ).toBe(1);
-    },
-  );
+    });
+
+    it('should refuse anyone who does not manage members with 403', async () => {
+      const alice = await membershipOf(fx.alice);
+
+      const response = await changeRole(fx.dave, alice.id, {
+        role: 'RESPONDER',
+      });
+
+      expect(response.status).toBe(403);
+      expect((await membershipOf(fx.alice)).role).toBe('ADMIN');
+    });
+
+    it('should answer a member of another organization as not found', async () => {
+      const bob = await membershipOf(fx.bob, fx.orgB);
+
+      const response = await changeRole(fx.alice, bob.id, {
+        role: 'RESPONDER',
+      });
+
+      expect(response.status).toBe(404);
+      expect(response.body.code).toBe('MEMBERSHIP_NOT_FOUND');
+      expect((await membershipOf(fx.bob, fx.orgB)).role).toBe('ADMIN');
+    });
+
+    it.each(['OWNER', 'MEMBER', ''])(
+      'should refuse a role that does not exist (%j) with 400',
+      async (role) => {
+        const dave = await membershipOf(fx.dave);
+
+        const response = await changeRole(fx.alice, dave.id, { role });
+
+        expect(response.status).toBe(400);
+      },
+    );
+  });
 
   it('should list the new member, still awaiting their first sign-in', async () => {
     await addMember(fx.orgA, fx.alice, grace);
@@ -325,7 +474,7 @@ describe('members (integration)', () => {
       const daveInA = await membershipOf(fx.orgA, fx.dave);
       const daveInB = (
         await prisma.membership.create({
-          data: { organizationId: fx.orgB, userId: fx.dave, role: 'MEMBER' },
+          data: { organizationId: fx.orgB, userId: fx.dave, role: 'RESPONDER' },
           select: { id: true },
         })
       ).id;
@@ -368,7 +517,7 @@ describe('members (integration)', () => {
         select: { id: true },
       });
       const membership = await prisma.membership.create({
-        data: { organizationId: fx.orgA, userId: user.id, role: 'MEMBER' },
+        data: { organizationId: fx.orgA, userId: user.id, role: 'RESPONDER' },
         select: { id: true },
       });
 

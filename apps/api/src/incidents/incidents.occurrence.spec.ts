@@ -84,14 +84,20 @@ describe('the windows an occurrence is read over', () => {
   });
 
   it('should count a period that has ended whole', () => {
-    const windows = occurrenceWindows(period, new Date('2026-10-05T08:00:00.000Z'));
+    const windows = occurrenceWindows(
+      period,
+      new Date('2026-10-05T08:00:00.000Z'),
+    );
 
     expect(windows.asOf).toEqual(new Date('2026-09-22T00:00:00.000Z'));
     expect(windows.previous.lt).toEqual(new Date('2026-08-23T00:00:00.000Z'));
   });
 
   it('should count nothing of a period that has not started', () => {
-    const windows = occurrenceWindows(period, new Date('2026-08-01T08:00:00.000Z'));
+    const windows = occurrenceWindows(
+      period,
+      new Date('2026-08-01T08:00:00.000Z'),
+    );
 
     expect(windows.asOf).toEqual(new Date('2026-08-23T00:00:00.000Z'));
     expect(windows.current.gte).toEqual(windows.current.lt);
@@ -253,7 +259,10 @@ describe('the comparison with the previous period', () => {
 
   it('should call the same count no change, without a sign', () => {
     expect(
-      Object.is(build({ daily, previousDeclared: 6 }).previous.changePercent, 0),
+      Object.is(
+        build({ daily, previousDeclared: 6 }).previous.changePercent,
+        0,
+      ),
     ).toBe(true);
   });
 
@@ -296,7 +305,10 @@ describe('the comparison with the previous period', () => {
       comparable: false,
       changePercent: null,
     });
-    expect(wholly.previous).toMatchObject({ comparable: true, changePercent: -25 });
+    expect(wholly.previous).toMatchObject({
+      comparable: true,
+      changePercent: -25,
+    });
   });
 });
 
@@ -312,7 +324,11 @@ describe('the services incidents were declared against', () => {
   it('should rank the busiest first, with each share of the period', () => {
     const occurrence = build({
       daily: [{ day: '2026-09-01', declared: 10 }],
-      services: counts(['Search', 2], ['Payment API', 5], ['Authentication', 3]),
+      services: counts(
+        ['Search', 2],
+        ['Payment API', 5],
+        ['Authentication', 3],
+      ),
     });
 
     expect(occurrence.services.top).toEqual([
@@ -333,7 +349,11 @@ describe('the services incidents were declared against', () => {
       ],
     });
 
-    expect(occurrence.services.top.map(({ id }) => id)).toEqual(['z', 'a', 'b']);
+    expect(occurrence.services.top.map(({ id }) => id)).toEqual([
+      'z',
+      'a',
+      'b',
+    ]);
   });
 
   it(`should name ${OCCURRENCE_TOP_SERVICES} and count the rest, losing nothing`, () => {

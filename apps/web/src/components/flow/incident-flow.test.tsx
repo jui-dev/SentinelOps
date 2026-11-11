@@ -136,7 +136,7 @@ const api = (answer: (days: 7 | 14) => IncidentFlowResponse = (days) => flow(day
       case "GET /auth/me":
         return jsonResponse(200, currentUser);
       case `GET ${base}`:
-        return jsonResponse(200, organizationDetail(["incidents:read"], "MEMBER"));
+        return jsonResponse(200, organizationDetail(["incidents:read"], "RESPONDER"));
       default:
         return apiError(404);
     }

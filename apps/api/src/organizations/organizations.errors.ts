@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 
 /**
  * The machine-readable `code` values this module puts on the error contract.
@@ -6,6 +6,7 @@ import { NotFoundException } from '@nestjs/common';
  */
 export const OrganizationsErrorCode = {
   MEMBERSHIP_NOT_FOUND: 'MEMBERSHIP_NOT_FOUND',
+  LAST_ADMIN: 'LAST_ADMIN',
 } as const;
 
 export type OrganizationsErrorCode =
@@ -22,4 +23,13 @@ export type OrganizationsErrorCode =
 export const membershipNotFound = (): NotFoundException =>
   new NotFoundException('Membership not found', {
     errorCode: OrganizationsErrorCode.MEMBERSHIP_NOT_FOUND,
+  });
+
+/**
+ * Changing the role of the organization's only Admin. Somebody must always be
+ * able to manage its people, so the last Admin keeps the role.
+ */
+export const lastAdmin = (): ConflictException =>
+  new ConflictException('The only Admin keeps their role', {
+    errorCode: OrganizationsErrorCode.LAST_ADMIN,
   });

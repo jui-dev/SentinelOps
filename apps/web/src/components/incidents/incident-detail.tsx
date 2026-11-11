@@ -111,7 +111,7 @@ const usePerspective = (
 ): { perspective: Perspective | undefined; own?: IncidentResponderResponse } => {
   const organization = useOrganization();
   const canManage = useCan(Permission.INCIDENTS_MANAGE);
-  const canRespond = useCan(Permission.INCIDENTS_RESPOND);
+  const canRespond = useCan(Permission.RESPONSES_WORK);
   const members = useTeamMembers(organization.id, incident.team.id);
   const own = incident.responders.find(
     ({ membershipId }) => membershipId === organization.membership.id,

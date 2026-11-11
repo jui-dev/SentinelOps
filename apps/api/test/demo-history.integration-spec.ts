@@ -207,7 +207,7 @@ describe('demo history (integration)', () => {
         // Each persona reading their own, which is what every member may do.
         const page = await incidents.memberResponses(
           organizationId,
-          { membershipId: id, role: 'MEMBER' },
+          { membershipId: id, role: 'RESPONDER' },
           id,
           { cursor },
         );
@@ -289,7 +289,7 @@ describe('demo history (integration)', () => {
     );
     const next = await incidents.create(
       organizationId,
-      { membershipId: admin.id },
+      { membershipId: admin.id, role: 'ADMIN' },
       {
         title: 'Declared after the demo history',
         serviceId: resolved.service.id,
@@ -313,7 +313,7 @@ describe('demo history (integration)', () => {
 
     await incidents.create(
       organizationId,
-      { membershipId: admin.id },
+      { membershipId: admin.id, role: 'ADMIN' },
       {
         title: 'Made by hand',
         serviceId: service.id,
@@ -406,7 +406,7 @@ describe('demo history (integration)', () => {
 
     await incidents.create(
       other.id,
-      { membershipId: membership.id },
+      { membershipId: membership.id, role: 'ADMIN' },
       { title: 'Theirs', serviceId: service.id, severity: 'SEV2' },
     );
 

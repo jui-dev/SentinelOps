@@ -86,15 +86,22 @@ describe('incident logging (integration)', () => {
         slug: 'payments',
       },
     });
-    // Dave is the admin, and also on Payments, so he can respond as well.
-    const membership = await prisma.membership.findFirstOrThrow({
-      where: { organizationId: organization.id, userId: dave.id },
+    // Dave is the admin; Erin, a responder on Payments, works the response.
+    const erin = await prisma.user.create({
+      data: { email: 'erin@acme.example', name: 'Erin Eze' },
+    });
+    const erinMembership = await prisma.membership.create({
+      data: {
+        organizationId: organization.id,
+        userId: erin.id,
+        role: 'RESPONDER',
+      },
     });
     await prisma.teamMembership.create({
       data: {
         organizationId: organization.id,
         teamId: team.id,
-        membershipId: membership.id,
+        membershipId: erinMembership.id,
       },
     });
     const service = await prisma.service.create({
@@ -108,6 +115,7 @@ describe('incident logging (integration)', () => {
 
     const tokens = app.get(TokenService);
     const auth = `Bearer ${await tokens.signAccessToken(dave.id)}`;
+    const erinAuth = `Bearer ${await tokens.signAccessToken(erin.id)}`;
     const base = `/api/v1/organizations/${organization.id}/incidents`;
     const server = () => request(app.getHttpServer());
 
@@ -130,10 +138,12 @@ describe('incident logging (integration)', () => {
       .post(`${base}/1/updates`)
       .set('Authorization', auth)
       .send({ message: MESSAGE });
-    await server().post(`${base}/1/responders/me`).set('Authorization', auth);
+    await server()
+      .post(`${base}/1/responders/me`)
+      .set('Authorization', erinAuth);
     await server()
       .post(`${base}/1/responders/me/complete`)
-      .set('Authorization', auth);
+      .set('Authorization', erinAuth);
     await server()
       .patch(`${base}/1`)
       .set('Authorization', auth)

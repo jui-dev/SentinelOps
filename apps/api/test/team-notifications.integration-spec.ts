@@ -116,7 +116,7 @@ describe('team notifications (integration)', () => {
     const grant = async (
       organizationId: string,
       userId: string,
-      role: 'ADMIN' | 'MEMBER' = 'MEMBER',
+      role: 'ADMIN' | 'RESPONDER' = 'RESPONDER',
     ) =>
       (
         await prisma.membership.create({

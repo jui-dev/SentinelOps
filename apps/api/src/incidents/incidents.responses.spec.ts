@@ -116,7 +116,7 @@ describe('incident responses', () => {
       completedAt,
       membership: {
         id,
-        role: 'MEMBER',
+        role: 'RESPONDER',
         user: { id: `user-${id}`, name, email: `${id}@example.com` },
       },
     });

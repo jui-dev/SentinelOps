@@ -16,7 +16,7 @@ const ACTOR = { membershipId: '0199a1b2-c3d4-7000-8000-0000000000a1' };
 const ACTOR_USER = '0199a1b2-c3d4-7000-8000-000000000001';
 /** Who is reading: oversight sees every team, a member sees their own. */
 const OVERSEER = { membershipId: ACTOR.membershipId, role: 'ADMIN' as const };
-const READER = { membershipId: MEMBERSHIP, role: 'MEMBER' as const };
+const READER = { membershipId: MEMBERSHIP, role: 'RESPONDER' as const };
 const ISOLATION = { organizationId: ORG, organization: { deletedAt: null } };
 const OWN_TEAMS = { memberships: { some: { membershipId: MEMBERSHIP } } };
 const CREATED = new Date('2026-09-18T12:00:00.000Z');

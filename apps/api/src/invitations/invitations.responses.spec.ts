@@ -12,7 +12,7 @@ const EXPIRES = new Date('2026-09-22T12:00:00.000Z');
 const row = {
   id: 'invitation-1',
   email: 'grace@example.com',
-  role: 'MEMBER',
+  role: 'RESPONDER',
   expiresAt: EXPIRES,
   createdAt: CREATED,
   invitedBy: { id: 'user-1', name: 'Ada Lovelace' },
@@ -35,7 +35,7 @@ describe('invitation response mappers', () => {
       ).toEqual({
         id: 'invitation-1',
         email: 'grace@example.com',
-        role: 'MEMBER',
+        role: 'RESPONDER',
         status: 'pending',
         expiresAt: '2026-09-22T12:00:00.000Z',
         createdAt: '2026-09-15T12:00:00.000Z',

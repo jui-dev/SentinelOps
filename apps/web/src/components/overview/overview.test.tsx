@@ -663,7 +663,7 @@ describe("the organization landing", () => {
   });
 
   it("gives a member My Operations, and asks the organization for nothing", async () => {
-    const { requests } = api(MEMBER_READ, { role: "MEMBER" });
+    const { requests } = api(MEMBER_READ, { role: "RESPONDER" });
     renderOverview();
 
     expect(
@@ -709,7 +709,7 @@ describe("the organization landing", () => {
   });
 
   it("borrows none of the Overview's panels to look populated", async () => {
-    api(MEMBER_READ, { role: "MEMBER" });
+    api(MEMBER_READ, { role: "RESPONDER" });
     renderOverview();
 
     await screen.findByRole("heading", { level: 1, name: "My Operations" });
@@ -1909,7 +1909,7 @@ describe("the operations overview", () => {
     });
 
     it("shows a member the same organization history as an admin", async () => {
-      api([...READ, "incidents:respond"], { role: "MEMBER" });
+      api([...READ, "incidents:respond"], { role: "RESPONDER" });
       renderOverview();
 
       const activity = await loaded();
@@ -2825,7 +2825,7 @@ describe("the operations overview", () => {
         "gives a member their work at the whole width, %s",
         async (_, respond) => {
           api(RESPOND, {
-            role: "MEMBER",
+            role: "RESPONDER",
             attention: { manage: null, respond },
           });
           renderOverview();
@@ -2942,7 +2942,7 @@ describe("the operations overview", () => {
 
     it("shows a member what their team needs and what they are working on, apart", async () => {
       api(RESPOND, {
-        role: "MEMBER",
+        role: "RESPONDER",
         attention: {
           manage: null,
           respond: { assignedToYou: [], needsYourTeam: [unclaimed], yourResponses: [mine] },
@@ -2984,7 +2984,7 @@ describe("the operations overview", () => {
 
     it("keeps a member's empty lists to a line each", async () => {
       api(RESPOND, {
-        role: "MEMBER",
+        role: "RESPONDER",
         attention: {
           manage: null,
           respond: { assignedToYou: [], needsYourTeam: [], yourResponses: [] },
@@ -3007,7 +3007,7 @@ describe("the operations overview", () => {
 
     it("puts a list with work above an empty one, which is a line rather than a list", async () => {
       api(RESPOND, {
-        role: "MEMBER",
+        role: "RESPONDER",
         attention: {
           manage: null,
           respond: { assignedToYou: [], needsYourTeam: [], yourResponses: [mine] },
@@ -3054,7 +3054,7 @@ describe("the operations overview", () => {
 
     it("reads attention from the shared cache without polling it itself", async () => {
       const { requests } = api(RESPOND, {
-        role: "MEMBER",
+        role: "RESPONDER",
         attention: {
           manage: null,
           respond: { assignedToYou: [], needsYourTeam: [], yourResponses: [] },

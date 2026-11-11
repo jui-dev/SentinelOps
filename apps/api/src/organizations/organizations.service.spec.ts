@@ -123,6 +123,7 @@ describe('OrganizationsService', () => {
           role: 'ADMIN',
           permissions: [
             'incident-analyses:write',
+            'incidents:declare',
             'incidents:manage',
             'incidents:read',
             'incidents:read-all',
@@ -368,11 +369,12 @@ describe('OrganizationsService', () => {
       name: 'Grace Hopper',
       email: 'grace@example.com',
       temporaryPassword: 'one-time-password-123',
+      role: 'RESPONDER' as const,
     };
 
     const newMembershipRow = {
       id: MEMBERSHIP_ID,
-      role: 'MEMBER',
+      role: 'RESPONDER',
       createdAt: CREATED,
       user: {
         id: '0199a1b2-c3d4-7000-8000-000000000002',
@@ -432,7 +434,7 @@ describe('OrganizationsService', () => {
       );
     });
 
-    it('should place the account in the admitted organization, always as a MEMBER', async () => {
+    it('should place the account in the admitted organization, in the role it was given', async () => {
       const { service, prisma } = ready();
 
       await service.createMember(ORG_A, input);
@@ -441,7 +443,7 @@ describe('OrganizationsService', () => {
         data: {
           organizationId: ORG_A,
           userId: newMembershipRow.user.id,
-          role: 'MEMBER',
+          role: 'RESPONDER',
         },
         select: { id: true },
       });
@@ -540,7 +542,7 @@ describe('OrganizationsService', () => {
 
       expect(response).toEqual({
         id: MEMBERSHIP_ID,
-        role: 'MEMBER',
+        role: 'RESPONDER',
         createdAt: '2026-09-01T12:00:00.000Z',
         user: newMembershipRow.user,
         teams: [],

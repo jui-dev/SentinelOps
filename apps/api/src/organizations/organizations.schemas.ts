@@ -44,20 +44,38 @@ export const initialTeamIdsSchema = z
   .transform((ids) => [...new Set(ids.map((id) => id.toLowerCase()))]);
 
 /**
+ * A role a person can hold. Every role the organization has: one each.
+ */
+export const roleSchema = z.enum([
+  'ADMIN',
+  'INCIDENT_MANAGER',
+  'REPORTER',
+  'RESPONDER',
+]);
+
+/**
  * Adding a person to the organization: who they are, a one-time password the
- * Admin hands them, and optionally the teams they start on. The same rules as
- * registration's — a normalised email, a person's name, a password of at least
- * 12 characters — because this creates an account just as registration does.
+ * Admin hands them, their role, and optionally the teams they start on. The
+ * same rules as registration's — a normalised email, a person's name, a
+ * password of at least 12 characters — because this creates an account just
+ * as registration does.
  *
- * No role. Everyone the Admin adds is a MEMBER; the organization's one Admin
- * is whoever created it. Strict, so a body that tries to name a role is
- * refused rather than silently ignored.
+ * The role is optional only so that a client written before roles still
+ * adds a Responder, which is what everyone added used to be.
  */
 export const createMemberSchema = z.strictObject({
   name: personNameSchema,
   email: emailSchema,
   temporaryPassword: passwordSchema,
+  role: roleSchema.default('RESPONDER'),
   teamIds: initialTeamIdsSchema.optional(),
 });
 
 export type CreateMemberRequest = z.infer<typeof createMemberSchema>;
+
+/** Changing a person's role: the one they hold from now on. */
+export const changeRoleSchema = z.strictObject({
+  role: roleSchema,
+});
+
+export type ChangeRoleRequest = z.infer<typeof changeRoleSchema>;

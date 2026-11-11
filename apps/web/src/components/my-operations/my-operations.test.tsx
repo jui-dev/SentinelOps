@@ -36,6 +36,7 @@ const MEMBER = [
   "incident-analyses:write",
   "incidents:read",
   "incidents:respond",
+  "responses:work",
   "memberships:read",
   "organization:read",
   "services:read",
@@ -43,7 +44,7 @@ const MEMBER = [
 ];
 
 const base = `/organizations/${organization.id}`;
-const ME = organizationDetail(MEMBER, "MEMBER").membership.id;
+const ME = organizationDetail(MEMBER, "RESPONDER").membership.id;
 
 const team = (id: string, name: string, serviceCount: number): TeamResponse => ({
   id,
@@ -244,7 +245,7 @@ const api = ({
       case "GET /auth/me":
         return jsonResponse(200, currentUser);
       case `GET ${base}`:
-        return jsonResponse(200, organizationDetail(permissions, "MEMBER"));
+        return jsonResponse(200, organizationDetail(permissions, "RESPONDER"));
       case `GET ${base}/teams`:
         return jsonResponse(200, teams);
       case `GET ${base}/incidents/attention`:

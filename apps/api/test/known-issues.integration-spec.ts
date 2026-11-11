@@ -126,7 +126,7 @@ describe('known issues (integration)', () => {
     await prisma.membership.createMany({
       data: [
         { organizationId: orgA, userId: alice, role: 'ADMIN' },
-        { organizationId: orgA, userId: ben, role: 'MEMBER' },
+        { organizationId: orgA, userId: ben, role: 'RESPONDER' },
         { organizationId: orgB, userId: bob, role: 'ADMIN' },
       ],
     });

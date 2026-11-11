@@ -96,12 +96,12 @@ describe('Tenancy (e2e)', () => {
           ? {
               id: MEMBERSHIP_ID,
               organizationId: ORG_ID,
-              role: 'MEMBER',
+              role: 'RESPONDER',
               user: { passwordChangeRequired: false },
             }
           : {
               id: MEMBERSHIP_ID,
-              role: 'MEMBER',
+              role: 'RESPONDER',
               createdAt: CREATED,
               user: { id: USER_ID, name: 'Ada', email: 'ada@example.com' },
               teamMemberships: [],
@@ -248,7 +248,7 @@ describe('Tenancy (e2e)', () => {
         createdAt: '2026-09-01T12:00:00.000Z',
         membership: {
           id: MEMBERSHIP_ID,
-          role: 'MEMBER',
+          role: 'RESPONDER',
           permissions: [
             'incident-analyses:write',
             'incidents:read',
@@ -256,6 +256,7 @@ describe('Tenancy (e2e)', () => {
             'memberships:read',
             'notifications:read',
             'organization:read',
+            'responses:work',
             'services:read',
             'teams:read',
           ],

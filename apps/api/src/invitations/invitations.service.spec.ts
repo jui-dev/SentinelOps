@@ -21,7 +21,7 @@ const EARLIER = new Date('2026-09-10T12:00:00.000Z');
 const invitationRow = {
   id: INVITATION,
   email: 'grace@example.com',
-  role: 'MEMBER',
+  role: 'RESPONDER',
   expiresAt: LATER,
   createdAt: NOW,
   invitedBy: { id: USER, name: 'Ada Lovelace' },
@@ -31,7 +31,7 @@ const resolvedRow = (overrides: Record<string, unknown> = {}) => ({
   id: INVITATION,
   organizationId: ORG,
   email: 'grace@example.com',
-  role: 'MEMBER',
+  role: 'RESPONDER',
   expiresAt: LATER,
   acceptedAt: null,
   revokedAt: null,
@@ -48,7 +48,7 @@ const resolvedRow = (overrides: Record<string, unknown> = {}) => ({
 
 const membershipRow = {
   id: 'membership-1',
-  role: 'MEMBER',
+  role: 'RESPONDER',
   organization: {
     id: ORG,
     name: 'Acme Operations',
@@ -117,7 +117,7 @@ const expectCode = async (
 
 describe('InvitationsService', () => {
   describe('create', () => {
-    const input = { email: 'grace@example.com', role: 'MEMBER' } as const;
+    const input = { email: 'grace@example.com', role: 'RESPONDER' } as const;
 
     it('should revoke the open invitation for the address, then insert its replacement', async () => {
       const { service, prisma } = serviceWith();
@@ -141,7 +141,7 @@ describe('InvitationsService', () => {
       expect(createArgs.data).toEqual({
         organizationId: ORG,
         email: 'grace@example.com',
-        role: 'MEMBER',
+        role: 'RESPONDER',
         tokenHash: hashOpaqueToken(response.token),
         invitedById: USER,
         expiresAt: new Date(
@@ -325,7 +325,7 @@ describe('InvitationsService', () => {
       await expect(service.lookup('token', NOW)).resolves.toEqual({
         organization: { id: ORG, name: 'Acme Operations', slug: 'acme-ops' },
         email: 'grace@example.com',
-        role: 'MEMBER',
+        role: 'RESPONDER',
         expiresAt: LATER.toISOString(),
         invitedBy: { name: 'Ada Lovelace' },
       });
@@ -373,7 +373,7 @@ describe('InvitationsService', () => {
 
       await expect(service.accept('token', USER, NOW)).resolves.toEqual({
         id: 'membership-1',
-        role: 'MEMBER',
+        role: 'RESPONDER',
         organization: {
           id: ORG,
           name: 'Acme Operations',
@@ -393,7 +393,7 @@ describe('InvitationsService', () => {
       });
       expect(prisma.membership.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: { organizationId: ORG, userId: USER, role: 'MEMBER' },
+          data: { organizationId: ORG, userId: USER, role: 'RESPONDER' },
         }),
       );
 
@@ -508,7 +508,7 @@ describe('InvitationsService', () => {
       ).toBeLessThan(createAccount.mock.invocationCallOrder[0] as number);
       expect(prisma.membership.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: { organizationId: ORG, userId: USER, role: 'MEMBER' },
+          data: { organizationId: ORG, userId: USER, role: 'RESPONDER' },
         }),
       );
       expect(result.account).toEqual({ id: USER });

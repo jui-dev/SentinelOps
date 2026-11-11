@@ -124,7 +124,7 @@ describe('core domain schema (integration)', () => {
         data: { organizationId: acme.id, userId: user.id, role: 'ADMIN' },
       });
       await prisma.membership.create({
-        data: { organizationId: globex.id, userId: user.id, role: 'MEMBER' },
+        data: { organizationId: globex.id, userId: user.id, role: 'RESPONDER' },
       });
 
       const memberships = await prisma.membership.findMany({
@@ -134,7 +134,7 @@ describe('core domain schema (integration)', () => {
       expect(memberships).toHaveLength(2);
       expect(memberships.map((membership) => membership.role).sort()).toEqual([
         'ADMIN',
-        'MEMBER',
+        'RESPONDER',
       ]);
     });
   });
@@ -2324,7 +2324,7 @@ describe('core domain schema (integration)', () => {
   });
 
   describe('the role enum', () => {
-    it('should default a membership to MEMBER', async () => {
+    it('should default a membership to RESPONDER', async () => {
       const organization = await anOrganization('acme');
       const user = await aUser('ada@example.com');
 
@@ -2332,22 +2332,24 @@ describe('core domain schema (integration)', () => {
         data: { organizationId: organization.id, userId: user.id },
       });
 
-      expect(membership.role).toBe('MEMBER');
+      expect(membership.role).toBe('RESPONDER');
     });
 
-    it.each([['ADMIN'], ['MEMBER']] as const)(
-      'should round-trip %s',
-      async (role) => {
-        const organization = await anOrganization(`acme-${role.toLowerCase()}`);
-        const user = await aUser(`${role.toLowerCase()}@example.com`);
+    it.each([
+      ['ADMIN'],
+      ['INCIDENT_MANAGER'],
+      ['REPORTER'],
+      ['RESPONDER'],
+    ] as const)('should round-trip %s', async (role) => {
+      const organization = await anOrganization(`acme-${role.toLowerCase()}`);
+      const user = await aUser(`${role.toLowerCase()}@example.com`);
 
-        const membership = await prisma.membership.create({
-          data: { organizationId: organization.id, userId: user.id, role },
-        });
+      const membership = await prisma.membership.create({
+        data: { organizationId: organization.id, userId: user.id, role },
+      });
 
-        expect(membership.role).toBe(role);
-      },
-    );
+      expect(membership.role).toBe(role);
+    });
 
     it('should reject a value outside the enum at the database level', async () => {
       const organization = await anOrganization('acme');
@@ -2366,7 +2368,7 @@ describe('core domain schema (integration)', () => {
       ).rejects.toThrow();
     });
 
-    it('should hold exactly ADMIN and MEMBER: OWNER was merged into ADMIN', async () => {
+    it('should hold exactly the four roles, in order: OWNER was merged into ADMIN, MEMBER renamed RESPONDER', async () => {
       const labels = await prisma.$queryRaw<{ label: string }[]>`
         SELECT e.enumlabel AS label
         FROM pg_enum e
@@ -2374,7 +2376,12 @@ describe('core domain schema (integration)', () => {
         WHERE t.typname = 'role'
         ORDER BY e.enumsortorder`;
 
-      expect(labels.map(({ label }) => label)).toEqual(['ADMIN', 'MEMBER']);
+      expect(labels.map(({ label }) => label)).toEqual([
+        'ADMIN',
+        'INCIDENT_MANAGER',
+        'REPORTER',
+        'RESPONDER',
+      ]);
     });
   });
 

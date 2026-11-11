@@ -10,7 +10,7 @@ const analysis = { ownerMembershipId: OWNER };
 describe('mayWriteAnalysis', () => {
   it('should let the owner write their analysis, whatever their role', () => {
     expect(
-      mayWriteAnalysis({ membershipId: OWNER, role: 'MEMBER' }, analysis),
+      mayWriteAnalysis({ membershipId: OWNER, role: 'RESPONDER' }, analysis),
     ).toBe(true);
     expect(
       mayWriteAnalysis({ membershipId: OWNER, role: 'ADMIN' }, analysis),
@@ -25,7 +25,7 @@ describe('mayWriteAnalysis', () => {
 
   it('should refuse a member who does not own it', () => {
     expect(
-      mayWriteAnalysis({ membershipId: OTHER, role: 'MEMBER' }, analysis),
+      mayWriteAnalysis({ membershipId: OTHER, role: 'RESPONDER' }, analysis),
     ).toBe(false);
   });
 

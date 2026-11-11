@@ -25,6 +25,7 @@ export const IncidentsErrorCode = {
   RESPONDERS_STILL_INVESTIGATING: 'RESPONDERS_STILL_INVESTIGATING',
   RESPONSE_NOT_OPEN: 'RESPONSE_NOT_OPEN',
   NOT_ASSIGNED_TO_INCIDENT: 'NOT_ASSIGNED_TO_INCIDENT',
+  ASSIGNEE_CANNOT_RESPOND: 'ASSIGNEE_CANNOT_RESPOND',
 } as const;
 
 export type IncidentsErrorCode =
@@ -151,3 +152,13 @@ export const respondersStillInvestigating = (
       errorCode: IncidentsErrorCode.RESPONDERS_STILL_INVESTIGATING,
     },
   );
+
+/**
+ * Someone being assigned to an incident whose role does not work responses —
+ * an Admin, an Incident Manager, or a Reporter. Assigning them would name
+ * someone who could never start.
+ */
+export const assigneeCannotRespond = (): ConflictException =>
+  new ConflictException('Only Responders can be assigned to an incident', {
+    errorCode: IncidentsErrorCode.ASSIGNEE_CANNOT_RESPOND,
+  });

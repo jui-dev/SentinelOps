@@ -29,10 +29,12 @@ deliberately, and this README is updated as capabilities actually land.
   that enforce tenant isolation
 - Authorization: per-route permissions within an organization, mapped from the member's
   role, proven by a rename route that members may not use
-- Members: the `ADMIN` adds a person as a `MEMBER` with a one-time password, which they must replace
+- Roles: four, one per person, each named for its job in an incident — `ADMIN`,
+  `INCIDENT_MANAGER`, `REPORTER`, `RESPONDER`. See [Roles](#roles)
+- Members: the `ADMIN` adds a person in a chosen role with a one-time password, which they must replace
   at first sign-in. See [Adding a member](#adding-a-member)
 - Invitations — **switched off by default**: an `ADMIN` invites an email address as
-  `ADMIN` or `MEMBER` and shares a single-use link; the invitee creates an account or
+  a role and shares a single-use link; the invitee creates an account or
   signs in, and joins. Kept for when email delivery arrives. See [Invitations](#invitations)
 - Teams: an `ADMIN` creates teams and places existing organization members on
   them. The database itself refuses a team member from another organization. See
@@ -253,11 +255,13 @@ it ensures a small organization to work in, and the web login page lists its peo
 
 | Persona | Email | Role | Teams |
 | --- | --- | --- | --- |
-| Dev Admin | `admin@example.com` | `ADMIN` | — |
-| Priya Shah | `priya@example.com` | `MEMBER` | Payments |
-| Sam Okafor | `sam@example.com` | `MEMBER` | Payments, Risk |
-| Lee Chen | `lee@example.com` | `MEMBER` | Platform |
-| Jordan Diaz | `jordan@example.com` | `MEMBER` | Risk |
+| Morgan Reyes | `admin@example.com` | `ADMIN` | — |
+| Ava Kim | `ava@example.com` | `INCIDENT_MANAGER` | — |
+| Alex Rivera | `alex@example.com` | `REPORTER` | — |
+| Priya Shah | `priya@example.com` | `RESPONDER` | Payments |
+| Sam Okafor | `sam@example.com` | `RESPONDER` | Payments, Risk |
+| Lee Chen | `lee@example.com` | `RESPONDER` | Platform |
+| Jordan Diaz | `jordan@example.com` | `RESPONDER` | Risk |
 
 All of them use the password `dev-password-123`. The organization is **AcmePay**
 (`sentinelops-dev`), with three services: Payment API (`CRITICAL`, Payments),
@@ -657,15 +661,16 @@ chain: every refresh revokes the presented token and inserts its successor. See
 A `User` is **global, not tenant-scoped**: one row per person, one globally unique email,
 one login. Belonging to an organization is a `Membership`, and a person may hold a
 different role in each. `@@unique([organizationId, userId])` means a user has exactly one
-capacity per organization — nobody is both `ADMIN` and `MEMBER`.
+capacity per organization — nobody holds two roles.
 
 An `Invitation` is a **prospective grant**, not an identity. Issuing one never creates a
 `User`: a user is global, so one tenant creating an identity for an address would be a
 cross-tenant side effect, and would claim that email before its owner ever signed up. The
 account is created — with a password — when the invitation is accepted.
 
-`Role` is `ADMIN` or `MEMBER`. An `ADMIN` sets the organization up — its members, teams,
-and services — and a `MEMBER` does the operational work. There was once an `OWNER` too; it
+`Role` is `ADMIN`, `INCIDENT_MANAGER`, `REPORTER`, or `RESPONDER` — see [Roles](#roles).
+`RESPONDER` was `MEMBER`, renamed in place so every existing member became a responder.
+There was once an `OWNER` too; it
 held exactly what `ADMIN` held, distinguished nothing, and was merged into `ADMIN` by a
 migration that rewrites every `OWNER` membership before replacing the enum type. The role
 is the **coarse organization-level role and an authorization extension point**, not a commitment to the eventual authorization
@@ -1112,13 +1117,14 @@ put slugs in its own URLs.
 | `PATCH /api/v1/organizations/:organizationId` | Rename the organization: `{ "name": "…" }`, nothing else | `organization:update` |
 | `GET /api/v1/organizations/:organizationId/memberships` | Every membership record, oldest first | `memberships:read` |
 | `GET /api/v1/organizations/:organizationId/memberships/:membershipId` | One membership record | `memberships:read` |
-| `POST /api/v1/organizations/:organizationId/memberships` | Add a `MEMBER` with a one-time password, optionally on teams: `{ "name", "email", "temporaryPassword", "teamIds"? }` — see [Adding a member](#adding-a-member) | `members:manage` |
+| `POST /api/v1/organizations/:organizationId/memberships` | Add a person with a one-time password, in a role, optionally on teams: `{ "name", "email", "temporaryPassword", "role"?, "teamIds"? }` — see [Adding a member](#adding-a-member) | `members:manage` |
+| `PUT /api/v1/organizations/:organizationId/memberships/:membershipId/role` | Give a member another role: `{ "role" }`. `409 LAST_ADMIN` for the only `ADMIN` | `members:manage` |
 | `POST /api/v1/organizations/:organizationId/invitations` | Invite an email address: `{ "email", "role" }` | `invitations:manage` |
 | `GET /api/v1/organizations/:organizationId/invitations` | Every open invitation, newest first | `invitations:read` |
 | `DELETE /api/v1/organizations/:organizationId/invitations/:invitationId` | Revoke an open invitation | `invitations:manage` |
 | `/api/v1/organizations/:organizationId/teams…` | Teams and who is on them — see [Teams](#teams) | `teams:read` / `teams:manage` |
 | `/api/v1/organizations/:organizationId/services…` | Services and who owns them — see [Services](#services) | `services:read` / `services:manage` |
-| `/api/v1/organizations/:organizationId/incidents…` | Incidents — see [Incidents](#incidents) | `incidents:read` / `incidents:respond` / `incidents:manage` |
+| `/api/v1/organizations/:organizationId/incidents…` | Incidents — see [Incidents](#incidents) | `incidents:read` / `incidents:declare` / `incidents:respond` / `responses:work` / `incidents:manage` |
 
 All require authentication, a current membership, and the listed permission — every role
 may read the organization and its memberships; only an `ADMIN` may rename it, add
@@ -1149,15 +1155,16 @@ POST /api/v1/organizations/:organizationId/memberships
   "name": "Grace Hopper",
   "email": "grace@example.com",
   "temporaryPassword": "at least 12 characters",
+  "role": "REPORTER",                     // optional: RESPONDER when absent
   "teamIds": ["…", "…"]                   // optional: this organization's teams
 }
 ```
 
-Everyone added this way is a `MEMBER`. The body carries no role, and one that names a role
-is refused with `400`: the organization's single `ADMIN` is whoever created it. That is an
-application rule, not a database constraint — every flow that writes a membership role
-(registration, adding a member, the dev seeder) keeps to it, and there is no endpoint that
-changes a role, so a later version that wants several admins needs no migration to undo.
+The person is added in the role the body names, or as a `RESPONDER` when it names none —
+what everyone added was before roles. Any role may be given, `ADMIN` included; a role is
+changed later with `PUT …/memberships/:membershipId/role`. The organization always keeps an
+`ADMIN`: changing the last one's role is refused with `409 LAST_ADMIN`, and the admins'
+rows are locked first so two changes racing to demote the last two take turns.
 
 One transaction creates the `User`, the `Membership`, and — when `teamIds` is given — a
 `TeamMembership` row per team, so none exists without the others. Teams are optional: a
@@ -1334,49 +1341,68 @@ updateOrganization(...)
 Which roles hold which permission is written out once, in
 [`role-permissions.ts`](apps/api/src/authorization/role-permissions.ts):
 
-| Permission | `ADMIN` | `MEMBER` |
-| --- | --- | --- |
-| `organization:read` | ✓ | ✓ |
-| `organization:update` | ✓ | |
-| `memberships:read` | ✓ | ✓ |
-| `members:manage` | ✓ | |
-| `invitations:read` | ✓ | |
-| `invitations:manage` | ✓ | |
-| `teams:read` | ✓ | ✓ |
-| `teams:manage` | ✓ | |
-| `services:read` | ✓ | ✓ |
-| `services:manage` | ✓ | |
-| `incidents:read` | ✓ | ✓ |
-| `incidents:respond` | ✓ | ✓ |
-| `incidents:manage` | ✓ | |
+### Roles
 
-A `MEMBER` cannot see open invitations: they name people who are not members yet.
+One role per person, each named for its job in an incident:
 
-Belonging to a team grants one thing: a member starts investigating only the incidents
-their team is responsible for. `incidents:respond` is the role's permission to take part at
-all; which incidents it reaches depends on the incident, so `IncidentsService` narrows it
-— see [Team-based response](#team-based-response). Everything else is authorized by the
-organization role alone; there are no team roles.
+| Role | Job |
+| --- | --- |
+| `ADMIN` | Sets the organization up — people, roles, teams, services — and can do everything an `INCIDENT_MANAGER` does. Does not work a response |
+| `INCIDENT_MANAGER` | Decides on incidents: severity, who may respond, the responsible team, resolution, the analysis. Sees every incident, team, and member |
+| `REPORTER` | Raises incidents, and follows and posts updates on the ones they declared |
+| `RESPONDER` | Works the response on their teams' incidents, or ones they are assigned to |
 
-**The Admin owns configuration and the incident lifecycle; members take part in the
-response.** Teams, services, and invitations shape the organization, so only an `ADMIN`
-changes them. An incident's lifecycle is `incidents:manage`, also `ADMIN`-only:
-declaring it, changing its title, summary, severity, status, or responsible team, and
-resolving it. A member finishing their own piece of work is not the incident being over,
-so resolution belongs to whoever sees the whole response. Taking part is
-`incidents:respond`, which every role holds — starting to investigate an incident one's
-team is responsible for, posting updates while investigating, and completing one's own
-response. The `ADMIN` oversees every incident and may post to any.
+| Permission | `ADMIN` | `INCIDENT_MANAGER` | `REPORTER` | `RESPONDER` |
+| --- | --- | --- | --- | --- |
+| `organization:read` | ✓ | ✓ | ✓ | ✓ |
+| `organization:update` | ✓ | | | |
+| `memberships:read` | ✓ | ✓ | ✓ | ✓ |
+| `memberships:read-all` | ✓ | ✓ | | |
+| `members:manage` | ✓ | | | |
+| `invitations:read` | ✓ | | | |
+| `invitations:manage` | ✓ | | | |
+| `teams:read` | ✓ | ✓ | ✓ | ✓ |
+| `teams:read-all` | ✓ | ✓ | | |
+| `teams:manage` | ✓ | | | |
+| `services:read` | ✓ | ✓ | ✓ | ✓ |
+| `services:manage` | ✓ | | | |
+| `incidents:read` | ✓ | ✓ | ✓ | ✓ |
+| `incidents:read-all` | ✓ | ✓ | | |
+| `incidents:declare` | ✓ | ✓ | ✓ | |
+| `incidents:manage` | ✓ | ✓ | | |
+| `incidents:respond` | ✓ | ✓ | ✓ | ✓ |
+| `responses:work` | | | | ✓ |
+| `incident-analyses:write` | ✓ | ✓ | | ✓ |
+| `notifications:read` | ✓ | ✓ | ✓ | ✓ |
 
-Declaring is `ADMIN`-only as the current rule, not a settled one. Whether a member may
-declare an incident against a service one of their teams owns may be reconsidered now
-that response is scoped to teams; it would be a change to this table and the declaring
-route alone.
+Only those who set the organization up see open invitations: they name people who are not
+members yet.
 
+Belonging to a team grants one thing: a responder starts investigating only the incidents
+their team is responsible for, or ones they are assigned to. `responses:work` is the role's
+permission to work a response at all; which incidents it reaches depends on the incident,
+so `IncidentsService` narrows it — see [Team-based response](#team-based-response).
+Everything else is authorized by the organization role alone; there are no team roles.
+
+**Raising, deciding, and responding are three jobs.** `incidents:declare` raises an
+incident against any service. `incidents:manage` decides on it: changing its title,
+summary, severity, status, or responsible team, choosing who may respond, and resolving it.
+A responder finishing their own piece of work is not the incident being over, so
+resolution belongs to whoever sees the whole response. `responses:work` — starting one's
+own response and completing it — is the `RESPONDER`'s alone, and only a `RESPONDER` can be
+assigned (`409 ASSIGNEE_CANNOT_RESPOND` otherwise). `incidents:respond` posts updates:
+whoever decides posts on any incident, a declarer on the incidents they declared, and a
+responder while their own response is under way. Saving a new known issue while declaring
+stays with `services:manage`.
+
+A member who is not deciding sees their teams' incidents, the ones they responded to, were
+assigned to, own the analysis of, or declared — the last is how a `REPORTER`, on no team,
+follows what they raised. In the member list they see their teammates and whoever decides
+on incidents: the `ADMIN`s and `INCIDENT_MANAGER`s.
 There is no `@RequireRole()`. A route that names roles has to be edited every time the
 policy changes; a route that names an operation does not. The table is explicit per role
-rather than derived from `ADMIN > MEMBER` — a spec asserts that ordering holds today,
-but a later role that does not fit the ladder is a change to the table alone.
+rather than derived from a hierarchy — a spec asserts that `ADMIN` holds everything an
+`INCIDENT_MANAGER` does, but the roles are no ladder: only a `RESPONDER` works a response.
 
 ### Where the role comes from
 
@@ -1396,7 +1422,7 @@ not, because nothing about renaming depends on it.
 ```jsonc
 "membership": {
   "id": "…",
-  "role": "MEMBER",
+  "role": "RESPONDER",
   "permissions": ["memberships:read", "organization:read"]
 }
 ```
@@ -1455,7 +1481,7 @@ same `404` and is never written.
 [`authorization.e2e-spec.ts`](apps/api/test/authorization.e2e-spec.ts) proves the ordering,
 the `403`/`404` split, and every wiring failure against the real `AppModule`.
 [`authorization.integration-spec.ts`](apps/api/test/authorization.integration-spec.ts) runs a
-user who is `ADMIN` in one organization and `MEMBER` in another with a single token, and
+user who is `ADMIN` in one organization and `RESPONDER` in another with a single token, and
 proves that role changes apply on the next request, that refused writes leave the row
 untouched, that the update-miss mapping holds against the real driver adapter, and that
 interleaved requests in different roles stay apart.
@@ -1476,7 +1502,7 @@ interleaved requests in different roles stay apart.
 > with it on.
 
 Members join an organization by invitation. An `ADMIN` invites an email
-address as `ADMIN` or `MEMBER`, and receives a link to share however they choose — there is
+address in a role, and receives a link to share however they choose — there is
 no email delivery. The invitee opens it and either creates an account or signs in with the
 invited address, and joins.
 
@@ -1678,7 +1704,7 @@ archival.
 ### Tests
 
 [`teams.e2e-spec.ts`](apps/api/test/teams.e2e-spec.ts) proves the wiring: every route is
-admitted and authorized, and a `MEMBER` is refused every write before its body is read.
+admitted and authorized, and a `RESPONDER` is refused every write before its body is read.
 [`teams.integration-spec.ts`](apps/api/test/teams.integration-spec.ts) runs two tenants
 against a real database: foreign team and membership ids answered exactly as missing ones
 on every route, refused writes leaving rows untouched, the service isolating with no guard,
@@ -1798,7 +1824,7 @@ archived a service.
 ### Tests
 
 [`services.e2e-spec.ts`](apps/api/test/services.e2e-spec.ts) proves the wiring: every
-route is admitted and authorized, and a `MEMBER` is refused every write before its body is
+route is admitted and authorized, and a `RESPONDER` is refused every write before its body is
 read. [`services.integration-spec.ts`](apps/api/test/services.integration-spec.ts) runs
 two tenants against a real database: foreign service and team ids answered exactly as
 missing ones, a team member granted nothing by owning a service, the service isolating
@@ -1933,9 +1959,10 @@ never started has no response at all.
 
 | Who | Reads it | Starts investigating | Posts updates | Completes a response | Resolves |
 | --- | --- | --- | --- | --- | --- |
-| The `ADMIN` | ✓ | only if on the responsible team | ✓ any active incident | their own | ✓ once nobody is investigating |
-| A `MEMBER` on the responsible team | ✓ | ✓ | while investigating | their own | |
-| Any other `MEMBER` | ✓ | `403 NOT_ON_RESPONSIBLE_TEAM` | `403 START_INVESTIGATING_FIRST` | | |
+| An `ADMIN` or `INCIDENT_MANAGER` | ✓ | `403 PERMISSION_DENIED` | ✓ any active incident | | ✓ once nobody is investigating |
+| The `REPORTER` who declared it | ✓ | `403 PERMISSION_DENIED` | ✓ | | |
+| A `RESPONDER` on the responsible team | ✓ | ✓ | while investigating | their own | |
+| Any other `RESPONDER` | ✓ | `403 NOT_ON_RESPONSIBLE_TEAM` | `403 START_INVESTIGATING_FIRST` | | |
 
 - **Starting** creates the caller's response as `INVESTIGATING` and records
   `RESPONSE_STARTED`. The first start also moves a `DECLARED` incident to
@@ -1979,18 +2006,18 @@ picked up. What happened, and when, is the [timeline](#incidents)'s job.
 | List | Who gets it | An active incident is on it when |
 | --- | --- | --- |
 | `manage.readyToResolve` | `incidents:manage` | It is `INVESTIGATING` and no responder is still investigating — exactly what resolving requires |
-| `respond.needsYourTeam` | `incidents:respond` | Its responsible team is one of the caller's, and nobody now on that team has responded |
-| `respond.yourResponses` | `incidents:respond` | The caller's own response is still `INVESTIGATING`, whatever team the incident has now |
+| `respond.needsYourTeam` | `responses:work` | Its responsible team is one of the caller's, and nobody now on that team has responded |
+| `respond.yourResponses` | `responses:work` | The caller's own response is still `INVESTIGATING`, whatever team the incident has now |
 
 ```jsonc
 {
   "manage": { "readyToResolve": [ /* incidents, with responders */ ] },  // null without incidents:manage
-  "respond": { "needsYourTeam": [ /* … */ ], "yourResponses": [ /* … */ ] }  // null without incidents:respond
+  "respond": { "needsYourTeam": [ /* … */ ], "yourResponses": [ /* … */ ] }  // null without responses:work
 }
 ```
 
-- **Permissions, not roles.** The `ADMIN` gets `manage`, and `respond` too — which is
-  empty unless they are on a team. A `MEMBER` gets `manage: null`. One token is judged by
+- **Permissions, not roles.** Whoever decides (`incidents:manage`) gets `manage`, and
+  `respond: null`; a `RESPONDER` gets `respond`, and `manage: null`. One token is judged by
   the role it holds in the organization asked about.
 - **"Nobody now on that team has responded"** means once any current member of the
   responsible team starts, the incident leaves the other members' lists. It is not a
@@ -2028,23 +2055,23 @@ number means nothing outside the organization it was admitted to.
 
 All under `/api/v1/organizations/:organizationId`, with admission, permission, and
 isolation exactly as in [Tenancy](#tenancy) and [Authorization](#authorization). Every
-role holds `incidents:read` and `incidents:respond`; only an `ADMIN` holds
-`incidents:manage`, so a `MEMBER` is answered `403 PERMISSION_DENIED` on every route that
-needs it. Responding is narrowed further by the incident — see
+role holds `incidents:read` and `incidents:respond`; see [Roles](#roles) for who holds
+`incidents:declare`, `incidents:manage`, and `responses:work`. A role without the route's
+permission is answered `403 PERMISSION_DENIED`. Responding is narrowed further by the incident — see
 [Team-based response](#team-based-response).
 
 | Route | Permission | Purpose |
 | --- | --- | --- |
 | `GET /incidents?state=active` | `incidents:read` | Active incidents, most severe first, then longest-running — see [Finding incidents](#finding-incidents) |
 | `GET /incidents?state=resolved` | `incidents:read` | Resolved incidents, most recently declared first |
-| `POST /incidents` | `incidents:manage` | Declare `{ "title", "serviceId", "severity", "summary"? }`. `201` |
+| `POST /incidents` | `incidents:declare` | Declare `{ "title", "serviceId", "severity", "summary"? }`. `201` |
 | `GET /incidents/attention` | `incidents:read` | The active incidents waiting on the caller now — see [Attention](#attention) |
 | `GET /incidents/:number` | `incidents:read` | One incident |
 | `PATCH /incidents/:number` | `incidents:manage` | Change `{ "title"?, "summary"?, "severity"?, "status"?, "teamId"? }` of an active incident (at least one). `"status": "RESOLVED"`, with a `"resolution"` note, resolves one under investigation that nobody is still investigating |
 | `GET /incidents/:number/timeline` | `incidents:read` | The incident's timeline, oldest first |
-| `POST /incidents/:number/updates` | `incidents:respond`, and investigating unless `ADMIN` | Post `{ "message" }` to an active incident's timeline. `201`, with the entry |
-| `POST /incidents/:number/responders/me` | `incidents:respond`, and on the responsible team | Start investigating. No body. `200`, with the incident |
-| `POST /incidents/:number/responders/me/complete` | `incidents:respond` | Mark your own response complete. No body. `200`, with the incident |
+| `POST /incidents/:number/updates` | `incidents:respond`, and investigating unless deciding or the declarer | Post `{ "message" }` to an active incident's timeline. `201`, with the entry |
+| `POST /incidents/:number/responders/me` | `responses:work`, and let in by who may respond | Start investigating. No body. `200`, with the incident |
+| `POST /incidents/:number/responders/me/complete` | `responses:work` | Mark your own response complete. No body. `200`, with the incident |
 | `GET /memberships/:membershipId/responses` | `incidents:read` | One member's responses, most recently started first — see [A member's responses](#a-members-responses) |
 
 There is **no delete**. Incidents are history; a mistaken declaration is resolved.
@@ -2121,7 +2148,7 @@ no counts or totals; it is history, not a measure.
 | `serviceId` archived | `409 SERVICE_ARCHIVED` |
 | `teamId` missing, or another organization's team | `404 TEAM_NOT_FOUND`, identically |
 | Starting to investigate an incident whose responsible team the caller is not on | `403 NOT_ON_RESPONSIBLE_TEAM` |
-| A `MEMBER` posting an update without investigating the incident | `403 START_INVESTIGATING_FIRST` |
+| A `RESPONDER` posting an update without investigating the incident | `403 START_INVESTIGATING_FIRST` |
 | Posting or starting again after completing one's response | `409 RESPONSE_ALREADY_COMPLETED` |
 | Completing a response never started | `409 NOT_INVESTIGATING` |
 | Resolving while a responder is still investigating | `409 RESPONDERS_STILL_INVESTIGATING` |

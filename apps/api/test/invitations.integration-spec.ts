@@ -34,7 +34,7 @@ vi.hoisted(() => {
  *   - a membership or account that appears after the claim   → 409, claim rolled back.
  */
 
-type Role = 'ADMIN' | 'MEMBER';
+type Role = 'ADMIN' | 'RESPONDER';
 
 interface Fixture {
   orgA: string;
@@ -82,7 +82,7 @@ describe('invitations (integration)', () => {
     organizationId: string,
     actor: string,
     email: string,
-    role: string = 'MEMBER',
+    role: string = 'RESPONDER',
   ) =>
     checked(
       await request(app.getHttpServer())
@@ -94,7 +94,7 @@ describe('invitations (integration)', () => {
   /** Creates an invitation and returns its token, failing loudly otherwise. */
   const issue = async (
     email: string,
-    role: string = 'MEMBER',
+    role: string = 'RESPONDER',
     organizationId = fx.orgA,
     actor = fx.alice,
   ): Promise<{ id: string; token: string }> => {
@@ -253,9 +253,9 @@ describe('invitations (integration)', () => {
 
     await grant(orgA, fixture.alice, 'ADMIN');
     await grant(orgA, fixture.carol, 'ADMIN');
-    await grant(orgA, fixture.dave, 'MEMBER');
+    await grant(orgA, fixture.dave, 'RESPONDER');
     await grant(orgB, fixture.bob, 'ADMIN');
-    await grant(orgB, fixture.erin, 'MEMBER');
+    await grant(orgB, fixture.erin, 'RESPONDER');
 
     return fixture;
   };
@@ -370,7 +370,7 @@ describe('invitations (integration)', () => {
     });
 
     it('should answer an invitation from another organization with 404 and leave it open', async () => {
-      const foreign = await issue(NEW_EMAIL, 'MEMBER', fx.orgB, fx.bob);
+      const foreign = await issue(NEW_EMAIL, 'RESPONDER', fx.orgB, fx.bob);
 
       const response = await revoke(fx.orgA, fx.alice, foreign.id);
 
@@ -418,8 +418,8 @@ describe('invitations (integration)', () => {
     it('should refuse a body that tries to set more than the email and role', async () => {
       for (const body of [
         { email: NEW_EMAIL, role: 'OWNER' },
-        { email: NEW_EMAIL, role: 'MEMBER', organizationId: fx.orgB },
-        { email: NEW_EMAIL, role: 'MEMBER', invitedById: fx.dave },
+        { email: NEW_EMAIL, role: 'RESPONDER', organizationId: fx.orgB },
+        { email: NEW_EMAIL, role: 'RESPONDER', invitedById: fx.dave },
       ]) {
         const response = await request(app.getHttpServer())
           .post(invitationsPath(fx.orgA))
@@ -461,7 +461,7 @@ describe('invitations (integration)', () => {
     });
 
     it('should keep naming an inviter who has since been soft-deleted', async () => {
-      await issue(NEW_EMAIL, 'MEMBER', fx.orgA, fx.carol);
+      await issue(NEW_EMAIL, 'RESPONDER', fx.orgA, fx.carol);
       await prisma.user.update({
         where: { id: fx.carol },
         data: { deletedAt: new Date() },
@@ -478,7 +478,7 @@ describe('invitations (integration)', () => {
 
   describe('one open invitation per organization and email', () => {
     it('should replace an open invitation, and say so', async () => {
-      const first = await issue(NEW_EMAIL, 'MEMBER');
+      const first = await issue(NEW_EMAIL, 'RESPONDER');
       const second = await invite(fx.orgA, fx.carol, NEW_EMAIL, 'ADMIN');
 
       expect(second.status).toBe(201);
@@ -513,7 +513,7 @@ describe('invitations (integration)', () => {
     });
 
     it('should keep the same address independent across organizations', async () => {
-      await issue(NEW_EMAIL, 'MEMBER', fx.orgA, fx.alice);
+      await issue(NEW_EMAIL, 'RESPONDER', fx.orgA, fx.alice);
       const inB = await invite(fx.orgB, fx.bob, NEW_EMAIL);
 
       expect(inB.body.replacedExisting).toBe(false);
@@ -529,7 +529,7 @@ describe('invitations (integration)', () => {
           data: {
             organizationId: fx.orgA,
             email: NEW_EMAIL,
-            role: 'MEMBER',
+            role: 'RESPONDER',
             tokenHash: 'a-second-open-invitation',
             invitedById: fx.alice,
             expiresAt: new Date(Date.now() + 60_000),
@@ -558,7 +558,7 @@ describe('invitations (integration)', () => {
         request(app.getHttpServer())
           .post(invitationsPath(fx.orgA))
           .set('Authorization', await bearer(fx.alice))
-          .send({ email: NEW_EMAIL, role: 'MEMBER' }),
+          .send({ email: NEW_EMAIL, role: 'RESPONDER' }),
       );
 
       await someoneIsWaitingOnALock();
@@ -651,7 +651,7 @@ describe('invitations (integration)', () => {
       const accepted = await issue('erin@bravo.example');
       await accept(accepted.token, fx.erin);
 
-      const orphaned = await issue(NEW_EMAIL, 'MEMBER', fx.orgB, fx.bob);
+      const orphaned = await issue(NEW_EMAIL, 'RESPONDER', fx.orgB, fx.bob);
       await prisma.organization.update({
         where: { id: fx.orgB },
         data: { deletedAt: new Date() },
@@ -740,11 +740,13 @@ describe('invitations (integration)', () => {
       });
       const { id, token } = await issue('dave@acme.example', 'ADMIN');
       await prisma.membership.create({
-        data: { organizationId: fx.orgA, userId: fx.dave, role: 'MEMBER' },
+        data: { organizationId: fx.orgA, userId: fx.dave, role: 'RESPONDER' },
       });
 
       expectCode(await accept(token, fx.dave), 409, 'ALREADY_A_MEMBER');
-      expect(await membershipOf(fx.orgA, fx.dave)).toEqual({ role: 'MEMBER' });
+      expect(await membershipOf(fx.orgA, fx.dave)).toEqual({
+        role: 'RESPONDER',
+      });
       await expectOpen(id);
     });
 
@@ -811,7 +813,7 @@ describe('invitations (integration)', () => {
       // pre-check cannot see it, so it claims, then waits on the insert.
       const other = await hold((tx) =>
         tx.membership.create({
-          data: { organizationId: fx.orgA, userId: fx.erin, role: 'MEMBER' },
+          data: { organizationId: fx.orgA, userId: fx.erin, role: 'RESPONDER' },
         }),
       );
 
@@ -827,7 +829,9 @@ describe('invitations (integration)', () => {
       await other.done;
 
       expectCode(await pending, 409, 'ALREADY_A_MEMBER');
-      expect(await membershipOf(fx.orgA, fx.erin)).toEqual({ role: 'MEMBER' });
+      expect(await membershipOf(fx.orgA, fx.erin)).toEqual({
+        role: 'RESPONDER',
+      });
       await expectOpen(id);
     });
 
@@ -1069,7 +1073,7 @@ describe('invitations (integration)', () => {
     });
 
     it('should keep the inviter reference through a soft delete', async () => {
-      const { id } = await issue(NEW_EMAIL, 'MEMBER', fx.orgA, fx.carol);
+      const { id } = await issue(NEW_EMAIL, 'RESPONDER', fx.orgA, fx.carol);
       await prisma.user.update({
         where: { id: fx.carol },
         data: { deletedAt: new Date() },
@@ -1082,7 +1086,7 @@ describe('invitations (integration)', () => {
     });
 
     it('should refuse to physically delete a user who has sent invitations', async () => {
-      await issue(NEW_EMAIL, 'MEMBER', fx.orgA, fx.carol);
+      await issue(NEW_EMAIL, 'RESPONDER', fx.orgA, fx.carol);
 
       await expect(
         prisma.user.delete({ where: { id: fx.carol } }),
@@ -1092,7 +1096,7 @@ describe('invitations (integration)', () => {
 
     it("should remove an organization's invitations when the organization is physically deleted", async () => {
       await issue(NEW_EMAIL);
-      await issue(NEW_EMAIL, 'MEMBER', fx.orgB, fx.bob);
+      await issue(NEW_EMAIL, 'RESPONDER', fx.orgB, fx.bob);
 
       await prisma.organization.delete({ where: { id: fx.orgA } });
 
@@ -1104,8 +1108,8 @@ describe('invitations (integration)', () => {
     const service = () => app.get(InvitationsService);
 
     it('should list only the organization it is given', async () => {
-      await issue(NEW_EMAIL, 'MEMBER', fx.orgA, fx.alice);
-      await issue('other@new.example', 'MEMBER', fx.orgB, fx.bob);
+      await issue(NEW_EMAIL, 'RESPONDER', fx.orgA, fx.alice);
+      await issue('other@new.example', 'RESPONDER', fx.orgB, fx.bob);
 
       const listed = await service().listOpen(fx.orgB);
 
@@ -1131,7 +1135,7 @@ describe('invitations (integration)', () => {
         service().create(
           fx.orgA,
           { userId: fx.alice },
-          { email: NEW_EMAIL, role: 'MEMBER' },
+          { email: NEW_EMAIL, role: 'RESPONDER' },
         ),
       ).rejects.toMatchObject({ errorCode: 'ORGANIZATION_NOT_FOUND' });
       expect(await prisma.invitation.count()).toBe(0);
@@ -1142,7 +1146,7 @@ describe('invitations (integration)', () => {
       const created = await service().create(
         fx.orgA,
         { userId: fx.alice },
-        { email: 'bob@bravo.example', role: 'MEMBER' },
+        { email: 'bob@bravo.example', role: 'RESPONDER' },
       );
 
       expect(created.invitation.email).toBe('bob@bravo.example');
