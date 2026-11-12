@@ -1,12 +1,11 @@
 "use client";
 
-import { Check, ChevronRight, Copy } from "lucide-react";
+import { Check, Copy } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 
 import { SessionUnavailable } from "@/components/app/session-unavailable";
-import { initialsOf } from "@/components/app/shell-utilities";
 import { Mark } from "@/components/app/wordmark";
 import { ROLE_META } from "@/components/roles/role-meta";
 import { ErrorAlert } from "@/components/ui/alert";
@@ -38,34 +37,14 @@ const messageFor = (error: unknown): string | undefined => {
   return undefined;
 };
 
-// ── The demo roles ─────────────────────────────────────────────────────────
+// ── The demo accounts ──────────────────────────────────────────────────────
 
 /** The roles in the order an incident needs them, the Admin behind them all. */
-const STEPS: {
-  step: string;
-  name: string;
-  role: Role;
-  what: string;
-}[] = [
-  { step: "01", name: "Report", role: "REPORTER", what: "Declares what's wrong" },
-  {
-    step: "02",
-    name: "Decide",
-    role: "INCIDENT_MANAGER",
-    what: "Confirms severity, picks who responds",
-  },
-  {
-    step: "03",
-    name: "Respond",
-    role: "RESPONDER",
-    what: "Fix their teams' incidents · land on My Operations",
-  },
-  {
-    step: "Behind every step",
-    name: "Set up",
-    role: "ADMIN",
-    what: "People, teams, services, roles",
-  },
+const DEMO_ROLES: Role[] = [
+  "REPORTER",
+  "INCIDENT_MANAGER",
+  "RESPONDER",
+  "ADMIN",
 ];
 
 /** The shared demo password, with a button that copies it. */
@@ -81,8 +60,8 @@ function DemoPassword() {
   }, [copied]);
 
   return (
-    <div className="flex h-10 items-center gap-2 rounded-lg border border-line-subtle bg-sunken pr-1 pl-3">
-      <span className="text-xs text-fg-subtle">Password</span>
+    <div className="flex items-center gap-2 text-xs text-fg-subtle">
+      Password
       <span className="data text-sm text-fg select-all">{DEV_PASSWORD}</span>
       <button
         type="button"
@@ -100,16 +79,17 @@ function DemoPassword() {
           <Copy aria-hidden="true" className="size-4" />
         )}
       </button>
+      <span className="flex-1 text-right">Development only</span>
     </div>
   );
 }
 
 /**
- * TEMPORARY — the development personas, shown in development only: one click
- * signs in as any of them. Grouped by role along an incident's steps, each
- * saying where they land and what to try. Remove with lib/dev/dev-account.ts.
+ * TEMPORARY — the development personas, shown in development only, grouped
+ * by role along an incident's steps. Each person has their own Sign in
+ * button, in their role's colour. Remove with lib/dev/dev-account.ts.
  */
-function DemoRoles({
+function DemoAccounts({
   disabled,
   onSignIn,
 }: {
@@ -118,108 +98,87 @@ function DemoRoles({
 }) {
   return (
     <section
-      aria-labelledby="demo-roles"
-      className="flex flex-col gap-4 rounded-2xl border border-line-subtle bg-linear-to-b from-rail-top to-rail-mid p-5 sm:p-7"
+      aria-labelledby="demo-accounts"
+      className="flex flex-col gap-3.5 border-t border-line-subtle bg-sunken p-6 md:border-t-0 md:border-l"
     >
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
-        <div className="flex flex-col gap-1">
-          <h2 id="demo-roles" className="text-lg font-semibold text-fg">
-            Explore as a role
-          </h2>
-          <p className="text-sm text-fg-muted">
-            In the order an incident needs them. One click signs you in.
-          </p>
-        </div>
-        <DemoPassword />
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <h2 id="demo-accounts" className="font-semibold text-fg">
+          Try a demo account
+        </h2>
+        <p className="text-xs text-fg-subtle">Pick a role to sign in</p>
       </div>
 
-      <ol className="relative flex flex-col">
-        {/* The flow, joining each role's icon to the next. */}
-        <span
-          aria-hidden="true"
-          className="absolute top-8 bottom-8 left-[1.3125rem] w-0.5 bg-linear-to-b from-role-reporter-line via-role-responder-line to-role-admin-line"
-        />
-        {STEPS.map(({ step, name, role, what }) => {
-          const meta = ROLE_META[role];
-          const Icon = meta.icon;
-          const people = DEV_PERSONAS.filter((persona) => persona.role === role);
-          const one = people.length === 1;
+      {DEMO_ROLES.map((role) => {
+        const meta = ROLE_META[role];
+        const people = DEV_PERSONAS.filter((persona) => persona.role === role);
+        const one = people.length === 1;
+        // Who they are: the role's tagline, or for a Responder their teams.
+        const about = (persona: (typeof people)[number]) =>
+          "teams" in persona
+            ? `${persona.teams.join(" & ")} ${persona.teams.length === 1 ? "team" : "teams"}`
+            : meta.tagline;
 
-          return (
-            <li
-              key={role}
-              className="relative grid grid-cols-[2.75rem_minmax(0,1fr)] gap-4 py-3"
+        return (
+          <div key={role} className="flex flex-col gap-1.5">
+            <h3
+              className={cx(
+                "text-xs font-semibold tracking-[0.08em] uppercase",
+                meta.tone.text,
+              )}
             >
-              <span
-                aria-hidden="true"
-                className={cx(
-                  "relative z-10 grid size-11 place-items-center rounded-xl border bg-rail-top ring-4 ring-rail-top",
-                  meta.tone.line,
-                  meta.tone.text,
-                )}
-              >
-                <Icon strokeWidth={1.8} className="size-5" />
-              </span>
-              <div className="flex min-w-0 flex-col gap-2.5">
-                <div className="flex min-h-11 flex-wrap items-center gap-x-2.5 gap-y-1">
-                  <span className="numeric text-xs text-fg-subtle">{step}</span>
-                  <span className="font-semibold text-fg">{name}</span>
-                  <span
-                    className={cx(
-                      "inline-flex h-6 items-center rounded-full border px-2 text-xs font-semibold",
-                      meta.tone.text,
-                      meta.tone.subtle,
-                      meta.tone.line,
-                    )}
+              {one ? meta.label : `${meta.plural} · ${people.length}`}
+            </h3>
+            {/* Many people (the Responders) scroll in a short box; the half
+                row showing at its foot says there are more. Focusable, so the
+                keyboard can scroll it too. */}
+            <div
+              {...(one
+                ? {}
+                : {
+                    role: "region",
+                    "aria-label": meta.plural,
+                    tabIndex: 0,
+                  })}
+              className={cx(
+                !one &&
+                  "max-h-28 overflow-y-auto rounded-md pr-1 [scrollbar-width:thin] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+              )}
+            >
+              <ul className="flex flex-col gap-1.5">
+                {people.map((persona) => (
+                  <li
+                    key={persona.email}
+                    className="flex min-h-10 items-center gap-2.5 rounded-md border border-line-subtle bg-surface py-1 pr-1 pl-2.5"
                   >
-                    {one ? meta.label : meta.plural}
-                  </span>
-                  <span className="text-sm text-fg-muted">{what}</span>
-                </div>
-                <div className={cx("grid gap-1.5", !one && "sm:grid-cols-2")}>
-                  {people.map((persona) => (
+                    <span className="truncate text-sm font-semibold text-fg">
+                      {persona.name}
+                    </span>
+                    <span className="flex-1 truncate text-xs text-fg-subtle">
+                      {about(persona)}
+                    </span>
                     <button
-                      key={persona.email}
                       type="button"
                       disabled={disabled}
                       aria-label={`Sign in as ${persona.name}`}
                       onClick={() => onSignIn(persona.email)}
-                      className="flex min-h-13 w-full items-center gap-3 rounded-xl border border-line-subtle bg-sunken px-3 text-left transition-colors duration-(--duration-fast) hover:border-line-strong hover:bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-60"
+                      className={cx(
+                        "inline-flex h-8 shrink-0 items-center rounded-md border px-2.5 text-xs font-semibold transition-[filter] duration-(--duration-fast) hover:brightness-125 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-60",
+                        meta.tone.text,
+                        meta.tone.subtle,
+                        meta.tone.line,
+                      )}
                     >
-                      <span
-                        aria-hidden="true"
-                        className="grid size-8 shrink-0 place-items-center rounded-full bg-hover text-xs font-semibold text-fg"
-                      >
-                        {initialsOf(persona.name)}
-                      </span>
-                      <span className="flex min-w-0 flex-1 flex-col">
-                        <span className="truncate text-sm font-semibold text-fg">
-                          {persona.name}
-                        </span>
-                        <span className="truncate text-xs text-fg-subtle">
-                          {persona.detail}
-                        </span>
-                      </span>
-                      <span
-                        aria-hidden="true"
-                        className={cx(
-                          "inline-flex h-8 shrink-0 items-center gap-0.5 rounded-lg border px-2.5 text-sm font-semibold",
-                          meta.tone.text,
-                          meta.tone.subtle,
-                          meta.tone.line,
-                        )}
-                      >
-                        {one && "Sign in"}
-                        <ChevronRight className="size-4" />
-                      </span>
+                      Sign in
                     </button>
-                  ))}
-                </div>
-              </div>
-            </li>
-          );
-        })}
-      </ol>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        );
+      })}
+
+      <DemoPassword />
     </section>
   );
 }
@@ -227,10 +186,10 @@ function DemoRoles({
 // ── The page ───────────────────────────────────────────────────────────────
 
 /**
- * The login page: one panel, headed by the product, holding the sign-in form
- * and — in development — the demo roles beside it. Creating an organization
- * is offered only while sign-up is switched on; otherwise the header says how
- * people join.
+ * The login page: the product's name, then one compact card — the sign-in
+ * form, and in development the demo accounts beside it. Creating an
+ * organization is offered only while sign-up is switched on; otherwise the
+ * form says how people join.
  */
 export function LoginForm() {
   const { login } = useSession();
@@ -271,68 +230,40 @@ export function LoginForm() {
     : "/register";
 
   return (
-    <div className="overflow-hidden rounded-3xl border border-line-subtle bg-sunken shadow-[0_24px_64px_rgb(0_0_0/0.3)]">
-      <header className="flex flex-wrap items-center justify-between gap-x-6 gap-y-4 border-b border-line-subtle bg-linear-to-r from-accent-subtle to-sunken to-65% px-5 py-5 sm:px-8">
-        <div className="flex items-center gap-3.5">
+    <div className="flex w-full flex-col items-center gap-6">
+      <div className="flex flex-col items-center gap-1.5 text-center">
+        <p className="flex items-center gap-2.5">
           <span
             aria-hidden="true"
-            className="grid size-11 shrink-0 place-items-center rounded-xl border border-accent-rim bg-accent text-on-accent"
+            className="grid size-8 shrink-0 place-items-center rounded-md border border-accent-rim bg-accent text-on-accent"
           >
-            <Mark className="size-6" />
+            <Mark className="size-4.5" />
           </span>
-          <div className="flex flex-col gap-0.5">
-            <p className="text-xl leading-tight font-bold tracking-[-0.015em] text-fg">
-              Sentinel<span className="font-normal text-fg-muted">Ops</span>
-            </p>
-            <p className="text-sm text-fg-muted">
-              Incident &amp; operations management · from the first report to
-              what you learned
-            </p>
-          </div>
-        </div>
-        {env.registrationEnabled ? (
-          <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-fg-muted">
-            New to SentinelOps?
-            <Link
-              href={registerHref}
-              className="inline-flex h-9 items-center rounded-lg border border-accent-line bg-accent-subtle px-3.5 font-semibold text-accent-text hover:border-accent-rim focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-            >
-              Create an organization
-            </Link>
-          </p>
-        ) : (
-          // Organizations are created by whoever runs SentinelOps; people join
-          // one when its Admin adds them.
-          <p className="text-sm text-fg-muted">
-            Need an account? Ask your organization&apos;s Admin to add you.
-          </p>
-        )}
-      </header>
+          <span className="text-lg leading-tight font-bold tracking-[-0.01em] text-fg">
+            Sentinel<span className="font-normal text-fg-muted">Ops</span>
+          </span>
+        </p>
+        <p className="text-sm text-fg-muted">
+          Incident &amp; operations management
+        </p>
+      </div>
 
       <div
         className={cx(
-          "grid items-stretch gap-5 p-4 sm:p-6",
-          demo ? "lg:grid-cols-[5fr_7fr]" : "mx-auto w-full max-w-lg",
+          "grid w-full overflow-hidden rounded-md border border-line-subtle bg-surface shadow-[0_16px_48px_rgb(0_0_0/0.3)]",
+          demo ? "max-w-[55rem] md:grid-cols-2" : "max-w-md",
         )}
       >
         <form
           onSubmit={onSubmit}
           noValidate
-          className="flex flex-col gap-5 rounded-2xl border border-line-subtle bg-surface p-6 sm:p-8"
+          className="flex flex-col gap-4 p-6 sm:p-9"
         >
-          <AuthHeading
-            title="Log in"
-            description={
-              demo
-                ? "Sign in to your workspace, or explore as one of the demo roles."
-                : "Sign in to your SentinelOps workspace."
-            }
-          />
+          <AuthHeading title="Log in" description="Sign in to your workspace." />
           {error !== null && (
             <ErrorAlert error={error} message={messageFor(error)} />
           )}
           <Field
-            size="lg"
             label="Email"
             name="email"
             type="email"
@@ -342,7 +273,6 @@ export function LoginForm() {
             error={fields.email}
           />
           <Field
-            size="lg"
             label="Password"
             name="password"
             type="password"
@@ -353,14 +283,28 @@ export function LoginForm() {
           <Button type="submit" size="lg" disabled={submitting}>
             {submitting ? "Logging in…" : "Log in"}
           </Button>
-          {demo && (
-            <p className="mt-auto border-t border-line-subtle pt-4 text-xs text-fg-subtle">
-              Demo accounts appear in development only.
-            </p>
-          )}
+          <div className="mt-1 border-t border-line-subtle pt-4 text-sm text-fg-muted">
+            {env.registrationEnabled ? (
+              <p>
+                New to SentinelOps?{" "}
+                <Link
+                  href={registerHref}
+                  className="font-semibold text-accent-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                >
+                  Create an organization
+                </Link>
+              </p>
+            ) : (
+              // Organizations are created by whoever runs SentinelOps; people
+              // join one when its Admin adds them.
+              <p>
+                Need an account? Ask your organization&apos;s Admin to add you.
+              </p>
+            )}
+          </div>
         </form>
         {demo && (
-          <DemoRoles
+          <DemoAccounts
             disabled={submitting}
             onSignIn={(email) => void signIn(email, DEV_PASSWORD)}
           />

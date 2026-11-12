@@ -63,7 +63,7 @@ describe("LoginForm", () => {
     await screen.findByLabelText("Email");
 
     expect(
-      screen.queryByRole("heading", { name: "Explore as a role" }),
+      screen.queryByRole("heading", { name: "Try a demo account" }),
     ).toBeNull();
   });
 
@@ -111,7 +111,7 @@ describe("LoginForm", () => {
       renderWithSession(<LoginForm />);
 
       const roles = await screen.findByRole("region", {
-        name: "Explore as a role",
+        name: "Try a demo account",
       });
 
       // In the order an incident needs them, the Admin last.
@@ -129,9 +129,11 @@ describe("LoginForm", () => {
         "Sign in as Dev Admin",
       ]);
       expect(within(roles).getByText("Reporter")).toBeDefined();
-      expect(within(roles).getByText("Responders")).toBeDefined();
+      expect(within(roles).getByText("Responders · 4")).toBeDefined();
+      // A Responder says which teams they respond for.
+      expect(within(roles).getByText("Payments & Risk teams")).toBeDefined();
       expect(
-        within(roles).getByText("Lands on My reports · try declaring an incident"),
+        within(roles).getByRole("region", { name: "Responders" }),
       ).toBeDefined();
       expect(within(roles).getByText("dev-password-123")).toBeDefined();
 

@@ -43,6 +43,7 @@ export function StripFrame({
   leading,
   children,
   trailing,
+  wordmark = true,
 }: {
   level?: SituationLevel;
   /** Sizes the wordmark's cell to sit over the navigation rail. */
@@ -50,6 +51,8 @@ export function StripFrame({
   leading?: ReactNode;
   children?: ReactNode;
   trailing?: ReactNode;
+  /** Off where the page names the product itself, as the login page does. */
+  wordmark?: boolean;
 }) {
   return (
     <header
@@ -67,7 +70,7 @@ export function StripFrame({
         )}
       >
         {leading}
-        <Wordmark />
+        {wordmark && <Wordmark />}
       </div>
       <div className="flex min-w-0 flex-1 items-center gap-3 px-3 lg:px-4">
         {children}

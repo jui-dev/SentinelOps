@@ -10,51 +10,48 @@
 export const DEV_PASSWORD = "dev-password-123";
 
 /**
- * Each persona, their role, and what to say beside them on the login page:
- * where they land and what to try, or a Responder's teams.
+ * Each persona and their role, in the order an incident needs them; a
+ * Responder also with the teams they respond for.
  */
 export const DEV_PERSONAS = [
   {
     email: "alex@example.com",
     name: "Alex Rivera",
     role: "REPORTER",
-    detail: "Lands on My reports · try declaring an incident",
   },
   {
     email: "ava@example.com",
     name: "Ava Kim",
     role: "INCIDENT_MANAGER",
-    detail: "Lands on Overview · decides who responds",
   },
   {
     email: "priya@example.com",
     name: "Priya Shah",
     role: "RESPONDER",
-    detail: "Payments",
+    teams: ["Payments"],
   },
   {
     email: "sam@example.com",
     name: "Sam Okafor",
     role: "RESPONDER",
-    detail: "Payments · Risk",
+    teams: ["Payments", "Risk"],
   },
   {
     email: "lee@example.com",
     name: "Lee Chen",
     role: "RESPONDER",
-    detail: "Platform",
+    teams: ["Platform"],
   },
   {
     email: "jordan@example.com",
     name: "Jordan Diaz",
     role: "RESPONDER",
-    detail: "Risk",
+    teams: ["Risk"],
   },
   {
     email: "admin@example.com",
     name: "Dev Admin",
     role: "ADMIN",
-    detail: "Lands on Overview · sees and sets up everything",
   },
 ] as const;
 

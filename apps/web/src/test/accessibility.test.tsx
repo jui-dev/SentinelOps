@@ -1410,7 +1410,7 @@ it("Services, with a row opened", async () => {      signedIn(ADMIN);      const
           </AuthFrame>,
         );
 
-        await screen.findByRole("region", { name: "Explore as a role" });
+        await screen.findByRole("region", { name: "Try a demo account" });
         await expectNoAxeViolations(container);
       } finally {
         vi.unstubAllEnvs();
