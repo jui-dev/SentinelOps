@@ -12,7 +12,6 @@ import { cx } from "@/components/ui/cx";
 import { Field } from "@/components/ui/field";
 import { Select } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
-import { Status } from "@/components/ui/status";
 import {
   Table,
   TableEmpty,
@@ -43,6 +42,7 @@ import {
 import type { PeriodValue } from "./activity-meta";
 import { useActivity } from "./activity-queries";
 import { EntryDetails } from "./entry-details";
+import { ResultPill } from "./result-pill";
 import { useSettled } from "./use-settled";
 
 /**
@@ -280,10 +280,8 @@ function SignInRow({
         </time>
       </TD>
       <TD className="py-2.5 align-top">
-        <span className="flex flex-col gap-0.5">
-          <Status tone={result.tone} className="font-medium">
-            {result.label}
-          </Status>
+        <span className="flex flex-col items-start gap-1">
+          <ResultPill entry={entry} />
           {note && <span className="text-xs text-fg-subtle">{note}</span>}
         </span>
       </TD>

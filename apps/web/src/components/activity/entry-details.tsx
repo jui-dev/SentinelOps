@@ -22,7 +22,6 @@ import {
   clientText,
   clockTime,
   isUnusualClient,
-  resultOf,
   securityNote,
   fieldLabel,
   formatValue,
@@ -31,6 +30,7 @@ import {
   timeAgo,
 } from "./activity-meta";
 import { useActivityEntry } from "./activity-queries";
+import { ResultPill } from "./result-pill";
 
 /** One labelled part of the window. */
 function Part({ title, children }: { title: string; children: ReactNode }) {
@@ -249,7 +249,6 @@ function SignInDetails({
   now: number;
   onClose: () => void;
 }) {
-  const result = resultOf(entry);
   const note = securityNote(entry);
   const usual = full?.usualClient ?? null;
   const unusual = isUnusualClient(entry.client, usual);
@@ -264,10 +263,8 @@ function SignInDetails({
       size="lg"
     >
       <div className="flex flex-col gap-5">
-        <div className="flex flex-col gap-0.5">
-          <Status tone={result.tone} className="font-medium">
-            {result.label}
-          </Status>
+        <div className="flex flex-col items-start gap-1">
+          <ResultPill entry={entry} />
           {note && <span className="text-sm text-fg-muted">{note}</span>}
         </div>
 
