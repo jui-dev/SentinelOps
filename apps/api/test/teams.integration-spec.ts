@@ -845,8 +845,8 @@ describe('teams (integration)', () => {
       for (const attempt of [
         () => teams.get(fx.orgA, OVERSIGHT, foreign.id),
         () => teams.listMembers(fx.orgA, OVERSIGHT, foreign.id),
-        () => teams.update(fx.orgA, foreign.id, { name: 'Hijacked' }),
-        () => teams.delete(fx.orgA, foreign.id),
+        () => teams.update(fx.orgA, foreign.id, { name: 'Hijacked' }, fx.alice),
+        () => teams.delete(fx.orgA, foreign.id, fx.alice),
         () =>
           teams.addMember(
             fx.orgA,

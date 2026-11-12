@@ -56,7 +56,12 @@ const knownError = (code: string, index?: string) =>
 const serviceWith = () => {
   const prisma = {
     organization: { findFirst: vi.fn(), update: vi.fn() },
-    user: { create: vi.fn() },
+    user: {
+      create: vi.fn(),
+      findUniqueOrThrow: vi.fn().mockResolvedValue({ name: 'Actor' }),
+    },
+    // The activity log: who acted is read by name, and each change written.
+    activityEntry: { create: vi.fn() },
     membership: {
       findFirst: vi.fn(),
       findMany: vi.fn(),
@@ -170,18 +175,61 @@ describe('OrganizationsService', () => {
         clientVersion: 'test',
       });
 
-    it('should update by id with soft-deleted organizations excluded, in one statement', async () => {
+    it('should update by id with soft-deleted organizations excluded', async () => {
       const { service, prisma } = serviceWith();
       prisma.organization.update.mockResolvedValue(organizationRow);
 
-      await service.updateOrganization(ORG_A, { name: 'Renamed' });
+      await service.updateOrganization(
+        ORG_A,
+        { name: 'Renamed' },
+        'user-actor',
+      );
 
       expect(prisma.organization.update).toHaveBeenCalledExactlyOnceWith({
         where: { id: ORG_A, deletedAt: null },
         data: { name: 'Renamed' },
         select: { id: true, name: true, slug: true, createdAt: true },
       });
-      expect(prisma.organization.findFirst).not.toHaveBeenCalled();
+    });
+
+    it('should record the old and new name in the activity log, in the same transaction', async () => {
+      const { service, prisma } = serviceWith();
+      prisma.organization.findFirst.mockResolvedValue({ name: 'Acme' });
+      prisma.organization.update.mockResolvedValue(organizationRow);
+
+      await service.updateOrganization(
+        ORG_A,
+        { name: 'Renamed' },
+        'user-actor',
+      );
+
+      expect(prisma.$transaction).toHaveBeenCalledOnce();
+      expect(prisma.activityEntry.create).toHaveBeenCalledExactlyOnceWith({
+        data: expect.objectContaining({
+          organizationId: ORG_A,
+          action: 'ORGANIZATION_UPDATED',
+          actorId: 'user-actor',
+          changes: [
+            { field: 'name', before: 'Acme', after: organizationRow.name },
+          ],
+        }),
+      });
+    });
+
+    it('should record nothing when the name did not change', async () => {
+      const { service, prisma } = serviceWith();
+      prisma.organization.findFirst.mockResolvedValue({
+        name: organizationRow.name,
+      });
+      prisma.organization.update.mockResolvedValue(organizationRow);
+
+      await service.updateOrganization(
+        ORG_A,
+        { name: organizationRow.name },
+        'user-actor',
+      );
+
+      expect(prisma.activityEntry.create).not.toHaveBeenCalled();
     });
 
     it('should write the name and nothing else, whatever the input carries', async () => {
@@ -190,19 +238,23 @@ describe('OrganizationsService', () => {
       const { service, prisma } = serviceWith();
       prisma.organization.update.mockResolvedValue(organizationRow);
 
-      await service.updateOrganization(ORG_A, {
-        name: 'Renamed',
-        slug: 'hijacked',
-        deletedAt: null,
-      } as unknown as { name: string });
+      await service.updateOrganization(
+        ORG_A,
+        {
+          name: 'Renamed',
+          slug: 'hijacked',
+          deletedAt: null,
+        } as unknown as { name: string },
+        'user-actor',
+      );
 
       const [args] = prisma.organization.update.mock.calls[0];
 
       expect(args.data).toEqual({ name: 'Renamed' });
     });
 
-    it('should take the organization and the input, and no caller', () => {
-      expect(OrganizationsService.prototype.updateOrganization).toHaveLength(2);
+    it('should take the organization, the input, and who did it, for the log', () => {
+      expect(OrganizationsService.prototype.updateOrganization).toHaveLength(3);
     });
 
     it('should return the updated organization', async () => {
@@ -213,7 +265,7 @@ describe('OrganizationsService', () => {
       });
 
       await expect(
-        service.updateOrganization(ORG_A, { name: 'Renamed' }),
+        service.updateOrganization(ORG_A, { name: 'Renamed' }, 'user-actor'),
       ).resolves.toEqual({
         id: ORG_A,
         name: 'Renamed',
@@ -227,7 +279,7 @@ describe('OrganizationsService', () => {
       prisma.organization.update.mockRejectedValue(knownError('P2025'));
 
       const error = await errorOf(
-        service.updateOrganization(ORG_A, { name: 'Renamed' }),
+        service.updateOrganization(ORG_A, { name: 'Renamed' }, 'user-actor'),
       );
 
       expect(error).toBeInstanceOf(NotFoundException);
@@ -243,7 +295,7 @@ describe('OrganizationsService', () => {
       prisma.organization.update.mockRejectedValue(thrown);
 
       await expect(
-        service.updateOrganization(ORG_A, { name: 'Renamed' }),
+        service.updateOrganization(ORG_A, { name: 'Renamed' }, 'user-actor'),
       ).rejects.toBe(thrown);
     });
   });
@@ -406,7 +458,7 @@ describe('OrganizationsService', () => {
     it('should hash the one-time password before the transaction opens', async () => {
       const { service, prisma, passwords } = ready();
 
-      await service.createMember(ORG_A, input);
+      await service.createMember(ORG_A, input, 'user-actor');
 
       expect(passwords.hash).toHaveBeenCalledExactlyOnceWith(
         input.temporaryPassword,
@@ -419,7 +471,7 @@ describe('OrganizationsService', () => {
     it('should create the account flagged for a password change, and never store the plain password', async () => {
       const { service, prisma } = ready();
 
-      await service.createMember(ORG_A, input);
+      await service.createMember(ORG_A, input, 'user-actor');
 
       expect(prisma.user.create).toHaveBeenCalledExactlyOnceWith({
         data: {
@@ -438,7 +490,7 @@ describe('OrganizationsService', () => {
     it('should place the account in the admitted organization, in the role it was given', async () => {
       const { service, prisma } = ready();
 
-      await service.createMember(ORG_A, input);
+      await service.createMember(ORG_A, input, 'user-actor');
 
       expect(prisma.membership.create).toHaveBeenCalledExactlyOnceWith({
         data: {
@@ -453,7 +505,11 @@ describe('OrganizationsService', () => {
     it('should touch no team when none is asked for, and read the membership back whole', async () => {
       const { service, prisma } = ready();
 
-      await service.createMember(ORG_A, { ...input, teamIds: [] });
+      await service.createMember(
+        ORG_A,
+        { ...input, teamIds: [] },
+        'user-actor',
+      );
 
       expect(prisma.team.findMany).not.toHaveBeenCalled();
       expect(prisma.teamMembership.createMany).not.toHaveBeenCalled();
@@ -474,10 +530,14 @@ describe('OrganizationsService', () => {
         { id: PLATFORM },
       ]);
 
-      await service.createMember(ORG_A, {
-        ...input,
-        teamIds: [PAYMENTS, PLATFORM],
-      });
+      await service.createMember(
+        ORG_A,
+        {
+          ...input,
+          teamIds: [PAYMENTS, PLATFORM],
+        },
+        'user-actor',
+      );
 
       expect(prisma.team.findMany).toHaveBeenCalledExactlyOnceWith({
         where: { organizationId: ORG_A, id: { in: [PAYMENTS, PLATFORM] } },
@@ -510,10 +570,14 @@ describe('OrganizationsService', () => {
       prisma.team.findMany.mockResolvedValue([{ id: PAYMENTS }]);
 
       const error = await errorOf(
-        service.createMember(ORG_A, {
-          ...input,
-          teamIds: [PAYMENTS, PLATFORM],
-        }),
+        service.createMember(
+          ORG_A,
+          {
+            ...input,
+            teamIds: [PAYMENTS, PLATFORM],
+          },
+          'user-actor',
+        ),
       );
 
       expect(error).toBeInstanceOf(NotFoundException);
@@ -530,7 +594,11 @@ describe('OrganizationsService', () => {
       );
 
       const error = await errorOf(
-        service.createMember(ORG_A, { ...input, teamIds: [PAYMENTS] }),
+        service.createMember(
+          ORG_A,
+          { ...input, teamIds: [PAYMENTS] },
+          'user-actor',
+        ),
       );
 
       expect(error.errorCode).toBe(TeamsErrorCode.TEAM_NOT_FOUND);
@@ -539,7 +607,7 @@ describe('OrganizationsService', () => {
     it('should answer with the membership as the list shows one, and no password', async () => {
       const { service } = ready();
 
-      const response = await service.createMember(ORG_A, input);
+      const response = await service.createMember(ORG_A, input, 'user-actor');
 
       expect(response).toEqual({
         id: MEMBERSHIP_ID,
@@ -561,10 +629,14 @@ describe('OrganizationsService', () => {
         ],
       });
 
-      const response = await service.createMember(ORG_A, {
-        ...input,
-        teamIds: [PAYMENTS],
-      });
+      const response = await service.createMember(
+        ORG_A,
+        {
+          ...input,
+          teamIds: [PAYMENTS],
+        },
+        'user-actor',
+      );
 
       expect(response.teams).toEqual([
         { id: PAYMENTS, name: 'Payments', slug: 'payments' },
@@ -576,7 +648,9 @@ describe('OrganizationsService', () => {
       const { service, prisma } = ready();
       prisma.organization.findFirst.mockResolvedValue(null);
 
-      const error = await errorOf(service.createMember(ORG_A, input));
+      const error = await errorOf(
+        service.createMember(ORG_A, input, 'user-actor'),
+      );
 
       expect(error.errorCode).toBe(TenancyErrorCode.ORGANIZATION_NOT_FOUND);
       expect(prisma.user.create).not.toHaveBeenCalled();
@@ -590,7 +664,7 @@ describe('OrganizationsService', () => {
       );
 
       const error = await service
-        .createMember(ORG_A, input)
+        .createMember(ORG_A, input, 'user-actor')
         .catch((caught: ConflictException) => caught);
 
       expect(error).toBeInstanceOf(ConflictException);
@@ -605,7 +679,9 @@ describe('OrganizationsService', () => {
       const fault = new Error('connection lost');
       prisma.membership.create.mockRejectedValue(fault);
 
-      await expect(service.createMember(ORG_A, input)).rejects.toBe(fault);
+      await expect(
+        service.createMember(ORG_A, input, 'user-actor'),
+      ).rejects.toBe(fault);
     });
 
     it('should never log the password or the email', async () => {
@@ -614,7 +690,7 @@ describe('OrganizationsService', () => {
         .mockImplementation(() => {});
       const { service } = ready();
 
-      await service.createMember(ORG_A, input);
+      await service.createMember(ORG_A, input, 'user-actor');
 
       const logged = JSON.stringify(log.mock.calls);
       expect(logged).not.toContain(input.temporaryPassword);

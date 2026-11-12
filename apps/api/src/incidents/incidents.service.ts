@@ -1670,6 +1670,7 @@ export class IncidentsService {
           severity: input.severity,
           knownIssueId: input.knownIssueId,
           saveAsKnownIssue: input.saveAsKnownIssue,
+          actorId: declarerId,
         });
 
         // Scalar ids, not nested connects: both relations share

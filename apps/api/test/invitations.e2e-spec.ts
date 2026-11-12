@@ -48,13 +48,24 @@ describe('Invitations (e2e)', () => {
       create: vi.fn(),
     },
     organization: { findFirst: vi.fn() },
-    user: { findFirst: vi.fn(), findUnique: vi.fn(), create: vi.fn() },
+    user: {
+      findFirst: vi.fn(),
+      findUnique: vi.fn(),
+      create: vi.fn(),
+      findUniqueOrThrow: vi.fn(async () => ({ name: 'Ada' })),
+    },
+    activityEntry: { create: vi.fn() },
     invitation: {
       findUnique: vi.fn(),
       findFirst: vi.fn(),
       findMany: vi.fn(),
       create: vi.fn(),
       updateMany: vi.fn(),
+      findUniqueOrThrow: vi.fn(async () => ({
+        id: 'invitation',
+        email: 'grace@example.com',
+        role: 'RESPONDER',
+      })),
     },
     refreshToken: { create: vi.fn() },
   };

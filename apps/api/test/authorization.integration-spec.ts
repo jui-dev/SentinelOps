@@ -438,7 +438,11 @@ describe('authorization (integration)', () => {
     it('should rename only the organization it is given', async () => {
       const bBefore = await stateOf(fx.orgB.id);
 
-      await service().updateOrganization(fx.orgA.id, { name: 'Only A' });
+      await service().updateOrganization(
+        fx.orgA.id,
+        { name: 'Only A' },
+        fx.alice.id,
+      );
 
       expect((await stateOf(fx.orgA.id)).name).toBe('Only A');
       expect(await stateOf(fx.orgB.id)).toEqual(bBefore);
@@ -452,7 +456,11 @@ describe('authorization (integration)', () => {
       const before = await stateOf(fx.orgA.id);
 
       await notFound(
-        service().updateOrganization(fx.orgA.id, { name: 'Resurrected' }),
+        service().updateOrganization(
+          fx.orgA.id,
+          { name: 'Resurrected' },
+          fx.alice.id,
+        ),
       );
 
       expect(await stateOf(fx.orgA.id)).toEqual(before);
@@ -460,7 +468,11 @@ describe('authorization (integration)', () => {
 
     it('should answer the organization 404 for an id that names nothing', async () => {
       await notFound(
-        service().updateOrganization(randomUUID(), { name: 'Nobody' }),
+        service().updateOrganization(
+          randomUUID(),
+          { name: 'Nobody' },
+          fx.alice.id,
+        ),
       );
 
       expect(await prisma.organization.count()).toBe(2);

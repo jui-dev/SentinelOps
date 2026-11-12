@@ -68,7 +68,13 @@ const uniqueViolation = (index: string) =>
 const serviceWith = () => {
   const prisma = {
     organization: { findFirst: vi.fn().mockResolvedValue({ id: ORG }) },
-    user: { findFirst: vi.fn(), findUnique: vi.fn().mockResolvedValue(null) },
+    user: {
+      findFirst: vi.fn(),
+      findUnique: vi.fn().mockResolvedValue(null),
+      findUniqueOrThrow: vi.fn().mockResolvedValue({ name: 'Actor' }),
+    },
+    // The activity log: who acted is read by name, and each change written.
+    activityEntry: { create: vi.fn() },
     membership: {
       findFirst: vi.fn().mockResolvedValue(null),
       findUnique: vi.fn().mockResolvedValue(null),
@@ -80,6 +86,7 @@ const serviceWith = () => {
       findMany: vi.fn(),
       create: vi.fn().mockResolvedValue(invitationRow),
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      findUniqueOrThrow: vi.fn().mockResolvedValue(invitationRow),
     },
     $transaction: vi.fn(),
   };
@@ -259,7 +266,7 @@ describe('InvitationsService', () => {
     it('should revoke with one statement scoped by organization', async () => {
       const { service, prisma } = serviceWith();
 
-      await service.revoke(ORG, INVITATION, NOW);
+      await service.revoke(ORG, INVITATION, 'user-actor', NOW);
 
       expect(prisma.invitation.updateMany).toHaveBeenCalledExactlyOnceWith({
         where: {
@@ -278,7 +285,7 @@ describe('InvitationsService', () => {
       const { service, prisma } = serviceWith();
 
       await expectCode(
-        service.revoke(ORG, 'not-a-uuid', NOW),
+        service.revoke(ORG, 'not-a-uuid', 'user-actor', NOW),
         404,
         InvitationsErrorCode.INVITATION_NOT_FOUND,
       );
@@ -291,7 +298,7 @@ describe('InvitationsService', () => {
       prisma.invitation.findFirst.mockResolvedValue(null);
 
       await expectCode(
-        service.revoke(ORG, INVITATION, NOW),
+        service.revoke(ORG, INVITATION, 'user-actor', NOW),
         404,
         InvitationsErrorCode.INVITATION_NOT_FOUND,
       );
@@ -311,7 +318,7 @@ describe('InvitationsService', () => {
       prisma.invitation.findFirst.mockResolvedValue({ id: INVITATION });
 
       await expectCode(
-        service.revoke(ORG, INVITATION, NOW),
+        service.revoke(ORG, INVITATION, 'user-actor', NOW),
         409,
         InvitationsErrorCode.INVITATION_NOT_PENDING,
       );

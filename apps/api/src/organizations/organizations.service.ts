@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 
+import { recordActivity } from '../activity/activity.recorder.js';
 import type { OrganizationResponse } from '../auth/auth.contract.js';
 import { emailAlreadyRegistered } from '../auth/auth.errors.js';
 import { toOrganizationResponse } from '../auth/auth.responses.js';
@@ -125,6 +126,17 @@ export const membershipScope = (
         ],
       };
 
+/**
+ * A member's teams as the activity log keeps them: names, comma-separated,
+ * or null for none — a snapshot that reads the same after a team is renamed.
+ */
+const teamNamesOf = (
+  teamMemberships: { team: { name: string } }[],
+): string | null =>
+  teamMemberships.length > 0
+    ? teamMemberships.map(({ team }) => team.name).join(', ')
+    : null;
+
 @Injectable()
 export class OrganizationsService {
   private readonly logger = new Logger(OrganizationsService.name);
@@ -166,19 +178,43 @@ export class OrganizationsService {
    * the same 404 admission would have given. The organization *is* the tenant,
    * so its id is the whole tenant filter.
    *
-   * No caller parameter. Authorization has already happened before the
-   * handler, and renaming has no rule that depends on who is doing it. A
-   * service whose invariants do depend on the actor takes it explicitly.
+   * `actorId` is who renamed it, for the activity log, which records the
+   * old and new name in the same transaction. Renaming to the same name
+   * records nothing.
    */
   async updateOrganization(
     organizationId: string,
     input: UpdateOrganizationRequest,
+    actorId: string,
   ): Promise<OrganizationResponse> {
     try {
-      const organization = await this.prisma.organization.update({
-        where: { id: organizationId, deletedAt: null },
-        data: { name: input.name },
-        select: organizationSelection,
+      const organization = await this.prisma.$transaction(async (tx) => {
+        const before = await tx.organization.findFirst({
+          where: { id: organizationId, deletedAt: null },
+          select: { name: true },
+        });
+        const updated = await tx.organization.update({
+          where: { id: organizationId, deletedAt: null },
+          data: { name: input.name },
+          select: organizationSelection,
+        });
+
+        await recordActivity(tx, {
+          organizationId,
+          action: 'ORGANIZATION_UPDATED',
+          actorId,
+          subject: { type: 'ORGANIZATION', id: updated.id, name: updated.name },
+          changes: [
+            {
+              field: 'name',
+              before: before?.name ?? null,
+              after: updated.name,
+            },
+          ],
+          onlyIfChanged: true,
+        });
+
+        return updated;
       });
 
       return toOrganizationResponse(organization);
@@ -323,6 +359,7 @@ export class OrganizationsService {
   async createMember(
     organizationId: string,
     input: CreateMemberRequest,
+    actorId: string,
   ): Promise<OrganizationMembershipResponse> {
     const passwordHash = await this.passwords.hash(input.temporaryPassword);
 
@@ -380,10 +417,29 @@ export class OrganizationsService {
         }
 
         // Read back whole, teams included, as the list would show it.
-        return tx.membership.findUniqueOrThrow({
+        const added = await tx.membership.findUniqueOrThrow({
           where: { id: created.id },
           select: membershipSelection,
         });
+
+        // The email names who was added; the password is never recorded.
+        await recordActivity(tx, {
+          organizationId,
+          action: 'MEMBER_ADDED',
+          actorId,
+          subject: { type: 'MEMBERSHIP', id: added.id, name: added.user.name },
+          changes: [
+            { field: 'email', before: null, after: added.user.email },
+            { field: 'role', before: null, after: added.role },
+            {
+              field: 'teams',
+              before: null,
+              after: teamNamesOf(added.teamMemberships),
+            },
+          ],
+        });
+
+        return added;
       });
     } catch (error) {
       const hint = uniqueViolationHint(error);
@@ -434,6 +490,7 @@ export class OrganizationsService {
     organizationId: string,
     membershipId: string,
     input: ChangeRoleRequest,
+    actorId: string,
   ): Promise<OrganizationMembershipResponse> {
     if (!isResourceId(membershipId)) {
       throw membershipNotFound();
@@ -480,6 +537,21 @@ export class OrganizationsService {
               select: membershipSelection,
             });
 
+      await recordActivity(tx, {
+        organizationId,
+        action: 'ROLE_CHANGED',
+        actorId,
+        subject: {
+          type: 'MEMBERSHIP',
+          id: membership.id,
+          name: membership.user.name,
+        },
+        changes: [
+          { field: 'role', before: current.role, after: membership.role },
+        ],
+        onlyIfChanged: true,
+      });
+
       return { membership, from: current.role };
     });
 
@@ -515,7 +587,7 @@ export class OrganizationsService {
     organizationId: string,
     membershipId: string,
     input: ResetPasswordRequest,
-    actor: { membershipId: string },
+    actor: { membershipId: string; userId: string },
     now: Date = new Date(),
   ): Promise<OrganizationMembershipResponse> {
     if (!isResourceId(membershipId)) {
@@ -564,10 +636,20 @@ export class OrganizationsService {
         data: { revokedAt: now },
       });
 
-      return tx.membership.findUniqueOrThrow({
+      const reset = await tx.membership.findUniqueOrThrow({
         where: { id: target.id },
         select: membershipSelection,
       });
+
+      // That it happened, and to whom; never the password.
+      await recordActivity(tx, {
+        organizationId,
+        action: 'PASSWORD_RESET',
+        actorId: actor.userId,
+        subject: { type: 'MEMBERSHIP', id: reset.id, name: reset.user.name },
+      });
+
+      return reset;
     });
 
     // Ids only: never the password.

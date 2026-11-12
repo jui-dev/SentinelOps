@@ -53,9 +53,11 @@ const serviceWith = () => {
   const prisma = {
     organization: { findFirst: vi.fn().mockResolvedValue({ id: ORG }) },
     membership: {
-      findFirst: vi
-        .fn()
-        .mockResolvedValue({ id: MEMBERSHIP, userId: ACTOR_USER }),
+      findFirst: vi.fn().mockResolvedValue({
+        id: MEMBERSHIP,
+        userId: ACTOR_USER,
+        user: { name: 'Ada Lovelace' },
+      }),
     },
     team: {
       findMany: vi.fn().mockResolvedValue([teamRow]),
@@ -63,7 +65,11 @@ const serviceWith = () => {
       create: vi.fn().mockResolvedValue(teamRow),
       update: vi.fn().mockResolvedValue(teamRow),
       deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
+      findFirstOrThrow: vi.fn().mockResolvedValue(teamRow),
     },
+    user: { findUniqueOrThrow: vi.fn().mockResolvedValue({ name: 'Actor' }) },
+    // The activity log: who acted is read by name, and each change written.
+    activityEntry: { create: vi.fn() },
     teamMembership: {
       findMany: vi.fn().mockResolvedValue([memberRow]),
       create: vi.fn().mockResolvedValue(memberRow),
@@ -198,7 +204,7 @@ describe('TeamsService', () => {
     it('should derive the slug from the name', async () => {
       const { service, prisma } = serviceWith();
 
-      await service.create(ORG, { name: 'Payments & Risk' });
+      await service.create(ORG, { name: 'Payments & Risk' }, 'user-actor');
 
       expect(prisma.team.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -215,7 +221,12 @@ describe('TeamsService', () => {
     it('should give a name with no sluggable characters an opaque slug', async () => {
       const { service, prisma } = serviceWith();
 
-      await service.create(ORG, { name: '決済' }, () => 'team-0a1b2c3d');
+      await service.create(
+        ORG,
+        { name: '決済' },
+        'user-actor',
+        () => 'team-0a1b2c3d',
+      );
 
       expect(prisma.team.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -231,7 +242,9 @@ describe('TeamsService', () => {
         knownError('P2002', 'teams_organization_id_slug_key'),
       );
 
-      await service.create(ORG, { name: '決済' }, () => slugs.shift()!);
+      await service.create(ORG, { name: '決済' }, 'user-actor', () =>
+        slugs.shift()!,
+      );
 
       expect(prisma.team.create).toHaveBeenCalledTimes(2);
       expect(prisma.team.create).toHaveBeenLastCalledWith(
@@ -248,7 +261,7 @@ describe('TeamsService', () => {
       );
 
       await expectCode(
-        service.create(ORG, { name: 'platform!' }),
+        service.create(ORG, { name: 'platform!' }, 'user-actor'),
         409,
         TeamsErrorCode.TEAM_NAME_TAKEN,
       );
@@ -262,7 +275,7 @@ describe('TeamsService', () => {
       );
 
       await expectCode(
-        service.create(ORG, { name: 'Platform' }),
+        service.create(ORG, { name: 'Platform' }, 'user-actor'),
         409,
         TeamsErrorCode.TEAM_NAME_TAKEN,
       );
@@ -273,9 +286,9 @@ describe('TeamsService', () => {
       const unknown = knownError('P2002', 'something_else_key');
       prisma.team.create.mockRejectedValue(unknown);
 
-      await expect(service.create(ORG, { name: 'Platform' })).rejects.toBe(
-        unknown,
-      );
+      await expect(
+        service.create(ORG, { name: 'Platform' }, 'user-actor'),
+      ).rejects.toBe(unknown);
     });
 
     it('should refuse to create a team in an organization deleted since admission', async () => {
@@ -283,7 +296,7 @@ describe('TeamsService', () => {
       prisma.organization.findFirst.mockResolvedValue(null);
 
       await expectCode(
-        service.create(ORG, { name: 'Platform' }),
+        service.create(ORG, { name: 'Platform' }, 'user-actor'),
         404,
         TenancyErrorCode.ORGANIZATION_NOT_FOUND,
       );
@@ -295,7 +308,7 @@ describe('TeamsService', () => {
     it('should update through the (organization, id) compound key, never the slug', async () => {
       const { service, prisma } = serviceWith();
 
-      await service.update(ORG, TEAM, { name: 'SRE' });
+      await service.update(ORG, TEAM, { name: 'SRE' }, 'user-actor');
 
       expect(prisma.team.update).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -313,7 +326,7 @@ describe('TeamsService', () => {
       prisma.team.update.mockRejectedValue(knownError('P2025'));
 
       await expectCode(
-        service.update(ORG, TEAM, { name: 'SRE' }),
+        service.update(ORG, TEAM, { name: 'SRE' }, 'user-actor'),
         404,
         TeamsErrorCode.TEAM_NOT_FOUND,
       );
@@ -326,7 +339,7 @@ describe('TeamsService', () => {
       );
 
       await expectCode(
-        service.update(ORG, TEAM, { name: 'Platform' }),
+        service.update(ORG, TEAM, { name: 'Platform' }, 'user-actor'),
         409,
         TeamsErrorCode.TEAM_NAME_TAKEN,
       );
@@ -337,7 +350,7 @@ describe('TeamsService', () => {
     it('should delete only within the organization', async () => {
       const { service, prisma } = serviceWith();
 
-      await service.delete(ORG, TEAM);
+      await service.delete(ORG, TEAM, 'user-actor');
 
       expect(prisma.team.deleteMany).toHaveBeenCalledWith({
         where: {
@@ -353,7 +366,7 @@ describe('TeamsService', () => {
       prisma.team.deleteMany.mockResolvedValue({ count: 0 });
 
       await expectCode(
-        service.delete(ORG, TEAM),
+        service.delete(ORG, TEAM, 'user-actor'),
         404,
         TeamsErrorCode.TEAM_NOT_FOUND,
       );
@@ -366,7 +379,7 @@ describe('TeamsService', () => {
       );
 
       await expectCode(
-        service.delete(ORG, TEAM),
+        service.delete(ORG, TEAM, 'user-actor'),
         409,
         TeamsErrorCode.TEAM_OWNS_SERVICES,
       );
@@ -379,7 +392,7 @@ describe('TeamsService', () => {
       );
 
       await expectCode(
-        service.delete(ORG, TEAM),
+        service.delete(ORG, TEAM, 'user-actor'),
         409,
         TeamsErrorCode.TEAM_HAS_INCIDENTS,
       );
@@ -390,7 +403,9 @@ describe('TeamsService', () => {
       const unknown = knownError('P2003', 'something_else_fkey');
       prisma.team.deleteMany.mockRejectedValue(unknown);
 
-      await expect(service.delete(ORG, TEAM)).rejects.toBe(unknown);
+      await expect(service.delete(ORG, TEAM, 'user-actor')).rejects.toBe(
+        unknown,
+      );
     });
   });
 

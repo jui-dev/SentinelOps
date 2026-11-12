@@ -7,6 +7,7 @@ import {
 } from '../auth/auth.errors.js';
 import { toMembershipResponse } from '../auth/auth.responses.js';
 import { mintOpaqueToken } from '../common/opaque-token.js';
+import { recordActivity } from '../activity/activity.recorder.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { uniqueViolationHint } from '../database/unique-violation.js';
 import type { Prisma } from '../generated/prisma/client.js';
@@ -164,6 +165,19 @@ export class InvitationsService {
           select: invitationSelection,
         });
 
+        // The address is what an invitation is known by until it is accepted.
+        await recordActivity(tx, {
+          organizationId,
+          action: 'INVITATION_SENT',
+          actorId: actor.userId,
+          subject: {
+            type: 'INVITATION',
+            id: invitation.id,
+            name: invitation.email,
+          },
+          changes: [{ field: 'role', before: null, after: invitation.role }],
+        });
+
         return { invitation, replacedExisting: replaced.count > 0 };
       });
     } catch (error) {
@@ -224,6 +238,7 @@ export class InvitationsService {
   async revoke(
     organizationId: string,
     invitationId: string,
+    actorId: string,
     now: Date = new Date(),
   ): Promise<void> {
     if (!isResourceId(invitationId)) {
@@ -236,9 +251,32 @@ export class InvitationsService {
       organization: { deletedAt: null },
     };
 
-    const { count } = await this.prisma.invitation.updateMany({
-      where: { ...scope, acceptedAt: null, revokedAt: null },
-      data: { revokedAt: now },
+    const count = await this.prisma.$transaction(async (tx) => {
+      const { count: revoked } = await tx.invitation.updateMany({
+        where: { ...scope, acceptedAt: null, revokedAt: null },
+        data: { revokedAt: now },
+      });
+
+      if (revoked === 1) {
+        const invitation = await tx.invitation.findUniqueOrThrow({
+          where: { id: invitationId },
+          select: { id: true, email: true, role: true },
+        });
+
+        await recordActivity(tx, {
+          organizationId,
+          action: 'INVITATION_REVOKED',
+          actorId,
+          subject: {
+            type: 'INVITATION',
+            id: invitation.id,
+            name: invitation.email,
+          },
+          changes: [{ field: 'role', before: invitation.role, after: null }],
+        });
+      }
+
+      return revoked;
     });
 
     if (count === 1) {
@@ -311,10 +349,11 @@ export class InvitationsService {
 
         await this.claim(tx, invitation, now);
 
-        return {
-          invitation,
-          membership: await this.grant(tx, invitation, caller.id),
-        };
+        const membership = await this.grant(tx, invitation, caller.id);
+
+        await this.recordAccepted(tx, invitation, membership.id, caller.id);
+
+        return { invitation, membership };
       },
     );
 
@@ -362,12 +401,11 @@ export class InvitationsService {
         await this.claim(tx, invitation, now);
 
         const account = await createAccount(tx, invitation.email);
+        const membership = await this.grant(tx, invitation, account.id);
 
-        return {
-          invitation,
-          account,
-          membership: await this.grant(tx, invitation, account.id),
-        };
+        await this.recordAccepted(tx, invitation, membership.id, account.id);
+
+        return { invitation, account, membership };
       },
     );
 
@@ -439,6 +477,33 @@ export class InvitationsService {
    * means the user became a member after the check above; it rolls the claim
    * back with everything else.
    */
+  /**
+   * The activity log's record of someone joining by invitation: by them,
+   * about their new membership, saying which invitation and role.
+   */
+  private async recordAccepted(
+    tx: Prisma.TransactionClient,
+    invitation: ResolvedInvitation,
+    membershipId: string,
+    userId: string,
+  ): Promise<void> {
+    const user = await tx.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { name: true },
+    });
+
+    await recordActivity(tx, {
+      organizationId: invitation.organizationId,
+      action: 'INVITATION_ACCEPTED',
+      actorId: userId,
+      subject: { type: 'MEMBERSHIP', id: membershipId, name: user.name },
+      changes: [
+        { field: 'email', before: null, after: invitation.email },
+        { field: 'role', before: null, after: invitation.role },
+      ],
+    });
+  }
+
   private async grant(
     tx: Prisma.TransactionClient,
     invitation: ResolvedInvitation,

@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 
+import { recordActivity } from '../activity/activity.recorder.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { uniqueViolationHint } from '../database/unique-violation.js';
 import type { Prisma } from '../generated/prisma/client.js';
@@ -107,6 +108,7 @@ export class KnownIssuesService {
   async create(
     organizationId: string,
     input: CreateKnownIssueRequest,
+    actorId: string,
   ): Promise<KnownIssueResponse> {
     try {
       const created = await this.prisma.$transaction(async (tx) => {
@@ -116,7 +118,7 @@ export class KnownIssuesService {
             organizationId,
             organization: { deletedAt: null },
           },
-          select: { archivedAt: true },
+          select: { archivedAt: true, name: true },
         });
 
         if (!service) throw serviceNotFound();
@@ -129,7 +131,7 @@ export class KnownIssuesService {
           input.name,
         );
 
-        return tx.knownIssue.create({
+        const made = await tx.knownIssue.create({
           data: {
             organizationId,
             serviceId: input.serviceId,
@@ -137,8 +139,27 @@ export class KnownIssuesService {
             description: input.description ?? null,
             usualSeverity: input.usualSeverity,
           },
-          select: { id: true },
+          select: {
+            id: true,
+            name: true,
+            description: true,
+            usualSeverity: true,
+          },
         });
+
+        await recordActivity(tx, {
+          organizationId,
+          action: 'KNOWN_ISSUE_CREATED',
+          actorId,
+          subject: { type: 'KNOWN_ISSUE', id: made.id, name: made.name },
+          changes: [
+            { field: 'service', before: null, after: service.name },
+            { field: 'description', before: null, after: made.description },
+            { field: 'usualSeverity', before: null, after: made.usualSeverity },
+          ],
+        });
+
+        return made;
       });
 
       this.logger.log('Known issue created', {
@@ -166,6 +187,7 @@ export class KnownIssuesService {
     organizationId: string,
     id: string,
     input: UpdateKnownIssueRequest,
+    actorId: string,
   ): Promise<KnownIssueResponse> {
     if (!isResourceId(id)) throw knownIssueNotFound();
 
@@ -173,7 +195,14 @@ export class KnownIssuesService {
       await this.prisma.$transaction(async (tx) => {
         const current = await tx.knownIssue.findFirst({
           where: { id, organizationId, organization: { deletedAt: null } },
-          select: { serviceId: true, name: true, archivedAt: true },
+          select: {
+            serviceId: true,
+            name: true,
+            description: true,
+            usualSeverity: true,
+            archivedAt: true,
+            pendingReview: true,
+          },
         });
 
         if (!current) throw knownIssueNotFound();
@@ -188,7 +217,7 @@ export class KnownIssuesService {
           );
         }
 
-        await tx.knownIssue.update({
+        const updated = await tx.knownIssue.update({
           where: { id },
           data: {
             name: input.name,
@@ -202,7 +231,50 @@ export class KnownIssuesService {
                   : null,
             pendingReview: false,
           },
-          select: { id: true },
+          select: {
+            id: true,
+            name: true,
+            description: true,
+            usualSeverity: true,
+            archivedAt: true,
+            pendingReview: true,
+          },
+        });
+
+        const status = (k: {
+          archivedAt: Date | null;
+          pendingReview: boolean;
+        }) =>
+          k.archivedAt
+            ? 'ARCHIVED'
+            : k.pendingReview
+              ? 'PENDING_REVIEW'
+              : 'ACTIVE';
+
+        await recordActivity(tx, {
+          organizationId,
+          action: 'KNOWN_ISSUE_UPDATED',
+          actorId,
+          subject: { type: 'KNOWN_ISSUE', id, name: updated.name },
+          changes: [
+            { field: 'name', before: current.name, after: updated.name },
+            {
+              field: 'description',
+              before: current.description,
+              after: updated.description,
+            },
+            {
+              field: 'usualSeverity',
+              before: current.usualSeverity,
+              after: updated.usualSeverity,
+            },
+            {
+              field: 'status',
+              before: status(current),
+              after: status(updated),
+            },
+          ],
+          onlyIfChanged: true,
         });
       });
     } catch (error) {
@@ -231,13 +303,16 @@ export class KnownIssuesService {
     organizationId: string,
     id: string,
     input: MergeKnownIssueRequest,
+    actorId: string,
   ): Promise<KnownIssueResponse> {
     if (!isResourceId(id)) throw knownIssueNotFound();
     if (id === input.intoId) throw knownIssueMergeIntoItself();
 
     const moved = await this.prisma.$transaction(async (tx) => {
-      const locked = await tx.$queryRaw<{ id: string; service_id: string }[]>`
-        SELECT k.id, k.service_id
+      const locked = await tx.$queryRaw<
+        { id: string; service_id: string; name: string }[]
+      >`
+        SELECT k.id, k.service_id, k.name
         FROM known_issues k
         JOIN organizations o ON o.id = k.organization_id AND o.deleted_at IS NULL
         WHERE k.organization_id = ${organizationId}::uuid
@@ -256,6 +331,18 @@ export class KnownIssuesService {
       });
 
       await tx.knownIssue.delete({ where: { id }, select: { id: true } });
+
+      // About the one merged away, which no longer exists: what it went into.
+      await recordActivity(tx, {
+        organizationId,
+        action: 'KNOWN_ISSUE_MERGED',
+        actorId,
+        subject: { type: 'KNOWN_ISSUE', id: from.id, name: from.name },
+        changes: [
+          { field: 'mergedInto', before: null, after: into.name },
+          { field: 'incidentsMoved', before: null, after: String(count) },
+        ],
+      });
 
       return count;
     });

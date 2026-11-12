@@ -1119,7 +1119,9 @@ describe('invitations (integration)', () => {
     it('should not revoke an invitation of another organization', async () => {
       const inA = await issue(NEW_EMAIL);
 
-      await expect(service().revoke(fx.orgB, inA.id)).rejects.toMatchObject({
+      await expect(
+        service().revoke(fx.orgB, inA.id, fx.alice),
+      ).rejects.toMatchObject({
         errorCode: 'INVITATION_NOT_FOUND',
       });
       await expectOpen(inA.id);

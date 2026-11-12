@@ -9,6 +9,7 @@ import {
   Post,
 } from '@nestjs/common';
 
+import { CurrentUserId } from '../auth/current-user.decorator.js';
 import { Permission } from '../authorization/permissions.js';
 import { RequirePermission } from '../authorization/require-permission.decorator.js';
 import type { OrganizationContext } from '../common/request-context.js';
@@ -54,8 +55,9 @@ export class ServicesController {
   create(
     @CurrentMembership() membership: OrganizationContext,
     @Body({ schema: createServiceSchema }) body: CreateServiceRequest,
+    @CurrentUserId() userId: string,
   ): Promise<ServiceResponse> {
-    return this.services.create(membership.organizationId, body);
+    return this.services.create(membership.organizationId, body, userId);
   }
 
   @Get(':serviceId')
@@ -77,8 +79,14 @@ export class ServicesController {
     @CurrentMembership() membership: OrganizationContext,
     @Param('serviceId') serviceId: string,
     @Body({ schema: updateServiceSchema }) body: UpdateServiceRequest,
+    @CurrentUserId() userId: string,
   ): Promise<ServiceResponse> {
-    return this.services.update(membership.organizationId, serviceId, body);
+    return this.services.update(
+      membership.organizationId,
+      serviceId,
+      body,
+      userId,
+    );
   }
 
   @Delete(':serviceId')
@@ -87,7 +95,8 @@ export class ServicesController {
   delete(
     @CurrentMembership() membership: OrganizationContext,
     @Param('serviceId') serviceId: string,
+    @CurrentUserId() userId: string,
   ): Promise<void> {
-    return this.services.delete(membership.organizationId, serviceId);
+    return this.services.delete(membership.organizationId, serviceId, userId);
   }
 }

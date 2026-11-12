@@ -1,5 +1,6 @@
 import { Body, Get, Param, Patch, Post, Query } from '@nestjs/common';
 
+import { CurrentUserId } from '../auth/current-user.decorator.js';
 import { Permission } from '../authorization/permissions.js';
 import { RequirePermission } from '../authorization/require-permission.decorator.js';
 import type { OrganizationContext } from '../common/request-context.js';
@@ -43,8 +44,9 @@ export class KnownIssuesController {
   create(
     @CurrentMembership() membership: OrganizationContext,
     @Body({ schema: createKnownIssueSchema }) body: CreateKnownIssueRequest,
+    @CurrentUserId() userId: string,
   ): Promise<KnownIssueResponse> {
-    return this.knownIssues.create(membership.organizationId, body);
+    return this.knownIssues.create(membership.organizationId, body, userId);
   }
 
   @Get(':knownIssueId')
@@ -62,8 +64,9 @@ export class KnownIssuesController {
     @CurrentMembership() membership: OrganizationContext,
     @Param('knownIssueId') id: string,
     @Body({ schema: updateKnownIssueSchema }) body: UpdateKnownIssueRequest,
+    @CurrentUserId() userId: string,
   ): Promise<KnownIssueResponse> {
-    return this.knownIssues.update(membership.organizationId, id, body);
+    return this.knownIssues.update(membership.organizationId, id, body, userId);
   }
 
   /** Moves its incidents into another of the same service, and removes it. */
@@ -73,7 +76,8 @@ export class KnownIssuesController {
     @CurrentMembership() membership: OrganizationContext,
     @Param('knownIssueId') id: string,
     @Body({ schema: mergeKnownIssueSchema }) body: MergeKnownIssueRequest,
+    @CurrentUserId() userId: string,
   ): Promise<KnownIssueResponse> {
-    return this.knownIssues.merge(membership.organizationId, id, body);
+    return this.knownIssues.merge(membership.organizationId, id, body, userId);
   }
 }

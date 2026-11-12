@@ -68,7 +68,12 @@ export class OrganizationInvitationsController {
   revoke(
     @CurrentMembership() membership: OrganizationContext,
     @Param('invitationId') invitationId: string,
+    @CurrentUserId() userId: string,
   ): Promise<void> {
-    return this.invitations.revoke(membership.organizationId, invitationId);
+    return this.invitations.revoke(
+      membership.organizationId,
+      invitationId,
+      userId,
+    );
   }
 }

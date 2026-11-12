@@ -531,14 +531,25 @@ describe('services (integration)', () => {
 
       for (const attempt of [
         () => services.get(fx.orgA, foreign.id),
-        () => services.update(fx.orgA, foreign.id, { name: 'Hijacked' }),
-        () => services.delete(fx.orgA, foreign.id),
         () =>
-          services.create(fx.orgA, {
-            name: 'Ledger',
-            ownerTeamId: fx.paymentsB,
-          }),
-        () => services.update(fx.orgA, own.id, { ownerTeamId: fx.paymentsB }),
+          services.update(fx.orgA, foreign.id, { name: 'Hijacked' }, fx.alice),
+        () => services.delete(fx.orgA, foreign.id, fx.alice),
+        () =>
+          services.create(
+            fx.orgA,
+            {
+              name: 'Ledger',
+              ownerTeamId: fx.paymentsB,
+            },
+            fx.alice,
+          ),
+        () =>
+          services.update(
+            fx.orgA,
+            own.id,
+            { ownerTeamId: fx.paymentsB },
+            fx.alice,
+          ),
       ]) {
         await expect(attempt()).rejects.toBeInstanceOf(HttpException);
       }

@@ -68,8 +68,12 @@ describe('Authorization (e2e)', () => {
 
   const prisma = {
     $queryRaw: vi.fn(),
+    $transaction: vi.fn(),
     membership: { findFirst: vi.fn(), findMany: vi.fn() },
     organization: { findFirst: vi.fn(), update: vi.fn() },
+    // The activity log: the actor's name, then the entry.
+    user: { findUniqueOrThrow: vi.fn(async () => ({ name: 'Ada' })) },
+    activityEntry: { create: vi.fn() },
   };
 
   /** Admission resolves the caller as `role` in ORG_ID, and nowhere else. */
@@ -127,6 +131,11 @@ describe('Authorization (e2e)', () => {
   };
 
   beforeEach(async () => {
+    // A rename and its activity log entry share one transaction.
+    prisma.$transaction.mockImplementation((work: (tx: unknown) => unknown) =>
+      work(prisma),
+    );
+
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule, TenancyModule],
       controllers: [

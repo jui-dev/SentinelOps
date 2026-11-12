@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 
+import { recordActivity } from '../activity/activity.recorder.js';
 import { opaqueSlug, slugify } from '../common/slug.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { foreignKeyViolationHint } from '../database/foreign-key-violation.js';
@@ -203,6 +204,7 @@ export class TeamsService {
   async create(
     organizationId: string,
     input: CreateTeamRequest,
+    actorId: string,
     makeFallbackSlug: () => string = fallbackTeamSlug,
   ): Promise<TeamResponse> {
     const derived = slugify(input.name);
@@ -215,7 +217,7 @@ export class TeamsService {
         const team = await this.prisma.$transaction(async (tx) => {
           await this.requireActiveOrganization(tx, organizationId);
 
-          return tx.team.create({
+          const created = await tx.team.create({
             data: {
               organizationId,
               name: input.name,
@@ -224,6 +226,23 @@ export class TeamsService {
             },
             select: teamSelection,
           });
+
+          await recordActivity(tx, {
+            organizationId,
+            action: 'TEAM_CREATED',
+            actorId,
+            subject: { type: 'TEAM', id: created.id, name: created.name },
+            changes: [
+              { field: 'name', before: null, after: created.name },
+              {
+                field: 'description',
+                before: null,
+                after: created.description,
+              },
+            ],
+          });
+
+          return created;
         });
 
         this.logger.log('Team created', { teamId: team.id });
@@ -270,19 +289,48 @@ export class TeamsService {
     organizationId: string,
     teamId: string,
     input: UpdateTeamRequest,
+    actorId: string,
   ): Promise<TeamResponse> {
     if (!isResourceId(teamId)) {
       throw teamNotFound();
     }
 
     try {
-      const team = await this.prisma.team.update({
-        where: {
-          organizationId_id: { organizationId, id: teamId },
-          organization: { deletedAt: null },
-        },
-        data: { name: input.name, description: input.description },
-        select: teamSelection,
+      const team = await this.prisma.$transaction(async (tx) => {
+        const before = await tx.team.findFirst({
+          where: { id: teamId, organizationId },
+          select: { name: true, description: true },
+        });
+        const updated = await tx.team.update({
+          where: {
+            organizationId_id: { organizationId, id: teamId },
+            organization: { deletedAt: null },
+          },
+          data: { name: input.name, description: input.description },
+          select: teamSelection,
+        });
+
+        await recordActivity(tx, {
+          organizationId,
+          action: 'TEAM_UPDATED',
+          actorId,
+          subject: { type: 'TEAM', id: updated.id, name: updated.name },
+          changes: [
+            {
+              field: 'name',
+              before: before?.name ?? null,
+              after: updated.name,
+            },
+            {
+              field: 'description',
+              before: before?.description ?? null,
+              after: updated.description,
+            },
+          ],
+          onlyIfChanged: true,
+        });
+
+        return updated;
       });
 
       this.logger.log('Team updated', { teamId });
@@ -316,7 +364,11 @@ export class TeamsService {
    * has been responsible for an incident is refused the same way, by the
    * incidents' key, and permanently: incidents are never deleted.
    */
-  async delete(organizationId: string, teamId: string): Promise<void> {
+  async delete(
+    organizationId: string,
+    teamId: string,
+    actorId: string,
+  ): Promise<void> {
     if (!isResourceId(teamId)) {
       throw teamNotFound();
     }
@@ -324,13 +376,30 @@ export class TeamsService {
     let count: number;
 
     try {
-      ({ count } = await this.prisma.team.deleteMany({
-        where: {
-          id: teamId,
-          organizationId,
-          organization: { deletedAt: null },
-        },
-      }));
+      count = await this.prisma.$transaction(async (tx) => {
+        const team = await tx.team.findFirst({
+          where: { id: teamId, organizationId },
+          select: { id: true, name: true },
+        });
+        const { count: deleted } = await tx.team.deleteMany({
+          where: {
+            id: teamId,
+            organizationId,
+            organization: { deletedAt: null },
+          },
+        });
+
+        if (deleted === 1 && team) {
+          await recordActivity(tx, {
+            organizationId,
+            action: 'TEAM_DELETED',
+            actorId,
+            subject: { type: 'TEAM', id: team.id, name: team.name },
+          });
+        }
+
+        return deleted;
+      });
     } catch (error) {
       const hint = foreignKeyViolationHint(error);
 
@@ -429,16 +498,29 @@ export class TeamsService {
           select: teamMemberSelection,
         });
 
+        const actorUserId = await this.resolveActor(tx, organizationId, actor);
+
         await this.notifications.teamMembership(tx, {
           organizationId,
           teamId,
           type: 'TEAM_MEMBERSHIP_ADDED',
           memberMembershipId: placed.membershipId,
-          actor: {
-            userId: await this.resolveActor(tx, organizationId, actor),
-            membershipId: actor.membershipId,
-          },
+          actor: { userId: actorUserId, membershipId: actor.membershipId },
           createdAt: placed.createdAt,
+        });
+
+        await recordActivity(tx, {
+          organizationId,
+          action: 'TEAM_MEMBER_ADDED',
+          actorId: actorUserId,
+          subject: await this.teamSubject(tx, organizationId, teamId),
+          changes: [
+            {
+              field: 'member',
+              before: null,
+              after: placed.membership.user.name,
+            },
+          ],
         });
 
         return placed;
@@ -501,6 +583,12 @@ export class TeamsService {
           return false;
         }
 
+        // Named before they are taken off, for the activity log.
+        const leaving = await tx.membership.findFirst({
+          where: { id: membershipId, organizationId },
+          select: { user: { select: { name: true } } },
+        });
+
         const { count } = await tx.teamMembership.deleteMany({
           where: {
             organizationId,
@@ -515,16 +603,29 @@ export class TeamsService {
           return false;
         }
 
+        const actorUserId = await this.resolveActor(tx, organizationId, actor);
+
         await this.notifications.teamMembership(tx, {
           organizationId,
           teamId,
           type: 'TEAM_MEMBERSHIP_REMOVED',
           memberMembershipId: membershipId,
-          actor: {
-            userId: await this.resolveActor(tx, organizationId, actor),
-            membershipId: actor.membershipId,
-          },
+          actor: { userId: actorUserId, membershipId: actor.membershipId },
           createdAt: new Date(),
+        });
+
+        await recordActivity(tx, {
+          organizationId,
+          action: 'TEAM_MEMBER_REMOVED',
+          actorId: actorUserId,
+          subject: await this.teamSubject(tx, organizationId, teamId),
+          changes: [
+            {
+              field: 'member',
+              before: leaving?.user.name ?? null,
+              after: null,
+            },
+          ],
         });
 
         return true;
@@ -540,6 +641,20 @@ export class TeamsService {
     await this.requireTeam(this.prisma, organizationId, teamId);
 
     throw teamMemberNotFound();
+  }
+
+  /** The team as the activity log names it, inside the change's transaction. */
+  private async teamSubject(
+    tx: Prisma.TransactionClient,
+    organizationId: string,
+    teamId: string,
+  ): Promise<{ type: 'TEAM'; id: string; name: string }> {
+    const team = await tx.team.findFirstOrThrow({
+      where: { id: teamId, organizationId },
+      select: { id: true, name: true },
+    });
+
+    return { type: 'TEAM', id: team.id, name: team.name };
   }
 
   /**

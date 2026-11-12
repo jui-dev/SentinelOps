@@ -75,7 +75,11 @@ describe('Teams (e2e)', () => {
       create: vi.fn(),
       update: vi.fn(),
       deleteMany: vi.fn(),
+      findFirstOrThrow: vi.fn(async () => ({ id: TEAM_ID, name: 'Payments' })),
     },
+    // The activity log: the actor's name, then the entry.
+    user: { findUniqueOrThrow: vi.fn(async () => ({ name: 'Ada' })) },
+    activityEntry: { create: vi.fn() },
     teamMembership: {
       findMany: vi.fn(),
       create: vi.fn(),
@@ -88,8 +92,8 @@ describe('Teams (e2e)', () => {
     prisma.membership.findFirst.mockImplementation(
       (args: { where: Record<string, unknown> }) => {
         if (!('userId' in args.where)) {
-          // The service's lookup of the membership being added.
-          return { id: MEMBERSHIP_ID };
+          // The service's lookup of the membership being added or removed.
+          return { id: MEMBERSHIP_ID, user: { name: 'Grace' } };
         }
 
         return args.where.organizationId === ORG_ID

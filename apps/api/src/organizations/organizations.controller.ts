@@ -1,6 +1,7 @@
 import { Body, Get, Param, Patch, Post, Put } from '@nestjs/common';
 
 import type { OrganizationResponse } from '../auth/auth.contract.js';
+import { CurrentUserId } from '../auth/current-user.decorator.js';
 import { Permission } from '../authorization/permissions.js';
 import { RequirePermission } from '../authorization/require-permission.decorator.js';
 import type { OrganizationContext } from '../common/request-context.js';
@@ -64,10 +65,12 @@ export class OrganizationsController {
     @CurrentMembership() membership: OrganizationContext,
     @Body({ schema: updateOrganizationSchema })
     body: UpdateOrganizationRequest,
+    @CurrentUserId() userId: string,
   ): Promise<OrganizationResponse> {
     return this.organizations.updateOrganization(
       membership.organizationId,
       body,
+      userId,
     );
   }
 
@@ -108,8 +111,13 @@ export class OrganizationsController {
   createMember(
     @CurrentMembership() membership: OrganizationContext,
     @Body({ schema: createMemberSchema }) body: CreateMemberRequest,
+    @CurrentUserId() userId: string,
   ): Promise<OrganizationMembershipResponse> {
-    return this.organizations.createMember(membership.organizationId, body);
+    return this.organizations.createMember(
+      membership.organizationId,
+      body,
+      userId,
+    );
   }
 
   /**
@@ -122,11 +130,13 @@ export class OrganizationsController {
     @CurrentMembership() membership: OrganizationContext,
     @Param('membershipId') membershipId: string,
     @Body({ schema: changeRoleSchema }) body: ChangeRoleRequest,
+    @CurrentUserId() userId: string,
   ): Promise<OrganizationMembershipResponse> {
     return this.organizations.changeRole(
       membership.organizationId,
       membershipId,
       body,
+      userId,
     );
   }
 
@@ -142,12 +152,13 @@ export class OrganizationsController {
     @CurrentMembership() membership: OrganizationContext,
     @Param('membershipId') membershipId: string,
     @Body({ schema: resetPasswordSchema }) body: ResetPasswordRequest,
+    @CurrentUserId() userId: string,
   ): Promise<OrganizationMembershipResponse> {
     return this.organizations.resetPassword(
       membership.organizationId,
       membershipId,
       body,
-      { membershipId: membership.membershipId },
+      { membershipId: membership.membershipId, userId },
     );
   }
 

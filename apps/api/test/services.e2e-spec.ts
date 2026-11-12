@@ -63,7 +63,11 @@ describe('Services (e2e)', () => {
       create: vi.fn(),
       update: vi.fn(),
       deleteMany: vi.fn(),
+      findUniqueOrThrow: vi.fn(),
     },
+    // The activity log: the actor's name, then the entry.
+    user: { findUniqueOrThrow: vi.fn(async () => ({ name: 'Ada' })) },
+    activityEntry: { create: vi.fn() },
   };
 
   /** Admission resolves the caller as `role` in ORG_ID, and nowhere else. */

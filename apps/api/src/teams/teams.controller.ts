@@ -9,6 +9,7 @@ import {
   Post,
 } from '@nestjs/common';
 
+import { CurrentUserId } from '../auth/current-user.decorator.js';
 import { Permission } from '../authorization/permissions.js';
 import { RequirePermission } from '../authorization/require-permission.decorator.js';
 import type { OrganizationContext } from '../common/request-context.js';
@@ -71,8 +72,9 @@ export class TeamsController {
   create(
     @CurrentMembership() membership: OrganizationContext,
     @Body({ schema: createTeamSchema }) body: CreateTeamRequest,
+    @CurrentUserId() userId: string,
   ): Promise<TeamResponse> {
-    return this.teams.create(membership.organizationId, body);
+    return this.teams.create(membership.organizationId, body, userId);
   }
 
   @Get(':teamId')
@@ -95,8 +97,9 @@ export class TeamsController {
     @CurrentMembership() membership: OrganizationContext,
     @Param('teamId') teamId: string,
     @Body({ schema: updateTeamSchema }) body: UpdateTeamRequest,
+    @CurrentUserId() userId: string,
   ): Promise<TeamResponse> {
-    return this.teams.update(membership.organizationId, teamId, body);
+    return this.teams.update(membership.organizationId, teamId, body, userId);
   }
 
   /** Deletes a team. Its members stay in the organization. */
@@ -106,8 +109,9 @@ export class TeamsController {
   delete(
     @CurrentMembership() membership: OrganizationContext,
     @Param('teamId') teamId: string,
+    @CurrentUserId() userId: string,
   ): Promise<void> {
-    return this.teams.delete(membership.organizationId, teamId);
+    return this.teams.delete(membership.organizationId, teamId, userId);
   }
 
   @Get(':teamId/members')

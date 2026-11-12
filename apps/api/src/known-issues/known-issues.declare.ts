@@ -1,3 +1,4 @@
+import { recordActivity } from '../activity/activity.recorder.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import type { IncidentSeverity } from '../incidents/incidents.contract.js';
 import {
@@ -20,6 +21,9 @@ import {
  *                     declaration is never refused over a name.
  *   neither           a one-off: null.
  *
+ * Saving something new is recorded in the activity log, attributed to
+ * `actorId` — whoever declared it.
+ *
  * The two are never both given; the request schema refuses that.
  */
 export const knownIssueForDeclaration = async (
@@ -32,6 +36,7 @@ export const knownIssueForDeclaration = async (
     severity: IncidentSeverity;
     knownIssueId?: string;
     saveAsKnownIssue?: boolean;
+    actorId: string;
   },
 ): Promise<string | null> => {
   const { organizationId, serviceId } = declaration;
@@ -73,7 +78,19 @@ export const knownIssueForDeclaration = async (
       pendingReview: true,
     },
     update: {},
-    select: { id: true },
+    select: { id: true, name: true, description: true },
+  });
+
+  await recordActivity(tx, {
+    organizationId,
+    action: 'KNOWN_ISSUE_CREATED',
+    actorId: declaration.actorId,
+    subject: { type: 'KNOWN_ISSUE', id: saved.id, name: saved.name },
+    changes: [
+      { field: 'description', before: null, after: saved.description },
+      { field: 'usualSeverity', before: null, after: declaration.severity },
+      { field: 'status', before: null, after: 'PENDING_REVIEW' },
+    ],
   });
 
   return saved.id;

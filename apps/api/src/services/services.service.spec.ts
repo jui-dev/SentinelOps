@@ -45,7 +45,11 @@ const serviceWith = () => {
       create: vi.fn().mockResolvedValue(serviceRow),
       update: vi.fn().mockResolvedValue(serviceRow),
       deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
+      findUniqueOrThrow: vi.fn().mockResolvedValue(serviceRow),
     },
+    user: { findUniqueOrThrow: vi.fn().mockResolvedValue({ name: 'Actor' }) },
+    // The activity log: who acted is read by name, and each change written.
+    activityEntry: { create: vi.fn() },
     $transaction: vi.fn(),
   };
 
@@ -140,11 +144,15 @@ describe('ServicesService', () => {
     it('should look the owner up within the organization and insert scalar ids with a derived slug', async () => {
       const { service, prisma } = serviceWith();
 
-      await service.create(ORG, {
-        name: 'Payment API',
-        ownerTeamId: TEAM,
-        criticality: 'CRITICAL',
-      });
+      await service.create(
+        ORG,
+        {
+          name: 'Payment API',
+          ownerTeamId: TEAM,
+          criticality: 'CRITICAL',
+        },
+        'user-actor',
+      );
 
       expect(prisma.team.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -172,7 +180,11 @@ describe('ServicesService', () => {
     it('should leave an omitted criticality to the database default', async () => {
       const { service, prisma } = serviceWith();
 
-      await service.create(ORG, { name: 'Payment API', ownerTeamId: TEAM });
+      await service.create(
+        ORG,
+        { name: 'Payment API', ownerTeamId: TEAM },
+        'user-actor',
+      );
 
       expect(prisma.service.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -186,7 +198,11 @@ describe('ServicesService', () => {
       prisma.team.findFirst.mockResolvedValue(null);
 
       await expectCode(
-        service.create(ORG, { name: 'Payment API', ownerTeamId: TEAM }),
+        service.create(
+          ORG,
+          { name: 'Payment API', ownerTeamId: TEAM },
+          'user-actor',
+        ),
         404,
         TeamsErrorCode.TEAM_NOT_FOUND,
       );
@@ -198,7 +214,11 @@ describe('ServicesService', () => {
       prisma.service.create.mockRejectedValue(knownError('P2003', OWNER_KEY));
 
       await expectCode(
-        service.create(ORG, { name: 'Payment API', ownerTeamId: TEAM }),
+        service.create(
+          ORG,
+          { name: 'Payment API', ownerTeamId: TEAM },
+          'user-actor',
+        ),
         404,
         TeamsErrorCode.TEAM_NOT_FOUND,
       );
@@ -210,6 +230,7 @@ describe('ServicesService', () => {
       await service.create(
         ORG,
         { name: '決済サービス', ownerTeamId: TEAM },
+        'user-actor',
         () => 'service-0a1b2c3d',
       );
 
@@ -227,8 +248,11 @@ describe('ServicesService', () => {
         knownError('P2002', 'services_organization_id_slug_key'),
       );
 
-      await service.create(ORG, { name: '決済', ownerTeamId: TEAM }, () =>
-        slugs.shift()!,
+      await service.create(
+        ORG,
+        { name: '決済', ownerTeamId: TEAM },
+        'user-actor',
+        () => slugs.shift()!,
       );
 
       expect(prisma.service.create).toHaveBeenCalledTimes(2);
@@ -246,7 +270,11 @@ describe('ServicesService', () => {
       );
 
       await expectCode(
-        service.create(ORG, { name: 'payment api!', ownerTeamId: TEAM }),
+        service.create(
+          ORG,
+          { name: 'payment api!', ownerTeamId: TEAM },
+          'user-actor',
+        ),
         409,
         ServicesErrorCode.SERVICE_NAME_TAKEN,
       );
@@ -260,7 +288,11 @@ describe('ServicesService', () => {
       );
 
       await expectCode(
-        service.create(ORG, { name: 'Payment API', ownerTeamId: TEAM }),
+        service.create(
+          ORG,
+          { name: 'Payment API', ownerTeamId: TEAM },
+          'user-actor',
+        ),
         409,
         ServicesErrorCode.SERVICE_NAME_TAKEN,
       );
@@ -272,7 +304,11 @@ describe('ServicesService', () => {
       prisma.service.create.mockRejectedValue(unknown);
 
       await expect(
-        service.create(ORG, { name: 'Payment API', ownerTeamId: TEAM }),
+        service.create(
+          ORG,
+          { name: 'Payment API', ownerTeamId: TEAM },
+          'user-actor',
+        ),
       ).rejects.toBe(unknown);
     });
 
@@ -281,7 +317,11 @@ describe('ServicesService', () => {
       prisma.organization.findFirst.mockResolvedValue(null);
 
       await expectCode(
-        service.create(ORG, { name: 'Payment API', ownerTeamId: TEAM }),
+        service.create(
+          ORG,
+          { name: 'Payment API', ownerTeamId: TEAM },
+          'user-actor',
+        ),
         404,
         TenancyErrorCode.ORGANIZATION_NOT_FOUND,
       );
@@ -293,7 +333,12 @@ describe('ServicesService', () => {
     it('should update through the (organization, id) compound key, never the slug', async () => {
       const { service, prisma } = serviceWith();
 
-      await service.update(ORG, SERVICE, { name: 'Payments API' });
+      await service.update(
+        ORG,
+        SERVICE,
+        { name: 'Payments API' },
+        'user-actor',
+      );
 
       expect(prisma.service.update).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -316,7 +361,7 @@ describe('ServicesService', () => {
     it('should stamp the time when archiving, and clear it when unarchiving', async () => {
       const { service, prisma } = serviceWith();
 
-      await service.update(ORG, SERVICE, { archived: true });
+      await service.update(ORG, SERVICE, { archived: true }, 'user-actor');
 
       expect(
         prisma.service.update.mock.calls[0][0].data.archivedAt,
@@ -326,7 +371,7 @@ describe('ServicesService', () => {
         ...serviceRow,
         archivedAt: CREATED,
       });
-      await service.update(ORG, SERVICE, { archived: false });
+      await service.update(ORG, SERVICE, { archived: false }, 'user-actor');
 
       expect(prisma.service.update.mock.calls[1][0].data.archivedAt).toBeNull();
     });
@@ -338,7 +383,7 @@ describe('ServicesService', () => {
         archivedAt: CREATED,
       });
 
-      await service.update(ORG, SERVICE, { archived: true });
+      await service.update(ORG, SERVICE, { archived: true }, 'user-actor');
 
       expect(
         prisma.service.update.mock.calls[0][0].data.archivedAt,
@@ -348,7 +393,12 @@ describe('ServicesService', () => {
     it('should look a new owner up within the organization', async () => {
       const { service, prisma } = serviceWith();
 
-      await service.update(ORG, SERVICE, { ownerTeamId: OTHER_TEAM });
+      await service.update(
+        ORG,
+        SERVICE,
+        { ownerTeamId: OTHER_TEAM },
+        'user-actor',
+      );
 
       expect(prisma.team.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -367,7 +417,7 @@ describe('ServicesService', () => {
       prisma.team.findFirst.mockResolvedValue(null);
 
       await expectCode(
-        service.update(ORG, SERVICE, { ownerTeamId: OTHER_TEAM }),
+        service.update(ORG, SERVICE, { ownerTeamId: OTHER_TEAM }, 'user-actor'),
         404,
         ServicesErrorCode.SERVICE_NOT_FOUND,
       );
@@ -380,7 +430,7 @@ describe('ServicesService', () => {
       prisma.team.findFirst.mockResolvedValue(null);
 
       await expectCode(
-        service.update(ORG, SERVICE, { ownerTeamId: OTHER_TEAM }),
+        service.update(ORG, SERVICE, { ownerTeamId: OTHER_TEAM }, 'user-actor'),
         404,
         TeamsErrorCode.TEAM_NOT_FOUND,
       );
@@ -392,7 +442,7 @@ describe('ServicesService', () => {
       prisma.service.update.mockRejectedValue(knownError('P2003', OWNER_KEY));
 
       await expectCode(
-        service.update(ORG, SERVICE, { ownerTeamId: OTHER_TEAM }),
+        service.update(ORG, SERVICE, { ownerTeamId: OTHER_TEAM }, 'user-actor'),
         404,
         TeamsErrorCode.TEAM_NOT_FOUND,
       );
@@ -403,7 +453,7 @@ describe('ServicesService', () => {
       prisma.service.update.mockRejectedValue(knownError('P2025'));
 
       await expectCode(
-        service.update(ORG, SERVICE, { name: 'Payments API' }),
+        service.update(ORG, SERVICE, { name: 'Payments API' }, 'user-actor'),
         404,
         ServicesErrorCode.SERVICE_NOT_FOUND,
       );
@@ -413,7 +463,7 @@ describe('ServicesService', () => {
       const { service, prisma } = serviceWith();
 
       await expectCode(
-        service.update(ORG, 'nope', { name: 'Payments API' }),
+        service.update(ORG, 'nope', { name: 'Payments API' }, 'user-actor'),
         404,
         ServicesErrorCode.SERVICE_NOT_FOUND,
       );
@@ -427,7 +477,7 @@ describe('ServicesService', () => {
       );
 
       await expectCode(
-        service.update(ORG, SERVICE, { name: 'Checkout' }),
+        service.update(ORG, SERVICE, { name: 'Checkout' }, 'user-actor'),
         409,
         ServicesErrorCode.SERVICE_NAME_TAKEN,
       );
@@ -438,7 +488,7 @@ describe('ServicesService', () => {
     it('should delete only within the organization', async () => {
       const { service, prisma } = serviceWith();
 
-      await service.delete(ORG, SERVICE);
+      await service.delete(ORG, SERVICE, 'user-actor');
 
       expect(prisma.service.deleteMany).toHaveBeenCalledWith({
         where: {
@@ -454,7 +504,7 @@ describe('ServicesService', () => {
       prisma.service.deleteMany.mockResolvedValue({ count: 0 });
 
       await expectCode(
-        service.delete(ORG, SERVICE),
+        service.delete(ORG, SERVICE, 'user-actor'),
         404,
         ServicesErrorCode.SERVICE_NOT_FOUND,
       );
@@ -467,7 +517,7 @@ describe('ServicesService', () => {
       );
 
       await expectCode(
-        service.delete(ORG, SERVICE),
+        service.delete(ORG, SERVICE, 'user-actor'),
         409,
         ServicesErrorCode.SERVICE_HAS_INCIDENTS,
       );
@@ -478,14 +528,16 @@ describe('ServicesService', () => {
       const unknown = knownError('P2003', 'something_else_fkey');
       prisma.service.deleteMany.mockRejectedValue(unknown);
 
-      await expect(service.delete(ORG, SERVICE)).rejects.toBe(unknown);
+      await expect(service.delete(ORG, SERVICE, 'user-actor')).rejects.toBe(
+        unknown,
+      );
     });
 
     it('should answer a malformed id with 404 without deleting', async () => {
       const { service, prisma } = serviceWith();
 
       await expectCode(
-        service.delete(ORG, 'nope'),
+        service.delete(ORG, 'nope', 'user-actor'),
         404,
         ServicesErrorCode.SERVICE_NOT_FOUND,
       );

@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 
+import type { ActivityChange } from '../activity/activity.contract.js';
+import { recordActivity } from '../activity/activity.recorder.js';
 import { opaqueSlug, slugify } from '../common/slug.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { foreignKeyViolationHint } from '../database/foreign-key-violation.js';
@@ -74,6 +76,40 @@ const violatesIncidentServiceKey = (hint: string): boolean =>
  */
 export const fallbackServiceSlug = (): string => opaqueSlug('service');
 
+/** What the activity log keeps of a service, field by field. */
+type ServiceSnapshot = {
+  name: string;
+  description: string | null;
+  criticality: string;
+  archivedAt: Date | null;
+  ownerTeam: { name: string };
+};
+
+/**
+ * A service's fields from `before` to `after`, as the activity log records
+ * them: the owning team by name, and archiving as a status. `before` null is
+ * a service just made.
+ */
+export const serviceChanges = (
+  before: ServiceSnapshot | null,
+  after: ServiceSnapshot,
+): ActivityChange[] => {
+  const status = (s: ServiceSnapshot) => (s.archivedAt ? 'ARCHIVED' : 'ACTIVE');
+  const field = (name: string, of: (s: ServiceSnapshot) => string | null) => ({
+    field: name,
+    before: before === null ? null : of(before),
+    after: of(after),
+  });
+
+  return [
+    field('name', (s) => s.name),
+    field('description', (s) => s.description),
+    field('team', (s) => s.ownerTeam.name),
+    field('criticality', (s) => s.criticality),
+    ...(before === null ? [] : [field('status', status)]),
+  ];
+};
+
 /**
  * An organization's services, and who owns them.
  *
@@ -144,6 +180,7 @@ export class ServicesService {
   async create(
     organizationId: string,
     input: CreateServiceRequest,
+    actorId: string,
     makeFallbackSlug: () => string = fallbackServiceSlug,
   ): Promise<ServiceResponse> {
     const derived = slugify(input.name);
@@ -159,7 +196,7 @@ export class ServicesService {
 
           // Scalar ids, not nested connects: both relations share
           // organizationId, and it is that shared column the owner key checks.
-          return tx.service.create({
+          const created = await tx.service.create({
             data: {
               organizationId,
               name: input.name,
@@ -170,6 +207,16 @@ export class ServicesService {
             },
             select: serviceSelection,
           });
+
+          await recordActivity(tx, {
+            organizationId,
+            action: 'SERVICE_CREATED',
+            actorId,
+            subject: { type: 'SERVICE', id: created.id, name: created.name },
+            changes: serviceChanges(null, created),
+          });
+
+          return created;
         });
 
         this.logger.log('Service created', {
@@ -235,6 +282,7 @@ export class ServicesService {
     organizationId: string,
     serviceId: string,
     input: UpdateServiceRequest,
+    actorId: string,
   ): Promise<ServiceResponse> {
     if (!isResourceId(serviceId)) {
       throw serviceNotFound();
@@ -252,6 +300,11 @@ export class ServicesService {
           if (input.ownerTeamId !== undefined) {
             await this.requireTeam(tx, organizationId, input.ownerTeamId);
           }
+
+          const before = await tx.service.findUniqueOrThrow({
+            where: { organizationId_id: { organizationId, id: serviceId } },
+            select: serviceSelection,
+          });
 
           const wasArchived = current.archivedAt !== null;
           const archivedChanged =
@@ -274,6 +327,15 @@ export class ServicesService {
                 : undefined,
             },
             select: serviceSelection,
+          });
+
+          await recordActivity(tx, {
+            organizationId,
+            action: 'SERVICE_UPDATED',
+            actorId,
+            subject: { type: 'SERVICE', id: updated.id, name: updated.name },
+            changes: serviceChanges(before, updated),
+            onlyIfChanged: true,
           });
 
           return { service: updated, archivedChanged };
@@ -325,7 +387,11 @@ export class ServicesService {
    * checked first, which would race a declaration in between. Such a service
    * is retired by archiving it instead.
    */
-  async delete(organizationId: string, serviceId: string): Promise<void> {
+  async delete(
+    organizationId: string,
+    serviceId: string,
+    actorId: string,
+  ): Promise<void> {
     if (!isResourceId(serviceId)) {
       throw serviceNotFound();
     }
@@ -333,13 +399,30 @@ export class ServicesService {
     let count: number;
 
     try {
-      ({ count } = await this.prisma.service.deleteMany({
-        where: {
-          id: serviceId,
-          organizationId,
-          organization: { deletedAt: null },
-        },
-      }));
+      count = await this.prisma.$transaction(async (tx) => {
+        const service = await tx.service.findFirst({
+          where: { id: serviceId, organizationId },
+          select: { id: true, name: true },
+        });
+        const { count: deleted } = await tx.service.deleteMany({
+          where: {
+            id: serviceId,
+            organizationId,
+            organization: { deletedAt: null },
+          },
+        });
+
+        if (deleted === 1 && service) {
+          await recordActivity(tx, {
+            organizationId,
+            action: 'SERVICE_DELETED',
+            actorId,
+            subject: { type: 'SERVICE', id: service.id, name: service.name },
+          });
+        }
+
+        return deleted;
+      });
     } catch (error) {
       const hint = foreignKeyViolationHint(error);
 

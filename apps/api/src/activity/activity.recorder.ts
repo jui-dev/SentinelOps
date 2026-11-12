@@ -19,6 +19,12 @@ export interface ActivityRecord {
   actorId: string;
   subject?: { type: ActivitySubjectType; id: string; name: string };
   changes?: ActivityChange[];
+  /**
+   * For an edit: record nothing when no field actually changed — saving a
+   * form unchanged is not something that happened. Additions, removals and
+   * sign-ins are recorded whatever their changes.
+   */
+  onlyIfChanged?: boolean;
 }
 
 /**
@@ -42,6 +48,10 @@ export const recordActivity = async (
   tx: Prisma.TransactionClient,
   record: ActivityRecord,
 ): Promise<void> => {
+  const changes = changedFields(record.changes ?? []);
+
+  if (record.onlyIfChanged && changes.length === 0) return;
+
   const actor = await tx.user.findUniqueOrThrow({
     where: { id: record.actorId },
     select: { name: true },
@@ -58,9 +68,7 @@ export const recordActivity = async (
       subjectType: record.subject?.type ?? null,
       subjectId: record.subject?.id ?? null,
       subjectName: record.subject?.name ?? null,
-      changes: changedFields(
-        record.changes ?? [],
-      ) as unknown as Prisma.InputJsonValue,
+      changes: changes as unknown as Prisma.InputJsonValue,
       ipAddress: client?.ipAddress ?? null,
       userAgent: client?.userAgent ?? null,
     },
