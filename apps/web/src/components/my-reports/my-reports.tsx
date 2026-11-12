@@ -126,7 +126,7 @@ export function MyReports() {
   return (
     <>
       <PageHeader
-        width="list"
+        width="full"
         title="My reports"
         description={
           <>
@@ -139,7 +139,7 @@ export function MyReports() {
           </>
         }
       />
-      <PageBody width="list">
+      <PageBody width="full">
         {active.isError && <ErrorAlert error={active.error} />}
         {!open ? (
           <Spinner label="Loading your reports…" />

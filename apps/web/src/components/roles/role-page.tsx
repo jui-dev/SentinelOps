@@ -133,7 +133,7 @@ export function RolePage() {
 
   if (!role) {
     return (
-      <PageBody width="list">
+      <PageBody width="full">
         <EmptyNote title="There is no such role">
           SentinelOps has four roles.{" "}
           <Link href={rolesHref(organization.slug)} className={linkClasses}>
@@ -150,7 +150,7 @@ export function RolePage() {
   const yours = organization.membership.role === role;
 
   return (
-    <PageBody width="list" className="pt-8">
+    <PageBody width="full" className="pt-8">
       <div className="flex flex-col gap-5">
         <nav aria-label="Breadcrumb" className="text-sm text-fg-subtle">
           <Link

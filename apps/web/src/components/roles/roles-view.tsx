@@ -410,11 +410,11 @@ export function RolesView() {
   return (
     <>
       <PageHeader
-        width="list"
+        width="full"
         title="Roles"
         description={`Everyone in ${organization.name} has one role. Your role decides what you can do. Your teams decide which incidents you work on.`}
       />
-      <PageBody width="list">
+      <PageBody width="full">
         <div
           className={cx(
             "flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border bg-linear-to-r to-surface to-70% px-4 py-3",
