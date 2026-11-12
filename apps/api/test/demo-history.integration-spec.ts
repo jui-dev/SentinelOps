@@ -1,10 +1,12 @@
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 
+import { ActivityService } from './../src/activity/activity.service.js';
 import { AppModule } from './../src/app.module.js';
 import { PrismaService } from './../src/database/prisma.service.js';
 import { DEV_ORGANIZATION, DEV_PERSONAS } from './../src/dev/dev-account.js';
 import { DevAccountService } from './../src/dev/dev-account.service.js';
+import { buildDemoActivity } from './../src/dev/demo-history/demo-activity.js';
 import { buildDemoKnownIssues } from './../src/dev/demo-history/demo-known-issues.js';
 import { buildDemoHistory } from './../src/dev/demo-history/build-demo-history.js';
 import {
@@ -97,7 +99,7 @@ describe('demo history (integration)', () => {
 
   beforeEach(async () => {
     await prisma.$executeRawUnsafe(
-      'TRUNCATE TABLE incidents, services, team_memberships, teams, invitations, refresh_tokens, memberships, users, organizations RESTART IDENTITY CASCADE',
+      'TRUNCATE TABLE activity_entries, incidents, services, team_memberships, teams, invitations, refresh_tokens, memberships, users, organizations RESTART IDENTITY CASCADE',
     );
     await devAccount.ensure();
     ({ id: organizationId } = await prisma.organization.findUniqueOrThrow({
@@ -122,6 +124,7 @@ describe('demo history (integration)', () => {
       responders: history.flatMap((incident) => incident.responders).length,
       activities: history.flatMap((incident) => incident.activity).length,
       knownIssues: buildDemoKnownIssues(history).length,
+      activityEntries: buildDemoActivity(anchor).length,
     });
 
     // Read as the dev Admin, who oversees every incident.
@@ -379,6 +382,66 @@ describe('demo history (integration)', () => {
     );
   });
 
+  it("should write the week's activity log, as the Admin reads it", async () => {
+    await demo.replace(anchor);
+
+    const activity = app.get(ActivityService);
+    const changes = await activity.list(organizationId, { view: 'changes' });
+    const security = await activity.list(organizationId, { view: 'security' });
+
+    // Newest first: Sam's cover ended yesterday.
+    expect(changes.entries[0]).toMatchObject({
+      action: 'ROLE_CHANGED',
+      actor: { name: 'Dev Admin' },
+      subject: { type: 'MEMBERSHIP', name: 'Sam Okafor' },
+    });
+    expect(changes.areaCounts).toMatchObject({
+      PEOPLE: 4,
+      TEAMS: 2,
+      SERVICES: 2,
+      ORGANIZATION: 1,
+    });
+
+    // This morning: Priya's five wrong passwords read as one row, after the
+    // block and before Priya's own sign-in.
+    const morning = security.entries
+      .filter((entry) => entry.actor.name === 'Priya Shah')
+      .slice(0, 3);
+
+    expect(
+      morning.map((entry) => [entry.action, entry.repeat?.count ?? 1]),
+    ).toEqual([
+      ['SIGNED_IN', 1],
+      ['SIGN_IN_BLOCKED', 1],
+      ['SIGN_IN_FAILED', 5],
+    ]);
+    expect(security.securityTotals).toMatchObject({
+      failedSignIns: 5,
+      blocked: 1,
+    });
+
+    // The folded row in full points at what is real: the block, and where
+    // Priya usually signs in from.
+    const wrong = await activity.get(organizationId, morning[2]!.id);
+
+    expect(wrong.attempts).toHaveLength(5);
+    expect(wrong.next?.action).toBe('SIGN_IN_BLOCKED');
+    expect(wrong.usualClient).toEqual({
+      ipAddress: '10.0.4.15',
+      browser: 'Chrome on Windows',
+    });
+
+    // Every subject is one the organization still has.
+    const team = changes.entries.find(
+      (entry) => entry.subject?.type === 'TEAM',
+    );
+
+    expect((await activity.get(organizationId, team!.id)).subjectNow).toEqual({
+      exists: true,
+      slug: 'risk',
+    });
+  });
+
   it('should touch no other organization', async () => {
     const user = await prisma.user.create({
       data: { email: 'owner@other.example.com', name: 'Other Owner' },
@@ -412,8 +475,21 @@ describe('demo history (integration)', () => {
       { title: 'Theirs', serviceId: service.id, severity: 'SEV2' },
     );
 
+    await prisma.activityEntry.create({
+      data: {
+        organizationId: other.id,
+        action: 'TEAM_CREATED',
+        area: 'TEAMS',
+        actorId: user.id,
+        actorName: 'Other Owner',
+      },
+    });
+
     await demo.replace(anchor);
 
+    expect(
+      await prisma.activityEntry.count({ where: { organizationId: other.id } }),
+    ).toBe(1);
     expect(
       await prisma.incident.findMany({
         where: { organizationId: other.id },

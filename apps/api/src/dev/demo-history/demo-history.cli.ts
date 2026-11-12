@@ -70,6 +70,7 @@ try {
       `  responders:  ${result.responders}`,
       `  activities:  ${result.activities}`,
       `  known issues: ${result.knownIssues}`,
+      `  activity log: ${result.activityEntries}`,
     ].join('\n'),
   );
 } catch (error) {

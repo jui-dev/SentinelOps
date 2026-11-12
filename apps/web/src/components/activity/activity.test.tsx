@@ -399,8 +399,12 @@ describe("activity log", () => {
     await expectNoAxeViolations(document.body);
   });
 
-  it("is the Admin's alone: anyone else is told so, and the log is not asked for", async () => {
-    const { requests } = api(MANAGER);
+  it.each([
+    ["an Incident Manager", MANAGER],
+    ["a Reporter", ["organization:read", "memberships:read", "incidents:declare"]],
+    ["a Responder", ["organization:read", "memberships:read", "responses:work"]],
+  ])("is the Admin's alone: %s is told so, and the log is not asked for", async (_, permissions) => {
+    const { requests } = api(permissions);
 
     render();
 

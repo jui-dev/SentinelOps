@@ -164,15 +164,34 @@ describe('activity log (integration)', () => {
     await prisma.$disconnect();
   });
 
-  it('should let only the Admin read the log or an entry', async () => {
+  it('should let only the Admin read the log or an entry — every other role is refused', async () => {
     const id = await entry('TEAM_CREATED', 5);
 
-    for (const response of [
-      await call(`${fx.orgA}/activity`, fx.ben),
-      await call(`${fx.orgA}/activity/${id}`, fx.ben),
-    ]) {
-      expect(response.status).toBe(403);
-      expect(response.body.code).toBe('PERMISSION_DENIED');
+    // Ben is the Incident Manager; the Reporter and the Responder too.
+    const others = [fx.ben];
+
+    for (const role of ['REPORTER', 'RESPONDER'] as const) {
+      const user = await prisma.user.create({
+        data: { email: `${role.toLowerCase()}@example.com`, name: role },
+      });
+
+      await prisma.membership.create({
+        data: { organizationId: fx.orgA, userId: user.id, role },
+      });
+      others.push(user.id);
+    }
+
+    for (const userId of others) {
+      for (const path of [
+        `${fx.orgA}/activity`,
+        `${fx.orgA}/activity?view=security`,
+        `${fx.orgA}/activity/${id}`,
+      ]) {
+        const response = await call(path, userId);
+
+        expect(response.status).toBe(403);
+        expect(response.body.code).toBe('PERMISSION_DENIED');
+      }
     }
 
     expect((await call(`${fx.orgA}/activity/${id}`, fx.alice)).status).toBe(

@@ -10,6 +10,9 @@ import {
   DEV_SERVICES,
   DEV_TEAMS,
 } from '../dev-account.js';
+import { ACTION_AREA } from '../../activity/activity.actions.js';
+import { buildDemoActivity } from './demo-activity.js';
+import type { DemoSubject } from './demo-activity.js';
 import { buildDemoHistory } from './build-demo-history.js';
 import { buildDemoKnownIssues } from './demo-known-issues.js';
 import { checkDemoHistory } from './check-demo-history.js';
@@ -24,6 +27,8 @@ export interface DemoHistoryResult {
   activities: number;
   /** Known issues written, each linked to its incidents. */
   knownIssues: number;
+  /** Activity log entries written: the last week's changes and sign-ins. */
+  activityEntries: number;
 }
 
 /** The organization is not the one the story was written for. */
@@ -45,7 +50,9 @@ export class DemoOrganizationMismatch extends Error {
  * with a declaration: every incident the organization has — generated or
  * not — is deleted, their responses and timelines with them, the demo
  * history is written numbered 1..N, and the incident counter continues from
- * N. Users, memberships, teams, and services are only read, and must still
+ * N. The organization's activity log is replaced the same way, by the
+ * demo's week of changes and sign-ins (demo-activity.ts) — the one place
+ * entries are ever removed, and only here, in development. Users, memberships, teams, and services are only read, and must still
  * be the ones dev-account.ts sets up: the history is written for them, so a
  * difference refuses the whole run and changes nothing. No other
  * organization is touched.
@@ -172,6 +179,57 @@ export class DemoHistoryService {
           select: { id: true },
         });
 
+        // The activity log: removed, as the incidents were, and rewritten.
+        const nameOf = (email: string) =>
+          DEV_PERSONAS.find((persona) => persona.email === email)!.name;
+        const subjectOf = (subject: DemoSubject | null) => {
+          switch (subject?.kind) {
+            case 'member':
+              return {
+                subjectType: 'MEMBERSHIP' as const,
+                subjectId: ids.memberships[subject.email],
+                subjectName: nameOf(subject.email),
+              };
+            case 'team':
+              return {
+                subjectType: 'TEAM' as const,
+                subjectId: ids.teams[subject.name],
+                subjectName: subject.name,
+              };
+            case 'service':
+              return {
+                subjectType: 'SERVICE' as const,
+                subjectId: ids.services[subject.name],
+                subjectName: subject.name,
+              };
+            case 'organization':
+              return {
+                subjectType: 'ORGANIZATION' as const,
+                subjectId: organizationId,
+                subjectName: DEV_ORGANIZATION.name,
+              };
+            default:
+              return { subjectType: null, subjectId: null, subjectName: null };
+          }
+        };
+        const log = buildDemoActivity(anchor);
+
+        await tx.activityEntry.deleteMany({ where: { organizationId } });
+        await tx.activityEntry.createMany({
+          data: log.map((entry) => ({
+            organizationId,
+            action: entry.action,
+            area: ACTION_AREA[entry.action],
+            actorId: ids.users[entry.actor],
+            actorName: nameOf(entry.actor),
+            ...subjectOf(entry.subject),
+            changes: entry.changes as unknown as Prisma.InputJsonValue,
+            ipAddress: entry.ipAddress,
+            userAgent: entry.userAgent,
+            createdAt: entry.at,
+          })),
+        });
+
         return {
           anchor,
           removed,
@@ -181,6 +239,7 @@ export class DemoHistoryService {
           responders: responders.length,
           activities: activities.length,
           knownIssues: knownIssues.length,
+          activityEntries: log.length,
         };
       },
       // Well under a second in practice; the default 5 s is tight on a cold
