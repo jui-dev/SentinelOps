@@ -187,6 +187,11 @@ export interface IncidentActivityResponse {
   actor: {
     id: string;
     name: string;
+    /**
+     * Their role in this organization now — not when they acted, which is
+     * not recorded. Null for someone who is no longer a member.
+     */
+    role: string | null;
   };
   createdAt: string;
 }

@@ -304,8 +304,13 @@ export const ROLE_CONTENT: Record<Role, RoleContent> = {
     ],
     where: (slug) => [
       {
+        label: "My reports",
+        detail: "Home: what they declared, and where each stands",
+        href: organizationPath(slug),
+      },
+      {
         label: "Incidents",
-        detail: "Declare, and follow what you reported",
+        detail: "Declare, and follow what they reported",
         href: `${organizationPath(slug)}/incidents`,
       },
       {

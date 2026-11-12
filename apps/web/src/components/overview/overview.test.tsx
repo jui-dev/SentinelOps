@@ -50,10 +50,11 @@ const READ = [
   "teams:read",
 ];
 
-/** A member: every read the Overview needs, except oversight. */
-const MEMBER_READ = READ.filter(
-  (permission) => permission !== "incidents:read-all",
-);
+/** A Responder: every read the Overview needs, except oversight. */
+const MEMBER_READ = [
+  ...READ.filter((permission) => permission !== "incidents:read-all"),
+  "responses:work",
+];
 
 const base = `/organizations/${organization.id}`;
 

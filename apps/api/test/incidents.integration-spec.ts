@@ -506,7 +506,11 @@ describe('incidents (integration)', () => {
       });
 
       expect(posted.status).toBe(201);
-      expect(posted.body.actor).toEqual({ id: fx.dave, name: 'Dave Duarte' });
+      expect(posted.body.actor).toEqual({
+        id: fx.dave,
+        name: 'Dave Duarte',
+        role: 'RESPONDER',
+      });
       expect(
         (await call('get', `${path}/timeline`, fx.dave)).body.map(
           ({ type }: { type: string }) => type,
@@ -3471,7 +3475,11 @@ describe('incidents (integration)', () => {
       const posted = await post(fx.orgA, fx.carol, 'Support has been told.');
 
       expect(posted.status).toBe(201);
-      expect(posted.body.actor).toEqual({ id: fx.carol, name: 'Carol Chen' });
+      expect(posted.body.actor).toEqual({
+        id: fx.carol,
+        name: 'Carol Chen',
+        role: 'ADMIN',
+      });
       expect(await prisma.incidentResponder.count()).toBe(0);
     });
 
@@ -4376,7 +4384,7 @@ describe('incidents (integration)', () => {
         message: 'Investigating elevated database latency.',
         fromValue: null,
         toValue: null,
-        actor: { id: fx.dave, name: 'Dave Duarte' },
+        actor: { id: fx.dave, name: 'Dave Duarte', role: 'RESPONDER' },
         createdAt: expect.any(String),
       });
 
@@ -5304,6 +5312,29 @@ describe('incidents (integration)', () => {
         expect(await notificationsOf(rita.membershipId)).toEqual([
           { type: 'INCIDENT_SEVERITY_CHANGED' },
         ]);
+      });
+
+      it("should name each actor's role here now on the timeline, and none for someone who left", async () => {
+        const rita = await aPerson('REPORTER', 'Rita');
+        const ian = await aPerson('INCIDENT_MANAGER', 'Ian');
+        await raise(rita.userId);
+        await decide(ian.userId, { mode: 'OPEN' });
+
+        const roles = async () =>
+          (
+            (await call('get', `${fx.orgA}/incidents/1/timeline`, fx.alice))
+              .body as { type: string; actor: { role: string | null } }[]
+          ).map(({ type, actor }) => [type, actor.role]);
+
+        expect(await roles()).toEqual([
+          ['DECLARED', 'REPORTER'],
+          ['SEVERITY_CONFIRMED', 'INCIDENT_MANAGER'],
+          ['RESPONSE_ACCESS_CHANGED', 'INCIDENT_MANAGER'],
+        ]);
+
+        await prisma.membership.delete({ where: { id: ian.membershipId } });
+
+        expect((await roles())[1]).toEqual(['SEVERITY_CONFIRMED', null]);
       });
 
       it('should tell the reporter when what they raised is resolved', async () => {

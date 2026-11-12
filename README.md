@@ -2081,7 +2081,7 @@ permission is answered `403 PERMISSION_DENIED`. Responding is narrowed further b
 | `GET /incidents/attention` | `incidents:read` | The active incidents waiting on the caller now — see [Attention](#attention) |
 | `GET /incidents/:number` | `incidents:read` | One incident |
 | `PATCH /incidents/:number` | `incidents:manage` | Change `{ "title"?, "summary"?, "severity"?, "status"?, "teamId"? }` of an active incident (at least one). `"status": "RESOLVED"`, with a `"resolution"` note, resolves one under investigation that nobody is still investigating |
-| `GET /incidents/:number/timeline` | `incidents:read` | The incident's timeline, oldest first |
+| `GET /incidents/:number/timeline` | `incidents:read` | The incident's timeline, oldest first. Each entry's `actor` carries their `role` in the organization now — not when they acted — or `null` once they have left |
 | `POST /incidents/:number/updates` | `incidents:respond`, and investigating unless deciding or the declarer | Post `{ "message" }` to an active incident's timeline. `201`, with the entry |
 | `PUT /incidents/:number/response-access` | `incidents:manage` | Decide who may respond: `{ "mode": "OPEN" }` or `{ "mode": "ASSIGNED", "membershipIds" }`, each with an optional `"severity"` that settles a suggested one. `200`, with the incident |
 | `POST /incidents/:number/responders/me` | `responses:work`, and let in by who may respond | Start investigating. No body. `200`, with the incident |

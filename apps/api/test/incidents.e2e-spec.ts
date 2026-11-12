@@ -102,7 +102,7 @@ describe('Incidents (e2e)', () => {
   const prisma = {
     $queryRaw: vi.fn(),
     $transaction: vi.fn(),
-    membership: { findFirst: vi.fn() },
+    membership: { findFirst: vi.fn(), findMany: vi.fn() },
     organization: { findFirst: vi.fn(), update: vi.fn() },
     team: { findFirst: vi.fn() },
     teamMembership: { findMany: vi.fn() },
@@ -287,9 +287,11 @@ describe('Incidents (e2e)', () => {
         message: 'Investigating elevated database latency.',
         fromValue: null,
         toValue: null,
-        actor: { id: USER_ID, name: 'Ada Lovelace' },
+        actor: { id: USER_ID, name: 'Ada Lovelace', role },
         createdAt: '2026-09-18T12:00:00.000Z',
       };
+      // The actor's role here now, as the timeline reads it.
+      prisma.membership.findMany.mockResolvedValue([{ userId: USER_ID, role }]);
 
       const posted = await send('post', `${base}/1/updates`, {
         message: 'Investigating elevated database latency.',

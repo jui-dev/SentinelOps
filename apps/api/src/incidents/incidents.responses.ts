@@ -264,6 +264,8 @@ interface IncidentActivityRow {
 /** One timeline entry. The actor is identity only — never an email. */
 export const toIncidentActivityResponse = (
   activity: IncidentActivityRow,
+  /** The actor's role in the organization now; null once they have left. */
+  role: string | null,
 ): IncidentActivityResponse => ({
   id: activity.id,
   type: activity.type,
@@ -273,6 +275,7 @@ export const toIncidentActivityResponse = (
   actor: {
     id: activity.actor.id,
     name: activity.actor.name,
+    role,
   },
   createdAt: activity.createdAt.toISOString(),
 });

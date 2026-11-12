@@ -15,6 +15,7 @@ import { InvitationAcceptance } from "@/components/invitations/invitation-accept
 import { MemberDetail } from "@/components/organizations/member-detail";
 import { ChangeRoleDialog } from "@/components/organizations/change-role-dialog";
 import { MembersView } from "@/components/organizations/members-view";
+import { MyReports } from "@/components/my-reports/my-reports";
 import { RolePage } from "@/components/roles/role-page";
 import { RolesView } from "@/components/roles/roles-view";
 import { OrganizationLanding } from "@/components/organizations/organization-landing";
@@ -840,6 +841,23 @@ describe("accessibility", () => {
 
       await userEvent.click(await screen.findByRole("button", { name: "Custom" }));
       await screen.findByRole("dialog", { name: "Choose dates (UTC)" });
+      await expectNoAxeViolations(container);
+    });
+
+    it("My reports, as a Reporter", async () => {
+      signedIn([
+        "incidents:declare",
+        "incidents:read",
+        "incidents:respond",
+        "memberships:read",
+        "organization:read",
+        "services:read",
+        "teams:read",
+      ]);
+      const { container } = inWorkspace(<MyReports />);
+
+      await screen.findByRole("heading", { level: 1, name: "My reports" });
+      await screen.findByLabelText("Your reports at a glance");
       await expectNoAxeViolations(container);
     });
 

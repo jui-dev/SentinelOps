@@ -150,32 +150,35 @@ describe('incident responses', () => {
     ]);
   });
 
-  it('should emit a timeline entry with its actor as identity only', () => {
+  it('should emit a timeline entry with its actor as identity and role only', () => {
     expect(
-      toIncidentActivityResponse({
-        id: 'activity-1',
-        organizationId: 'org-1',
-        incidentId: 'incident-1',
-        actorId: 'user-1',
-        type: 'SEVERITY_CHANGED',
-        message: null,
-        fromValue: 'SEV3',
-        toValue: 'SEV1',
-        createdAt: CREATED,
-        actor: {
-          id: 'user-1',
-          name: 'Ada Lovelace',
-          email: 'ada@example.com',
-          deletedAt: new Date(),
-        },
-      } as Parameters<typeof toIncidentActivityResponse>[0]),
+      toIncidentActivityResponse(
+        {
+          id: 'activity-1',
+          organizationId: 'org-1',
+          incidentId: 'incident-1',
+          actorId: 'user-1',
+          type: 'SEVERITY_CHANGED',
+          message: null,
+          fromValue: 'SEV3',
+          toValue: 'SEV1',
+          createdAt: CREATED,
+          actor: {
+            id: 'user-1',
+            name: 'Ada Lovelace',
+            email: 'ada@example.com',
+            deletedAt: new Date(),
+          },
+        } as Parameters<typeof toIncidentActivityResponse>[0],
+        'INCIDENT_MANAGER',
+      ),
     ).toStrictEqual({
       id: 'activity-1',
       type: 'SEVERITY_CHANGED',
       message: null,
       fromValue: 'SEV3',
       toValue: 'SEV1',
-      actor: { id: 'user-1', name: 'Ada Lovelace' },
+      actor: { id: 'user-1', name: 'Ada Lovelace', role: 'INCIDENT_MANAGER' },
       createdAt: CREATED.toISOString(),
     });
   });

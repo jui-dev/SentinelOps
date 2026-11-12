@@ -8,6 +8,7 @@ import type { FormEvent, ReactNode } from "react";
 import { useOrganization } from "@/components/organizations/organization-scope";
 import { ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { roleMeta } from "@/components/roles/role-meta";
 import { cx } from "@/components/ui/cx";
 import { TextArea } from "@/components/ui/field";
 import { SubmitHint, useRequiredFields } from "@/components/ui/required";
@@ -169,6 +170,36 @@ function describe(
   }
 }
 
+/**
+ * Who acted, and their role here now, in its colour: who raised, decided,
+ * or worked the incident, read at a glance down the timeline.
+ */
+function Actor({
+  entry,
+  mine,
+}: {
+  entry: IncidentActivityResponse;
+  mine: boolean;
+}) {
+  const role = entry.actor.role;
+  const meta = role ? roleMeta(role) : undefined;
+
+  return (
+    <>
+      <span className="font-semibold text-fg">{mine ? "You" : entry.actor.name}</span>
+      {meta && (
+        <span className={cx("text-xs font-medium", meta.tone.text)}>
+          <span aria-hidden="true" className="text-fg-subtle">
+            {" · "}
+          </span>
+          <span className="sr-only">, </span>
+          {meta.label}
+        </span>
+      )}
+    </>
+  );
+}
+
 /** The rail's marker for an entry, from the shared vocabulary. */
 const eventMarker = (entry: IncidentActivityResponse): EventMarker | undefined => {
   switch (entry.type) {
@@ -257,10 +288,7 @@ function TimelineEntry({
           <p className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-sm text-fg-muted">
             <span>
               {fresh && <NewTag />}
-              <span className="font-semibold text-fg">
-                {mine ? "You" : entry.actor.name}
-              </span>{" "}
-              posted an update
+              <Actor entry={entry} mine={mine} /> posted an update
             </span>
             <When at={entry.createdAt} now={now} />
           </p>
@@ -288,8 +316,7 @@ function TimelineEntry({
         <p className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-sm text-fg-muted">
           <span className="inline-flex flex-wrap items-center gap-x-1">
             {fresh && <NewTag />}
-            <span className="font-semibold text-fg">{mine ? "You" : entry.actor.name}</span>{" "}
-            {describe(entry, mine)}
+            <Actor entry={entry} mine={mine} /> {describe(entry, mine)}
           </span>
           <When at={entry.createdAt} now={now} />
         </p>

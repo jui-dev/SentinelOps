@@ -34,12 +34,13 @@ export interface NavItem {
    */
   requires?: string;
   /**
-   * What the item is called for a caller without a permission, where the
-   * page behind it answers them differently: the organization's home is the
-   * Overview to whoever oversees every incident, and My Operations to
-   * everyone else (see organization-landing.tsx).
+   * Other names for the item, where the page behind it answers callers
+   * differently: the organization's home is the Overview to whoever oversees
+   * every incident, My Operations to whoever works responses, and `label` —
+   * My reports — to everyone else (see organization-landing.tsx). Read in
+   * order: the first permission the caller holds names the item.
    */
-  labelWithout?: { permission: string; label: string };
+  labelWith?: { permission: string; label: string }[];
   /** Drawn indented beneath the item before it, which it belongs to. */
   nested?: boolean;
 }
@@ -49,9 +50,8 @@ export const navItemLabel = (
   item: NavItem,
   permissions: readonly string[],
 ): string =>
-  item.labelWithout && !permissions.includes(item.labelWithout.permission)
-    ? item.labelWithout.label
-    : item.label;
+  item.labelWith?.find(({ permission }) => permissions.includes(permission))
+    ?.label ?? item.label;
 
 export interface NavSection {
   id: string;
@@ -80,14 +80,14 @@ export const ORGANIZATION_NAVIGATION: NavSection[] = [
     items: [
       {
         id: "overview",
-        label: "Overview",
+        label: "My reports",
         icon: LayoutPanelTop,
         href: organizationPath,
         match: "exact",
-        labelWithout: {
-          permission: Permission.INCIDENTS_READ_ALL,
-          label: "My Operations",
-        },
+        labelWith: [
+          { permission: Permission.INCIDENTS_READ_ALL, label: "Overview" },
+          { permission: Permission.RESPONSES_WORK, label: "My Operations" },
+        ],
       },
     ],
   },

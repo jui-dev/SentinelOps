@@ -1,6 +1,7 @@
 "use client";
 
 import { MyOperations } from "@/components/my-operations/my-operations";
+import { MyReports } from "@/components/my-reports/my-reports";
 import { Permission } from "@/lib/api/contracts";
 
 import { OrganizationOverview } from "./organization-overview";
@@ -15,8 +16,8 @@ import { useCan } from "./organization-scope";
  * rather than with one surface that half of them may not have.
  *
  * Oversight lands on the Overview: figures counted across every incident,
- * which the API answers only to `incidents:read-all`. Everyone else lands on
- * My Operations. The branch is made here rather than by redirecting, for
+ * which the API answers only to `incidents:read-all`. Whoever works
+ * responses lands on My Operations, and everyone else on My reports. The branch is made here rather than by redirecting, for
  * three reasons. It is how this app already handles a permission — rendering
  * what the grant affords, in place, as the Overview itself does for a caller
  * who may not read incidents at all. It leaves the navigation rail's own
@@ -31,9 +32,16 @@ import { useCan } from "./organization-scope";
  * refuses each of those aggregates with 403 on its own account.
  */
 export function OrganizationLanding() {
-  return useCan(Permission.INCIDENTS_READ_ALL) ? (
+  const oversees = useCan(Permission.INCIDENTS_READ_ALL);
+  const works = useCan(Permission.RESPONSES_WORK);
+
+  // Whoever raises incidents without working them — a Reporter — lands on
+  // what they declared: a team's work is not theirs.
+  return oversees ? (
     <OrganizationOverview />
-  ) : (
+  ) : works ? (
     <MyOperations />
+  ) : (
+    <MyReports />
   );
 }

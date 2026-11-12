@@ -2538,7 +2538,23 @@ export class IncidentsService {
       throw incidentNotFound();
     }
 
-    return incident.activity.map(toIncidentActivityResponse);
+    // Each actor's role here now, read once for the whole timeline. Someone
+    // who has left the organization has none.
+    const memberships = await this.prisma.membership.findMany({
+      where: {
+        organizationId,
+        userId: { in: [...new Set(incident.activity.map((a) => a.actor.id))] },
+      },
+      select: { userId: true, role: true },
+    });
+    const roles = new Map(memberships.map((m) => [m.userId, m.role]));
+
+    return incident.activity.map((activity) =>
+      toIncidentActivityResponse(
+        activity,
+        roles.get(activity.actor.id) ?? null,
+      ),
+    );
   }
 
   /**
@@ -2629,7 +2645,7 @@ export class IncidentsService {
       activityId: activity.id,
     });
 
-    return toIncidentActivityResponse(activity);
+    return toIncidentActivityResponse(activity, actor.role);
   }
 
   /**

@@ -44,6 +44,8 @@ const FULL = [
   "memberships:read-all",
   "organization:read",
   "organization:update",
+  // Works responses, so home is My Operations without oversight.
+  "responses:work",
 ];
 const READ = ["memberships:read", "memberships:read-all", "organization:read"];
 

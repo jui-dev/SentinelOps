@@ -447,7 +447,11 @@ export interface IncidentActivityResponse {
   message: string | null;
   fromValue: string | null;
   toValue: string | null;
-  actor: { id: string; name: string };
+  /**
+   * `role`: their role in the organization now — not when they acted.
+   * Null for someone who has left; absent from older answers.
+   */
+  actor: { id: string; name: string; role?: string | null };
   createdAt: string;
 }
 

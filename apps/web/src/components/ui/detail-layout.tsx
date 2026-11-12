@@ -100,7 +100,7 @@ export function Glance({
 }: {
   /** "Payments at a glance" — names the list for assistive technology. */
   label: string;
-  columns: 2 | 4 | 5;
+  columns: 2 | 3 | 4 | 5;
   children: ReactNode;
 }) {
   return (
@@ -112,7 +112,9 @@ export function Glance({
           ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5"
           : columns === 4
             ? "grid-cols-1 sm:grid-cols-2 xl:grid-cols-4"
-            : "grid-cols-1 sm:grid-cols-2",
+            : columns === 3
+              ? "grid-cols-1 sm:grid-cols-3"
+              : "grid-cols-1 sm:grid-cols-2",
       )}
     >
       {children}

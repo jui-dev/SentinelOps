@@ -91,7 +91,10 @@ const serviceWith = () => {
     organization: {
       update: vi.fn().mockResolvedValue({ lastIncidentNumber: 7 }),
     },
-    membership: { findFirst: vi.fn().mockResolvedValue({ userId: USER }) },
+    membership: {
+      findFirst: vi.fn().mockResolvedValue({ userId: USER }),
+      findMany: vi.fn().mockResolvedValue([]),
+    },
     team: {
       findFirst: vi
         .fn()
@@ -731,7 +734,7 @@ describe('IncidentsService', () => {
         message: update.message,
         fromValue: null,
         toValue: null,
-        actor: { id: USER, name: 'Ada Lovelace' },
+        actor: { id: USER, name: 'Ada Lovelace', role: MEMBER_ACTOR.role },
         createdAt: CREATED.toISOString(),
       });
     });
@@ -1366,6 +1369,12 @@ describe('IncidentsService', () => {
         },
       });
       expect(timeline).toHaveLength(1);
+      // Each actor's role here now, read once for the timeline.
+      expect(prisma.membership.findMany).toHaveBeenCalledWith({
+        where: { organizationId: ORG, userId: { in: [USER] } },
+        select: { userId: true, role: true },
+      });
+      expect(timeline[0].actor.role).toBeNull();
     });
 
     it('should answer a missing incident with 404', async () => {
