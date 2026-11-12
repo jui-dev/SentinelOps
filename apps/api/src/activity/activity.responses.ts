@@ -73,4 +73,50 @@ export const toActivityEntryResponse = (
           ipAddress: row.ipAddress,
           browser: describeUserAgent(row.userAgent),
         },
+  repeat: null,
 });
+
+/**
+ * Folds wrong passwords tried one after another on one account into a
+ * single row: the latest, saying how many and since when. `rows` are newest
+ * first, as the log lists them; only rows next to each other fold, so
+ * anything else that happened between them keeps them apart.
+ */
+export const foldRepeats = (rows: ActivityRow[]): ActivityEntryResponse[] => {
+  const folded: ActivityEntryResponse[] = [];
+  let head: ActivityRow | null = null;
+  let oldest: ActivityRow | null = null;
+  let count = 0;
+
+  const close = () => {
+    if (head === null || oldest === null) return;
+
+    folded.push({
+      ...toActivityEntryResponse(head),
+      repeat:
+        count > 1 ? { count, firstAt: oldest.createdAt.toISOString() } : null,
+    });
+    head = null;
+    oldest = null;
+    count = 0;
+  };
+
+  for (const row of rows) {
+    if (row.action !== 'SIGN_IN_FAILED') {
+      close();
+      folded.push(toActivityEntryResponse(row));
+    } else if (head !== null && head.actorId === row.actorId) {
+      oldest = row;
+      count += 1;
+    } else {
+      close();
+      head = row;
+      oldest = row;
+      count = 1;
+    }
+  }
+
+  close();
+
+  return folded;
+};

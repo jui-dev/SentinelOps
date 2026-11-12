@@ -16,7 +16,9 @@ import {
   olderThan,
 } from './activity.cursor.js';
 import { activityEntryNotFound } from './activity.errors.js';
-import { toActivityEntryResponse } from './activity.responses.js';
+import { foldRepeats, toActivityEntryResponse } from './activity.responses.js';
+import type { ActivityRow } from './activity.responses.js';
+import { describeUserAgent } from './activity.user-agent.js';
 import type { ListActivityQuery } from './activity.schemas.js';
 
 /** Entries per page. */
@@ -24,6 +26,12 @@ export const ACTIVITY_PAGE_SIZE = 50;
 
 /** How many earlier entries about the same subject one entry shows. */
 export const ACTIVITY_HISTORY_SIZE = 3;
+
+/** The most wrong passwords one entry lists as its run. */
+export const ACTIVITY_ATTEMPTS_SIZE = 20;
+
+/** How far back "where they usually sign in from" looks. */
+export const USUAL_CLIENT_DAYS = 30;
 
 const ENTRY_SELECT = {
   id: true,
@@ -88,7 +96,7 @@ export class ActivityService {
     };
 
     // One more than a page says whether there is another.
-    const [rows, areaCounts] = await Promise.all([
+    const [rows, areaCounts, securityTotals] = await Promise.all([
       this.prisma.activityEntry.findMany({
         where,
         select: ENTRY_SELECT,
@@ -96,12 +104,18 @@ export class ActivityService {
         take: ACTIVITY_PAGE_SIZE + 1,
       }),
       query.view === 'changes' ? this.countByArea(filters) : null,
+      query.view === 'security' ? this.countSecurity(filters) : null,
     ]);
     const page = rows.slice(0, ACTIVITY_PAGE_SIZE);
     const last = page.at(-1);
 
     return {
-      entries: page.map(toActivityEntryResponse),
+      // Wrong passwords tried one after another read as one row.
+      entries:
+        query.view === 'security'
+          ? foldRepeats(page)
+          : page.map(toActivityEntryResponse),
+      securityTotals,
       nextCursor:
         rows.length > ACTIVITY_PAGE_SIZE && last !== undefined
           ? encodeActivityCursor(last)
@@ -123,30 +137,148 @@ export class ActivityService {
 
     if (row === null) throw activityEntryNotFound();
 
-    const [history, subjectNow] = await Promise.all([
-      row.subjectId === null
-        ? []
-        : this.prisma.activityEntry.findMany({
-            where: {
-              AND: [
-                { organizationId, subjectId: row.subjectId },
-                olderThan(row),
-              ],
-            },
-            select: ENTRY_SELECT,
-            orderBy: [...NEWEST_FIRST],
-            take: ACTIVITY_HISTORY_SIZE,
-          }),
-      row.subjectType === null || row.subjectId === null
-        ? null
-        : this.subjectNow(organizationId, row.subjectType, row.subjectId),
-    ]);
+    const security = row.area === 'SECURITY';
+    const [history, subjectNow, attempts, next, usualClient] =
+      await Promise.all([
+        row.subjectId === null
+          ? []
+          : this.prisma.activityEntry.findMany({
+              where: {
+                AND: [
+                  { organizationId, subjectId: row.subjectId },
+                  olderThan(row),
+                ],
+              },
+              select: ENTRY_SELECT,
+              orderBy: [...NEWEST_FIRST],
+              take: ACTIVITY_HISTORY_SIZE,
+            }),
+        row.subjectType === null || row.subjectId === null
+          ? null
+          : this.subjectNow(organizationId, row.subjectType, row.subjectId),
+        row.action === 'SIGN_IN_FAILED'
+          ? this.attemptsEndingAt(organizationId, row)
+          : null,
+        security ? this.nextFor(organizationId, row) : null,
+        security ? this.usualClientBefore(organizationId, row) : null,
+      ]);
 
     return {
       ...toActivityEntryResponse(row),
       history: history.map(toActivityEntryResponse),
       subjectNow,
+      attempts,
+      next: next === null ? null : toActivityEntryResponse(next),
+      usualClient,
     };
+  }
+
+  /** Sign-ins, wrong passwords and blocks under `where`, each counted. */
+  private async countSecurity(
+    where: Prisma.ActivityEntryWhereInput,
+  ): Promise<{ signIns: number; failedSignIns: number; blocked: number }> {
+    const groups = await this.prisma.activityEntry.groupBy({
+      by: ['action'],
+      where,
+      _count: { _all: true },
+    });
+    const count = (action: string) =>
+      groups.find((group) => group.action === action)?._count._all ?? 0;
+
+    return {
+      signIns: count('SIGNED_IN'),
+      failedSignIns: count('SIGN_IN_FAILED'),
+      blocked: count('SIGN_IN_BLOCKED'),
+    };
+  }
+
+  /**
+   * The wrong passwords tried one after another that end with `row`, oldest
+   * first: this account's security events going back from it, up to the
+   * first that was not a wrong password.
+   */
+  private async attemptsEndingAt(
+    organizationId: string,
+    row: ActivityRow,
+  ): Promise<string[]> {
+    const earlier = await this.prisma.activityEntry.findMany({
+      where: {
+        AND: [
+          { organizationId, actorId: row.actorId, area: 'SECURITY' },
+          olderThan(row),
+        ],
+      },
+      select: { action: true, createdAt: true },
+      orderBy: [...NEWEST_FIRST],
+      take: ACTIVITY_ATTEMPTS_SIZE - 1,
+    });
+    const run = [row.createdAt];
+
+    for (const entry of earlier) {
+      if (entry.action !== 'SIGN_IN_FAILED') break;
+      run.push(entry.createdAt);
+    }
+
+    return run.reverse().map((at) => at.toISOString());
+  }
+
+  /**
+   * What happened to the account next: its first security event after
+   * `row` that is not another wrong password — those are `row`'s run.
+   */
+  private async nextFor(
+    organizationId: string,
+    row: ActivityRow,
+  ): Promise<ActivityRow | null> {
+    return this.prisma.activityEntry.findFirst({
+      where: {
+        organizationId,
+        actorId: row.actorId,
+        area: 'SECURITY',
+        action: { not: 'SIGN_IN_FAILED' },
+        OR: [
+          { createdAt: { gt: row.createdAt } },
+          { createdAt: row.createdAt, id: { gt: row.id } },
+        ],
+      },
+      select: ENTRY_SELECT,
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    });
+  }
+
+  /**
+   * The address and browser the account signed in from most often in the
+   * days before `row`, or null when it had not signed in.
+   */
+  private async usualClientBefore(
+    organizationId: string,
+    row: ActivityRow,
+  ): Promise<{ ipAddress: string | null; browser: string | null } | null> {
+    const [usual] = await this.prisma.activityEntry.groupBy({
+      by: ['ipAddress', 'userAgent'],
+      where: {
+        organizationId,
+        actorId: row.actorId,
+        action: 'SIGNED_IN',
+        id: { not: row.id },
+        createdAt: {
+          lte: row.createdAt,
+          gte: new Date(
+            row.createdAt.getTime() - USUAL_CLIENT_DAYS * 24 * 60 * 60 * 1000,
+          ),
+        },
+      },
+      _count: { _all: true },
+      orderBy: { _count: { id: 'desc' } },
+      take: 1,
+    });
+
+    return usual === undefined
+      ? null
+      : {
+          ipAddress: usual.ipAddress,
+          browser: describeUserAgent(usual.userAgent),
+        };
   }
 
   private async countByArea(

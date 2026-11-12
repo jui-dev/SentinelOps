@@ -1,6 +1,10 @@
 import { ACTION_AREA, referenceOf } from './activity.actions.js';
 import type { ActivityRow } from './activity.responses.js';
-import { changesOf, toActivityEntryResponse } from './activity.responses.js';
+import {
+  changesOf,
+  foldRepeats,
+  toActivityEntryResponse,
+} from './activity.responses.js';
 
 const ID = '01934f2a-7b1c-7d3e-9f40-a1b2c3d4e5f6';
 
@@ -35,6 +39,7 @@ describe('toActivityEntryResponse', () => {
         { field: 'role', before: 'RESPONDER', after: 'INCIDENT_MANAGER' },
       ],
       client: { ipAddress: '10.0.4.2', browser: 'Chrome on Windows' },
+      repeat: null,
     });
   });
 
@@ -100,5 +105,61 @@ describe('ACTION_AREA', () => {
       'SIGN_IN_BLOCKED',
       'PASSWORD_CHANGED',
     ]);
+  });
+});
+
+describe('foldRepeats', () => {
+  let n = 0;
+  const at = (minute: number) =>
+    new Date(Date.UTC(2026, 10, 12, 13, minute)).toISOString();
+  const event = (
+    action: ActivityRow['action'],
+    actorId: string,
+    minute: number,
+  ): ActivityRow =>
+    row({
+      id: `01934f2a-7b1c-7d3e-9f40-${String((n += 1)).padStart(12, '0')}`,
+      action,
+      area: 'SECURITY',
+      actorId,
+      createdAt: new Date(at(minute)),
+    });
+
+  it('should fold wrong passwords tried one after another into the latest', () => {
+    const folded = foldRepeats([
+      event('SIGN_IN_BLOCKED', 'priya', 9),
+      event('SIGN_IN_FAILED', 'priya', 9),
+      event('SIGN_IN_FAILED', 'priya', 8),
+      event('SIGN_IN_FAILED', 'priya', 6),
+      event('SIGNED_IN', 'sam', 4),
+      event('SIGN_IN_FAILED', 'sam', 3),
+    ]);
+
+    expect(
+      folded.map((entry) => [entry.action, entry.repeat?.count ?? 1]),
+    ).toEqual([
+      ['SIGN_IN_BLOCKED', 1],
+      ['SIGN_IN_FAILED', 3],
+      ['SIGNED_IN', 1],
+      ['SIGN_IN_FAILED', 1],
+    ]);
+    expect(folded[1]).toMatchObject({
+      occurredAt: at(9),
+      repeat: { count: 3, firstAt: at(6) },
+    });
+    expect(folded[3]?.repeat).toBeNull();
+  });
+
+  it("should keep apart two accounts' wrong passwords, and runs split by anything else", () => {
+    const folded = foldRepeats([
+      event('SIGN_IN_FAILED', 'priya', 9),
+      event('SIGN_IN_FAILED', 'lee', 8),
+      event('SIGN_IN_FAILED', 'priya', 7),
+      event('SIGNED_IN', 'priya', 6),
+      event('SIGN_IN_FAILED', 'priya', 5),
+    ]);
+
+    expect(folded).toHaveLength(5);
+    expect(folded.every((entry) => entry.repeat === null)).toBe(true);
   });
 });

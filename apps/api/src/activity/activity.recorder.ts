@@ -74,3 +74,42 @@ export const recordActivity = async (
     },
   });
 };
+
+/**
+ * Records something that happened to an account — a sign-in, a password —
+ * in the log of every organization it belongs to, about its membership
+ * there. Signing in is not done within an organization, so each of them is
+ * told; in practice an account has one.
+ */
+export const recordAccountActivity = async (
+  tx: Prisma.TransactionClient,
+  account: {
+    userId: string;
+    action: ActivityAction;
+    changes?: ActivityChange[];
+  },
+): Promise<void> => {
+  const memberships = await tx.membership.findMany({
+    where: { userId: account.userId, organization: { deletedAt: null } },
+    select: {
+      id: true,
+      organizationId: true,
+      user: { select: { name: true } },
+    },
+    orderBy: { id: 'asc' },
+  });
+
+  for (const membership of memberships) {
+    await recordActivity(tx, {
+      organizationId: membership.organizationId,
+      action: account.action,
+      actorId: account.userId,
+      subject: {
+        type: 'MEMBERSHIP',
+        id: membership.id,
+        name: membership.user.name,
+      },
+      changes: account.changes,
+    });
+  }
+};

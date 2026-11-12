@@ -61,6 +61,10 @@ export interface ActivityChange {
  * `client` says where it came from, when it was written during a request.
  * `browser` is the User-Agent described for a person ("Chrome on Windows"),
  * or null when it names no browser anyone would recognise.
+ *
+ * `repeat` is set on a row that stands for several: wrong passwords tried
+ * one after another on one account, folded into the latest. `count` is how
+ * many, `firstAt` when the first was. Null on every other row.
  */
 export interface ActivityEntryResponse {
   id: string;
@@ -72,6 +76,7 @@ export interface ActivityEntryResponse {
   subject: { type: ActivitySubjectType; id: string; name: string } | null;
   changes: ActivityChange[];
   client: { ipAddress: string | null; browser: string | null } | null;
+  repeat: { count: number; firstAt: string } | null;
 }
 
 /**
@@ -79,19 +84,39 @@ export interface ActivityEntryResponse {
  * is null on the last page. `areaCounts` — on the Changes view only — counts
  * every area under the same person, search and period, ignoring the area
  * filter, so each area's button can say how many it would show.
+ *
+ * `securityTotals` — on the Security view only — counts sign-ins, wrong
+ * passwords and blocks under the same filters, each attempt counted rather
+ * than folded.
  */
 export interface ActivityPageResponse {
   entries: ActivityEntryResponse[];
   nextCursor: string | null;
   areaCounts: Record<Exclude<ActivityArea, 'SECURITY'>, number> | null;
+  securityTotals: {
+    signIns: number;
+    failedSignIns: number;
+    blocked: number;
+  } | null;
 }
 
 /**
  * One entry in full: the entry, the most recent earlier entries about the
  * same subject, and whether that subject still exists — with its slug where
  * its page is addressed by one — so the log can link to it.
+ *
+ * For a sign-in event, three more, null on any other entry:
+ *   attempts     for a wrong password, each of the run it ends — the wrong
+ *                passwords tried one after another — oldest first.
+ *   next         what happened to the account after it: the block, the
+ *                sign-in that worked. Null when nothing has yet.
+ *   usualClient  where the account most often signed in from in the 30
+ *                days before, so a new address or browser stands out.
  */
 export interface ActivityEntryDetailResponse extends ActivityEntryResponse {
   history: ActivityEntryResponse[];
   subjectNow: { exists: boolean; slug: string | null } | null;
+  attempts: string[] | null;
+  next: ActivityEntryResponse | null;
+  usualClient: { ipAddress: string | null; browser: string | null } | null;
 }

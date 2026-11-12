@@ -1,5 +1,7 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 
+import { recordAccountActivity } from '../activity/activity.recorder.js';
+import type { ActivityChange } from '../activity/activity.contract.js';
 import { slugify } from '../common/slug.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { uniqueViolationHint } from '../database/unique-violation.js';
@@ -207,6 +209,12 @@ export class AuthService {
    * without checking the password at all, until the window passes. An email
    * is counted whether or not an account has it, so a block reveals nothing
    * either. A correct password clears its email's count.
+   *
+   * The activity log hears of it, for an account that exists: a sign-in,
+   * with whether it used a one-time password; a wrong password; and the
+   * wrong password that blocks the address. The failures are written
+   * without being waited for, so a known address answers no slower than an
+   * unknown one — a pause there would say the account exists.
    */
   async login(
     request: LoginRequest,
@@ -237,6 +245,37 @@ export class AuthService {
       return invalidCredentials();
     };
 
+    /** A wrong password for an account that exists, and a block it causes. */
+    const failedFor = (userId: string) => {
+      const error = failed();
+      const blockedFor = this.attempts.retryAfter(
+        `email:${request.email}`,
+        ATTEMPT_POLICIES.email,
+        now,
+      );
+
+      // In order: the wrong password, then the block it caused.
+      this.recordUnwaited(userId, [
+        { action: 'SIGN_IN_FAILED', changes: [] },
+        ...(blockedFor > 0
+          ? [
+              {
+                action: 'SIGN_IN_BLOCKED' as const,
+                changes: [
+                  {
+                    field: 'blockedUntil',
+                    before: null,
+                    after: new Date(now + blockedFor * 1000).toISOString(),
+                  },
+                ],
+              },
+            ]
+          : []),
+      ]);
+
+      return error;
+    };
+
     const user = await this.prisma.user.findFirst({
       // findFirst rather than findUnique: deletedAt is not part of the unique
       // index, and a soft-deleted account must not be able to log in. This is
@@ -256,12 +295,20 @@ export class AuthService {
     }
 
     if (!(await this.passwords.verify(user.passwordHash, request.password))) {
-      throw failed();
+      throw failedFor(user.id);
     }
 
     this.attempts.clear(`email:${request.email}`);
 
     const { passwordHash: _passwordHash, ...safe } = user;
+
+    await recordAccountActivity(this.prisma, {
+      userId: user.id,
+      action: 'SIGNED_IN',
+      changes: user.passwordChangeRequired
+        ? [{ field: 'with', before: null, after: 'ONE_TIME_PASSWORD' }]
+        : [],
+    });
 
     return this.authenticate(safe);
   }
@@ -338,6 +385,15 @@ export class AuthService {
       }
 
       await this.refreshTokens.revokeAllFor(tx, userId, now);
+
+      // Whether it replaced a one-time password the Admin gave them.
+      await recordAccountActivity(tx, {
+        userId,
+        action: 'PASSWORD_CHANGED',
+        changes: user.passwordChangeRequired
+          ? [{ field: 'replaced', before: null, after: 'ONE_TIME_PASSWORD' }]
+          : [],
+      });
     });
 
     this.logger.log('Changed a password; every other session was ended', {
@@ -347,6 +403,29 @@ export class AuthService {
     const { passwordHash: _passwordHash, ...safe } = user;
 
     return this.authenticate({ ...safe, passwordChangeRequired: false });
+  }
+
+  /**
+   * Writes sign-in events, one after another, without the caller waiting for
+   * them. A failure to write is logged and goes no further: the answer to the
+   * sign-in does not depend on it.
+   */
+  private recordUnwaited(
+    userId: string,
+    events: {
+      action: 'SIGN_IN_FAILED' | 'SIGN_IN_BLOCKED';
+      changes: ActivityChange[];
+    }[],
+  ): void {
+    void (async () => {
+      for (const { action, changes } of events) {
+        await recordAccountActivity(this.prisma, { userId, action, changes });
+      }
+    })().catch((error: unknown) => {
+      this.logger.error('Could not record a sign-in event', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
   }
 
   /**
