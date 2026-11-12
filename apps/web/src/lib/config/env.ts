@@ -33,6 +33,12 @@ const publicEnvSchema = z.object({
    * INVITATIONS_ENABLED: members are added by an admin instead.
    */
   NEXT_PUBLIC_INVITATIONS_ENABLED: z.stringbool().default(false),
+  /**
+   * Whether to offer creating an organization. Off unless switched on,
+   * matching the API's REGISTRATION_ENABLED: organizations are created by
+   * whoever runs the server, and people join when an Admin adds them.
+   */
+  NEXT_PUBLIC_REGISTRATION_ENABLED: z.stringbool().default(false),
 });
 
 export interface PublicEnv {
@@ -42,6 +48,8 @@ export interface PublicEnv {
   apiBaseUrl: string;
   /** Whether invitations are offered at all. */
   invitationsEnabled: boolean;
+  /** Whether anyone may create an organization from the website. */
+  registrationEnabled: boolean;
 }
 
 /** Validates raw values. Throws naming every problem, so a bad build fails fast. */
@@ -62,10 +70,12 @@ export const parsePublicEnv = (raw: Record<string, unknown>): PublicEnv => {
     apiOrigin,
     apiBaseUrl: `${apiOrigin}/api/v1`,
     invitationsEnabled: result.data.NEXT_PUBLIC_INVITATIONS_ENABLED,
+    registrationEnabled: result.data.NEXT_PUBLIC_REGISTRATION_ENABLED,
   };
 };
 
 export const env: PublicEnv = parsePublicEnv({
   NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
   NEXT_PUBLIC_INVITATIONS_ENABLED: process.env.NEXT_PUBLIC_INVITATIONS_ENABLED,
+  NEXT_PUBLIC_REGISTRATION_ENABLED: process.env.NEXT_PUBLIC_REGISTRATION_ENABLED,
 });

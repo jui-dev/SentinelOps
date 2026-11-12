@@ -915,7 +915,7 @@ Nothing here uses Passport. `@nestjs/jwt` signs and verifies; the guard is forty
 
 | Route | Auth | Purpose |
 | --- | --- | --- |
-| `POST /api/v1/auth/register` | public | Create an organization, its first admin, and a session |
+| `POST /api/v1/auth/register` | public, **only while `REGISTRATION_ENABLED` is on** | Create an organization, its first admin, and a session |
 | `POST /api/v1/auth/register/invitation` | public | Create an account by accepting an invitation, and a session — see [Invitations](#invitations) |
 | `POST /api/v1/auth/login` | public | Exchange credentials for a session |
 | `POST /api/v1/auth/refresh` | public | Rotate the refresh cookie, mint a new access token |
@@ -928,6 +928,15 @@ token must not be able to strand a session. It is idempotent — an unknown or a
 still returns `204`, revealing nothing.
 
 ### Registration creates a tenant
+
+**Switched off by default.** Nobody can create an organization from the website unless
+the server runs with `REGISTRATION_ENABLED=true` (and the web app with
+`NEXT_PUBLIC_REGISTRATION_ENABLED=true`, which shows the **Create an organization** link
+and the `/register` form). While it is off, `POST /auth/register` answers `404` exactly as
+an unknown path does, before its body is read, and the login page says to ask an Admin.
+Organizations are created by whoever runs the server: switch it on, create the
+organization, switch it off again. People join an organization only when its Admin adds
+them with a one-time password. In development the demo organization is set up on its own.
 
 One request creates an `Organization`, a `User`, and a `Membership` with role `ADMIN`, in a
 single transaction:

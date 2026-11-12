@@ -63,6 +63,9 @@ export class AuthController {
   /**
    * Creates an organization, its first admin, and the membership binding them,
    * then returns a session. 201, because it creates an account.
+   *
+   * Exists only while REGISTRATION_ENABLED is on — see
+   * RegistrationEnabledMiddleware.
    */
   @Public()
   @Post('register')

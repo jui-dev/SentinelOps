@@ -18,6 +18,7 @@ const defaults = {
   REFRESH_TOKEN_TTL_DAYS: 30,
   CORS_ORIGIN: 'http://localhost:3000',
   INVITATIONS_ENABLED: false,
+  REGISTRATION_ENABLED: false,
 };
 
 /** The first issue Zod reports for `key`, or undefined when `key` validated. */

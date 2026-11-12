@@ -117,6 +117,7 @@ export const featuresConfig = registerAs('features', () => {
 
   return {
     invitationsEnabled: env.INVITATIONS_ENABLED,
+    registrationEnabled: env.REGISTRATION_ENABLED,
   };
 });
 

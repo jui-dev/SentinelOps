@@ -1,4 +1,5 @@
-import { Module } from '@nestjs/common';
+import { Module, RequestMethod } from '@nestjs/common';
+import type { MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import type { ConfigType } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
@@ -11,6 +12,7 @@ import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
 import { JwtAuthGuard } from './jwt-auth.guard.js';
 import { PasswordService } from './password.service.js';
+import { RegistrationEnabledMiddleware } from './registration-enabled.middleware.js';
 import { RefreshTokenService } from './refresh-token.service.js';
 import { TokenService } from './token.service.js';
 
@@ -50,4 +52,11 @@ import { TokenService } from './token.service.js';
   ],
   exports: [TokenService],
 })
-export class AuthModule {}
+export class AuthModule implements NestModule {
+  /** Creating an organization exists only while REGISTRATION_ENABLED is on. */
+  configure(consumer: MiddlewareConsumer): void {
+    consumer
+      .apply(RegistrationEnabledMiddleware)
+      .forRoutes({ path: 'auth/register', method: RequestMethod.POST });
+  }
+}

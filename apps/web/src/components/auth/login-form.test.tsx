@@ -13,6 +13,8 @@ import {
 import type { SentRequest } from "@/test/api";
 import { renderWithSession } from "@/test/render";
 
+import { env } from "@/lib/config/env";
+
 import { LoginForm } from "./login-form";
 
 const navigation = vi.hoisted(() => ({
@@ -61,6 +63,34 @@ describe("LoginForm", () => {
     await screen.findByLabelText("Email");
 
     expect(screen.queryByText("Demo personas")).toBeNull();
+  });
+
+  it("offers no way to create an organization while sign-up is closed", async () => {
+    withLogin(() => apiError(401, "INVALID_CREDENTIALS"));
+    renderWithSession(<LoginForm />);
+
+    await screen.findByLabelText("Email");
+
+    expect(screen.queryByRole("link", { name: "Create an organization" })).toBeNull();
+    expect(
+      screen.getByText("Need an account? Ask your organization's Admin to add you."),
+    ).toBeDefined();
+  });
+
+  it("offers creating an organization while sign-up is open", async () => {
+    vi.mocked(env).registrationEnabled = true;
+    withLogin(() => apiError(401, "INVALID_CREDENTIALS"));
+    renderWithSession(<LoginForm />);
+
+    try {
+      expect(
+        (
+          await screen.findByRole("link", { name: "Create an organization" })
+        ).getAttribute("href"),
+      ).toBe("/register");
+    } finally {
+      vi.mocked(env).registrationEnabled = false;
+    }
   });
 
   it("signs in as a demo persona in one click, in development", async () => {

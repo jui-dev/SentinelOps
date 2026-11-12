@@ -8,6 +8,12 @@ import { PrismaService } from './../src/database/prisma.service.js';
 import { leakedKeys } from './leaks.js';
 import { resolveTestDatabaseUrl } from './test-database.js';
 
+// Registration is off by default; this suite proves how it works when on.
+// Hoisted, so it is set before configuration is read.
+vi.hoisted(() => {
+  process.env.REGISTRATION_ENABLED = 'true';
+});
+
 /**
  * The whole authentication lifecycle against a real database: registration's
  * transaction, login's soft-delete filtering, refresh rotation and reuse

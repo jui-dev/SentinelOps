@@ -152,16 +152,34 @@ describe('configuration', () => {
   });
 
   describe('featuresConfig', () => {
-    it('should leave invitations off unless switched on', () => {
+    it('should leave invitations and registration off unless switched on', () => {
       vi.stubEnv('INVITATIONS_ENABLED', undefined);
+      vi.stubEnv('REGISTRATION_ENABLED', undefined);
 
-      expect(featuresConfig()).toEqual({ invitationsEnabled: false });
+      expect(featuresConfig()).toEqual({
+        invitationsEnabled: false,
+        registrationEnabled: false,
+      });
     });
 
     it('should switch invitations on', () => {
       vi.stubEnv('INVITATIONS_ENABLED', 'true');
+      vi.stubEnv('REGISTRATION_ENABLED', undefined);
 
-      expect(featuresConfig()).toEqual({ invitationsEnabled: true });
+      expect(featuresConfig()).toEqual({
+        invitationsEnabled: true,
+        registrationEnabled: false,
+      });
+    });
+
+    it('should switch registration on', () => {
+      vi.stubEnv('INVITATIONS_ENABLED', undefined);
+      vi.stubEnv('REGISTRATION_ENABLED', 'true');
+
+      expect(featuresConfig()).toEqual({
+        invitationsEnabled: false,
+        registrationEnabled: true,
+      });
     });
   });
 

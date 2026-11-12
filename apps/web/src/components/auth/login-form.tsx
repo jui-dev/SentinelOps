@@ -13,6 +13,7 @@ import { linkClasses } from "@/components/ui/link";
 import { ApiErrorCode } from "@/lib/api/contracts";
 import { fieldErrorsOf, isApiError } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session-provider";
+import { env } from "@/lib/config/env";
 import {
   DEV_PASSWORD,
   DEV_PERSONAS,
@@ -147,12 +148,20 @@ export function LoginForm() {
       <Button type="submit" size="lg" disabled={submitting}>
         {submitting ? "Logging in…" : "Log in"}
       </Button>
-      <p className="pt-2 text-sm text-fg-muted">
-        New to SentinelOps?{" "}
-        <Link href={registerHref} className={linkClasses}>
-          Create an organization
-        </Link>
-      </p>
+      {env.registrationEnabled ? (
+        <p className="pt-2 text-sm text-fg-muted">
+          New to SentinelOps?{" "}
+          <Link href={registerHref} className={linkClasses}>
+            Create an organization
+          </Link>
+        </p>
+      ) : (
+        // Organizations are created by whoever runs SentinelOps; people join
+        // one when its Admin adds them.
+        <p className="pt-2 text-sm text-fg-muted">
+          Need an account? Ask your organization&apos;s Admin to add you.
+        </p>
+      )}
     </form>
   );
 }

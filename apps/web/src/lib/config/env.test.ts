@@ -10,7 +10,21 @@ describe("parsePublicEnv", () => {
       apiOrigin: "http://localhost:3001",
       apiBaseUrl: "http://localhost:3001/api/v1",
       invitationsEnabled: false,
+      registrationEnabled: false,
     });
+  });
+
+  it.each([
+    ["true", true],
+    ["false", false],
+    [undefined, false],
+  ])("reads NEXT_PUBLIC_REGISTRATION_ENABLED %j as %s", (value, expected) => {
+    expect(
+      parsePublicEnv({
+        NEXT_PUBLIC_API_URL: "http://localhost:3001",
+        NEXT_PUBLIC_REGISTRATION_ENABLED: value,
+      }).registrationEnabled,
+    ).toBe(expected);
   });
 
   it.each([

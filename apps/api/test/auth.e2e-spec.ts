@@ -8,6 +8,12 @@ import { Public } from './../src/auth/public.decorator.js';
 import { TokenService } from './../src/auth/token.service.js';
 import { PrismaService } from './../src/database/prisma.service.js';
 
+// Registration is off by default; this suite proves how it works when on.
+// Hoisted, so it is set before configuration is read.
+vi.hoisted(() => {
+  process.env.REGISTRATION_ENABLED = 'true';
+});
+
 /**
  * The guard, the decorators, and the error contract, wired through the real
  * AppModule but with no database.

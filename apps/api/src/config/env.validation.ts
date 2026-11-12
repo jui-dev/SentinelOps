@@ -72,6 +72,11 @@ export const envSchema = z.object({
   // added by an admin with a one-time password. While off, every invitation
   // route answers exactly as an unknown path does.
   INVITATIONS_ENABLED: z.stringbool().default(false),
+  // Whether anyone may create an organization from the website. Off unless
+  // switched on: organizations are created by whoever runs the server, who
+  // turns this on for as long as that takes. While off, POST /auth/register
+  // answers exactly as an unknown path does.
+  REGISTRATION_ENABLED: z.stringbool().default(false),
 });
 
 export type Env = z.infer<typeof envSchema>;
