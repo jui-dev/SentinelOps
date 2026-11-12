@@ -36,8 +36,21 @@ export interface OrganizationContext {
  */
 export interface RequestContext {
   requestId: string;
+  /** Where the request came from, as the server received it. */
+  client?: RequestClient;
   userId?: string;
   organization?: OrganizationContext;
+}
+
+/**
+ * The address and browser a request came from, for the activity log. Either
+ * may be missing: a test request has no User-Agent, and an address is only
+ * what the connection says — behind a proxy, Express's `trust proxy` setting
+ * decides whether it is the proxy's or the visitor's.
+ */
+export interface RequestClient {
+  ipAddress: string | null;
+  userAgent: string | null;
 }
 
 /**
@@ -75,6 +88,14 @@ export const runWithRequestContext = <T>(
  */
 export const getRequestId = (): string | undefined =>
   storage.getStore()?.requestId;
+
+/**
+ * Where the current request came from, or undefined outside a request — a
+ * script or a test writing directly, which the activity log records without
+ * an address.
+ */
+export const getRequestClient = (): RequestClient | undefined =>
+  storage.getStore()?.client;
 
 /**
  * Records the authenticated user on the current request's context.

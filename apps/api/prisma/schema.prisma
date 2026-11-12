@@ -112,6 +112,7 @@ model Organization {
   incidentAnalyses   IncidentAnalysis[]
   notifications      Notification[]
   knownIssues        KnownIssue[]
+  activityEntries    ActivityEntry[]
 
   @@map("organizations")
 }
@@ -167,6 +168,9 @@ model User {
   /// Notifications about something this user did — never the ones they
   /// receive, which belong to a membership.
   notificationsCaused Notification[]
+  /// Activity log entries this user caused, or — for a sign-in — whose
+  /// account it was.
+  activityEntries     ActivityEntry[]
 
   @@map("users")
 }
@@ -1087,4 +1091,118 @@ model RefreshToken {
   /// Serves reuse detection, which revokes an entire family in one statement.
   @@index([familyId])
   @@map("refresh_tokens")
+}
+
+/// Which part of the organization an activity log entry is about. The
+/// Admin's log filters by it, and SECURITY entries — sign-ins and passwords —
+/// are kept on a tab of their own. Always the one its action implies:
+/// ActivityRecorder sets it from the action, never from a caller.
+enum ActivityArea {
+  PEOPLE
+  TEAMS
+  SERVICES
+  KNOWN_ISSUES
+  ORGANIZATION
+  SECURITY
+
+  @@map("activity_area")
+}
+
+/// What happened, in the activity log. The organization's setup — people,
+/// teams, services, known issues, its own settings — and its members'
+/// sign-ins. Incidents keep their own history in IncidentActivity.
+enum ActivityAction {
+  MEMBER_ADDED
+  ROLE_CHANGED
+  PASSWORD_RESET
+  INVITATION_SENT
+  INVITATION_REVOKED
+  INVITATION_ACCEPTED
+  TEAM_CREATED
+  TEAM_UPDATED
+  TEAM_DELETED
+  TEAM_MEMBER_ADDED
+  TEAM_MEMBER_REMOVED
+  SERVICE_CREATED
+  SERVICE_UPDATED
+  SERVICE_DELETED
+  KNOWN_ISSUE_CREATED
+  KNOWN_ISSUE_UPDATED
+  KNOWN_ISSUE_MERGED
+  ORGANIZATION_UPDATED
+  SIGNED_IN
+  SIGN_IN_FAILED
+  SIGN_IN_BLOCKED
+  PASSWORD_CHANGED
+
+  @@map("activity_action")
+}
+
+/// The kind of thing an entry is about, so the log can link to it while it
+/// still exists.
+enum ActivitySubjectType {
+  MEMBERSHIP
+  INVITATION
+  TEAM
+  SERVICE
+  KNOWN_ISSUE
+  ORGANIZATION
+
+  @@map("activity_subject_type")
+}
+
+/// One entry in an organization's activity log: a change to its setup, or a
+/// sign-in to a member's account. Read by the Admin alone.
+///
+/// History, never state, and permanent: the application only ever inserts
+/// these rows. Nothing updates or deletes one; only removing the whole
+/// organization takes its log with it.
+///
+/// Written by the change's own transaction (see activity.recorder.ts), so a
+/// change and its entry are saved together or not at all.
+///
+/// Names are snapshots, taken when it happened — actorName, subjectName, and
+/// the values in changes — so an entry still reads correctly after the person
+/// or thing it names is renamed or deleted. subjectId keeps the link for as
+/// long as the subject exists; it is not a foreign key, since the subject may
+/// be deleted and the entry must outlive it.
+///
+/// changes is the list of fields that changed, each
+/// { "field": "role", "before": "RESPONDER", "after": "INCIDENT_MANAGER" },
+/// with a null side for a value that did not exist. Empty when nothing has a
+/// before and after to show, such as a sign-in.
+///
+/// ipAddress and userAgent are the request's, as the server received it; null
+/// when the entry was written outside a request.
+model ActivityEntry {
+  id             String               @id @default(uuid(7)) @db.Uuid
+  organizationId String               @map("organization_id") @db.Uuid
+  action         ActivityAction
+  area           ActivityArea
+  /// Who did it; for a sign-in, whose account it was.
+  actorId        String               @map("actor_id") @db.Uuid
+  actorName      String               @map("actor_name")
+  subjectType    ActivitySubjectType? @map("subject_type")
+  subjectId      String?              @map("subject_id") @db.Uuid
+  subjectName    String?              @map("subject_name")
+  changes        Json                 @default("[]")
+  ipAddress      String?              @map("ip_address")
+  userAgent      String?              @map("user_agent")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actor        User         @relation(fields: [actorId], references: [id], onDelete: Restrict)
+
+  /// Serves the log newest first, all areas.
+  @@index([organizationId, createdAt])
+  /// Serves the log filtered to one area, and the Security tab.
+  @@index([organizationId, area, createdAt])
+  /// Serves "done by" one person.
+  @@index([organizationId, actorId, createdAt])
+  /// Serves an entry's earlier history: the entries about the same subject.
+  @@index([organizationId, subjectId, createdAt])
+  /// Serves the Restrict check when a user row is physically deleted.
+  @@index([actorId])
+  @@map("activity_entries")
 }

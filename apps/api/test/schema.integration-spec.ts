@@ -2417,7 +2417,8 @@ describe('core domain schema (integration)', () => {
       // created_at and read_at (2): one is read, never otherwise edited.
       // incident_analyses adds created_at, updated_at, and published_at (3).
       // known_issues adds created_at, updated_at, and archived_at (3).
-      expect(columns).toHaveLength(36);
+      // activity_entries only created_at (1): an entry is never edited.
+      expect(columns).toHaveLength(37);
       for (const column of columns) {
         expect(column.data_type).toBe('timestamp with time zone');
       }

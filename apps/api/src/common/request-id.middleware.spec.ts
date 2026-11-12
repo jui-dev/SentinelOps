@@ -1,11 +1,14 @@
 import type { NextFunction, Request, Response } from 'express';
 
 import { REQUEST_ID_HEADER } from './api-error.contract.js';
-import { getRequestId } from './request-context.js';
-import { RequestIdMiddleware } from './request-id.middleware.js';
+import { getRequestClient, getRequestId } from './request-context.js';
+import {
+  requestClientOf,
+  RequestIdMiddleware,
+  USER_AGENT_MAX_LENGTH,
+} from './request-id.middleware.js';
 
-const UUID =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 describe('RequestIdMiddleware', () => {
   let middleware: RequestIdMiddleware;
@@ -98,5 +101,48 @@ describe('RequestIdMiddleware', () => {
 
       expect(run(atLimit)).toBe(atLimit);
     });
+  });
+});
+
+describe('requestClientOf', () => {
+  const of = (ip: string | undefined, agent?: string) =>
+    requestClientOf({
+      ip,
+      headers: agent === undefined ? {} : { 'user-agent': agent },
+    } as unknown as Request);
+
+  it('should keep the address and the browser', () => {
+    expect(of('10.0.4.2', 'Mozilla/5.0 Chrome/130.0')).toEqual({
+      ipAddress: '10.0.4.2',
+      userAgent: 'Mozilla/5.0 Chrome/130.0',
+    });
+  });
+
+  it('should say nothing for what was not sent', () => {
+    expect(of(undefined)).toEqual({ ipAddress: null, userAgent: null });
+    expect(of('10.0.4.2', '   ').userAgent).toBeNull();
+  });
+
+  it('should cut a User-Agent longer than any browser sends', () => {
+    expect(of('10.0.4.2', 'x'.repeat(5000)).userAgent).toHaveLength(
+      USER_AGENT_MAX_LENGTH,
+    );
+  });
+
+  it('should publish it on the request context', () => {
+    let seen: unknown;
+
+    new RequestIdMiddleware().use(
+      {
+        ip: '10.0.4.9',
+        headers: { 'user-agent': 'Firefox' },
+      } as unknown as Request,
+      { setHeader: vi.fn() } as unknown as Response,
+      (() => {
+        seen = getRequestClient();
+      }) as NextFunction,
+    );
+
+    expect(seen).toEqual({ ipAddress: '10.0.4.9', userAgent: 'Firefox' });
   });
 });

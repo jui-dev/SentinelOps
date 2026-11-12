@@ -17,6 +17,7 @@ const EXPECTED: Record<Role, Record<Permission, boolean>> = {
   ADMIN: {
     'organization:read': true,
     'organization:update': true,
+    'activity:read': true,
     'memberships:read': true,
     'memberships:read-all': true,
     'members:manage': true,
@@ -39,6 +40,7 @@ const EXPECTED: Record<Role, Record<Permission, boolean>> = {
   INCIDENT_MANAGER: {
     'organization:read': true,
     'organization:update': false,
+    'activity:read': false,
     'memberships:read': true,
     'memberships:read-all': true,
     'members:manage': false,
@@ -61,6 +63,7 @@ const EXPECTED: Record<Role, Record<Permission, boolean>> = {
   REPORTER: {
     'organization:read': true,
     'organization:update': false,
+    'activity:read': false,
     'memberships:read': true,
     'memberships:read-all': false,
     'members:manage': false,
@@ -83,6 +86,7 @@ const EXPECTED: Record<Role, Record<Permission, boolean>> = {
   RESPONDER: {
     'organization:read': true,
     'organization:update': false,
+    'activity:read': false,
     'memberships:read': true,
     'memberships:read-all': false,
     'members:manage': false,
@@ -142,6 +146,12 @@ describe('role permissions', () => {
         'ADMIN',
       ]);
     }
+  });
+
+  it('should let only admins read the activity log', () => {
+    expect(
+      ROLES.filter((role) => hasPermission(role, Permission.ACTIVITY_READ)),
+    ).toEqual(['ADMIN']);
   });
 
   it('should let admins and incident managers decide on incidents, and nobody else', () => {

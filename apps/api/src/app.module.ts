@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 
+import { ActivityModule } from './activity/activity.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { CommonModule } from './common/common.module.js';
 import { configurations } from './config/configuration.js';
@@ -54,6 +55,7 @@ import { TeamsModule } from './teams/teams.module.js';
     TeamsModule,
     ServicesModule,
     KnownIssuesModule,
+    ActivityModule,
     IncidentsModule,
     IncidentAnalysesModule,
     NotificationsModule,

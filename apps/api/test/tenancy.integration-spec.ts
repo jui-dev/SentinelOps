@@ -194,6 +194,7 @@ describe('tenancy (integration)', () => {
           id: fx.aliceInA,
           role: 'ADMIN',
           permissions: [
+            'activity:read',
             'incident-analyses:write',
             'incidents:declare',
             'incidents:manage',

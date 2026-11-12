@@ -57,6 +57,7 @@ const comparable = (body: Record<string, unknown>) => {
 
 /** What the role-to-permission table grants, as the API reports it: sorted. */
 const FULL_PERMISSIONS: readonly string[] = [
+  'activity:read',
   'incident-analyses:write',
   'incidents:declare',
   'incidents:manage',

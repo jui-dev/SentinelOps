@@ -25,7 +25,8 @@ import { Permission } from './permissions.js';
  *                     completes their own, on the incidents their teams are
  *                     responsible for or they are assigned to.
  *   ADMIN             sets the organization up — members, roles, teams,
- *                     services, invitations, settings — and can do
+ *                     services, invitations, settings — reads its
+ *                     activity log (`activity:read`), and can do
  *                     everything an Incident Manager does. Does not work a
  *                     response.
  *
@@ -49,6 +50,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, ReadonlySet<Permission>>> =
     ADMIN: new Set([
       Permission.ORGANIZATION_READ,
       Permission.ORGANIZATION_UPDATE,
+      Permission.ACTIVITY_READ,
       Permission.MEMBERSHIPS_READ,
       Permission.MEMBERSHIPS_READ_ALL,
       Permission.MEMBERS_MANAGE,

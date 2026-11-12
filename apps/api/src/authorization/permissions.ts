@@ -14,6 +14,12 @@ export const Permission = {
   ORGANIZATION_READ: 'organization:read',
   ORGANIZATION_UPDATE: 'organization:update',
   /**
+   * Read the organization's activity log: every change to its setup, and
+   * every sign-in to a member's account. The Admin's alone — it names who
+   * did what, and from which address.
+   */
+  ACTIVITY_READ: 'activity:read',
+  /**
    * Read the organization's members: the list, and one member.
    *
    * Scoped by OrganizationsService to the caller, their teammates — anyone

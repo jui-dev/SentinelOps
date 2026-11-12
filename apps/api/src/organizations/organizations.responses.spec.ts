@@ -32,6 +32,7 @@ describe('organization response mappers', () => {
           id: 'membership-1',
           role: 'ADMIN',
           permissions: [
+            'activity:read',
             'incident-analyses:write',
             'incidents:declare',
             'incidents:manage',
