@@ -14,11 +14,13 @@ import type {
 import {
   changeRoleSchema,
   createMemberSchema,
+  resetPasswordSchema,
   updateOrganizationSchema,
 } from './organizations.schemas.js';
 import type {
   ChangeRoleRequest,
   CreateMemberRequest,
+  ResetPasswordRequest,
   UpdateOrganizationRequest,
 } from './organizations.schemas.js';
 import { OrganizationsService } from './organizations.service.js';
@@ -125,6 +127,27 @@ export class OrganizationsController {
       membership.organizationId,
       membershipId,
       body,
+    );
+  }
+
+  /**
+   * Gives a member a new one-time password, and ends their sessions. 200 with
+   * the member, marked to choose their own password at next sign-in; the
+   * password is never echoed. 409 for the caller's own membership, or for
+   * someone who also belongs to another organization.
+   */
+  @Put('memberships/:membershipId/password')
+  @RequirePermission(Permission.MEMBERS_MANAGE)
+  resetPassword(
+    @CurrentMembership() membership: OrganizationContext,
+    @Param('membershipId') membershipId: string,
+    @Body({ schema: resetPasswordSchema }) body: ResetPasswordRequest,
+  ): Promise<OrganizationMembershipResponse> {
+    return this.organizations.resetPassword(
+      membership.organizationId,
+      membershipId,
+      body,
+      { membershipId: membership.membershipId },
     );
   }
 

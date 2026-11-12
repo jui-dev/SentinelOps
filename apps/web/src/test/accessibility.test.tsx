@@ -15,6 +15,7 @@ import { InvitationAcceptance } from "@/components/invitations/invitation-accept
 import { MemberDetail } from "@/components/organizations/member-detail";
 import { ChangeRoleDialog } from "@/components/organizations/change-role-dialog";
 import { MembersView } from "@/components/organizations/members-view";
+import { ResetPasswordDialog } from "@/components/organizations/reset-password-dialog";
 import { MyReports } from "@/components/my-reports/my-reports";
 import { RolePage } from "@/components/roles/role-page";
 import { RolesView } from "@/components/roles/roles-view";
@@ -890,7 +891,32 @@ describe("accessibility", () => {
       await expectNoAxeViolations(container);
     });
 
-it("Change role, a new role chosen", async () => {
+it("Reset password", async () => {
+      signedIn(ADMIN);
+      const { container } = inWorkspace(
+        <ResetPasswordDialog
+          member={{
+            id: "0199a1b2-c3d4-7000-8000-0000000000cc",
+            role: "RESPONDER",
+            createdAt: "2026-09-01T12:00:00.000Z",
+            user: {
+              id: "0199a1b2-c3d4-7000-8000-000000000003",
+              name: "Linus Torvalds",
+              email: "linus@example.com",
+            },
+            teams: [],
+          }}
+          onClose={() => {}}
+        />,
+      );
+
+      await screen.findByRole("dialog", {
+        name: "Reset Linus Torvalds's password",
+      });
+      await expectNoAxeViolations(container);
+    });
+
+    it("Change role, a new role chosen", async () => {
       signedIn(ADMIN);
       const { container } = inWorkspace(
         <ChangeRoleDialog

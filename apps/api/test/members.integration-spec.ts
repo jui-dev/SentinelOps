@@ -212,6 +212,122 @@ describe('members (integration)', () => {
     expect(response.status).toBe(404);
   });
 
+  describe('resetting a password', () => {
+    const OLD = 'their-own-old-passphrase';
+    const NEW = 'a-fresh-one-time-password';
+
+    const reset = async (
+      callerId: string,
+      membershipId: string,
+      body: object = { temporaryPassword: NEW },
+      organizationId = fx.orgA,
+    ) => {
+      const response = await request(app.getHttpServer())
+        .put(
+          `/api/v1/organizations/${organizationId}/memberships/${membershipId}/password`,
+        )
+        .set(
+          'Authorization',
+          `Bearer ${await tokens.signAccessToken(callerId)}`,
+        )
+        .send(body);
+
+      expect(leakedKeys(response.body)).toEqual([]);
+
+      return response;
+    };
+
+    const login = (email: string, password: string) =>
+      request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({ email, password });
+
+    const membershipOf = (userId: string, organizationId = fx.orgA) =>
+      prisma.membership.findFirstOrThrow({
+        where: { userId, organizationId },
+        select: { id: true },
+      });
+
+    /** Dave, with his own password and a session signed in with it. */
+    const signedInDave = async () => {
+      await prisma.user.update({
+        where: { id: fx.dave },
+        data: { passwordHash: await passwords.hash(OLD) },
+      });
+      expect((await login('dave@acme.example', OLD)).status).toBe(200);
+    };
+
+    it('should set a one-time password, mark it for changing, and end every session', async () => {
+      await signedInDave();
+      const dave = await membershipOf(fx.dave);
+
+      const response = await reset(fx.alice, dave.id);
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual(
+        expect.objectContaining({
+          id: dave.id,
+          user: expect.objectContaining({ passwordChangeRequired: true }),
+        }),
+      );
+      expect(JSON.stringify(response.body)).not.toContain(NEW);
+      expect(
+        await prisma.refreshToken.count({
+          where: { userId: fx.dave, revokedAt: null },
+        }),
+      ).toBe(0);
+      // The old password no longer works; the new one does.
+      expect((await login('dave@acme.example', OLD)).status).toBe(401);
+      expect((await login('dave@acme.example', NEW)).status).toBe(200);
+    });
+
+    it("should refuse the caller's own password with 409", async () => {
+      const alice = await membershipOf(fx.alice);
+
+      const response = await reset(fx.alice, alice.id);
+
+      expect(response.status).toBe(409);
+      expect(response.body.code).toBe('CANNOT_RESET_OWN_PASSWORD');
+    });
+
+    it('should refuse someone who also belongs to another organization, changing nothing', async () => {
+      await signedInDave();
+      await prisma.membership.create({
+        data: { organizationId: fx.orgB, userId: fx.dave, role: 'RESPONDER' },
+      });
+      const dave = await membershipOf(fx.dave);
+
+      const response = await reset(fx.alice, dave.id);
+
+      expect(response.status).toBe(409);
+      expect(response.body.code).toBe('MEMBER_OF_OTHER_ORGANIZATIONS');
+      expect((await login('dave@acme.example', OLD)).status).toBe(200);
+    });
+
+    it('should refuse anyone who does not manage members with 403', async () => {
+      const alice = await membershipOf(fx.alice);
+
+      expect((await reset(fx.dave, alice.id)).status).toBe(403);
+    });
+
+    it('should answer a member of another organization as not found', async () => {
+      const bob = await membershipOf(fx.bob, fx.orgB);
+
+      const response = await reset(fx.alice, bob.id);
+
+      expect(response.status).toBe(404);
+      expect(response.body.code).toBe('MEMBERSHIP_NOT_FOUND');
+    });
+
+    it('should hold the new password to the same rules as any', async () => {
+      const dave = await membershipOf(fx.dave);
+
+      expect(
+        (await reset(fx.alice, dave.id, { temporaryPassword: 'short' })).status,
+      ).toBe(400);
+    });
+  });
+
   describe('changing a role', () => {
     const changeRole = async (
       callerId: string,

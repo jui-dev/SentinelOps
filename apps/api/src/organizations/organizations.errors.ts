@@ -7,6 +7,8 @@ import { ConflictException, NotFoundException } from '@nestjs/common';
 export const OrganizationsErrorCode = {
   MEMBERSHIP_NOT_FOUND: 'MEMBERSHIP_NOT_FOUND',
   LAST_ADMIN: 'LAST_ADMIN',
+  CANNOT_RESET_OWN_PASSWORD: 'CANNOT_RESET_OWN_PASSWORD',
+  MEMBER_OF_OTHER_ORGANIZATIONS: 'MEMBER_OF_OTHER_ORGANIZATIONS',
 } as const;
 
 export type OrganizationsErrorCode =
@@ -33,3 +35,23 @@ export const lastAdmin = (): ConflictException =>
   new ConflictException('The only Admin keeps their role', {
     errorCode: OrganizationsErrorCode.LAST_ADMIN,
   });
+
+/**
+ * An Admin resetting their own password. They change it themselves, giving
+ * the current one, so an unattended session cannot take the account over.
+ */
+export const cannotResetOwnPassword = (): ConflictException =>
+  new ConflictException('Change your own password from your account instead', {
+    errorCode: OrganizationsErrorCode.CANNOT_RESET_OWN_PASSWORD,
+  });
+
+/**
+ * A member whose account also belongs to another organization. An account is
+ * one person's everywhere, so one organization's Admin must not be able to
+ * set the password that opens the others.
+ */
+export const memberOfOtherOrganizations = (): ConflictException =>
+  new ConflictException(
+    "This person also belongs to another organization, so their password can't be reset from here",
+    { errorCode: OrganizationsErrorCode.MEMBER_OF_OTHER_ORGANIZATIONS },
+  );

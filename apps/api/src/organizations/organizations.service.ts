@@ -23,7 +23,12 @@ import type {
   OrganizationMembershipResponse,
   OrganizationRoleResponse,
 } from './organizations.contract.js';
-import { lastAdmin, membershipNotFound } from './organizations.errors.js';
+import {
+  cannotResetOwnPassword,
+  lastAdmin,
+  memberOfOtherOrganizations,
+  membershipNotFound,
+} from './organizations.errors.js';
 import {
   toOrganizationDetailResponse,
   toOrganizationMembershipResponse,
@@ -31,6 +36,7 @@ import {
 import type {
   ChangeRoleRequest,
   CreateMemberRequest,
+  ResetPasswordRequest,
   UpdateOrganizationRequest,
 } from './organizations.schemas.js';
 
@@ -487,6 +493,90 @@ export class OrganizationsService {
     }
 
     // Only whoever manages members changes a role, so they are told its setup.
+    return toOrganizationMembershipResponse(membership, { accountSetup: true });
+  }
+
+  /**
+   * Gives a member a new one-time password, for someone who has forgotten
+   * theirs. Their account is marked to choose a new password at next sign-in,
+   * as when they were added, and every session they have ends — the
+   * revocation commits with the new password, or neither happens.
+   *
+   * Two refusals, both 409. An Admin cannot reset their own password: they
+   * change it themselves, giving the current one. And an account that also
+   * belongs to another organization is refused: an account is one person's
+   * everywhere, and one organization's Admin must not set the password that
+   * opens the others.
+   *
+   * The password is hashed before the transaction opens, as adding a member
+   * does, and is never logged.
+   */
+  async resetPassword(
+    organizationId: string,
+    membershipId: string,
+    input: ResetPasswordRequest,
+    actor: { membershipId: string },
+    now: Date = new Date(),
+  ): Promise<OrganizationMembershipResponse> {
+    if (!isResourceId(membershipId)) {
+      throw membershipNotFound();
+    }
+
+    const passwordHash = await this.passwords.hash(input.temporaryPassword);
+
+    const membership = await this.prisma.$transaction(async (tx) => {
+      const target = await tx.membership.findFirst({
+        where: {
+          id: membershipId,
+          organizationId,
+          organization: { deletedAt: null },
+          user: { deletedAt: null },
+        },
+        select: {
+          id: true,
+          userId: true,
+          user: { select: { _count: { select: { memberships: true } } } },
+        },
+      });
+
+      if (!target) {
+        throw membershipNotFound();
+      }
+
+      if (target.id === actor.membershipId) {
+        throw cannotResetOwnPassword();
+      }
+
+      if (target.user._count.memberships > 1) {
+        throw memberOfOtherOrganizations();
+      }
+
+      await tx.user.update({
+        where: { id: target.userId },
+        data: { passwordHash, passwordChangeRequired: true },
+        select: { id: true },
+      });
+
+      // Signed out everywhere, as RefreshTokenService.revokeAllFor does for a
+      // password change: the old password's sessions do not outlive it.
+      await tx.refreshToken.updateMany({
+        where: { userId: target.userId, revokedAt: null },
+        data: { revokedAt: now },
+      });
+
+      return tx.membership.findUniqueOrThrow({
+        where: { id: target.id },
+        select: membershipSelection,
+      });
+    });
+
+    // Ids only: never the password.
+    this.logger.log("Reset a member's password; their sessions were ended", {
+      organizationId,
+      membershipId: membership.id,
+      userId: membership.user.id,
+    });
+
     return toOrganizationMembershipResponse(membership, { accountSetup: true });
   }
 }

@@ -1147,6 +1147,7 @@ put slugs in its own URLs.
 | `GET /api/v1/organizations/:organizationId/memberships/:membershipId` | One membership record | `memberships:read` |
 | `POST /api/v1/organizations/:organizationId/memberships` | Add a person with a one-time password, in a role, optionally on teams: `{ "name", "email", "temporaryPassword", "role"?, "teamIds"? }` — see [Adding a member](#adding-a-member) | `members:manage` |
 | `PUT /api/v1/organizations/:organizationId/memberships/:membershipId/role` | Give a member another role: `{ "role" }`. `409 LAST_ADMIN` for the only `ADMIN` | `members:manage` |
+| `PUT /api/v1/organizations/:organizationId/memberships/:membershipId/password` | Give a member who forgot theirs a new one-time password: `{ "temporaryPassword" }`. Ends their sessions and makes them choose their own at next sign-in. `409 CANNOT_RESET_OWN_PASSWORD` for the caller's own; `409 MEMBER_OF_OTHER_ORGANIZATIONS` for an account another organization also opens | `members:manage` |
 | `POST /api/v1/organizations/:organizationId/invitations` | Invite an email address: `{ "email", "role" }` | `invitations:manage` |
 | `GET /api/v1/organizations/:organizationId/invitations` | Every open invitation, newest first | `invitations:read` |
 | `DELETE /api/v1/organizations/:organizationId/invitations/:invitationId` | Revoke an open invitation | `invitations:manage` |

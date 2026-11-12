@@ -144,6 +144,7 @@ export const ROLE_CONTENT: Record<Role, RoleContent> = {
     ],
     can: [
       "Add people and give each one a role",
+      "Reset a member's forgotten password",
       "Set up teams, services and known issues",
       "See every incident, team and member",
       "Declare, decide on and resolve incidents",
@@ -154,7 +155,7 @@ export const ROLE_CONTENT: Record<Role, RoleContent> = {
     where: (slug) => [
       {
         label: "Members",
-        detail: "Add people, place them on teams, change roles",
+        detail: "Add people, place them on teams, change roles, reset passwords",
         href: `${organizationPath(slug)}/members`,
       },
       {

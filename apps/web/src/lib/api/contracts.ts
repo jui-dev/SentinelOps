@@ -105,6 +105,11 @@ export interface OrganizationRoleResponse {
   memberCount: number;
 }
 
+/** `PUT /organizations/:id/memberships/:membershipId/password`. */
+export interface ResetPasswordRequest {
+  temporaryPassword: string;
+}
+
 /** `PUT /organizations/:id/memberships/:membershipId/role`. */
 export interface ChangeRoleRequest {
   role: Role;
@@ -1169,6 +1174,10 @@ export const ApiErrorCode = {
   MEMBERSHIP_NOT_FOUND: "MEMBERSHIP_NOT_FOUND",
   /** The organization's only Admin keeps their role. */
   LAST_ADMIN: "LAST_ADMIN",
+  /** An Admin changes their own password from their account instead. */
+  CANNOT_RESET_OWN_PASSWORD: "CANNOT_RESET_OWN_PASSWORD",
+  /** Their account opens another organization too; not reset from here. */
+  MEMBER_OF_OTHER_ORGANIZATIONS: "MEMBER_OF_OTHER_ORGANIZATIONS",
   /** Only a Responder can be assigned to an incident. */
   ASSIGNEE_CANNOT_RESPOND: "ASSIGNEE_CANNOT_RESPOND",
   /** A settled severity is changed in the incident, not with the decision. */

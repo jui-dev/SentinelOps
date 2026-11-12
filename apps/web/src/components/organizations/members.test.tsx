@@ -745,6 +745,124 @@ describe("changing a role", () => {
   });
 });
 
+describe("resetting a password", () => {
+  beforeEach(() => {
+    clearAccessToken();
+  });
+
+  const linus = {
+    ...grace,
+    id: "0199a1b2-c3d4-7000-8000-0000000000cc",
+    user: {
+      ...grace.user,
+      id: "0199a1b2-c3d4-7000-8000-000000000003",
+      name: "Linus Torvalds",
+      email: "linus@example.com",
+      passwordChangeRequired: false,
+    },
+  };
+
+  it("offers Reset password to whoever manages members, never on their own row", async () => {
+    api(MANAGE, [ada, linus]);
+
+    renderMembers();
+
+    const theirs = await screen.findByRole("button", {
+      name: "Reset the password of Linus Torvalds",
+    });
+    const own = screen.getByRole("button", {
+      name: "Reset the password of Ada Lovelace",
+    });
+
+    expect((theirs as HTMLButtonElement).disabled).toBe(false);
+    expect((own as HTMLButtonElement).disabled).toBe(true);
+    expect(own.getAttribute("title")).toBe(
+      "Change your own password from your account",
+    );
+  });
+
+  it("offers no Reset password to someone who only reads the directory", async () => {
+    api(READ_ONLY, [ada, linus]);
+
+    renderMembers();
+
+    await screen.findByRole("link", { name: "View Linus Torvalds" });
+    expect(screen.queryByRole("button", { name: /Reset the password/ })).toBeNull();
+  });
+
+  it("says what happens, sends the new password, and shows the sign-in details once", async () => {
+    const user = userEvent.setup();
+    const { requests } = api(MANAGE, [ada, linus], (request) =>
+      route(request) === `PUT ${base}/memberships/${linus.id}/password`
+        ? jsonResponse(200, {
+            ...linus,
+            user: { ...linus.user, passwordChangeRequired: true },
+          })
+        : undefined,
+    );
+
+    renderMembers();
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Reset the password of Linus Torvalds",
+      }),
+    );
+
+    const dialog = screen.getByRole("dialog", {
+      name: "Reset Linus Torvalds's password",
+    });
+
+    expect(within(dialog).getByText(/signed out everywhere/)).toBeDefined();
+    expect(
+      (within(dialog).getByRole("button", { name: "Reset password" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+
+    await user.type(
+      within(dialog).getByLabelText(/New one-time password/),
+      "a-fresh-one-time-password",
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Reset password" }));
+
+    const panel = await within(dialog).findByRole("status");
+
+    expect(panel.textContent).toContain("Linus Torvalds's password was reset.");
+    expect(
+      (within(panel).getByLabelText("Sign-in password") as HTMLInputElement).value,
+    ).toBe("a-fresh-one-time-password");
+    expect(
+      requests.find(
+        (r) => route(r) === `PUT ${base}/memberships/${linus.id}/password`,
+      )?.body,
+    ).toEqual({ temporaryPassword: "a-fresh-one-time-password" });
+  });
+
+  it("explains a member who also belongs to another organization", async () => {
+    const user = userEvent.setup();
+    api(MANAGE, [ada, linus], (request) =>
+      route(request) === `PUT ${base}/memberships/${linus.id}/password`
+        ? apiError(409, "MEMBER_OF_OTHER_ORGANIZATIONS")
+        : undefined,
+    );
+
+    renderMembers();
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Reset the password of Linus Torvalds",
+      }),
+    );
+    const dialog = screen.getByRole("dialog", {
+      name: "Reset Linus Torvalds's password",
+    });
+    await user.click(within(dialog).getByRole("button", { name: "Generate" }));
+    await user.click(within(dialog).getByRole("button", { name: "Reset password" }));
+
+    expect(
+      await within(dialog).findByText(/also belongs to another organization/),
+    ).toBeDefined();
+  });
+});
+
 describe("adding a member", () => {
   beforeEach(() => {
     clearAccessToken();

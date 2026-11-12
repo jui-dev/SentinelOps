@@ -79,3 +79,14 @@ export const changeRoleSchema = z.strictObject({
 });
 
 export type ChangeRoleRequest = z.infer<typeof changeRoleSchema>;
+
+/**
+ * Resetting a member's password: the new one-time password the Admin hands
+ * them. The same rules as any password; they choose their own at next
+ * sign-in.
+ */
+export const resetPasswordSchema = z.strictObject({
+  temporaryPassword: passwordSchema,
+});
+
+export type ResetPasswordRequest = z.infer<typeof resetPasswordSchema>;

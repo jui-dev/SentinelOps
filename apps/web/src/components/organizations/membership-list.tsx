@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { ChevronRight, IdCard, Plus, Search } from "lucide-react";
+import { ChevronRight, IdCard, KeyRound, Plus, Search } from "lucide-react";
 import Link from "next/link";
 import { Fragment, useId, useState } from "react";
 
@@ -21,6 +21,7 @@ import { queryKeys } from "@/lib/api/query-keys";
 import { useCurrentUser } from "@/lib/auth/session-provider";
 
 import { ChangeRoleDialog } from "./change-role-dialog";
+import { ResetPasswordDialog } from "./reset-password-dialog";
 import { MemberPeek } from "./member-peek";
 import { AddToTeamDialog, RemoveFromTeamDialog } from "./member-placement";
 import { memberHref } from "./member-paths";
@@ -302,14 +303,17 @@ function MemberStatus({ member }: { member: Member }) {
 
 // ── The list ───────────────────────────────────────────────────────────────
 
-type Dialog = { kind: "add" | "remove" | "role"; memberId: string } | null;
+type Dialog = {
+  kind: "add" | "remove" | "role" | "password";
+  memberId: string;
+} | null;
 
 /**
  * Everyone in the organization, grouped by role, found by name or email and
  * narrowed by role or by what wants attention. Placing someone on a team,
- * taking them off one, and changing their role happen here — each row's
- * Add to team, Remove and Change role — and nowhere else; a member's own
- * page reads.
+ * taking them off one, changing their role and resetting their password
+ * happen here — each row's Add to team, Remove, Change role and Reset
+ * password — and nowhere else; a member's own page reads.
  */
 export function MembershipList() {
   const organization = useOrganization();
@@ -545,6 +549,29 @@ export function MembershipList() {
                         Change role
                       </button>
                     )}
+                    {canManage && (
+                      <button
+                        type="button"
+                        aria-label={`Reset the password of ${member.user.name}`}
+                        title={
+                          member.user.id === me.data?.id
+                            ? "Change your own password from your account"
+                            : undefined
+                        }
+                        disabled={member.user.id === me.data?.id}
+                        onClick={() =>
+                          setDialog({ kind: "password", memberId: member.id })
+                        }
+                        className={rowActionClasses("accent")}
+                      >
+                        <KeyRound
+                          aria-hidden="true"
+                          strokeWidth={2}
+                          className="size-3.5"
+                        />
+                        Reset password
+                      </button>
+                    )}
                   </div>
                 </TD>
               </TR>
@@ -576,6 +603,9 @@ export function MembershipList() {
       )}
       {canManage && target && dialog.kind === "role" && (
         <ChangeRoleDialog key={target.id} member={target} onClose={close} />
+      )}
+      {canManage && target && dialog.kind === "password" && (
+        <ResetPasswordDialog key={target.id} member={target} onClose={close} />
       )}
     </div>
   );

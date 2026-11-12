@@ -360,7 +360,7 @@ function TeamChoices({
 }
 
 /** Copies the password, and says so for a moment. */
-function CopyButton({ value }: { value: string }) {
+export function CopyButton({ value }: { value: string }) {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {

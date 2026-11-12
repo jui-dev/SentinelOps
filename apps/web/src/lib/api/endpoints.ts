@@ -48,6 +48,7 @@ import type {
   OrganizationDetailResponse,
   OrganizationMembershipResponse,
   OrganizationRoleResponse,
+  ResetPasswordRequest,
   OrganizationResponse,
   Page,
   PostIncidentUpdateRequest,
@@ -148,6 +149,17 @@ export const createMember = (
 export const listRoles = (organizationId: string) =>
   authenticatedRequest<OrganizationRoleResponse[]>(
     `${organizationPath(organizationId)}/roles`,
+  );
+
+/** Gives a member a new one-time password and ends their sessions. */
+export const resetMemberPassword = (
+  organizationId: string,
+  membershipId: string,
+  body: ResetPasswordRequest,
+) =>
+  authenticatedRequest<OrganizationMembershipResponse>(
+    `${organizationPath(organizationId)}/memberships/${encodeURIComponent(membershipId)}/password`,
+    { method: "PUT", body },
   );
 
 /** Gives a member another role; answers with their membership. */
