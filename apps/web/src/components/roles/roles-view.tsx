@@ -34,6 +34,13 @@ export const useRoles = (organizationId: string) =>
 export const peopleCount = (count: number) =>
   `${count} ${count === 1 ? "person" : "people"}`;
 
+/**
+ * A section set on the deepest ground, as the rail is: what is drawn on it
+ * — cards, the map's cells — stands out from the page around it.
+ */
+const PANEL =
+  "flex flex-col rounded-2xl border border-line-subtle bg-linear-to-b from-rail-top to-rail-mid p-5 sm:p-6";
+
 /** A section's heading, ruled beneath, with a quieter note at its end. */
 export function SectionHeading({
   id,
@@ -153,7 +160,7 @@ function StepLine() {
               <span
                 aria-hidden="true"
                 className={cx(
-                  "absolute top-0 left-0 size-3 rounded-full ring-4 ring-canvas",
+                  "absolute top-0 left-0 size-3 rounded-full ring-4 ring-rail-top",
                   ROLE_META[role].tone.subtle,
                   "border-2",
                   ROLE_META[role].tone.line,
@@ -445,7 +452,7 @@ export function RolesView() {
 
         {roles.isError && <ErrorAlert error={roles.error} />}
 
-        <section aria-labelledby="roles-h" className="flex flex-col gap-5">
+        <section aria-labelledby="roles-h" className={cx(PANEL, "gap-5")}>
           <SectionHeading
             id="roles-h"
             title="The four roles"
@@ -476,7 +483,7 @@ export function RolesView() {
           )}
         </section>
 
-        <section aria-labelledby="map-h" className="flex flex-col gap-4">
+        <section aria-labelledby="map-h" className={cx(PANEL, "gap-4")}>
           <SectionHeading
             id="map-h"
             title="Who does what at each step"
