@@ -284,18 +284,18 @@ function SignInRow({
 
   return (
     <TR className={cx(blocked && "[&>td]:bg-danger-subtle")}>
-      <TD kind="data" className="pt-3 align-top">
+      <TD kind="data" className="py-3 align-top leading-6">
         <time dateTime={entry.occurredAt} title={fullTime(entry.occurredAt)}>
           {clockTime(entry.occurredAt)}
         </time>
       </TD>
-      <TD className="py-2.5 align-top">
+      <TD className="py-3 align-top leading-6">
         <span className="flex flex-col items-start gap-1">
           <ResultPill entry={entry} />
           {note && <span className="text-xs text-fg-subtle">{note}</span>}
         </span>
       </TD>
-      <TD className="py-2.5 align-top">
+      <TD className="py-3 align-top leading-6">
         <span className="flex flex-col">
           <span className="truncate font-medium text-fg">{entry.actor.name}</span>
           {role && (
@@ -305,10 +305,10 @@ function SignInRow({
           )}
         </span>
       </TD>
-      <TD kind="data" className="truncate pt-3 align-top">
+      <TD kind="data" className="truncate py-3 align-top leading-6">
         {clientText(entry.client)}
       </TD>
-      <TD kind="actions" className="pt-2 align-top">
+      <TD kind="actions" className="py-3 align-top leading-6">
         <ViewButton
           label={`View details: ${result.label}, ${entry.actor.name}`}
           onClick={onView}

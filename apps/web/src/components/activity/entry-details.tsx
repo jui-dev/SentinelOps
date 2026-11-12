@@ -54,7 +54,8 @@ export function AreaLabel({ area }: { area: ActivityEntryResponse["area"] }) {
   return (
     <span
       className={cx(
-        "inline-flex items-center gap-1.5 text-sm font-medium whitespace-nowrap",
+        // One line tall as a row's first line, so it lines up with the rest.
+        "inline-flex h-6 items-center gap-1.5 text-sm font-medium whitespace-nowrap",
         meta.text,
       )}
     >

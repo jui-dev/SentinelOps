@@ -1,5 +1,6 @@
 import { ChevronRight } from "lucide-react";
 
+import { cx } from "@/components/ui/cx";
 import { rowActionClasses } from "@/components/ui/row-action";
 
 /**
@@ -19,7 +20,8 @@ export function ViewButton({
       type="button"
       aria-label={label}
       onClick={onClick}
-      className={rowActionClasses("accent")}
+      // Centred on a row's first line: 28px tall on a 24px line.
+      className={cx(rowActionClasses("accent"), "-my-0.5")}
     >
       View
       <ChevronRight aria-hidden="true" strokeWidth={2} className="size-3.5" />

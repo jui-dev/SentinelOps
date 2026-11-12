@@ -373,12 +373,12 @@ function ChangeRow({
 
   return (
     <TR>
-      <TD kind="data" className="align-top pt-3">
+      <TD kind="data" className="py-3 align-top leading-6">
         <time dateTime={entry.occurredAt} title={fullTime(entry.occurredAt)}>
           {clockTime(entry.occurredAt)}
         </time>
       </TD>
-      <TD className="align-top py-2.5">
+      <TD className="py-3 align-top leading-6">
         <span className="flex flex-col">
           <span className="truncate font-medium text-fg">{entry.actor.name}</span>
           {role && (
@@ -388,7 +388,7 @@ function ChangeRow({
           )}
         </span>
       </TD>
-      <TD className="align-top py-2.5">
+      <TD className="py-3 align-top leading-6">
         <span className="flex flex-col gap-1">
           <span className="text-fg">
             {sentence.before}
@@ -422,10 +422,10 @@ function ChangeRow({
           {note && <span className="text-xs text-fg-subtle">{note}</span>}
         </span>
       </TD>
-      <TD className="align-top pt-3">
+      <TD className="py-3 align-top leading-6">
         <AreaLabel area={entry.area} />
       </TD>
-      <TD kind="actions" className="align-top pt-2">
+      <TD kind="actions" className="py-3 align-top leading-6">
         <ViewButton
           label={`View details: ${sentenceText(entry)}`}
           onClick={onView}
