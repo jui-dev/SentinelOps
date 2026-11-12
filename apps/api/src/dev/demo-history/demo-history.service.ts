@@ -13,7 +13,6 @@ import {
 import { buildDemoHistory } from './build-demo-history.js';
 import { buildDemoKnownIssues } from './demo-known-issues.js';
 import { checkDemoHistory } from './check-demo-history.js';
-import { ADMIN } from './demo-story.js';
 
 export interface DemoHistoryResult {
   anchor: Date;
@@ -123,8 +122,10 @@ export class DemoHistoryService {
             serviceId: ids.services[incident.service],
             teamId: ids.teams[incident.team],
             severity: incident.severity,
+            severityConfirmed: incident.severityConfirmed,
+            responseAccess: incident.responseAccess,
             status: incident.status,
-            createdById: ids.users[ADMIN],
+            createdById: ids.users[incident.declaredBy],
             createdAt: incident.createdAt,
             updatedAt: incident.updatedAt,
             resolvedAt: incident.resolvedAt,

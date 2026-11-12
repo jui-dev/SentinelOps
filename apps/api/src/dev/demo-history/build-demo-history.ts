@@ -6,11 +6,13 @@
  * gives the same history a week later.
  *
  * Each incident is built by replaying what the application itself does, in
- * order (see IncidentsService): the Admin declares; the first responder's
- * start moves it to INVESTIGATING a millisecond later; responders post while
- * investigating and complete their own part; the Admin resolves once nobody
- * is still investigating, with a note that is also the resolution entry's
- * message. checkDemoHistory verifies the result independently.
+ * order (see IncidentsService): someone declares — the Reporter, whose
+ * suggested severity whoever decides confirms at once, or whoever decides;
+ * the first responder's start moves it to INVESTIGATING a millisecond later;
+ * responders post while investigating and complete their own part; whoever
+ * decides resolves once nobody is still investigating, with a note that is
+ * also the resolution entry's message. checkDemoHistory verifies the result
+ * independently.
  */
 import type { DevTeam } from '../dev-account.js';
 import {
@@ -20,7 +22,10 @@ import {
   ARCS,
   AWAY,
   FALLBACK_UPDATES,
+  MANAGER,
   PICKUP,
+  REPORTED_SHARE,
+  REPORTER,
   SCENARIOS,
   SERVICE_TEAM,
   TEAM_MEMBERS,
@@ -38,6 +43,7 @@ export type DemoActivityType =
   | 'DECLARED'
   | 'UPDATE'
   | 'SEVERITY_CHANGED'
+  | 'SEVERITY_CONFIRMED'
   | 'STATUS_CHANGED'
   | 'RESPONSE_STARTED'
   | 'RESPONSE_COMPLETED';
@@ -65,6 +71,12 @@ export interface DemoIncident {
   service: DemoService;
   team: DevTeam;
   severity: Severity;
+  /** False only while a Reporter's suggestion waits for a decision. */
+  severityConfirmed: boolean;
+  /** PENDING only while nobody has decided who responds. */
+  responseAccess: 'OPEN' | 'PENDING';
+  /** Who declared it, by email. */
+  declaredBy: string;
   status: 'DECLARED' | 'INVESTIGATING' | 'RESOLVED';
   createdAt: Date;
   updatedAt: Date;
@@ -184,6 +196,13 @@ const isAway = (persona: string, week: number): boolean => {
   return away !== undefined && week >= away[0] && week <= away[1];
 };
 
+/** Who decides on incidents that week: the Incident Manager, or the Admin. */
+export const deciderIn = (week: number): string =>
+  isAway(MANAGER, week) ? ADMIN : MANAGER;
+
+/** Whoever may post coordination updates: those who decide. */
+const COORDINATORS: ReadonlySet<string> = new Set([ADMIN, MANAGER]);
+
 const LESS_SEVERE: Partial<Record<Severity, Severity>> = {
   SEV2: 'SEV3',
   SEV3: 'SEV4',
@@ -235,15 +254,14 @@ const assignMessages = (
       continue;
     }
 
-    event.message =
-      event.actor === ADMIN
-        ? ADMIN_UPDATES[admin++ % ADMIN_UPDATES.length]
-        : (scenarioUpdates[responder] ??
-          FALLBACK_UPDATES[
-            (responder - scenarioUpdates.length) % FALLBACK_UPDATES.length
-          ]);
+    event.message = COORDINATORS.has(event.actor)
+      ? ADMIN_UPDATES[admin++ % ADMIN_UPDATES.length]
+      : (scenarioUpdates[responder] ??
+        FALLBACK_UPDATES[
+          (responder - scenarioUpdates.length) % FALLBACK_UPDATES.length
+        ]);
 
-    if (event.actor !== ADMIN) {
+    if (!COORDINATORS.has(event.actor)) {
       responder++;
     }
   }
@@ -272,10 +290,27 @@ const replayResolved = (plan: Planned): Omit<DemoIncident, 'number'> => {
     declared + between(rng, ...timing.firstResponse) * MINUTE + rng() * 1000;
   const span = between(rng, ...timing.span) * MINUTE;
   const lastCompletion = first + span;
+  const decider = deciderIn(plan.week);
+  // Its own stream, so who declared changes nothing else about the story.
+  const reported = rngFor('declarer', plan.key)() < REPORTED_SHARE;
+  const declaredBy = reported ? REPORTER : decider;
 
   const events: DemoActivity[] = [
-    activity('DECLARED', ADMIN, declared, { toValue: plan.declaredAs }),
+    activity('DECLARED', declaredBy, declared, { toValue: plan.declaredAs }),
   ];
+
+  // The Reporter's severity is a suggestion: whoever decides confirms it as
+  // they open it to the team, before anyone starts.
+  if (reported) {
+    events.push(
+      activity(
+        'SEVERITY_CONFIRMED',
+        decider,
+        declared + Math.min(3 * MINUTE, (first - declared) / 2),
+        { fromValue: plan.declaredAs, toValue: plan.declaredAs },
+      ),
+    );
+  }
   const responders: DemoResponse[] = [];
   // One responder finishes last; the others somewhere in the second half.
   const finisher = intBetween(rng, 0, chosen.length - 1);
@@ -338,7 +373,7 @@ const replayResolved = (plan: Planned): Omit<DemoIncident, 'number'> => {
     events.push(
       activity(
         'UPDATE',
-        ADMIN,
+        decider,
         between(rng, first + 5 * MINUTE, lastCompletion - 5 * MINUTE),
       ),
     );
@@ -348,7 +383,7 @@ const replayResolved = (plan: Planned): Omit<DemoIncident, 'number'> => {
     events.push(
       activity(
         'SEVERITY_CHANGED',
-        ADMIN,
+        decider,
         between(rng, first + 5 * MINUTE, first + span / 2),
         { fromValue: plan.declaredAs, toValue: plan.severity },
       ),
@@ -358,7 +393,7 @@ const replayResolved = (plan: Planned): Omit<DemoIncident, 'number'> => {
   const resolvedAt = lastCompletion + between(rng, 5, 60) * MINUTE;
 
   events.push(
-    activity('STATUS_CHANGED', ADMIN, resolvedAt, {
+    activity('STATUS_CHANGED', decider, resolvedAt, {
       fromValue: 'INVESTIGATING',
       toValue: 'RESOLVED',
       message: plan.scenario.resolution,
@@ -374,6 +409,9 @@ const replayResolved = (plan: Planned): Omit<DemoIncident, 'number'> => {
     service: plan.service,
     team,
     severity: plan.severity,
+    severityConfirmed: true,
+    responseAccess: 'OPEN',
+    declaredBy,
     status: 'RESOLVED',
     createdAt: new Date(declared),
     updatedAt: new Date(resolvedAt),
@@ -393,10 +431,22 @@ const replayActive = (
 ): Omit<DemoIncident, 'number'> => {
   const declared = anchor - incident.declared * MINUTE;
   const at = (minutes: number) => declared + minutes * MINUTE;
+  const declaredBy = incident.declaredBy ?? MANAGER;
+  const waiting = incident.awaitingDecision === true;
   const events: DemoActivity[] = [
-    activity('DECLARED', ADMIN, declared, { toValue: incident.severity }),
+    activity('DECLARED', declaredBy, declared, { toValue: incident.severity }),
   ];
   const responses = [...incident.responses].sort((a, b) => a.start - b.start);
+
+  // A Reporter's suggestion, confirmed as soon as someone decided.
+  if (declaredBy === REPORTER && !waiting) {
+    events.push(
+      activity('SEVERITY_CONFIRMED', MANAGER, declared + 2 * MINUTE, {
+        fromValue: incident.severity,
+        toValue: incident.severity,
+      }),
+    );
+  }
 
   responses.forEach((response, index) => {
     events.push(
@@ -428,7 +478,7 @@ const replayActive = (
   });
 
   for (const update of incident.adminUpdates ?? []) {
-    events.push(activity('UPDATE', ADMIN, at(update)));
+    events.push(activity('UPDATE', MANAGER, at(update)));
   }
 
   assignMessages(events, incident.updates);
@@ -440,6 +490,9 @@ const replayActive = (
     service: incident.service,
     team: SERVICE_TEAM[incident.service],
     severity: incident.severity,
+    severityConfirmed: !(waiting && declaredBy === REPORTER),
+    responseAccess: waiting ? 'PENDING' : 'OPEN',
+    declaredBy,
     status: responses.length > 0 ? 'INVESTIGATING' : 'DECLARED',
     createdAt: new Date(declared),
     updatedAt: events.at(-1)!.at,

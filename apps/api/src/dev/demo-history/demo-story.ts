@@ -15,7 +15,13 @@
  *   W12–W13  a holiday lull
  *   W16–W18  Risk's fraud-model rollout, with Sam and Jordan busiest
  *   W22      a database failover touching two services at once
- *   now      four active incidents in different states (ACTIVE)
+ *   now      five active incidents in different states (ACTIVE)
+ *
+ * Who does what follows the roles: Alex, the Reporter, raises a share of the
+ * incidents and Ava, the Incident Manager, confirms his suggested severity;
+ * Ava decides on every incident — its severity, its resolution, the status
+ * page — except while she is away over the holiday lull, when the Admin
+ * steps in. The Responders work them.
  *
  * Personas are named by email, as in dev-account.ts.
  */
@@ -26,6 +32,8 @@ export type Severity = 'SEV1' | 'SEV2' | 'SEV3' | 'SEV4';
 export type DemoService = 'Payment API' | 'Authentication' | 'Fraud Detection';
 
 export const ADMIN = 'admin@example.com';
+export const MANAGER = 'ava@example.com';
+export const REPORTER = 'alex@example.com';
 export const PRIYA = 'priya@example.com';
 export const SAM = 'sam@example.com';
 export const LEE = 'lee@example.com';
@@ -46,11 +54,15 @@ export const SERVICE_TEAM: Record<DemoService, DevTeam> = {
 
 /** Weeks each persona was away, inclusive: they started no responses. */
 export const AWAY: Record<string, readonly [number, number]> = {
+  [MANAGER]: [12, 13],
   [JORDAN]: [4, 5],
   [SAM]: [9, 9],
   [PRIYA]: [13, 14],
   [LEE]: [19, 20],
 };
+
+/** How often the Reporter raises an incident rather than whoever decides. */
+export const REPORTED_SHARE = 0.4;
 
 /**
  * How readily each persona picks an incident up first, relative to the norm.
@@ -968,12 +980,33 @@ export interface ActiveIncident {
   summary: string;
   updates: readonly string[];
   responses: readonly ActiveResponse[];
-  /** Minutes after the declaration, one per Admin coordination update. */
+  /** Minutes after the declaration, one per coordination update. */
   adminUpdates?: readonly number[];
+  /** Who declared it; the Incident Manager unless said. */
+  declaredBy?: string;
+  /**
+   * Still waiting for someone to decide who responds — and, for the
+   * Reporter's, to confirm the severity he suggested.
+   */
+  awaitingDecision?: boolean;
 }
 
-/** What is happening now: four incidents, each in a different state. */
+/** What is happening now: five incidents, each in a different state. */
 export const ACTIVE: readonly ActiveIncident[] = [
+  // Alex raised it minutes ago with a suggested severity; nobody has
+  // decided who responds yet.
+  {
+    service: 'Payment API',
+    severity: 'SEV3',
+    declared: 12,
+    title: 'Refund confirmations not emailed',
+    summary:
+      'Support reports customers are not receiving refund confirmation emails since this morning.',
+    updates: [],
+    responses: [],
+    declaredBy: REPORTER,
+    awaitingDecision: true,
+  },
   // Declared late yesterday; Risk has not picked it up.
   {
     service: 'Fraud Detection',
@@ -1045,7 +1078,7 @@ export const FALLBACK_UPDATES: readonly string[] = [
   'Notes are in the incident doc.',
 ];
 
-/** The Admin's coordination updates on the larger incidents. */
+/** Whoever decides: their coordination updates on the larger incidents. */
 export const ADMIN_UPDATES: readonly string[] = [
   'Status page updated; support has a holding statement for customers.',
   'Account managers for the largest affected merchants have been told.',

@@ -302,11 +302,14 @@ pnpm --filter @sentinelops/api demo:history -- --anchor=2026-09-18  # up to 00:0
 
 It writes about 75 incidents (a Payments card-network migration with a SEV1, an
 Authentication signing-key outage, a fraud-model rollout, quiet holiday weeks, and each
-persona away for a stretch) and ends with four active incidents: one nobody on Risk has
-picked up, two under investigation, and one waiting for the Admin to resolve. Every
-incident follows the application's own rules — the Admin declares, the responsible team's
-members start, post, and complete their own responses, and the Admin resolves with a
-note — and the history is checked against those rules before anything is written.
+persona away for a stretch) and ends with five active incidents: one Alex reported minutes
+ago that still needs a decision on his suggested severity, one nobody on Risk has picked
+up, two under investigation, and one waiting for Ava to resolve. Every incident follows
+the application's own rules and roles — Alex, the Reporter, raises a share of them and Ava,
+the Incident Manager, confirms his severity; Ava declares the rest, decides, and resolves
+with a note, with Dev Admin stepping in while she is away over the holidays; the
+responsible team's Responders start, post, and complete their own responses — and the
+history is checked against those rules before anything is written.
 
 What a run does, in one transaction:
 

@@ -7,7 +7,10 @@
  * DemoHistoryService refuses to write a history with any violation.
  */
 import type { DemoIncident } from './build-demo-history.js';
-import { ADMIN, TEAM_MEMBERS } from './demo-story.js';
+import { ADMIN, MANAGER, REPORTER, TEAM_MEMBERS } from './demo-story.js';
+
+/** Who decides on incidents: the Incident Manager, or the Admin in her place. */
+const DECIDERS: ReadonlySet<string> = new Set([ADMIN, MANAGER]);
 
 /** The request schemas' limits (incidents.schemas.ts). */
 const TITLE_MAX = 200;
@@ -61,30 +64,77 @@ export const checkDemoHistory = (
       fail('something happens at or after the anchor');
     }
 
-    // Declared by the Admin, first, at the incident's creation.
+    // Declared by whoever decides or by the Reporter, first, at the
+    // incident's creation, by the person it names as its declarer.
     const [declared] = events;
 
     if (
       declared?.type !== 'DECLARED' ||
-      declared.actor !== ADMIN ||
+      !(DECIDERS.has(declared.actor) || declared.actor === REPORTER) ||
+      declared.actor !== incident.declaredBy ||
       time(declared.at) !== time(incident.createdAt) ||
       events.filter((event) => event.type === 'DECLARED').length !== 1
     ) {
-      fail('not declared exactly once, first, by the Admin');
+      fail('not declared exactly once, first, by someone who may declare');
+    }
+
+    // A Reporter's suggested severity: confirmed once, by whoever decides,
+    // before anyone starts — or still waiting, with nobody chosen to respond.
+    const confirmations = events.filter(
+      (event) => event.type === 'SEVERITY_CONFIRMED',
+    );
+    const firstStarted = events.find(
+      (event) => event.type === 'RESPONSE_STARTED',
+    );
+
+    if (incident.declaredBy !== REPORTER) {
+      if (confirmations.length > 0 || !incident.severityConfirmed) {
+        fail('a severity to confirm that nobody suggested');
+      }
+    } else if (incident.severityConfirmed) {
+      const [confirmed] = confirmations;
+
+      if (
+        confirmations.length !== 1 ||
+        !DECIDERS.has(confirmed.actor) ||
+        confirmed.fromValue !== declared?.toValue ||
+        (firstStarted !== undefined &&
+          time(confirmed.at) >= time(firstStarted.at))
+      ) {
+        fail(
+          'the suggested severity is not confirmed once, before anyone starts',
+        );
+      }
+    } else if (
+      confirmations.length > 0 ||
+      incident.responseAccess !== 'PENDING' ||
+      incident.responders.length > 0
+    ) {
+      fail('a suggestion waiting for a decision that was already made');
+    }
+
+    if (
+      incident.responseAccess === 'PENDING' &&
+      incident.responders.length > 0
+    ) {
+      fail('responding before anyone decided who may');
     }
 
     if (time(incident.updatedAt) !== time(events.at(-1)!.at)) {
       fail('updatedAt is not its last change');
     }
 
-    // Severity: declared at one, changed only by the Admin, ending at the
-    // incident's own.
+    // Severity: declared at one, changed only by whoever decides, ending at
+    // the incident's own.
     let severity = declared?.toValue;
 
     for (const event of events) {
-      if (event.type === 'SEVERITY_CHANGED') {
-        if (event.actor !== ADMIN || event.fromValue !== severity) {
-          fail('a severity change is not the Admin changing the current one');
+      if (
+        event.type === 'SEVERITY_CHANGED' ||
+        event.type === 'SEVERITY_CONFIRMED'
+      ) {
+        if (!DECIDERS.has(event.actor) || event.fromValue !== severity) {
+          fail('a severity change is not a decider changing the current one');
         }
 
         severity = event.toValue;
@@ -142,7 +192,7 @@ export const checkDemoHistory = (
       }
     }
 
-    // Nobody else starts, completes, or posts, but the Admin may post.
+    // Nobody else starts, completes, or posts, but whoever decides may post.
     for (const event of events) {
       const responding = seen.has(event.actor);
 
@@ -151,14 +201,14 @@ export const checkDemoHistory = (
           event.type === 'RESPONSE_COMPLETED' ||
           event.type === 'UPDATE') &&
         !responding &&
-        !(event.type === 'UPDATE' && event.actor === ADMIN)
+        !(event.type === 'UPDATE' && DECIDERS.has(event.actor))
       ) {
         fail(`${event.type} by ${event.actor}, who is not responding`);
       }
     }
 
     // Status: DECLARED → INVESTIGATING on the first start, a millisecond
-    // later, by that responder → RESOLVED by the Admin, last.
+    // later, by that responder → RESOLVED by whoever decides, last.
     const statusChanges = events.filter(
       (event) => event.type === 'STATUS_CHANGED',
     );
@@ -191,14 +241,14 @@ export const checkDemoHistory = (
       if (
         resolution.length !== 1 ||
         resolution[0] !== last ||
-        last.actor !== ADMIN ||
+        !DECIDERS.has(last.actor) ||
         last.fromValue !== 'INVESTIGATING' ||
         incident.resolvedAt === null ||
         time(last.at) !== time(incident.resolvedAt) ||
         incident.resolution === null ||
         last.message !== incident.resolution
       ) {
-        fail('the resolution is not the Admin resolving, last, with its note');
+        fail('the resolution is not a decider resolving, last, with its note');
       }
 
       if (incident.responders.some((r) => r.completedAt === null)) {

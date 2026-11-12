@@ -1,7 +1,16 @@
 import { buildDemoHistory } from './build-demo-history.js';
 import type { DemoIncident } from './build-demo-history.js';
 import { checkDemoHistory } from './check-demo-history.js';
-import { ADMIN, AWAY, JORDAN, LEE, PRIYA, SAM } from './demo-story.js';
+import {
+  ADMIN,
+  AWAY,
+  JORDAN,
+  LEE,
+  MANAGER,
+  PRIYA,
+  REPORTER,
+  SAM,
+} from './demo-story.js';
 
 const DAY = 24 * 60 * 60 * 1000;
 const WEEK = 7 * DAY;
@@ -69,16 +78,29 @@ describe('buildDemoHistory', () => {
     },
   );
 
-  it('should end with four active incidents, each in its own state', () => {
+  it('should end with five active incidents, each in its own state', () => {
     const active = buildDemoHistory(ANCHOR).filter(
       (incident) => incident.status !== 'RESOLVED',
     );
     const investigating = (incident: DemoIncident) =>
       incident.responders.filter((r) => r.completedAt === null).length;
 
-    expect(active).toHaveLength(4);
-    // Nobody has started.
-    expect(active.filter((i) => i.status === 'DECLARED')).toHaveLength(1);
+    expect(active).toHaveLength(5);
+    // Nobody has started: one open to its team, one still waiting for a
+    // decision on the Reporter's suggested severity.
+    expect(
+      active.filter(
+        (i) => i.status === 'DECLARED' && i.responseAccess === 'OPEN',
+      ),
+    ).toHaveLength(1);
+    expect(
+      active.filter(
+        (i) =>
+          i.responseAccess === 'PENDING' &&
+          !i.severityConfirmed &&
+          i.declaredBy === REPORTER,
+      ),
+    ).toHaveLength(1);
     // Everyone has finished: waiting on the Admin.
     expect(
       active.filter(
@@ -89,6 +111,29 @@ describe('buildDemoHistory', () => {
     expect(
       active.some((i) => i.responders.length === 2 && investigating(i) === 1),
     ).toBe(true);
+  });
+
+  it('should have the Reporter raise a share, the Incident Manager decide, and the Admin step in while she is away', () => {
+    const incidents = buildDemoHistory(ANCHOR);
+    const resolved = incidents.filter((i) => i.status === 'RESOLVED');
+    const reported = resolved.filter((i) => i.declaredBy === REPORTER);
+    const resolver = (i: DemoIncident) => i.activity.at(-1)!.actor;
+
+    expect(reported.length).toBeGreaterThan(resolved.length * 0.25);
+    expect(reported.length).toBeLessThan(resolved.length * 0.55);
+    // Each of his confirmed, once, by whoever decided.
+    for (const incident of reported) {
+      expect(
+        incident.activity.filter((e) => e.type === 'SEVERITY_CONFIRMED'),
+      ).toHaveLength(1);
+    }
+    expect(
+      resolved.filter((i) => resolver(i) === MANAGER).length,
+    ).toBeGreaterThan(resolved.length * 0.8);
+    expect(resolved.some((i) => resolver(i) === ADMIN)).toBe(true);
+    // Neither works a response.
+    expect(responsesOf(incidents, MANAGER)).toEqual([]);
+    expect(responsesOf(incidents, REPORTER)).toEqual([]);
   });
 
   it('should give every member responses, and the Admin none', () => {
