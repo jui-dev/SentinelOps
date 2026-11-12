@@ -5,6 +5,7 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
+  Ip,
   Post,
   Req,
   Res,
@@ -105,9 +106,10 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async login(
     @Body({ schema: loginSchema }) body: LoginRequest,
+    @Ip() ip: string,
     @Res({ passthrough: true }) res: Response,
   ): Promise<AuthenticatedResponse> {
-    const { response, refresh } = await this.auth.login(body);
+    const { response, refresh } = await this.auth.login(body, { ip });
 
     setRefreshCookie(res, refresh.token, refresh.expiresAt, this.config);
 

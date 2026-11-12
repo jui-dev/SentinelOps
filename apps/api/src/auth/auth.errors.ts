@@ -4,6 +4,8 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 
+import { TooManyRequestsException } from '../common/too-many-requests.exception.js';
+
 /**
  * The machine-readable `code` values this module puts on the error contract.
  *
@@ -21,6 +23,7 @@ export const AuthErrorCode = {
   UNAUTHENTICATED: 'UNAUTHENTICATED',
   INVALID_CURRENT_PASSWORD: 'INVALID_CURRENT_PASSWORD',
   PASSWORD_UNCHANGED: 'PASSWORD_UNCHANGED',
+  TOO_MANY_ATTEMPTS: 'TOO_MANY_ATTEMPTS',
 } as const;
 
 export type AuthErrorCode = (typeof AuthErrorCode)[keyof typeof AuthErrorCode];
@@ -112,3 +115,21 @@ export const passwordUnchanged = (): BadRequestException =>
     },
     { errorCode: AuthErrorCode.PASSWORD_UNCHANGED },
   );
+
+/**
+ * Too many wrong passwords: from one email address, from one network address,
+ * or for one signed-in user's current password. The password is not checked
+ * while this lasts, right or wrong. Says how long in whole minutes; the exact
+ * seconds are the response's `Retry-After` header.
+ */
+export const tooManyAttempts = (
+  retryAfterSeconds: number,
+): TooManyRequestsException => {
+  const minutes = Math.ceil(retryAfterSeconds / 60);
+
+  return new TooManyRequestsException(
+    `Too many attempts. Try again in ${minutes} ${minutes === 1 ? 'minute' : 'minutes'}.`,
+    retryAfterSeconds,
+    AuthErrorCode.TOO_MANY_ATTEMPTS,
+  );
+};

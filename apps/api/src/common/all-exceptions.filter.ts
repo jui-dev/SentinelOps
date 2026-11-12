@@ -12,6 +12,7 @@ import type {
   ApiErrorResponse,
   ValidationErrorDetail,
 } from './api-error.contract.js';
+import { TooManyRequestsException } from './too-many-requests.exception.js';
 
 /**
  * Renders a status code as its canonical reason phrase by reversing the
@@ -102,6 +103,15 @@ export class AllExceptionsFilter implements ExceptionFilter {
     if (httpAdapter.isHeadersSent(response)) {
       httpAdapter.end(response);
       return;
+    }
+
+    // A 429 says how long to wait, in the header clients and proxies read.
+    if (exception instanceof TooManyRequestsException) {
+      httpAdapter.setHeader(
+        response,
+        'Retry-After',
+        String(exception.retryAfterSeconds),
+      );
     }
 
     httpAdapter.reply(response, body, body.statusCode);

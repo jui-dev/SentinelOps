@@ -1038,6 +1038,21 @@ Login answers identically for an unknown email, a soft-deleted account, an accou
 password, and a wrong password. When no user is found it still verifies against a dummy
 hash, so response timing does not disclose whether an address exists.
 
+**Guessing is limited.** Five wrong passwords for one email address within fifteen minutes,
+or fifty from one network address, answer `429 TOO_MANY_ATTEMPTS` — "Too many attempts. Try
+again in 15 minutes." — with the exact wait in the `Retry-After` header. While that lasts,
+the password is not even checked, so a right guess cannot slip through. An email address is
+counted whether or not an account has it, so a block reveals nothing; a right password
+clears its count. Changing one's own password is limited the same way: five wrong current
+passwords in fifteen minutes.
+
+The counts live in the API process's memory
+([`attempt-limiter.ts`](apps/api/src/auth/attempt-limiter.ts)), which is right for one
+instance; several instances would each count on their own, and moving the counts to the
+database or Redis is a change to that file alone. The network address is Express's
+`req.ip`: behind a reverse proxy, set Express's `trust proxy` so it is the client's and not
+the proxy's.
+
 ### The current user
 
 `JwtAuthGuard` records the verified user id in the same `AsyncLocalStorage` context that

@@ -149,6 +149,22 @@ describe("LoginForm", () => {
     expect(navigation.replace).not.toHaveBeenCalled();
   });
 
+  it("says how long to wait after too many wrong passwords", async () => {
+    withLogin(() =>
+      apiError(429, "TOO_MANY_ATTEMPTS", {
+        message: "Too many attempts. Try again in 15 minutes.",
+      }),
+    );
+    renderWithSession(<LoginForm />);
+
+    await submit("ada@example.com", "another guess");
+
+    expect(
+      (await screen.findByRole("alert")).textContent,
+    ).toContain("Too many attempts. Try again in 15 minutes.");
+    expect(navigation.replace).not.toHaveBeenCalled();
+  });
+
   it("puts validation messages on their fields", async () => {
     withLogin(() =>
       apiError(400, undefined, {

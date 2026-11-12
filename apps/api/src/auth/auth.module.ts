@@ -9,6 +9,7 @@ import { authConfig } from '../config/configuration.js';
 import { DatabaseModule } from '../database/database.module.js';
 import { InvitationsModule } from '../invitations/invitations.module.js';
 import { AuthController } from './auth.controller.js';
+import { AttemptLimiter } from './attempt-limiter.js';
 import { AuthService } from './auth.service.js';
 import { JwtAuthGuard } from './jwt-auth.guard.js';
 import { PasswordService } from './password.service.js';
@@ -36,6 +37,7 @@ import { TokenService } from './token.service.js';
   ],
   controllers: [AuthController],
   providers: [
+    AttemptLimiter,
     AuthService,
     PasswordService,
     TokenService,

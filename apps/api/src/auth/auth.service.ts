@@ -16,8 +16,10 @@ import {
   invalidCurrentPassword,
   organizationSlugTaken,
   passwordUnchanged,
+  tooManyAttempts,
   unauthenticated,
 } from './auth.errors.js';
+import { ATTEMPT_POLICIES, AttemptLimiter } from './attempt-limiter.js';
 import { toCurrentUserResponse, toUserResponse } from './auth.responses.js';
 import type {
   ChangePasswordRequest,
@@ -66,6 +68,7 @@ export class AuthService {
     private readonly tokens: TokenService,
     private readonly refreshTokens: RefreshTokenService,
     private readonly invitations: InvitationsService,
+    private readonly attempts: AttemptLimiter,
   ) {}
 
   /**
@@ -198,8 +201,42 @@ export class AuthService {
    * account, an account with no password set, and a wrong password all produce
    * one 401 with one message. Telling them apart would turn the endpoint into
    * an oracle for which addresses have accounts.
+   *
+   * Guessing is limited (see AttemptLimiter): too many failures for one email
+   * address, or from one network address, answer 429 TOO_MANY_ATTEMPTS
+   * without checking the password at all, until the window passes. An email
+   * is counted whether or not an account has it, so a block reveals nothing
+   * either. A correct password clears its email's count.
    */
-  async login(request: LoginRequest): Promise<AuthenticationResult> {
+  async login(
+    request: LoginRequest,
+    client: { ip?: string } = {},
+    now: number = Date.now(),
+  ): Promise<AuthenticationResult> {
+    const keys = [
+      { key: `email:${request.email}`, policy: ATTEMPT_POLICIES.email },
+      ...(client.ip
+        ? [{ key: `ip:${client.ip}`, policy: ATTEMPT_POLICIES.ip }]
+        : []),
+    ];
+    const wait = Math.max(
+      ...keys.map(({ key, policy }) =>
+        this.attempts.retryAfter(key, policy, now),
+      ),
+    );
+
+    if (wait > 0) {
+      throw tooManyAttempts(wait);
+    }
+
+    const failed = () => {
+      for (const { key, policy } of keys) {
+        this.attempts.fail(key, policy, now);
+      }
+
+      return invalidCredentials();
+    };
+
     const user = await this.prisma.user.findFirst({
       // findFirst rather than findUnique: deletedAt is not part of the unique
       // index, and a soft-deleted account must not be able to log in. This is
@@ -215,12 +252,14 @@ export class AuthService {
       // is an account oracle that needs no valid credentials at all.
       await this.passwords.verifyDummy(request.password);
 
-      throw invalidCredentials();
+      throw failed();
     }
 
     if (!(await this.passwords.verify(user.passwordHash, request.password))) {
-      throw invalidCredentials();
+      throw failed();
     }
+
+    this.attempts.clear(`email:${request.email}`);
 
     const { passwordHash: _passwordHash, ...safe } = user;
 
@@ -249,6 +288,18 @@ export class AuthService {
     request: ChangePasswordRequest,
     now: Date = new Date(),
   ): Promise<AuthenticationResult> {
+    // Guessing the current password is limited as signing in is.
+    const attemptKey = `password:${userId}`;
+    const wait = this.attempts.retryAfter(
+      attemptKey,
+      ATTEMPT_POLICIES.password,
+      now.getTime(),
+    );
+
+    if (wait > 0) {
+      throw tooManyAttempts(wait);
+    }
+
     const user = await this.prisma.user.findFirst({
       where: { id: userId, deletedAt: null },
       select: { ...userSelection, passwordHash: true },
@@ -263,8 +314,12 @@ export class AuthService {
       !user.passwordHash ||
       !(await this.passwords.verify(user.passwordHash, request.currentPassword))
     ) {
+      this.attempts.fail(attemptKey, ATTEMPT_POLICIES.password, now.getTime());
+
       throw invalidCurrentPassword();
     }
+
+    this.attempts.clear(attemptKey);
 
     if (request.newPassword === request.currentPassword) {
       throw passwordUnchanged();
