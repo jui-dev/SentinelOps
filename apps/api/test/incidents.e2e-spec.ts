@@ -68,6 +68,8 @@ const incidentRow = {
   },
   createdBy: { id: USER_ID, name: 'Ada Lovelace' },
   responders: [],
+  // The latest timeline entry, which a list reads as its last update: none.
+  activity: [],
 };
 
 const activityRow = {
