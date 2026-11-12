@@ -84,6 +84,30 @@ export const queryKeys = {
     ["organization", organizationId, "teams", teamId, "members"] as const,
   services: (organizationId: string) =>
     ["organization", organizationId, "services"] as const,
+  /**
+   * The activity log: every page and entry beneath one prefix. Nothing the
+   * Admin does here changes it; what they do elsewhere adds to it, so it is
+   * read fresh whenever the page opens.
+   */
+  activity: (organizationId: string) =>
+    ["organization", organizationId, "activity"] as const,
+  activityList: (
+    organizationId: string,
+    view: "changes" | "security",
+    filters: Record<string, string | undefined> = {},
+  ) =>
+    [
+      "organization",
+      organizationId,
+      "activity",
+      "list",
+      view,
+      Object.fromEntries(
+        Object.entries(filters).filter(([, value]) => value !== undefined),
+      ),
+    ] as const,
+  activityEntry: (organizationId: string, entryId: string) =>
+    ["organization", organizationId, "activity", "entry", entryId] as const,
   /** Every known issue in the organization; each service's list sits under it. */
   knownIssues: (organizationId: string) =>
     ["organization", organizationId, "known-issues"] as const,

@@ -264,6 +264,40 @@ describe("WorkspaceShell", () => {
       ]);
     });
 
+    it("gives the Admin an Audit section holding the Activity log, after Response, and nobody else", async () => {
+      at("/orgs/acme-ops/activity", "acme-ops");
+      api({
+        permissions: [...FULL, "incidents:read", "incidents:read-all", "activity:read"],
+      });
+
+      const { unmount } = renderShell();
+
+      await within(primaryNav()).findByRole("link", { name: "Activity log" });
+
+      const log = within(sectionOf("Audit")).getByRole("link", {
+        name: "Activity log",
+      });
+
+      expect(log.getAttribute("href")).toBe("/orgs/acme-ops/activity");
+      expect(log.getAttribute("aria-current")).toBe("page");
+      expect(
+        within(primaryNav())
+          .getAllByRole("link")
+          .map((link) => link.textContent)
+          .slice(-3),
+      ).toEqual(["Incident history", "Activity log", "Settings"]);
+
+      unmount();
+      api({ permissions: [...FULL, "incidents:read", "incidents:read-all"] });
+      renderShell();
+
+      await within(primaryNav()).findByRole("link", { name: "Incidents" });
+      expect(within(primaryNav()).queryByText("Audit")).toBeNull();
+      expect(
+        within(primaryNav()).queryByRole("link", { name: "Activity log" }),
+      ).toBeNull();
+    });
+
     it("offers Incidents under Response, only when the API reports incidents:read", async () => {
       at("/orgs/acme-ops/incidents/42", "acme-ops");
       api({ permissions: [...READ, "incidents:read", "services:read"] });

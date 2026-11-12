@@ -194,6 +194,16 @@
   --color-role-responder-line: light-dark(#a6d9cc, #24564c);
 
   /*
+   * Activity log areas — which part of the organization a change touched.
+   * A small icon and label in its colour; the label always says it too.
+   */
+  --color-area-people: light-dark(#2559a6, #9cc2ea);
+  --color-area-teams: light-dark(#0f6e5e, #4cc3ae);
+  --color-area-services: light-dark(#94560f, #e6a35a);
+  --color-area-known-issues: light-dark(#6b4bb8, #b79cf0);
+  --color-area-organization: light-dark(#4c5567, #a6acb6);
+
+  /*
    * Analysis — the last thirty days, read two ways. Each view has its own
    * character, so the two never read as one chart, nor as the activity
    * calendar below them:

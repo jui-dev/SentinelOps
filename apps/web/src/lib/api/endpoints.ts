@@ -5,6 +5,9 @@ import {
   sessionRequest,
 } from "./client";
 import type {
+  ActivityEntryDetailResponse,
+  ActivityFilters,
+  ActivityPageResponse,
   AuthenticatedResponse,
   ChangePasswordRequest,
   CreateInvitationRequest,
@@ -260,6 +263,37 @@ const servicePath = (organizationId: string, serviceId: string) =>
 
 export const listServices = (organizationId: string) =>
   authenticatedRequest<ServiceResponse[]>(servicesPath(organizationId));
+
+const activityPath = (organizationId: string) =>
+  `${organizationPath(organizationId)}/activity`;
+
+/**
+ * A page of the activity log, newest first: the organization's changes, or
+ * its sign-ins. `cursor` is the previous page's `nextCursor`.
+ */
+export const listActivity = (
+  organizationId: string,
+  view: "changes" | "security",
+  filters: ActivityFilters = {},
+  cursor?: string,
+) => {
+  const query = new URLSearchParams({ view });
+
+  for (const [key, value] of Object.entries(filters)) {
+    if (value) query.set(key, value);
+  }
+  if (cursor) query.set("cursor", cursor);
+
+  return authenticatedRequest<ActivityPageResponse>(
+    `${activityPath(organizationId)}?${query}`,
+  );
+};
+
+/** One entry in full, with its history and what it is about now. */
+export const getActivityEntry = (organizationId: string, entryId: string) =>
+  authenticatedRequest<ActivityEntryDetailResponse>(
+    `${activityPath(organizationId)}/${encodeURIComponent(entryId)}`,
+  );
 
 const knownIssuesPath = (organizationId: string) =>
   `${organizationPath(organizationId)}/known-issues`;

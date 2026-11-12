@@ -5,6 +5,7 @@ import {
   History,
   LayoutPanelTop,
   Network,
+  ScrollText,
   Settings2,
   Siren,
   Users,
@@ -66,7 +67,8 @@ export const organizationPath = (slug: string) =>
   `/orgs/${encodeURIComponent(slug)}`;
 
 /**
- * Home first, then how the organization is set up, then the work it does.
+ * Home first, then how the organization is set up, then the work it does,
+ * then — for the Admin — the record of what was done.
  *
  * Organization lists its pages in the order an organization is built:
  * teams first, because every service needs an owner team; then the members
@@ -166,6 +168,22 @@ export const ORGANIZATION_NAVIGATION: NavSection[] = [
         match: "prefix",
         // One reading of the whole organization, as the page itself requires.
         requires: Permission.INCIDENTS_READ_ALL,
+      },
+    ],
+  },
+  {
+    // Watching the organization rather than working in it: the Admin's.
+    id: "audit",
+    label: "Audit",
+    placement: "main",
+    items: [
+      {
+        id: "activity",
+        label: "Activity log",
+        icon: ScrollText,
+        href: (slug) => `${organizationPath(slug)}/activity`,
+        match: "prefix",
+        requires: Permission.ACTIVITY_READ,
       },
     ],
   },

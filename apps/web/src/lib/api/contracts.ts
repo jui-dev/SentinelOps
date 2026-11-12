@@ -1154,7 +1154,120 @@ export const Permission = {
   RESPONSES_WORK: "responses:work",
   INCIDENT_ANALYSES_WRITE: "incident-analyses:write",
   NOTIFICATIONS_READ: "notifications:read",
+  /** The organization's activity log: the Admin's alone. */
+  ACTIVITY_READ: "activity:read",
 } as const;
+
+// ── The activity log ───────────────────────────────────────────────────────
+
+/** Which part of the organization an entry is about. */
+export type ActivityArea =
+  | "PEOPLE"
+  | "TEAMS"
+  | "SERVICES"
+  | "KNOWN_ISSUES"
+  | "ORGANIZATION"
+  | "SECURITY";
+
+/** The areas of the Changes view: everything but sign-ins and passwords. */
+export type ChangeArea = Exclude<ActivityArea, "SECURITY">;
+
+export type ActivityAction =
+  | "MEMBER_ADDED"
+  | "ROLE_CHANGED"
+  | "PASSWORD_RESET"
+  | "INVITATION_SENT"
+  | "INVITATION_REVOKED"
+  | "INVITATION_ACCEPTED"
+  | "TEAM_CREATED"
+  | "TEAM_UPDATED"
+  | "TEAM_DELETED"
+  | "TEAM_MEMBER_ADDED"
+  | "TEAM_MEMBER_REMOVED"
+  | "SERVICE_CREATED"
+  | "SERVICE_UPDATED"
+  | "SERVICE_DELETED"
+  | "KNOWN_ISSUE_CREATED"
+  | "KNOWN_ISSUE_UPDATED"
+  | "KNOWN_ISSUE_MERGED"
+  | "ORGANIZATION_UPDATED"
+  | "SIGNED_IN"
+  | "SIGN_IN_FAILED"
+  | "SIGN_IN_BLOCKED"
+  | "PASSWORD_CHANGED";
+
+export type ActivitySubjectType =
+  | "MEMBERSHIP"
+  | "INVITATION"
+  | "TEAM"
+  | "SERVICE"
+  | "KNOWN_ISSUE"
+  | "ORGANIZATION";
+
+/**
+ * One field an entry changed, as it was at the time: enum values as the API
+ * spells them, names as they were spelled. Null for a side that did not exist.
+ */
+export interface ActivityChange {
+  field: string;
+  before: string | null;
+  after: string | null;
+}
+
+export interface ActivityClient {
+  ipAddress: string | null;
+  /** Described for a person — "Chrome on Windows" — or null. */
+  browser: string | null;
+}
+
+export interface ActivityEntryResponse {
+  id: string;
+  /** A short code to point at the entry by: ACT-7F3K-21AB. */
+  reference: string;
+  action: ActivityAction;
+  area: ActivityArea;
+  occurredAt: string;
+  actor: { id: string; name: string };
+  subject: { type: ActivitySubjectType; id: string; name: string } | null;
+  changes: ActivityChange[];
+  client: ActivityClient | null;
+  /** Wrong passwords tried one after another, folded into this row. */
+  repeat: { count: number; firstAt: string } | null;
+}
+
+export interface ActivityPageResponse {
+  entries: ActivityEntryResponse[];
+  /** The older entries; null on the last page. */
+  nextCursor: string | null;
+  /** Changes view only: how many each area holds under the other filters. */
+  areaCounts: Record<ChangeArea, number> | null;
+  /** Security view only. */
+  securityTotals: {
+    signIns: number;
+    failedSignIns: number;
+    blocked: number;
+  } | null;
+}
+
+export interface ActivityEntryDetailResponse extends ActivityEntryResponse {
+  /** The latest earlier entries about the same subject, newest first. */
+  history: ActivityEntryResponse[];
+  /** Whether the subject still exists, and its slug where its page has one. */
+  subjectNow: { exists: boolean; slug: string | null } | null;
+  /** Sign-in events only. */
+  attempts: string[] | null;
+  next: ActivityEntryResponse | null;
+  usualClient: ActivityClient | null;
+}
+
+/** What the log is narrowed to; every one optional. */
+export interface ActivityFilters {
+  area?: ChangeArea;
+  actorId?: string;
+  q?: string;
+  /** On or after this instant. */
+  since?: string;
+}
 
 /** Machine-readable error codes this client branches on. */
 export const ApiErrorCode = {
@@ -1222,6 +1335,7 @@ export const ApiErrorCode = {
   ANALYSIS_SECTION_NOT_WRITTEN: "ANALYSIS_SECTION_NOT_WRITTEN",
   RESPONSE_NOT_OPEN: "RESPONSE_NOT_OPEN",
   NOT_ASSIGNED_TO_INCIDENT: "NOT_ASSIGNED_TO_INCIDENT",
+  ACTIVITY_ENTRY_NOT_FOUND: "ACTIVITY_ENTRY_NOT_FOUND",
 } as const;
 
 export interface ValidationErrorDetail {

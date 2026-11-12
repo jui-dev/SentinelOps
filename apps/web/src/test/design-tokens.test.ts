@@ -91,6 +91,18 @@ for (const tone of ["danger", "warning", "success", "info"]) {
 for (const role of ["admin", "manager", "reporter", "responder"]) {
   each([`role-${role}-text`], [`role-${role}-subtle`, "canvas", "surface", "sunken"], TEXT);
 }
+// Activity log areas: each area's name, on the table and its hovered row.
+each(
+  [
+    "area-people",
+    "area-teams",
+    "area-services",
+    "area-known-issues",
+    "area-organization",
+  ],
+  ["canvas", "surface", "hover"],
+  TEXT,
+);
 // The situation strip.
 each(["ink-fg", "ink-muted"], ["ink", "ink-raised", "ink-hover"], TEXT);
 each(["ink-accent"], ["ink", "ink-raised"], UI);
