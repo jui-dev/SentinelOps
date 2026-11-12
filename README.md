@@ -1066,6 +1066,19 @@ follow:
 - **Every log line emitted after the guard runs carries `userId`**, with no call site
   passing it along. See [Request correlation](#request-correlation).
 
+### Security headers
+
+Every response — a success, an error, or a path that does not exist — carries a short,
+strict set of headers from
+[`security-headers.middleware.ts`](apps/api/src/common/security-headers.middleware.ts):
+`X-Content-Type-Options: nosniff`, a `Content-Security-Policy` that allows nothing
+(`default-src 'none'; frame-ancestors 'none'`) and `X-Frame-Options: DENY`, as the API only
+ever answers JSON; `Referrer-Policy: no-referrer`; `Cache-Control: no-store`, since responses
+carry tokens and private data; `Strict-Transport-Security` for a year (browsers ignore it
+over plain HTTP and on localhost); and `Cross-Origin-Opener-Policy: same-origin`.
+`X-Powered-By` is removed. Written out rather than taken from a package whose defaults are
+tuned for HTML pages.
+
 ### Responses never carry persistence internals
 
 No Prisma model is returned from a controller, and no response is built by spreading one.

@@ -5,11 +5,12 @@ import { APP_FILTER, APP_PIPE } from '@nestjs/core';
 import { HttpLoggerMiddleware } from '../logger/http-logger.middleware.js';
 import { AllExceptionsFilter } from './all-exceptions.filter.js';
 import { RequestIdMiddleware } from './request-id.middleware.js';
+import { SecurityHeadersMiddleware } from './security-headers.middleware.js';
 import { validationExceptionFactory } from './validation-exception.factory.js';
 
 /**
- * The API's request/response conventions, in one place: correlation ids,
- * schema validation, and the single error contract.
+ * The API's request/response conventions, in one place: security headers,
+ * correlation ids, schema validation, and the single error contract.
  *
  * These are registered as APP_PIPE / APP_FILTER providers rather than through
  * `useGlobalPipes` / `useGlobalFilters` in main.ts, so that anything importing
@@ -46,8 +47,15 @@ export class CommonModule implements NestModule {
     // legacy-route deprecation warning on every boot once a global prefix is
     // set — the path it converts is '/api/v1/*', not the bare all-wildcard it
     // stays quiet about.
+    //
+    // SecurityHeadersMiddleware first of all, so every response carries the
+    // headers whatever happens after it.
     consumer
-      .apply(RequestIdMiddleware, HttpLoggerMiddleware)
+      .apply(
+        SecurityHeadersMiddleware,
+        RequestIdMiddleware,
+        HttpLoggerMiddleware,
+      )
       .forRoutes('{*path}');
   }
 }
