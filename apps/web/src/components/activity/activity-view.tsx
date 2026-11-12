@@ -11,7 +11,6 @@ import {
 import { roleMeta } from "@/components/roles/role-meta";
 import { ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { cx } from "@/components/ui/cx";
 import { EmptyNote } from "@/components/ui/empty-state";
 import { Field } from "@/components/ui/field";
 import { PageBody, PageHeader } from "@/components/ui/page";
@@ -178,6 +177,26 @@ function ChangesLog() {
             ))}
           </Select>
         </div>
+        <div className="w-48">
+          <Select
+            label="Area"
+            value={area ?? ""}
+            onChange={(event) =>
+              setArea((event.target.value || undefined) as ChangeArea | undefined)
+            }
+          >
+            <option value="">
+              {total === null ? "All areas" : `All areas (${total})`}
+            </option>
+            {CHANGE_AREAS.map((each) => (
+              <option key={each} value={each}>
+                {counts
+                  ? `${AREA_META[each].label} (${counts[each]})`
+                  : AREA_META[each].label}
+              </option>
+            ))}
+          </Select>
+        </div>
         <div className="w-44">
           <Select
             label="Period"
@@ -196,25 +215,6 @@ function ChangesLog() {
             ))}
           </Select>
         </div>
-      </div>
-
-      <div role="group" aria-label="Area" className="flex flex-wrap gap-2">
-        <AreaChip
-          label="All areas"
-          count={total}
-          pressed={area === undefined}
-          onClick={() => setArea(undefined)}
-        />
-        {CHANGE_AREAS.map((each) => (
-          <AreaChip
-            key={each}
-            label={AREA_META[each].label}
-            swatch={AREA_META[each].swatch}
-            count={counts?.[each] ?? null}
-            pressed={area === each}
-            onClick={() => setArea(each)}
-          />
-        ))}
       </div>
 
       {log.isError && <ErrorAlert error={log.error} />}
@@ -312,41 +312,6 @@ function ChangesLog() {
         />
       )}
     </div>
-  );
-}
-
-function AreaChip({
-  label,
-  swatch,
-  count,
-  pressed,
-  onClick,
-}: {
-  label: string;
-  swatch?: string;
-  count: number | null;
-  pressed: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-pressed={pressed}
-      aria-label={count === null ? label : `${label}, ${count}`}
-      onClick={onClick}
-      className={cx(
-        "inline-flex h-8 items-center gap-2 rounded-full border px-3 text-sm transition-colors duration-(--duration-fast) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
-        pressed
-          ? "border-accent-line bg-accent-subtle font-semibold text-accent-text"
-          : "border-line bg-surface text-fg-muted hover:bg-hover hover:text-fg",
-      )}
-    >
-      {swatch && (
-        <span aria-hidden="true" className={cx("size-2 rounded-xs", swatch)} />
-      )}
-      {label}
-      {count !== null && <span className="numeric text-xs opacity-80">{count}</span>}
-    </button>
   );
 }
 

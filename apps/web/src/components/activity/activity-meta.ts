@@ -43,43 +43,37 @@ export const CHANGE_AREAS: readonly ChangeArea[] = [
 
 export const AREA_META: Record<
   ActivityArea,
-  { label: string; icon: LucideIcon; text: string; swatch: string }
+  { label: string; icon: LucideIcon; text: string }
 > = {
   PEOPLE: {
     label: "People",
     icon: Users,
     text: "text-area-people",
-    swatch: "bg-area-people",
   },
   TEAMS: {
     label: "Teams",
     icon: Network,
     text: "text-area-teams",
-    swatch: "bg-area-teams",
   },
   SERVICES: {
     label: "Services",
     icon: Boxes,
     text: "text-area-services",
-    swatch: "bg-area-services",
   },
   KNOWN_ISSUES: {
     label: "Known issues",
     icon: BookMarked,
     text: "text-area-known-issues",
-    swatch: "bg-area-known-issues",
   },
   ORGANIZATION: {
     label: "Organization",
     icon: Building2,
     text: "text-area-organization",
-    swatch: "bg-area-organization",
   },
   SECURITY: {
     label: "Security",
     icon: ShieldCheck,
     text: "text-fg-muted",
-    swatch: "bg-fg-muted",
   },
 };
 

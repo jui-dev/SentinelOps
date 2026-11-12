@@ -255,9 +255,18 @@ describe("activity log", () => {
       rows.find((row) => row.textContent?.includes("Added the member"))?.textContent,
     ).toMatch(/As a Responder/);
 
-    // Each area's button says how many it holds.
-    expect(screen.getByRole("button", { name: "All areas, 3" }).getAttribute("aria-pressed")).toBe("true");
-    expect(screen.getByRole("button", { name: "People, 2" })).toBeDefined();
+    // Each area in the filter says how many it holds.
+    const areas = screen.getByLabelText("Area") as HTMLSelectElement;
+
+    expect(areas.value).toBe("");
+    expect([...areas.options].map((option) => option.textContent)).toEqual([
+      "All areas (3)",
+      "People (2)",
+      "Teams (0)",
+      "Services (1)",
+      "Known issues (0)",
+      "Organization (0)",
+    ]);
     expect(screen.getByText("Showing 3 changes from the last 7 days")).toBeDefined();
     await expectNoAxeViolations(document.body);
   });
@@ -275,7 +284,7 @@ describe("activity log", () => {
     expect(first.get("view")).toBe("changes");
     expect(Date.parse(first.get("since") ?? "")).toBeLessThan(Date.now() - 6 * 24 * 3_600_000);
 
-    await user.click(screen.getByRole("button", { name: /^Services/ }));
+    await user.selectOptions(screen.getByLabelText("Area"), "SERVICES");
     await waitFor(() => expect(queries(requests).at(-1)?.get("area")).toBe("SERVICES"));
 
     await user.selectOptions(screen.getByLabelText("Done by"), "Sam Okafor");
