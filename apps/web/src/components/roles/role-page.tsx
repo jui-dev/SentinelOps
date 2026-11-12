@@ -21,7 +21,13 @@ import {
   rolesHref,
 } from "./role-content";
 import { RoleBadge, ROLE_META } from "./role-meta";
-import { RoleIcon, SectionHeading, peopleCount, useRoles } from "./roles-view";
+import {
+  PANEL,
+  RoleIcon,
+  SectionHeading,
+  peopleCount,
+  useRoles,
+} from "./roles-view";
 
 /** The four roles as tabs, the one shown marked as the current page. */
 function RoleTabs({ shown }: { shown: Role }) {
@@ -188,7 +194,7 @@ export function RolePage() {
         </header>
       </div>
 
-      <section aria-labelledby="when-h" className="flex flex-col gap-6">
+      <section aria-labelledby="when-h" className={cx(PANEL, "gap-6")}>
         <SectionHeading
           id="when-h"
           title={`When ${/^[AEIOU]/.test(meta.label) ? "an" : "a"} ${meta.label} acts`}
@@ -205,7 +211,7 @@ export function RolePage() {
               <span
                 aria-hidden="true"
                 className={cx(
-                  "absolute top-0 left-0 size-3.5 rounded-full border-2 ring-4 ring-canvas",
+                  "absolute top-0 left-0 size-3.5 rounded-full border-2 ring-4 ring-rail-top",
                   meta.tone.line,
                   meta.tone.subtle,
                 )}
