@@ -10,11 +10,20 @@ import { cx } from "@/components/ui/cx";
 import { DialogActions, FormDialog } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 import { LocalDateTime, useMinuteClock } from "@/components/ui/timestamp";
-import type { ActivityEntryResponse } from "@/lib/api/contracts";
+import { Status } from "@/components/ui/status";
+import type {
+  ActivityEntryDetailResponse,
+  ActivityEntryResponse,
+} from "@/lib/api/contracts";
 
 import {
   ACTION_TITLE,
   AREA_META,
+  clientText,
+  clockTime,
+  isUnusualClient,
+  resultOf,
+  securityNote,
   fieldLabel,
   formatValue,
   sentenceText,
@@ -75,6 +84,20 @@ export function EntryDetails({
   const now = useMinuteClock();
   const full = details.data;
   const link = full ? subjectLink(orgSlug, full) : null;
+
+  if (entry.area === "SECURITY") {
+    return (
+      <SignInDetails
+        entry={entry}
+        full={full}
+        loading={details.isPending}
+        error={details.isError ? details.error : null}
+        link={link}
+        now={now.getTime()}
+        onClose={onClose}
+      />
+    );
+  }
 
   return (
     <FormDialog
@@ -195,6 +218,143 @@ export function EntryDetails({
           )}
           {link && "gone" in link && (
             <span className="text-xs text-fg-subtle">{link.gone}</span>
+          )}
+          <Button onClick={onClose}>Done</Button>
+        </DialogActions>
+      </div>
+    </FormDialog>
+  );
+}
+
+/**
+ * One sign-in event in full: for wrong passwords, each attempt; what
+ * happened to the account next; and where it came from beside where the
+ * account usually signs in from, so a stranger's attempt stands out. A
+ * password is reset on the Members page, which this links to.
+ */
+function SignInDetails({
+  entry,
+  full,
+  loading,
+  error,
+  link,
+  now,
+  onClose,
+}: {
+  entry: ActivityEntryResponse;
+  full: ActivityEntryDetailResponse | undefined;
+  loading: boolean;
+  error: unknown;
+  link: ReturnType<typeof subjectLink>;
+  now: number;
+  onClose: () => void;
+}) {
+  const result = resultOf(entry);
+  const note = securityNote(entry);
+  const usual = full?.usualClient ?? null;
+  const unusual = isUnusualClient(entry.client, usual);
+  const next = full?.next ?? null;
+  const attempts = full?.attempts ?? null;
+
+  return (
+    <FormDialog
+      title={entry.actor.name}
+      description={ACTION_TITLE[entry.action]}
+      onClose={onClose}
+      size="lg"
+    >
+      <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-0.5">
+          <Status tone={result.tone} className="font-medium">
+            {result.label}
+          </Status>
+          {note && <span className="text-sm text-fg-muted">{note}</span>}
+        </div>
+
+        {error !== null && <ErrorAlert error={error} />}
+        {loading && <Spinner label="Loading what happened" />}
+
+        {next && (
+          <div
+            className={cx(
+              "flex flex-col gap-0.5 rounded-md border px-3 py-2.5 text-sm",
+              next.action === "SIGN_IN_BLOCKED"
+                ? "border-danger-line bg-danger-subtle"
+                : "border-line-subtle bg-sunken",
+            )}
+          >
+            <span className="font-semibold text-fg">What happened next</span>
+            <span className="text-fg-muted">
+              {ACTION_TITLE[next.action]} at {clockTime(next.occurredAt)}
+              {securityNote(next) ? ` · ${securityNote(next)}` : ""}
+            </span>
+          </div>
+        )}
+
+        {attempts && attempts.length > 1 && (
+          <Part title="Each attempt">
+            <ol className="flex flex-col rounded-md border border-line-subtle">
+              {attempts.map((at, index) => (
+                <li
+                  key={at}
+                  className="grid grid-cols-[6rem_minmax(0,1fr)] gap-3 border-t border-line-subtle px-3 py-2 text-sm first:border-t-0"
+                >
+                  <span className="data text-xs text-fg-subtle">
+                    {new Date(at).toLocaleTimeString()}
+                  </span>
+                  <span className="text-fg-muted">
+                    Wrong password
+                    {index === attempts.length - 1 &&
+                    next?.action === "SIGN_IN_BLOCKED"
+                      ? ", the last before sign-ins were blocked"
+                      : ""}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          </Part>
+        )}
+
+        <Part title="Details">
+          <dl className="grid grid-cols-[8rem_minmax(0,1fr)] gap-x-3 gap-y-2 text-sm">
+            <dt className="text-fg-subtle">When</dt>
+            <dd className="flex flex-col">
+              <span className="text-fg">
+                <LocalDateTime value={entry.occurredAt} />
+              </span>
+              <span className="text-xs text-fg-subtle">
+                {timeAgo(entry.occurredAt, now)}
+              </span>
+            </dd>
+            <dt className="text-fg-subtle">From</dt>
+            <dd className="flex flex-wrap items-center gap-2">
+              <span className="data text-fg-muted">{clientText(entry.client)}</span>
+              {unusual && <Status tone="warning">New for this account</Status>}
+            </dd>
+            <dt className="text-fg-subtle">Usually from</dt>
+            <dd className="data text-fg-muted">
+              {full === undefined
+                ? "…"
+                : usual
+                  ? clientText(usual)
+                  : "No sign-ins in the 30 days before"}
+            </dd>
+            <dt className="text-fg-subtle">Reference</dt>
+            <dd className="data text-fg-muted">{entry.reference}</dd>
+          </dl>
+        </Part>
+
+        <DialogActions>
+          <p className="mr-auto text-xs text-fg-subtle">
+            If this wasn&apos;t them, reset their password from Members.
+          </p>
+          {link && "href" in link && (
+            <Link
+              href={link.href}
+              className={buttonClasses({ variant: "secondary" })}
+            >
+              {link.label}
+            </Link>
           )}
           <Button onClick={onClose}>Done</Button>
         </DialogActions>

@@ -32,6 +32,24 @@ describe('listActivityQuerySchema', () => {
     ).toBe(false);
   });
 
+  it('should take a result on the Security view, and only there', () => {
+    expect(
+      listActivityQuerySchema.parse({
+        view: 'security',
+        result: 'SIGN_IN_BLOCKED',
+      }),
+    ).toEqual({ view: 'security', result: 'SIGN_IN_BLOCKED' });
+    expect(
+      listActivityQuerySchema.safeParse({ result: 'SIGNED_IN' }).success,
+    ).toBe(false);
+    expect(
+      listActivityQuerySchema.safeParse({
+        view: 'security',
+        result: 'TEAM_CREATED',
+      }).success,
+    ).toBe(false);
+  });
+
   it('should refuse a key it does not know, an empty search and a page size', () => {
     for (const query of [{ limit: '10' }, { q: '   ' }, { since: 'monday' }]) {
       expect(listActivityQuerySchema.safeParse(query).success).toBe(false);

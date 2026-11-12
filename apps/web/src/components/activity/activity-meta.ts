@@ -15,13 +15,16 @@ import { roleMeta } from "@/components/roles/role-meta";
 import { criticalityOf } from "@/components/services/criticality";
 import { serviceHref } from "@/components/services/service-scope";
 import { teamHref } from "@/components/teams/team-scope";
+import type { StatusTone } from "@/components/ui/status";
 import type {
   ActivityAction,
   ActivityArea,
+  ActivityClient,
   ActivityChange,
   ActivityEntryDetailResponse,
   ActivityEntryResponse,
   ChangeArea,
+  SecurityAction,
   ServiceCriticality,
 } from "@/lib/api/contracts";
 
@@ -311,6 +314,84 @@ export const subjectLink = (
       };
   }
 };
+
+// ── Sign-ins ───────────────────────────────────────────────────────────────
+
+/** The sign-in results, in the order the Result filter offers them. */
+export const SECURITY_RESULTS: readonly {
+  value: SecurityAction;
+  label: string;
+  tone: StatusTone;
+}[] = [
+  { value: "SIGNED_IN", label: "Signed in", tone: "success" },
+  { value: "SIGN_IN_FAILED", label: "Wrong password", tone: "warning" },
+  { value: "SIGN_IN_BLOCKED", label: "Blocked", tone: "danger" },
+  { value: "PASSWORD_CHANGED", label: "Password changed", tone: "neutral" },
+];
+
+/** A sign-in event's result as a status: its word and tone, and how many. */
+export const resultOf = (
+  entry: ActivityEntryResponse,
+): { label: string; tone: StatusTone } => {
+  const result =
+    SECURITY_RESULTS.find((each) => each.value === entry.action) ??
+    SECURITY_RESULTS[0];
+
+  return {
+    label: entry.repeat ? `${result.label} ×${entry.repeat.count}` : result.label,
+    tone: result.tone,
+  };
+};
+
+/** A local time of day, "13:24". */
+export const clockTime = (iso: string): string =>
+  new Date(iso).toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+/** The line under a sign-in event's result, saying what made it notable. */
+export const securityNote = (entry: ActivityEntryResponse): string | null => {
+  switch (entry.action) {
+    case "SIGNED_IN":
+      return changeOf(entry, "with")?.after === "ONE_TIME_PASSWORD"
+        ? "First sign-in, with a one-time password"
+        : null;
+    case "SIGN_IN_FAILED":
+      return entry.repeat
+        ? `${clockTime(entry.repeat.firstAt)} to ${clockTime(entry.occurredAt)}`
+        : null;
+    case "SIGN_IN_BLOCKED": {
+      const until = changeOf(entry, "blockedUntil")?.after;
+
+      return until
+        ? `Sign-ins refused until ${clockTime(until)}, after repeated wrong passwords`
+        : "Sign-ins refused after repeated wrong passwords";
+    }
+    case "PASSWORD_CHANGED":
+      return changeOf(entry, "replaced")?.after === "ONE_TIME_PASSWORD"
+        ? "Replaced the one-time password the Admin gave"
+        : null;
+    default:
+      return null;
+  }
+};
+
+/** Whether a sign-in came from somewhere the account does not usually use. */
+export const isUnusualClient = (
+  client: ActivityClient | null,
+  usual: ActivityClient | null,
+): boolean =>
+  client !== null &&
+  usual !== null &&
+  (client.ipAddress !== usual.ipAddress || client.browser !== usual.browser);
+
+/** An address and browser on one line, "10.0.4.2 · Chrome on Windows". */
+export const clientText = (client: ActivityClient | null): string =>
+  client
+    ? [client.ipAddress, client.browser].filter(Boolean).join(" · ") ||
+      "Not known"
+    : "Not known";
 
 // ── Time ───────────────────────────────────────────────────────────────────
 

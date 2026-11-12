@@ -1196,6 +1196,12 @@ export type ActivityAction =
   | "SIGN_IN_BLOCKED"
   | "PASSWORD_CHANGED";
 
+/** The sign-in and password events of the Security view. */
+export type SecurityAction = Extract<
+  ActivityAction,
+  "SIGNED_IN" | "SIGN_IN_FAILED" | "SIGN_IN_BLOCKED" | "PASSWORD_CHANGED"
+>;
+
 export type ActivitySubjectType =
   | "MEMBERSHIP"
   | "INVITATION"
@@ -1263,6 +1269,8 @@ export interface ActivityEntryDetailResponse extends ActivityEntryResponse {
 /** What the log is narrowed to; every one optional. */
 export interface ActivityFilters {
   area?: ChangeArea;
+  /** Security view only: one kind of sign-in event. */
+  result?: SecurityAction;
   actorId?: string;
   q?: string;
   /** On or after this instant. */

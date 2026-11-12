@@ -202,6 +202,14 @@ describe('activity log: sign-ins and passwords (integration)', () => {
     });
     expect(page.body.areaCounts).toBeNull();
 
+    // One kind only; the totals still count them all.
+    const blocks = (await read('?view=security&result=SIGN_IN_BLOCKED')).body;
+
+    expect(
+      (blocks.entries as { action: string }[]).map((entry) => entry.action),
+    ).toEqual(['SIGN_IN_BLOCKED']);
+    expect(blocks.securityTotals.failedSignIns).toBe(5);
+
     // The folded row in full: each attempt, and what happened next.
     const folded = page.body.entries[1] as { id: string };
     const detail = (await read(`/${folded.id}`)).body;

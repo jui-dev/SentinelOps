@@ -1,7 +1,7 @@
 "use client";
 
 import { Eye, Lock } from "lucide-react";
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 
 import { useMemberships } from "@/components/organizations/membership-list";
 import {
@@ -17,6 +17,7 @@ import { Field } from "@/components/ui/field";
 import { PageBody, PageHeader } from "@/components/ui/page";
 import { Select } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
+import { Tabs } from "@/components/ui/tabs";
 import { useMinuteClock } from "@/components/ui/timestamp";
 import {
   Table,
@@ -50,13 +51,25 @@ import {
 import type { PeriodValue } from "./activity-meta";
 import { useActivity } from "./activity-queries";
 import { AreaLabel, EntryDetails } from "./entry-details";
+import { SecurityLog } from "./security-log";
+import { useSettled } from "./use-settled";
+
+const VIEWS = [
+  { value: "changes", label: "Changes" },
+  { value: "security", label: "Sign-ins & security" },
+] as const;
+
+type View = (typeof VIEWS)[number]["value"];
 
 /**
- * The organization's activity log: every change to its setup, by whom and
- * when. The Admin's alone; anyone else reaching the address is told so.
+ * The organization's activity log, on two tabs: every change to its setup,
+ * by whom and when; and every sign-in to a member's account. Sign-ins come
+ * many times a day, so they have a tab of their own rather than burying the
+ * changes. The Admin's alone; anyone else reaching the address is told so.
  */
 export function ActivityView() {
   const canRead = useCan(Permission.ACTIVITY_READ);
+  const [view, setView] = useState<View>("changes");
 
   if (!canRead) {
     return (
@@ -77,7 +90,7 @@ export function ActivityView() {
       <PageHeader
         width="full"
         title="Activity log"
-        description="Every change to your organization's setup: who made it, and when."
+        description="Every change to your organization's setup, and every sign-in: who, when, and from where."
         actions={
           <span className="inline-flex items-center gap-1.5 rounded-full border border-line-subtle px-3 py-1 text-xs text-fg-subtle">
             <Lock aria-hidden="true" className="size-3" />
@@ -86,24 +99,13 @@ export function ActivityView() {
         }
       />
       <PageBody width="full">
-        <ChangesLog />
+        <Tabs label="Activity" tabs={VIEWS} value={view} onChange={setView}>
+          {view === "changes" ? <ChangesLog /> : <SecurityLog />}
+        </Tabs>
       </PageBody>
     </>
   );
 }
-
-/** A value that settles `delay` ms after its last change: a search box's. */
-const useSettled = <T,>(value: T, delay = 300): T => {
-  const [settled, setSettled] = useState(value);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setSettled(value), delay);
-
-    return () => clearTimeout(timer);
-  }, [value, delay]);
-
-  return settled;
-};
 
 function ChangesLog() {
   const organization = useOrganization();

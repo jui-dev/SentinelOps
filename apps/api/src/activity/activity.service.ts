@@ -70,7 +70,8 @@ export class ActivityService {
     organizationId: string,
     query: ListActivityQuery,
   ): Promise<ActivityPageResponse> {
-    // Everything but the area and the page: the area buttons count under it.
+    // Everything but the area, the result and the page: the area buttons and
+    // the sign-in totals count under it.
     const filters: Prisma.ActivityEntryWhereInput = {
       organizationId,
       area: query.view === 'security' ? 'SECURITY' : { in: [...CHANGE_AREAS] },
@@ -89,6 +90,7 @@ export class ActivityService {
       AND: [
         filters,
         ...(query.area !== undefined ? [{ area: query.area }] : []),
+        ...(query.result !== undefined ? [{ action: query.result }] : []),
         ...(query.cursor !== undefined
           ? [olderThan(decodeActivityCursor(query.cursor))]
           : []),

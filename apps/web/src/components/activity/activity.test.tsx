@@ -136,6 +136,53 @@ const logQuery = (request: SentRequest) =>
     ? new URLSearchParams(request.path.split("?")[1])
     : null;
 
+const PRIYA_ID = "0199a1b2-c3d4-7000-8000-000000000003";
+const priya = { id: PRIYA_ID, name: "Priya Shah" };
+const priyaSubject = { type: "MEMBERSHIP" as const, id: SAM_ID, name: "Priya Shah" };
+const firefox = { ipAddress: "203.0.113.7", browser: "Firefox on Linux" };
+
+const blocked = entry("c1", {
+  action: "SIGN_IN_BLOCKED",
+  area: "SECURITY",
+  occurredAt: ago(10),
+  actor: priya,
+  subject: priyaSubject,
+  changes: [{ field: "blockedUntil", before: null, after: ago(-5) }],
+  client: firefox,
+});
+const wrong = entry("c2", {
+  action: "SIGN_IN_FAILED",
+  area: "SECURITY",
+  occurredAt: ago(10),
+  actor: priya,
+  subject: priyaSubject,
+  client: firefox,
+  repeat: { count: 5, firstAt: ago(14) },
+});
+const signedIn = entry("c3", {
+  action: "SIGNED_IN",
+  area: "SECURITY",
+  occurredAt: ago(20),
+  subject: { type: "MEMBERSHIP", id: members[0].id, name: "Ada Lovelace" },
+  changes: [{ field: "with", before: null, after: "ONE_TIME_PASSWORD" }],
+});
+
+const securityPage: ActivityPageResponse = {
+  entries: [blocked, wrong, signedIn],
+  nextCursor: null,
+  areaCounts: null,
+  securityTotals: { signIns: 38, failedSignIns: 6, blocked: 1 },
+};
+
+const wrongDetail: ActivityEntryDetailResponse = {
+  ...wrong,
+  history: [],
+  subjectNow: { exists: true, slug: null },
+  attempts: [ago(14), ago(13), ago(12), ago(11), ago(10)],
+  next: blocked,
+  usualClient: { ipAddress: "10.0.4.15", browser: "Chrome on Windows" },
+};
+
 const api = (
   permissions: string[],
   answer: (query: URLSearchParams) => ActivityPageResponse = () =>
@@ -144,7 +191,11 @@ const api = (
   mockApi((request) => {
     const query = logQuery(request);
 
+    if (query?.get("view") === "security") return jsonResponse(200, securityPage);
     if (query) return jsonResponse(200, answer(query));
+    if (route(request) === `GET ${base}/activity/${wrong.id}`) {
+      return jsonResponse(200, wrongDetail);
+    }
 
     switch (route(request)) {
       case "POST /auth/refresh":
@@ -287,6 +338,65 @@ describe("activity log", () => {
     render();
 
     expect(await screen.findByText("Nothing was changed in the last 7 days.")).toBeDefined();
+  });
+
+  it("keeps sign-ins on their own tab: the totals, the result of each, and a block standing out", async () => {
+    const user = userEvent.setup();
+    const { requests } = api(ADMIN);
+
+    render();
+    await user.click(await screen.findByRole("tab", { name: "Sign-ins & security" }));
+
+    const table = await screen.findByRole("table", { name: "Sign-ins and security" });
+
+    expect(queries(requests).at(-1)?.get("view")).toBe("security");
+    // Each total beside what it counts.
+    const total = (label: string) =>
+      within(screen.getByText(label).parentElement as HTMLElement).getByRole("definition")
+        .textContent;
+
+    expect(total("Sign-ins in the last 7 days")).toBe("38");
+    expect(total("Wrong passwords")).toBe("6");
+    expect(total("Sign-ins blocked for 15 minutes")).toBe("1");
+
+    const rows = within(table).getAllByRole("row");
+    const row = (text: string) => rows.find((each) => each.textContent?.includes(text));
+
+    expect(row("Blocked")?.textContent).toMatch(/Sign-ins refused until .*Priya Shah.*203\.0\.113\.7 · Firefox on Linux/);
+    expect(row("Wrong password ×5")?.textContent).toMatch(/ to /);
+    expect(row("Signed in")?.textContent).toMatch(/First sign-in, with a one-time password/);
+    await expectNoAxeViolations(document.body);
+
+    await user.selectOptions(screen.getByLabelText("Result"), "Blocked");
+    await waitFor(() =>
+      expect(queries(requests).at(-1)?.get("result")).toBe("SIGN_IN_BLOCKED"),
+    );
+  });
+
+  it("opens wrong passwords in full: each attempt, what happened next, and where they usually sign in from", async () => {
+    const user = userEvent.setup();
+
+    api(ADMIN);
+    render();
+    await user.click(await screen.findByRole("tab", { name: "Sign-ins & security" }));
+    await user.click(
+      await screen.findByRole("button", {
+        name: "View details: Wrong password ×5, Priya Shah",
+      }),
+    );
+
+    const dialog = await screen.findByRole("dialog", { name: "Priya Shah" });
+
+    expect(await within(dialog).findByText("What happened next")).toBeDefined();
+    expect(dialog.textContent).toMatch(/Sign-ins blocked at/);
+    expect(within(dialog).getAllByText(/^Wrong password/).length).toBeGreaterThanOrEqual(5);
+    expect(dialog.textContent).toMatch(/the last before sign-ins were blocked/);
+    expect(within(dialog).getByText("New for this account")).toBeDefined();
+    expect(dialog.textContent).toMatch(/Usually from10\.0\.4\.15 · Chrome on Windows/);
+    expect(
+      within(dialog).getByRole("link", { name: "Open Priya Shah in Members" }),
+    ).toBeDefined();
+    await expectNoAxeViolations(document.body);
   });
 
   it("is the Admin's alone: anyone else is told so, and the log is not asked for", async () => {
