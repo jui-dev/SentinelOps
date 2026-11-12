@@ -251,7 +251,10 @@ pnpm --filter @sentinelops/web build
 
 When the API runs with `NODE_ENV=development` — `start:dev` with the default `.env` —
 it ensures a small organization to work in, and the web login page lists its people under
-**Demo personas**, each with a one-click **Sign in**. To switch, sign out and pick another.
+**Explore as a role**, beside the sign-in form: grouped by role in the order an incident
+needs them (Report, Decide, Respond, then Set up), each saying where they land, with a
+one-click sign-in and a copy button for the shared password. To switch, sign out and pick
+another.
 
 | Persona | Email | Role | Teams |
 | --- | --- | --- | --- |

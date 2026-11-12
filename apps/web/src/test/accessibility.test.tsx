@@ -1390,13 +1390,31 @@ it("Services, with a row opened", async () => {      signedIn(ADMIN);      const
     it("Log in", async () => {
       signedOut();
       const { container } = renderWithSession(
-        <AuthFrame>
+        <AuthFrame width="wide">
           <LoginForm />
         </AuthFrame>,
       );
 
       await screen.findByLabelText("Password");
       await expectNoAxeViolations(container);
+    });
+
+    it("Log in, with the demo roles of development", async () => {
+      vi.stubEnv("NODE_ENV", "development");
+      signedOut();
+
+      try {
+        const { container } = renderWithSession(
+          <AuthFrame width="wide">
+            <LoginForm />
+          </AuthFrame>,
+        );
+
+        await screen.findByRole("region", { name: "Explore as a role" });
+        await expectNoAxeViolations(container);
+      } finally {
+        vi.unstubAllEnvs();
+      }
     });
 
     it("Create your organization", async () => {

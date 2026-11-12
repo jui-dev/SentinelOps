@@ -2,15 +2,16 @@ import Link from "next/link";
 
 /**
  * The mark: a viewfinder's corners around a lit point — something watched.
- * Drawn for the ink strip, where it always sits.
+ * Drawn in the current colour, at the size `className` gives (16px unless
+ * said), on the ink strip and wherever the product names itself.
  */
-function Mark() {
+export function Mark({ className = "size-4" }: { className?: string }) {
   return (
     <svg
       aria-hidden="true"
       viewBox="0 0 16 16"
       fill="none"
-      className="size-4 shrink-0"
+      className={`${className} shrink-0`}
     >
       <path
         d="M1.75 5V2.75a1 1 0 0 1 1-1H5M11 1.75h2.25a1 1 0 0 1 1 1V5M14.25 11v2.25a1 1 0 0 1-1 1H11M5 14.25H2.75a1 1 0 0 1-1-1V11"

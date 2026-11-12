@@ -9,14 +9,53 @@
  */
 export const DEV_PASSWORD = "dev-password-123";
 
+/**
+ * Each persona, their role, and what to say beside them on the login page:
+ * where they land and what to try, or a Responder's teams.
+ */
 export const DEV_PERSONAS = [
-  { email: "admin@example.com", name: "Dev Admin", label: "Admin" },
-  { email: "ava@example.com", name: "Ava Kim", label: "Incident Manager" },
-  { email: "alex@example.com", name: "Alex Rivera", label: "Reporter" },
-  { email: "priya@example.com", name: "Priya Shah", label: "Payments" },
-  { email: "sam@example.com", name: "Sam Okafor", label: "Payments · Risk" },
-  { email: "lee@example.com", name: "Lee Chen", label: "Platform" },
-  { email: "jordan@example.com", name: "Jordan Diaz", label: "Risk" },
+  {
+    email: "alex@example.com",
+    name: "Alex Rivera",
+    role: "REPORTER",
+    detail: "Lands on My reports · try declaring an incident",
+  },
+  {
+    email: "ava@example.com",
+    name: "Ava Kim",
+    role: "INCIDENT_MANAGER",
+    detail: "Lands on Overview · decides who responds",
+  },
+  {
+    email: "priya@example.com",
+    name: "Priya Shah",
+    role: "RESPONDER",
+    detail: "Payments",
+  },
+  {
+    email: "sam@example.com",
+    name: "Sam Okafor",
+    role: "RESPONDER",
+    detail: "Payments · Risk",
+  },
+  {
+    email: "lee@example.com",
+    name: "Lee Chen",
+    role: "RESPONDER",
+    detail: "Platform",
+  },
+  {
+    email: "jordan@example.com",
+    name: "Jordan Diaz",
+    role: "RESPONDER",
+    detail: "Risk",
+  },
+  {
+    email: "admin@example.com",
+    name: "Dev Admin",
+    role: "ADMIN",
+    detail: "Lands on Overview · sees and sets up everything",
+  },
 ] as const;
 
 /**

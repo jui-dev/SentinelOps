@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -62,7 +62,9 @@ describe("LoginForm", () => {
 
     await screen.findByLabelText("Email");
 
-    expect(screen.queryByText("Demo personas")).toBeNull();
+    expect(
+      screen.queryByRole("heading", { name: "Explore as a role" }),
+    ).toBeNull();
   });
 
   it("offers no way to create an organization while sign-up is closed", async () => {
@@ -108,19 +110,30 @@ describe("LoginForm", () => {
     try {
       renderWithSession(<LoginForm />);
 
-      expect(await screen.findByText("Demo personas")).toBeDefined();
+      const roles = await screen.findByRole("region", {
+        name: "Explore as a role",
+      });
 
-      for (const name of [
-        "Dev Admin",
-        "Priya Shah",
-        "Sam Okafor",
-        "Lee Chen",
-        "Jordan Diaz",
-      ]) {
-        expect(
-          screen.getByRole("button", { name: `Sign in as ${name}` }),
-        ).toBeDefined();
-      }
+      // In the order an incident needs them, the Admin last.
+      expect(
+        within(roles)
+          .getAllByRole("button", { name: /^Sign in as / })
+          .map((button) => button.getAttribute("aria-label")),
+      ).toEqual([
+        "Sign in as Alex Rivera",
+        "Sign in as Ava Kim",
+        "Sign in as Priya Shah",
+        "Sign in as Sam Okafor",
+        "Sign in as Lee Chen",
+        "Sign in as Jordan Diaz",
+        "Sign in as Dev Admin",
+      ]);
+      expect(within(roles).getByText("Reporter")).toBeDefined();
+      expect(within(roles).getByText("Responders")).toBeDefined();
+      expect(
+        within(roles).getByText("Lands on My reports · try declaring an incident"),
+      ).toBeDefined();
+      expect(within(roles).getByText("dev-password-123")).toBeDefined();
 
       await user.click(
         screen.getByRole("button", { name: "Sign in as Sam Okafor" }),
