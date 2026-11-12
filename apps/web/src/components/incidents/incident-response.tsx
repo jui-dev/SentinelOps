@@ -119,7 +119,7 @@ export function Panel({
       id={id}
       aria-labelledby={headingId}
       className={cx(
-        "flex flex-col overflow-hidden rounded-2xl border",
+        "flex flex-col overflow-hidden rounded-lg border",
         tone === "teal" &&
           "border-status-resolved-line bg-linear-to-b from-status-resolved-subtle to-surface",
         tone === "blue" &&

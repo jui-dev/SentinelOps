@@ -131,7 +131,7 @@ export function SectionEditor({
       id={sectionAnchor(section)}
       aria-labelledby={headingId}
       className={cx(
-        "flex scroll-mt-6 flex-col gap-2 rounded-2xl border px-5 py-4.5 sm:px-6",
+        "flex scroll-mt-6 flex-col gap-2 rounded-lg border px-5 py-4.5 sm:px-6",
         CARD_CLASSES[progress],
       )}
     >

@@ -145,7 +145,7 @@ function PartTabs({
     <div
       role="group"
       aria-label="Your part"
-      className="scrollbar-thin flex gap-2 overflow-x-auto rounded-2xl border border-line-subtle bg-linear-to-b from-rail-top to-rail-mid p-2.5 sm:flex-wrap sm:gap-3 sm:overflow-visible sm:p-4"
+      className="scrollbar-thin flex gap-2 overflow-x-auto rounded-lg border border-line-subtle bg-linear-to-b from-rail-top to-rail-mid p-2.5 sm:flex-wrap sm:gap-3 sm:overflow-visible sm:p-4"
     >
       {VIEWS.map((each) => {
         const pressed = view === each.value;
@@ -235,7 +235,7 @@ function MemberFilterBar({
     <div
       role="search"
       aria-label="Filter incidents"
-      className="flex flex-col gap-3 rounded-xl border border-line-subtle bg-rail-top p-3"
+      className="flex flex-col gap-3 rounded-lg border border-line-subtle bg-rail-top p-3"
     >
       {error ? <ErrorAlert error={error} /> : null}
       <div className="flex flex-wrap items-center gap-2">

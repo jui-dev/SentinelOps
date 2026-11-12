@@ -36,7 +36,7 @@ function RoleTabs({ shown }: { shown: Role }) {
   return (
     <nav
       aria-label="Roles"
-      className="flex flex-wrap gap-1.5 self-start rounded-xl border border-line-subtle bg-sunken p-1.5"
+      className="flex flex-wrap gap-1.5 self-start rounded-lg border border-line-subtle bg-sunken p-1.5"
     >
       {FLOW_ORDER.map((role) => {
         const meta = ROLE_META[role];
@@ -170,7 +170,7 @@ export function RolePage() {
         <RoleTabs shown={role} />
         <header
           className={cx(
-            "flex flex-wrap items-start justify-between gap-x-10 gap-y-6 rounded-2xl border bg-linear-to-br to-surface to-60% p-7",
+            "flex flex-wrap items-start justify-between gap-x-10 gap-y-6 rounded-lg border bg-linear-to-br to-surface to-60% p-7",
             meta.tone.wash,
             meta.tone.line,
           )}
@@ -251,7 +251,7 @@ export function RolePage() {
           aside="The same rules SentinelOps checks every time"
         />
         <div className="grid items-stretch gap-5 lg:grid-cols-3">
-          <div className="flex flex-col gap-4 rounded-xl border border-line-subtle bg-surface p-6">
+          <div className="flex flex-col gap-4 rounded-lg border border-line-subtle bg-surface p-6">
             <h3 className="text-2xs font-bold tracking-[0.08em] text-success-text uppercase">
               Can
             </h3>
@@ -268,7 +268,7 @@ export function RolePage() {
               ))}
             </ul>
           </div>
-          <div className="flex flex-col gap-4 rounded-xl border border-line-subtle bg-surface p-6">
+          <div className="flex flex-col gap-4 rounded-lg border border-line-subtle bg-surface p-6">
             <h3 className="text-2xs font-bold tracking-[0.08em] text-fg-subtle uppercase">
               Someone else does
             </h3>
@@ -290,7 +290,7 @@ export function RolePage() {
               ))}
             </ul>
           </div>
-          <div className="flex flex-col gap-4 rounded-xl border border-line-subtle bg-surface p-6">
+          <div className="flex flex-col gap-4 rounded-lg border border-line-subtle bg-surface p-6">
             <h3 className="text-2xs font-bold tracking-[0.08em] text-fg-subtle uppercase">
               Where, and what they&apos;re told
             </h3>

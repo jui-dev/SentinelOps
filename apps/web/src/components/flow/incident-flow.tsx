@@ -920,7 +920,7 @@ export function IncidentFlow({
     <section
       aria-labelledby="incident-flow-title"
       className={cx(
-        "flex min-w-0 flex-col overflow-hidden rounded-xl border border-(--flow-rim) shadow-[0_12px_32px_rgb(0_0_0/0.25)]",
+        "flex min-w-0 flex-col overflow-hidden rounded-lg border border-(--flow-rim) shadow-[0_12px_32px_rgb(0_0_0/0.25)]",
         scope === "teams" ? "flow-teams" : "flow-organization",
       )}
       style={{

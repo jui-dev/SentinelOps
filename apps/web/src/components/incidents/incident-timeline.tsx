@@ -278,7 +278,7 @@ function TimelineEntry({
         <Avatar name={entry.actor.name} tone={mine ? "complete" : "investigating"} />
         <div
           className={cx(
-            "flex min-w-0 flex-col gap-1.5 rounded-xl border px-4 py-3",
+            "flex min-w-0 flex-col gap-1.5 rounded-lg border px-4 py-3",
             mine
               ? "border-status-resolved-line bg-status-resolved-subtle/60"
               : "border-line bg-surface",
@@ -323,7 +323,7 @@ function TimelineEntry({
         {text && (
           <p
             className={cx(
-              "max-w-3xl rounded-xl border px-4 py-3 text-sm leading-6 whitespace-pre-line text-fg",
+              "max-w-3xl rounded-lg border px-4 py-3 text-sm leading-6 whitespace-pre-line text-fg",
               resolution
                 ? "border-status-resolved-line bg-status-resolved-subtle"
                 : "border-line bg-surface",
@@ -681,7 +681,7 @@ export function IncidentTimeline({
     <section
       id="timeline"
       aria-labelledby="timeline-title"
-      className="overflow-hidden rounded-2xl border border-line-subtle bg-linear-to-b from-rail-top to-rail-mid shadow-[0_16px_40px_rgb(0_0_0/0.28),inset_0_1px_0_rgb(255_255_255/0.03)]"
+      className="overflow-hidden rounded-lg border border-line-subtle bg-linear-to-b from-rail-top to-rail-mid shadow-[0_16px_40px_rgb(0_0_0/0.28),inset_0_1px_0_rgb(255_255_255/0.03)]"
     >
       <div
         className={cx(

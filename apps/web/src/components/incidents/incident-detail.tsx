@@ -282,7 +282,7 @@ function FactCard({
   // The group holds its term and descriptions directly, as a list's group
   // must; the icon sits in the term, placed beside them by the grid.
   return (
-    <div className="grid min-w-0 grid-cols-[2rem_minmax(0,1fr)] items-center gap-x-3 gap-y-0.5 rounded-xl border border-line bg-linear-to-b from-surface to-sunken px-3.5 py-2.5 sm:grid-cols-[2.5rem_minmax(0,1fr)] sm:px-4 sm:py-3.5">
+    <div className="grid min-w-0 grid-cols-[2rem_minmax(0,1fr)] items-center gap-x-3 gap-y-0.5 rounded-lg border border-line bg-linear-to-b from-surface to-sunken px-3.5 py-2.5 sm:grid-cols-[2.5rem_minmax(0,1fr)] sm:px-4 sm:py-3.5">
       <dt className="contents">
         <span
           aria-hidden="true"
@@ -330,7 +330,7 @@ function IncidentFacts({ incident }: { incident: IncidentDetailResponse }) {
   return (
     <dl
       aria-label="Incident details"
-      className="grid gap-2 rounded-2xl border border-line-subtle bg-linear-to-b from-rail-top to-rail-mid p-2.5 sm:grid-cols-3 sm:gap-3 sm:p-3.5"
+      className="grid gap-2 rounded-lg border border-line-subtle bg-linear-to-b from-rail-top to-rail-mid p-2.5 sm:grid-cols-3 sm:gap-3 sm:p-3.5"
     >
       <FactCard
         icon={Server}
@@ -541,7 +541,7 @@ function Lifecycle({ incident }: { incident: IncidentDetailResponse }) {
     return (
       <ol
         aria-label="Lifecycle"
-        className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-line bg-surface px-4.5 py-3 text-sm sm:flex-nowrap"
+        className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-line bg-surface px-4.5 py-3 text-sm sm:flex-nowrap"
       >
         <li className="flex min-w-0 flex-1 items-center gap-3">
           <span className={done}>
@@ -588,7 +588,7 @@ function Lifecycle({ incident }: { incident: IncidentDetailResponse }) {
   return (
     <ol
       aria-label="Lifecycle"
-      className="grid gap-3.5 rounded-2xl border border-line bg-surface px-4 py-4 sm:grid-cols-3 sm:gap-0 sm:px-5 sm:py-4.5"
+      className="grid gap-3.5 rounded-lg border border-line bg-surface px-4 py-4 sm:grid-cols-3 sm:gap-0 sm:px-5 sm:py-4.5"
     >
       <Step
         label="Declared"
@@ -668,7 +668,7 @@ function Resolution({ incident }: { incident: IncidentDetailResponse }) {
   return (
     <section
       aria-labelledby={headingId}
-      className="overflow-hidden rounded-2xl border border-status-resolved-line bg-linear-to-b from-status-resolved-subtle to-surface"
+      className="overflow-hidden rounded-lg border border-status-resolved-line bg-linear-to-b from-status-resolved-subtle to-surface"
     >
       <div className="grid gap-5 px-5 py-5 sm:px-6 md:grid-cols-[minmax(0,1fr)_17rem] md:gap-7">
         <div className="flex min-w-0 flex-col gap-2.5">
@@ -692,7 +692,7 @@ function Resolution({ incident }: { incident: IncidentDetailResponse }) {
         </div>
         <dl
           aria-label={`${incidentKey(incident.number)} at a glance`}
-          className="grid grid-cols-2 gap-x-5 gap-y-3.5 self-start rounded-xl border border-status-resolved-line/70 bg-canvas/40 px-4.5 py-4"
+          className="grid grid-cols-2 gap-x-5 gap-y-3.5 self-start rounded-lg border border-status-resolved-line/70 bg-canvas/40 px-4.5 py-4"
         >
           {[
             [

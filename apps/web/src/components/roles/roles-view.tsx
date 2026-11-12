@@ -39,7 +39,7 @@ export const peopleCount = (count: number) =>
  * — cards, the map's cells — stands out from the page around it.
  */
 export const PANEL =
-  "flex flex-col rounded-2xl border border-line-subtle bg-linear-to-b from-rail-top to-rail-mid p-5 sm:p-6";
+  "flex flex-col rounded-lg border border-line-subtle bg-linear-to-b from-rail-top to-rail-mid p-5 sm:p-6";
 
 /** A section's heading, ruled beneath, with a quieter note at its end. */
 export function SectionHeading({
@@ -81,7 +81,7 @@ export function RoleIcon({
         meta.tone.text,
         size === "sm" && "size-8 rounded-md",
         size === "md" && "size-11 rounded-lg",
-        size === "lg" && "size-15 rounded-xl",
+        size === "lg" && "size-15 rounded-lg",
       )}
     >
       <Icon
@@ -208,7 +208,7 @@ function RoleCard({
     <article
       aria-labelledby={`role-card-${role}`}
       className={cx(
-        "grid grid-rows-[auto_1fr_auto] overflow-hidden rounded-xl border bg-surface",
+        "grid grid-rows-[auto_1fr_auto] overflow-hidden rounded-lg border bg-surface",
         you ? cx("border-2", meta.tone.line) : "border-line-subtle",
       )}
     >
@@ -424,7 +424,7 @@ export function RolesView() {
       <PageBody width="full">
         <div
           className={cx(
-            "flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border bg-linear-to-r to-surface to-70% px-4 py-3",
+            "flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border bg-linear-to-r to-surface to-70% px-4 py-3",
             yourMeta.tone.wash,
             yourMeta.tone.line,
           )}
@@ -515,7 +515,7 @@ export function RolesView() {
             title="Roles and teams answer different questions"
           />
           <div className="grid gap-5 md:grid-cols-2">
-            <div className="flex flex-col gap-2.5 rounded-xl border border-line-subtle bg-surface p-6">
+            <div className="flex flex-col gap-2.5 rounded-lg border border-line-subtle bg-surface p-6">
               <span className="flex items-center gap-2 text-2xs font-bold tracking-[0.08em] text-accent-text uppercase">
                 <IdCard aria-hidden="true" className="size-3.5" />
                 Your role
@@ -529,7 +529,7 @@ export function RolesView() {
                 , so you can {ROLE_CONTENT[yours]?.youCan ?? ROLE_CONTENT.RESPONDER.youCan}.
               </p>
             </div>
-            <div className="flex flex-col gap-2.5 rounded-xl border border-line-subtle bg-surface p-6">
+            <div className="flex flex-col gap-2.5 rounded-lg border border-line-subtle bg-surface p-6">
               <span className="flex items-center gap-2 text-2xs font-bold tracking-[0.08em] text-accent-text uppercase">
                 <Network aria-hidden="true" className="size-3.5" />
                 Your teams

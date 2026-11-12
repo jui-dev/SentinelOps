@@ -199,7 +199,7 @@ export function IncidentFilterBar({
     <div
       role="search"
       aria-label="Filter incidents"
-      className="flex flex-col gap-3 rounded-xl border border-line-subtle bg-linear-to-b from-rail-top to-rail-mid p-3"
+      className="flex flex-col gap-3 rounded-lg border border-line-subtle bg-linear-to-b from-rail-top to-rail-mid p-3"
     >
       {error ? <ErrorAlert error={error} /> : null}
       <div className="flex flex-wrap items-end gap-3">

@@ -118,7 +118,7 @@ function Toolbar({
     <div
       role="search"
       aria-label="Find members"
-      className="flex flex-wrap items-center gap-3 rounded-xl border border-line-subtle bg-linear-to-b from-rail-top to-rail-mid p-3"
+      className="flex flex-wrap items-center gap-3 rounded-lg border border-line-subtle bg-linear-to-b from-rail-top to-rail-mid p-3"
     >
       <div className="relative w-full sm:w-80">
         <label htmlFor={searchId} className="sr-only">

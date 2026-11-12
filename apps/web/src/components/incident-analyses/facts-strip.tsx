@@ -21,7 +21,7 @@ function Cell({
   return (
     <dl
       className={cx(
-        "flex min-w-0 flex-col gap-1 rounded-xl border border-line bg-linear-to-b from-surface to-sunken px-4 py-3.5",
+        "flex min-w-0 flex-col gap-1 rounded-lg border border-line bg-linear-to-b from-surface to-sunken px-4 py-3.5",
         className,
       )}
     >
@@ -107,7 +107,7 @@ export function FactsStrip({
   return (
     <section
       aria-labelledby={headingId}
-      className="flex flex-col gap-3 rounded-2xl border border-line-subtle bg-linear-to-b from-rail-top to-rail-mid p-3 sm:p-3.5"
+      className="flex flex-col gap-3 rounded-lg border border-line-subtle bg-linear-to-b from-rail-top to-rail-mid p-3 sm:p-3.5"
     >
       <h2 id={headingId} className="label-caps px-1 pt-1 text-fg-subtle">
         What the record says
@@ -136,7 +136,7 @@ export function FactsStrip({
         <div
           role="group"
           aria-label="Response counts"
-          className="flex min-w-0 flex-col gap-1.5 rounded-xl border border-line bg-linear-to-b from-surface to-sunken px-4 py-3.5"
+          className="flex min-w-0 flex-col gap-1.5 rounded-lg border border-line bg-linear-to-b from-surface to-sunken px-4 py-3.5"
         >
           <span aria-hidden="true" className="label-caps text-fg-subtle">
             The response

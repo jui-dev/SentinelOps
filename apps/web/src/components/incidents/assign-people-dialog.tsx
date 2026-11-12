@@ -188,7 +188,7 @@ export function AssignPeopleDialog({
           />
 
           {(shownTeam.length > 0 || search === "") && (
-            <fieldset className="overflow-hidden rounded-xl border-2 border-status-investigating-text bg-surface">
+            <fieldset className="overflow-hidden rounded-lg border-2 border-status-investigating-text bg-surface">
               <legend className="sr-only">{incident.team.name}, the responsible team</legend>
               <div className="flex items-center justify-between gap-3 border-b border-status-investigating-line bg-linear-to-r from-status-investigating-subtle to-transparent px-3.5 py-3">
                 <span className="flex min-w-0 flex-col gap-0.5">

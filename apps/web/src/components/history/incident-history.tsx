@@ -146,7 +146,7 @@ function PeriodBand({ selection }: { selection: PeriodSelection }) {
   const { choice, period, editing } = selection;
 
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-xl border border-line-subtle bg-linear-to-b from-rail-top to-rail-mid px-3.5 py-3">
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-lg border border-line-subtle bg-linear-to-b from-rail-top to-rail-mid px-3.5 py-3">
       <div role="group" aria-label="Period" className="flex flex-wrap gap-1.5">
         {PERIOD_CHOICES.map((each) => (
           <FilterChip

@@ -38,7 +38,7 @@ function Choice({
   return (
     <div
       className={cx(
-        "flex flex-col items-start gap-2.5 rounded-xl border p-4.5",
+        "flex flex-col items-start gap-2.5 rounded-lg border p-4.5",
         highlighted
           ? "border-2 border-status-investigating-text bg-status-investigating-subtle"
           : "border-line bg-surface",
@@ -79,7 +79,7 @@ function AssignedRow({
   return (
     <li
       className={cx(
-        "flex flex-wrap items-center gap-x-3.5 gap-y-1.5 rounded-xl border px-4 py-3",
+        "flex flex-wrap items-center gap-x-3.5 gap-y-1.5 rounded-lg border px-4 py-3",
         onResponsibleTeam
           ? "border-status-investigating-line bg-status-investigating-subtle"
           : "border-line bg-surface",

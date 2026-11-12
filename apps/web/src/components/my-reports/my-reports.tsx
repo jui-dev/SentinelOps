@@ -69,7 +69,7 @@ function ReportRow({ report }: { report: Report }) {
     <li>
       <Link
         href={incidentHref(organization.slug, report.number)}
-        className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-line-subtle bg-surface px-4 py-3.5 hover:border-line-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+        className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-line-subtle bg-surface px-4 py-3.5 hover:border-line-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
       >
         <span className="flex min-w-0 flex-[1_1_20rem] flex-col gap-1">
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">

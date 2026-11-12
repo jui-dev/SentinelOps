@@ -323,7 +323,7 @@ export function IncidentCards({
   return (
     <ul
       aria-label={label}
-      className="flex flex-col divide-y divide-line-subtle overflow-hidden rounded-xl border border-line bg-surface"
+      className="flex flex-col divide-y divide-line-subtle overflow-hidden rounded-lg border border-line bg-surface"
     >
       {incidents.map((incident) => {
         const key = incidentKey(incident.number);

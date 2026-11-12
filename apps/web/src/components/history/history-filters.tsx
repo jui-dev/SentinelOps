@@ -113,7 +113,7 @@ export function HistoryFilterBar({
     <div
       role="search"
       aria-label="Filter this period's incidents"
-      className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-xl border border-line-subtle bg-linear-to-b from-rail-top to-rail-mid p-3"
+      className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-lg border border-line-subtle bg-linear-to-b from-rail-top to-rail-mid p-3"
     >
       <form
         onSubmit={onSearch}

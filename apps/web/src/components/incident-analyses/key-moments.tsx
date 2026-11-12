@@ -186,7 +186,7 @@ export function KeyMoments({
     <section
       id="key-moments"
       aria-labelledby={headingId}
-      className="flex flex-col gap-4 rounded-xl border border-line bg-surface px-4.5 py-4 sm:px-5"
+      className="flex flex-col gap-4 rounded-lg border border-line bg-surface px-4.5 py-4 sm:px-5"
     >
       <div className="flex flex-wrap items-center justify-between gap-x-5 gap-y-2">
         <h3 id={headingId} className="label-caps text-fg-subtle">

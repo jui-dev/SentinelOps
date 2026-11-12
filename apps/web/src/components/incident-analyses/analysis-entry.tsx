@@ -147,7 +147,7 @@ export function AnalysisEntry({
     return (
       <section
         aria-labelledby={headingId}
-        className="flex flex-col gap-3 rounded-2xl border border-line bg-surface px-5 py-4.5 sm:px-6"
+        className="flex flex-col gap-3 rounded-lg border border-line bg-surface px-5 py-4.5 sm:px-6"
       >
         <h2 id={headingId} className="label-caps text-fg-subtle">
           Incident analysis
@@ -232,7 +232,7 @@ export function AnalysisEntry({
     <section
       aria-labelledby={headingId}
       className={cx(
-        "overflow-hidden rounded-2xl border",
+        "overflow-hidden rounded-lg border",
         published
           ? "border-status-resolved-line bg-status-resolved-subtle/40"
           : "border-status-investigating-line bg-surface",
@@ -248,7 +248,7 @@ export function AnalysisEntry({
         <span
           aria-hidden="true"
           className={cx(
-            "grid size-11 shrink-0 place-items-center rounded-xl border",
+            "grid size-11 shrink-0 place-items-center rounded-lg border",
             published
               ? "border-status-resolved-line bg-status-resolved-subtle text-status-resolved-text"
               : "border-status-investigating-line bg-status-investigating-subtle text-status-investigating-text",

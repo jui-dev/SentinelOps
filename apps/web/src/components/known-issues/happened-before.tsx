@@ -96,7 +96,7 @@ export function HappenedBefore({ incident }: { incident: IncidentResponse }) {
     <section
       id="happened-before"
       aria-labelledby={headingId}
-      className="overflow-hidden rounded-2xl border border-line bg-surface"
+      className="overflow-hidden rounded-lg border border-line bg-surface"
     >
       <div className="flex flex-col gap-1 border-b border-line-subtle px-5 py-4 sm:px-6">
         <h2 id={headingId} className="text-base font-semibold text-fg">

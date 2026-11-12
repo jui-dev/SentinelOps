@@ -178,7 +178,7 @@ const LOADING: ReadonlyArray<{ label: string; Icon: LucideIcon }> = [
  * pages hold theirs, so the row reads as one summary.
  */
 const ROW =
-  "grid gap-3 rounded-2xl border border-line-subtle bg-linear-to-b from-rail-top to-rail-mid p-3 sm:grid-cols-2 sm:p-3.5 xl:grid-cols-4";
+  "grid gap-3 rounded-lg border border-line-subtle bg-linear-to-b from-rail-top to-rail-mid p-3 sm:grid-cols-2 sm:p-3.5 xl:grid-cols-4";
 
 /**
  * The row, once the summary has arrived.

@@ -180,7 +180,7 @@ function DraftProgress({
   return (
     <section
       aria-label="Progress"
-      className="flex flex-wrap items-center gap-x-6 gap-y-4 rounded-2xl border border-status-investigating-line bg-linear-to-r from-status-investigating-subtle to-surface px-5 py-4 sm:px-6"
+      className="flex flex-wrap items-center gap-x-6 gap-y-4 rounded-lg border border-status-investigating-line bg-linear-to-r from-status-investigating-subtle to-surface px-5 py-4 sm:px-6"
     >
       <span
         role="img"

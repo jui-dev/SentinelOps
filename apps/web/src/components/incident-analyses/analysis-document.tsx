@@ -55,7 +55,7 @@ export function AnalysisDocument({
             id={`section-${section}`}
             aria-labelledby={headingId}
             className={cx(
-              "flex scroll-mt-6 flex-col gap-2 rounded-2xl border bg-surface px-5 py-4.5 sm:px-6",
+              "flex scroll-mt-6 flex-col gap-2 rounded-lg border bg-surface px-5 py-4.5 sm:px-6",
               // In a draft, only what its writer has said is finished.
               (published ? text : analysis.doneSections.includes(section))
                 ? "border-status-resolved-line"
