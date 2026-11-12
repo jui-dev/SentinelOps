@@ -20,7 +20,6 @@ import {
   THead,
   TR,
 } from "@/components/ui/table";
-import { useMinuteClock } from "@/components/ui/timestamp";
 import type {
   ActivityEntryResponse,
   ActivityFilters,
@@ -31,6 +30,7 @@ import {
   clientText,
   clockTime,
   dayKey,
+  fullTime,
   PERIODS,
   periodStart,
   resultOf,
@@ -65,7 +65,6 @@ export function SecurityLog({
   const [since, setSince] = useState(initialSince);
   const [open, setOpen] = useState<ActivityEntryResponse | null>(null);
   const q = useSettled(search.trim());
-  const now = useMinuteClock();
 
   const filters: ActivityFilters = {
     result: result || undefined,
@@ -95,7 +94,7 @@ export function SecurityLog({
         />
         <Total
           value={totals?.blocked}
-          label="Sign-ins blocked for 15 minutes"
+          label="Sign-ins blocked"
           tone={totals && totals.blocked > 0 ? "danger" : undefined}
         />
       </dl>
@@ -160,9 +159,9 @@ export function SecurityLog({
         <Table label="Sign-ins and security" variant="operational" fixed>
           <colgroup>
             <col className="w-20" />
+            <col className="w-[40%]" />
+            <col className="w-56" />
             <col />
-            <col className="w-52" />
-            <col className="w-72" />
             <col className="w-24" />
           </colgroup>
           <THead>
@@ -197,7 +196,6 @@ export function SecurityLog({
                   {newDay && (
                     <DayHeading
                       at={entry.occurredAt}
-                      now={now}
                       count={
                         entries.filter(
                           (other) => dayKey(other.occurredAt) === dayKey(entry.occurredAt),
@@ -287,7 +285,7 @@ function SignInRow({
   return (
     <TR className={cx(blocked && "[&>td]:bg-danger-subtle")}>
       <TD kind="data" className="pt-3 align-top">
-        <time dateTime={entry.occurredAt} title={new Date(entry.occurredAt).toLocaleString()}>
+        <time dateTime={entry.occurredAt} title={fullTime(entry.occurredAt)}>
           {clockTime(entry.occurredAt)}
         </time>
       </TD>

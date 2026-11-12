@@ -24,7 +24,7 @@ import { expectNoAxeViolations } from "@/test/axe";
 import { renderWithSession } from "@/test/render";
 
 import {
-  dayParts,
+  dayLabel,
   formatValue,
   inlineChange,
   noteOf,
@@ -242,15 +242,16 @@ describe("activity log", () => {
         .filter((cell) => cell.getAttribute("colspan") === "5")
         .map((cell) => cell.textContent),
     ).toEqual(
-      // Each day's word and date, and how many changes it holds.
-      [
-        [roleChanged, 2],
-        [memberAdded, 1],
-      ].map(([each, count]) => {
-        const { word, date } = dayParts((each as ActivityEntryResponse).occurredAt, new Date());
+      // Each UTC day's date, and how many changes it holds.
+      [...new Set([roleChanged, serviceChanged, memberAdded].map((each) => dayLabel(each.occurredAt)))].map(
+        (label) => {
+          const count = [roleChanged, serviceChanged, memberAdded].filter(
+            (each) => dayLabel(each.occurredAt) === label,
+          ).length;
 
-        return `${word}${date}${count} ${count === 1 ? "change" : "changes"}`;
-      }),
+          return `${label}${count} ${count === 1 ? "change" : "changes"}`;
+        },
+      ),
     );
 
     const sam = rows.find((row) => row.textContent?.includes("Changed the role of"));
@@ -380,7 +381,7 @@ describe("activity log", () => {
 
     expect(total("Sign-ins in the last 7 days")).toBe("38");
     expect(total("Wrong passwords")).toBe("6");
-    expect(total("Sign-ins blocked for 15 minutes")).toBe("1");
+    expect(total("Sign-ins blocked")).toBe("1");
 
     const rows = within(table).getAllByRole("row");
     const row = (text: string) => rows.find((each) => each.textContent?.includes(text));

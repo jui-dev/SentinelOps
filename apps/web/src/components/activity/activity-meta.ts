@@ -337,12 +337,44 @@ export const resultOf = (
   };
 };
 
-/** A local time of day, "13:24". */
-export const clockTime = (iso: string): string =>
-  new Date(iso).toLocaleTimeString(undefined, {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+/**
+ * Times in the activity log are UTC and 24-hour, like the clock in the
+ * situation strip and the incident history, so one moment reads the same on
+ * every page; days are UTC days.
+ */
+const UTC_TIME = new Intl.DateTimeFormat(undefined, {
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+  timeZone: "UTC",
+});
+
+const UTC_TIME_SECONDS = new Intl.DateTimeFormat(undefined, {
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+  timeZone: "UTC",
+});
+
+const UTC_DATE = new Intl.DateTimeFormat(undefined, {
+  weekday: "short",
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+  timeZone: "UTC",
+});
+
+/** A time of day, "13:24", in UTC. */
+export const clockTime = (iso: string): string => UTC_TIME.format(new Date(iso));
+
+/** A time of day to the second, "13:24:07", in UTC. */
+export const clockTimeSeconds = (iso: string): string =>
+  UTC_TIME_SECONDS.format(new Date(iso));
+
+/** A moment in full, "Thu, Nov 12, 2026 · 14:32:14 UTC". */
+export const fullTime = (iso: string): string =>
+  `${UTC_DATE.format(new Date(iso))} · ${clockTimeSeconds(iso)} UTC`;
 
 /** The line under a sign-in event's result, saying what made it notable. */
 export const securityNote = (entry: ActivityEntryResponse): string | null => {
@@ -416,48 +448,13 @@ export const periodStart = (period: PeriodValue, now: number): string | undefine
   return new Date(start - (start % 60_000)).toISOString();
 };
 
-const sameDay = (a: Date, b: Date) =>
-  a.getFullYear() === b.getFullYear() &&
-  a.getMonth() === b.getMonth() &&
-  a.getDate() === b.getDate();
+/** A day heading's date, "Wed, Nov 11, 2026", for the UTC day. */
+export const dayLabel = (iso: string): string =>
+  UTC_DATE.format(new Date(`${dayKey(iso)}T00:00:00.000Z`));
 
-/**
- * A day as its heading names it, in local time: the word — Today,
- * Yesterday, or the weekday — and the date beside it, "Thursday 12
- * November" (with the year when it is not this one).
- */
-export const dayParts = (
-  iso: string,
-  now: Date,
-): { word: string; date: string } => {
-  const day = new Date(iso);
-  const yesterday = new Date(now.getTime() - DAY);
-  const date = day.toLocaleDateString(undefined, {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    ...(day.getFullYear() === now.getFullYear() ? {} : { year: "numeric" }),
-  });
-
-  if (sameDay(day, now)) return { word: "Today", date };
-  if (sameDay(day, yesterday)) return { word: "Yesterday", date };
-
-  return {
-    word: day.toLocaleDateString(undefined, { weekday: "long" }),
-    date: day.toLocaleDateString(undefined, {
-      day: "numeric",
-      month: "long",
-      ...(day.getFullYear() === now.getFullYear() ? {} : { year: "numeric" }),
-    }),
-  };
-};
-
-/** The local calendar day an instant falls on, as a grouping key. */
-export const dayKey = (iso: string): string => {
-  const day = new Date(iso);
-
-  return `${day.getFullYear()}-${day.getMonth()}-${day.getDate()}`;
-};
+/** The UTC day an instant falls on, "2026-11-11": the grouping key. */
+export const dayKey = (iso: string): string =>
+  new Date(iso).toISOString().slice(0, 10);
 
 /** How long ago, in the largest whole unit: "2 hours ago". */
 export const timeAgo = (iso: string, now: number): string => {

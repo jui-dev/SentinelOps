@@ -17,7 +17,6 @@ import { PageBody, PageHeader } from "@/components/ui/page";
 import { Select } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs } from "@/components/ui/tabs";
-import { useMinuteClock } from "@/components/ui/timestamp";
 import {
   Table,
   TableEmpty,
@@ -37,6 +36,8 @@ import type {
 import {
   AREA_META,
   CHANGE_AREAS,
+  clockTime,
+  fullTime,
   dayKey,
   formatValue,
   inlineChange,
@@ -183,7 +184,6 @@ function ChangesLog({ initialSince }: { initialSince: string | undefined }) {
   const roleOf = (userId: string) =>
     people.find((member) => member.user.id === userId)?.role;
 
-  const now = useMinuteClock();
   const filtered = Boolean(area || actorId || q);
   const periodLabel = PERIODS.find((each) => each.value === period)?.label;
 
@@ -303,7 +303,6 @@ function ChangesLog({ initialSince }: { initialSince: string | undefined }) {
                   {newDay && (
                     <DayHeading
                       at={entry.occurredAt}
-                      now={now}
                       count={
                         entries.filter(
                           (other) => dayKey(other.occurredAt) === dayKey(entry.occurredAt),
@@ -375,14 +374,8 @@ function ChangeRow({
   return (
     <TR>
       <TD kind="data" className="align-top pt-3">
-        <time
-          dateTime={entry.occurredAt}
-          title={new Date(entry.occurredAt).toLocaleString()}
-        >
-          {new Date(entry.occurredAt).toLocaleTimeString(undefined, {
-            hour: "2-digit",
-            minute: "2-digit",
-          })}
+        <time dateTime={entry.occurredAt} title={fullTime(entry.occurredAt)}>
+          {clockTime(entry.occurredAt)}
         </time>
       </TD>
       <TD className="align-top py-2.5">

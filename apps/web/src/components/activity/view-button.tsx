@@ -1,9 +1,10 @@
-import { Eye } from "lucide-react";
+import { ChevronRight } from "lucide-react";
+
+import { rowActionClasses } from "@/components/ui/row-action";
 
 /**
- * A row's View button: opens the entry's details window. Tinted in the
- * accent, so the one thing to do on a row reads as a button among the
- * row's text, without the weight of a solid primary button on every line.
+ * A row's View: opens the entry's details window. The app's own row action,
+ * in the accent, as View is on the incident history.
  */
 export function ViewButton({
   label,
@@ -18,10 +19,10 @@ export function ViewButton({
       type="button"
       aria-label={label}
       onClick={onClick}
-      className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-accent-rim bg-accent-subtle px-2.5 text-sm font-medium text-accent-text transition-colors duration-(--duration-fast) hover:bg-selected focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+      className={rowActionClasses("accent")}
     >
-      <Eye aria-hidden="true" className="size-3.5 shrink-0" />
       View
+      <ChevronRight aria-hidden="true" strokeWidth={2} className="size-3.5" />
     </button>
   );
 }

@@ -9,7 +9,7 @@ import { Button, buttonClasses } from "@/components/ui/button";
 import { cx } from "@/components/ui/cx";
 import { DialogActions, FormDialog } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
-import { LocalDateTime, useMinuteClock } from "@/components/ui/timestamp";
+import { useMinuteClock } from "@/components/ui/timestamp";
 import { Status } from "@/components/ui/status";
 import type {
   ActivityEntryDetailResponse,
@@ -21,6 +21,8 @@ import {
   AREA_META,
   clientText,
   clockTime,
+  clockTimeSeconds,
+  fullTime,
   isUnusualClient,
   securityNote,
   fieldLabel,
@@ -152,7 +154,7 @@ export function EntryDetails({
             <dt className="text-fg-subtle">When</dt>
             <dd className="flex flex-col">
               <span className="text-fg">
-                <LocalDateTime value={entry.occurredAt} />
+                <time dateTime={entry.occurredAt}>{fullTime(entry.occurredAt)}</time>
               </span>
               <span className="text-xs text-fg-subtle">
                 {timeAgo(entry.occurredAt, now.getTime())}
@@ -187,7 +189,9 @@ export function EntryDetails({
                     className="grid grid-cols-[9rem_minmax(0,1fr)] gap-3 border-t border-line-subtle px-3 py-2 text-sm first:border-t-0"
                   >
                     <span className="data text-xs text-fg-subtle">
-                      <LocalDateTime value={earlier.occurredAt} />
+                      <time dateTime={earlier.occurredAt}>
+                        {fullTime(earlier.occurredAt).replace(/:\d\d UTC$/, " UTC")}
+                      </time>
                     </span>
                     <span className="text-fg-muted">
                       {earlier.actor.name} — {sentenceText(earlier).replace(/^./, (first) => first.toLowerCase())}
@@ -297,7 +301,7 @@ function SignInDetails({
                   className="grid grid-cols-[6rem_minmax(0,1fr)] gap-3 border-t border-line-subtle px-3 py-2 text-sm first:border-t-0"
                 >
                   <span className="data text-xs text-fg-subtle">
-                    {new Date(at).toLocaleTimeString()}
+                    {clockTimeSeconds(at)}
                   </span>
                   <span className="text-fg-muted">
                     Wrong password
@@ -317,7 +321,7 @@ function SignInDetails({
             <dt className="text-fg-subtle">When</dt>
             <dd className="flex flex-col">
               <span className="text-fg">
-                <LocalDateTime value={entry.occurredAt} />
+                <time dateTime={entry.occurredAt}>{fullTime(entry.occurredAt)}</time>
               </span>
               <span className="text-xs text-fg-subtle">
                 {timeAgo(entry.occurredAt, now)}
