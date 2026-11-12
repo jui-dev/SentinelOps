@@ -152,7 +152,12 @@ function ChangesLog() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-end gap-3">
+      {/* The filters on a sunken panel of their own, apart from the results. */}
+      <div
+        role="search"
+        aria-label="Filter the changes"
+        className="flex flex-wrap items-end gap-3 rounded-md border border-line-subtle bg-sunken px-4 py-3.5"
+      >
         <div className="min-w-56 flex-1">
           <Field
             label="Search"
