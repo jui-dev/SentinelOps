@@ -24,7 +24,7 @@ import { expectNoAxeViolations } from "@/test/axe";
 import { renderWithSession } from "@/test/render";
 
 import {
-  dayHeading,
+  dayParts,
   formatValue,
   inlineChange,
   noteOf,
@@ -242,7 +242,15 @@ describe("activity log", () => {
         .filter((cell) => cell.getAttribute("colspan") === "5")
         .map((cell) => cell.textContent),
     ).toEqual(
-      [...new Set([roleChanged, memberAdded].map((each) => dayHeading(each.occurredAt, new Date())))],
+      // Each day's word and date, and how many changes it holds.
+      [
+        [roleChanged, 2],
+        [memberAdded, 1],
+      ].map(([each, count]) => {
+        const { word, date } = dayParts((each as ActivityEntryResponse).occurredAt, new Date());
+
+        return `${word}${date}${count} ${count === 1 ? "change" : "changes"}`;
+      }),
     );
 
     const sam = rows.find((row) => row.textContent?.includes("Changed the role of"));

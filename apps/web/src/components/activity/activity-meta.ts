@@ -421,8 +421,15 @@ const sameDay = (a: Date, b: Date) =>
   a.getMonth() === b.getMonth() &&
   a.getDate() === b.getDate();
 
-/** A day heading: "Today · Thursday 12 November", in local time. */
-export const dayHeading = (iso: string, now: Date): string => {
+/**
+ * A day as its heading names it, in local time: the word — Today,
+ * Yesterday, or the weekday — and the date beside it, "Thursday 12
+ * November" (with the year when it is not this one).
+ */
+export const dayParts = (
+  iso: string,
+  now: Date,
+): { word: string; date: string } => {
   const day = new Date(iso);
   const yesterday = new Date(now.getTime() - DAY);
   const date = day.toLocaleDateString(undefined, {
@@ -432,10 +439,17 @@ export const dayHeading = (iso: string, now: Date): string => {
     ...(day.getFullYear() === now.getFullYear() ? {} : { year: "numeric" }),
   });
 
-  if (sameDay(day, now)) return `Today · ${date}`;
-  if (sameDay(day, yesterday)) return `Yesterday · ${date}`;
+  if (sameDay(day, now)) return { word: "Today", date };
+  if (sameDay(day, yesterday)) return { word: "Yesterday", date };
 
-  return date;
+  return {
+    word: day.toLocaleDateString(undefined, { weekday: "long" }),
+    date: day.toLocaleDateString(undefined, {
+      day: "numeric",
+      month: "long",
+      ...(day.getFullYear() === now.getFullYear() ? {} : { year: "numeric" }),
+    }),
+  };
 };
 
 /** The local calendar day an instant falls on, as a grouping key. */

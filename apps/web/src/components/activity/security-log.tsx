@@ -30,7 +30,6 @@ import type {
 import {
   clientText,
   clockTime,
-  dayHeading,
   dayKey,
   PERIODS,
   periodStart,
@@ -40,6 +39,7 @@ import {
 } from "./activity-meta";
 import type { PeriodValue } from "./activity-meta";
 import { useActivity } from "./activity-queries";
+import { DayHeading } from "./day-heading";
 import { EntryDetails } from "./entry-details";
 import { ResultPill } from "./result-pill";
 import { useSettled } from "./use-settled";
@@ -190,15 +190,17 @@ export function SecurityLog() {
               return (
                 <Fragment key={entry.id}>
                   {newDay && (
-                    <tr>
-                      <th
-                        scope="colgroup"
-                        colSpan={5}
-                        className="border-b border-line-subtle bg-canvas px-3 py-1.5 text-left text-xs font-semibold text-fg-muted sm:px-4"
-                      >
-                        {dayHeading(entry.occurredAt, now)}
-                      </th>
-                    </tr>
+                    <DayHeading
+                      at={entry.occurredAt}
+                      now={now}
+                      count={
+                        entries.filter(
+                          (other) => dayKey(other.occurredAt) === dayKey(entry.occurredAt),
+                        ).length
+                      }
+                      noun="event"
+                      columns={5}
+                    />
                   )}
                   <SignInRow
                     entry={entry}

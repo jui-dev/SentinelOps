@@ -37,7 +37,6 @@ import type {
 import {
   AREA_META,
   CHANGE_AREAS,
-  dayHeading,
   dayKey,
   formatValue,
   inlineChange,
@@ -49,6 +48,7 @@ import {
 } from "./activity-meta";
 import type { PeriodValue } from "./activity-meta";
 import { useActivity } from "./activity-queries";
+import { DayHeading } from "./day-heading";
 import { AreaLabel, EntryDetails } from "./entry-details";
 import { SecurityLog } from "./security-log";
 import { useSettled } from "./use-settled";
@@ -264,15 +264,17 @@ function ChangesLog() {
               return (
                 <Fragment key={entry.id}>
                   {newDay && (
-                    <tr>
-                      <th
-                        scope="colgroup"
-                        colSpan={5}
-                        className="border-b border-line-subtle bg-canvas px-3 py-1.5 text-left text-xs font-semibold text-fg-muted sm:px-4"
-                      >
-                        {dayHeading(entry.occurredAt, now)}
-                      </th>
-                    </tr>
+                    <DayHeading
+                      at={entry.occurredAt}
+                      now={now}
+                      count={
+                        entries.filter(
+                          (other) => dayKey(other.occurredAt) === dayKey(entry.occurredAt),
+                        ).length
+                      }
+                      noun="change"
+                      columns={5}
+                    />
                   )}
                   <ChangeRow
                     entry={entry}
