@@ -91,6 +91,9 @@ for (const tone of ["danger", "warning", "success", "info"]) {
 for (const role of ["admin", "manager", "reporter", "responder"]) {
   each([`role-${role}-text`], [`role-${role}-subtle`, "canvas", "surface", "sunken"], TEXT);
 }
+// Accent-tinted controls — the activity log's View — at rest and hovered.
+each(["accent-text"], ["accent-subtle", "selected"], TEXT);
+each(["accent-rim"], ["hover", "accent-subtle"], UI);
 // Activity log areas: each area's name, on the table and its hovered row.
 each(
   [

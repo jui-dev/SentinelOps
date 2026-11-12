@@ -1,6 +1,6 @@
 "use client";
 
-import { Eye, Lock } from "lucide-react";
+import { Lock } from "lucide-react";
 import { Fragment, useMemo, useState } from "react";
 
 import { useMemberships } from "@/components/organizations/membership-list";
@@ -53,6 +53,7 @@ import { useActivity } from "./activity-queries";
 import { AreaLabel, EntryDetails } from "./entry-details";
 import { SecurityLog } from "./security-log";
 import { useSettled } from "./use-settled";
+import { ViewButton } from "./view-button";
 
 const VIEWS = [
   { value: "changes", label: "Changes" },
@@ -423,15 +424,10 @@ function ChangeRow({
         <AreaLabel area={entry.area} />
       </TD>
       <TD kind="actions" className="align-top pt-2">
-        <Button
-          variant="secondary"
-          size="sm"
-          icon={Eye}
-          aria-label={`View details: ${sentenceText(entry)}`}
+        <ViewButton
+          label={`View details: ${sentenceText(entry)}`}
           onClick={onView}
-        >
-          View
-        </Button>
+        />
       </TD>
     </TR>
   );

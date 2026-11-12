@@ -1,6 +1,5 @@
 "use client";
 
-import { Eye } from "lucide-react";
 import { Fragment, useMemo, useState } from "react";
 
 import { useMemberships } from "@/components/organizations/membership-list";
@@ -44,6 +43,7 @@ import { useActivity } from "./activity-queries";
 import { EntryDetails } from "./entry-details";
 import { ResultPill } from "./result-pill";
 import { useSettled } from "./use-settled";
+import { ViewButton } from "./view-button";
 
 /**
  * Every sign-in to a member's account, and every wrong password, block and
@@ -299,15 +299,10 @@ function SignInRow({
         {clientText(entry.client)}
       </TD>
       <TD kind="actions" className="pt-2 align-top">
-        <Button
-          variant="secondary"
-          size="sm"
-          icon={Eye}
-          aria-label={`View details: ${result.label}, ${entry.actor.name}`}
+        <ViewButton
+          label={`View details: ${result.label}, ${entry.actor.name}`}
           onClick={onView}
-        >
-          View
-        </Button>
+        />
       </TD>
     </TR>
   );
