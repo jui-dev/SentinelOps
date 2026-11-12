@@ -93,6 +93,9 @@ for (const role of ["admin", "manager", "reporter", "responder"]) {
 }
 // Accent-tinted controls — the activity log's View — at rest and hovered.
 each(["accent-text"], ["accent-subtle", "selected"], TEXT);
+// The selected tab: its name on its tint, and its underline on the page.
+each(["fg"], ["accent-subtle"], TEXT);
+each(["accent-text"], ["canvas"], UI);
 each(["accent-rim"], ["hover", "accent-subtle"], UI);
 // Activity log areas: each area's name, on the table and its hovered row.
 each(

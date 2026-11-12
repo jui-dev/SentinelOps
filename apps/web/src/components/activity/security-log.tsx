@@ -51,13 +51,18 @@ import { ViewButton } from "./view-button";
  * anything needs a look; wrong passwords tried one after another read as one
  * row, and a block stands out.
  */
-export function SecurityLog() {
+export function SecurityLog({
+  initialSince,
+}: {
+  /** The page's last-7-days start, so the opening query is the tab's own. */
+  initialSince: string | undefined;
+}) {
   const organization = useOrganization();
   const memberships = useMemberships(organization.id);
   const [search, setSearch] = useState("");
   const [result, setResult] = useState<SecurityAction | "">("");
   const [period, setPeriod] = useState<PeriodValue>("7d");
-  const [since, setSince] = useState(() => periodStart("7d", Date.now()));
+  const [since, setSince] = useState(initialSince);
   const [open, setOpen] = useState<ActivityEntryResponse | null>(null);
   const q = useSettled(search.trim());
   const now = useMinuteClock();

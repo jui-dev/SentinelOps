@@ -263,6 +263,12 @@ describe("activity log", () => {
       rows.find((row) => row.textContent?.includes("Added the member"))?.textContent,
     ).toMatch(/As a Responder/);
 
+    // The tabs: how many changes, and whether anyone was blocked.
+    expect(await screen.findByRole("tab", { name: "Changes 3" })).toBeDefined();
+    expect(
+      await screen.findByRole("tab", { name: "Sign-ins & security 1 blocked" }),
+    ).toBeDefined();
+
     // Each area in the filter says how many it holds.
     const areas = screen.getByLabelText("Area") as HTMLSelectElement;
 
@@ -362,7 +368,7 @@ describe("activity log", () => {
     const { requests } = api(ADMIN);
 
     render();
-    await user.click(await screen.findByRole("tab", { name: "Sign-ins & security" }));
+    await user.click(await screen.findByRole("tab", { name: /^Sign-ins & security/ }));
 
     const table = await screen.findByRole("table", { name: "Sign-ins and security" });
 
@@ -395,7 +401,7 @@ describe("activity log", () => {
 
     api(ADMIN);
     render();
-    await user.click(await screen.findByRole("tab", { name: "Sign-ins & security" }));
+    await user.click(await screen.findByRole("tab", { name: /^Sign-ins & security/ }));
     await user.click(
       await screen.findByRole("button", {
         name: "View details: Wrong password ×5, Priya Shah",

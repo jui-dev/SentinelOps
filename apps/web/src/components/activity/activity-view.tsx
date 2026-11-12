@@ -1,6 +1,6 @@
 "use client";
 
-import { Lock } from "lucide-react";
+import { ListChecks, Lock, ShieldCheck } from "lucide-react";
 import { Fragment, useMemo, useState } from "react";
 
 import { useMemberships } from "@/components/organizations/membership-list";
@@ -54,12 +54,7 @@ import { SecurityLog } from "./security-log";
 import { useSettled } from "./use-settled";
 import { ViewButton } from "./view-button";
 
-const VIEWS = [
-  { value: "changes", label: "Changes" },
-  { value: "security", label: "Sign-ins & security" },
-] as const;
-
-type View = (typeof VIEWS)[number]["value"];
+type View = "changes" | "security";
 
 /**
  * The organization's activity log, on two tabs: every change to its setup,
@@ -69,7 +64,6 @@ type View = (typeof VIEWS)[number]["value"];
  */
 export function ActivityView() {
   const canRead = useCan(Permission.ACTIVITY_READ);
-  const [view, setView] = useState<View>("changes");
 
   if (!canRead) {
     return (
@@ -85,6 +79,45 @@ export function ActivityView() {
     );
   }
 
+  return <ActivityLog />;
+}
+
+function ActivityLog() {
+  const organization = useOrganization();
+  const [view, setView] = useState<View>("changes");
+  // Both tabs open on the last 7 days, from one instant, so the counts on
+  // the tabs come from the very queries the tabs make — no extra request.
+  const [since] = useState(() => periodStart("7d", Date.now()));
+  const changes = useActivity(organization.id, "changes", { since });
+  const security = useActivity(organization.id, "security", { since });
+  const changeCounts = changes.data?.pages[0]?.areaCounts;
+  const blocked = security.data?.pages[0]?.securityTotals?.blocked ?? 0;
+
+  const tabs = [
+    {
+      value: "changes" as const,
+      label: "Changes",
+      icon: ListChecks,
+      badge: changeCounts
+        ? {
+            text: String(
+              Object.values(changeCounts).reduce((sum, count) => sum + count, 0),
+            ),
+          }
+        : undefined,
+    },
+    {
+      value: "security" as const,
+      label: "Sign-ins & security",
+      icon: ShieldCheck,
+      // Only what wants a look: someone blocked in the last 7 days.
+      badge:
+        blocked > 0
+          ? { text: `${blocked} blocked`, tone: "danger" as const }
+          : undefined,
+    },
+  ];
+
   return (
     <>
       <PageHeader
@@ -99,15 +132,19 @@ export function ActivityView() {
         }
       />
       <PageBody width="full">
-        <Tabs label="Activity" tabs={VIEWS} value={view} onChange={setView}>
-          {view === "changes" ? <ChangesLog /> : <SecurityLog />}
+        <Tabs label="Activity" tabs={tabs} value={view} onChange={setView}>
+          {view === "changes" ? (
+            <ChangesLog initialSince={since} />
+          ) : (
+            <SecurityLog initialSince={since} />
+          )}
         </Tabs>
       </PageBody>
     </>
   );
 }
 
-function ChangesLog() {
+function ChangesLog({ initialSince }: { initialSince: string | undefined }) {
   const organization = useOrganization();
   const memberships = useMemberships(organization.id);
   const [search, setSearch] = useState("");
@@ -115,7 +152,7 @@ function ChangesLog() {
   const [actorId, setActorId] = useState("");
   const [period, setPeriod] = useState<PeriodValue>("7d");
   // The period's start is fixed when it is chosen, so the query keeps one key.
-  const [since, setSince] = useState(() => periodStart("7d", Date.now()));
+  const [since, setSince] = useState(initialSince);
   const [open, setOpen] = useState<ActivityEntryResponse | null>(null);
   const q = useSettled(search.trim());
 
