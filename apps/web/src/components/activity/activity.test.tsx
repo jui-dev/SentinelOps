@@ -379,9 +379,10 @@ describe("activity log", () => {
       within(screen.getByText(label).parentElement as HTMLElement).getByRole("definition")
         .textContent;
 
-    expect(total("Sign-ins in the last 7 days")).toBe("38");
-    expect(total("Wrong passwords")).toBe("6");
-    expect(total("Sign-ins blocked")).toBe("1");
+    expect(screen.getByLabelText("Sign-ins at a glance")).toBeDefined();
+    expect(total("Sign-ins")).toBe("38in the last 7 days");
+    expect(total("Wrong passwords")).toBe("6in the last 7 days");
+    expect(total("Sign-ins blocked")).toBe("1each for 15 minutes");
 
     const rows = within(table).getAllByRole("row");
     const row = (text: string) => rows.find((each) => each.textContent?.includes(text));

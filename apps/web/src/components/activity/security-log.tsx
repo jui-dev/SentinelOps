@@ -1,5 +1,6 @@
 "use client";
 
+import { Ban, CircleAlert, LogIn } from "lucide-react";
 import { Fragment, useMemo, useState } from "react";
 
 import { useMemberships } from "@/components/organizations/membership-list";
@@ -7,6 +8,7 @@ import { useOrganization } from "@/components/organizations/organization-scope";
 import { roleMeta } from "@/components/roles/role-meta";
 import { ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Glance, GlanceTile } from "@/components/ui/detail-layout";
 import { cx } from "@/components/ui/cx";
 import { Field } from "@/components/ui/field";
 import { Select } from "@/components/ui/select";
@@ -79,25 +81,39 @@ export function SecurityLog({
   const totals = log.data?.pages[0]?.securityTotals ?? null;
   const periodLabel = PERIODS.find((each) => each.value === period)?.label;
   const inPeriod =
-    period === "all" ? "in all" : `in the ${periodLabel?.toLowerCase()}`;
+    period === "all" ? "all time" : `in the ${periodLabel?.toLowerCase()}`;
   const roleOf = (userId: string) =>
     memberships.data?.find((member) => member.user.id === userId)?.role;
 
   return (
     <div className="flex flex-col gap-4">
-      <dl className="grid gap-3 sm:grid-cols-3">
-        <Total value={totals?.signIns} label={`Sign-ins ${inPeriod}`} />
-        <Total
-          value={totals?.failedSignIns}
+      {/* The totals on a band of their own, as the Incidents page holds its. */}
+      <Glance label="Sign-ins at a glance" columns={3}>
+        <GlanceTile
+          label="Sign-ins"
+          icon={LogIn}
+          tone="accent"
+          value={totals?.signIns ?? "—"}
+          note={inPeriod}
+        />
+        <GlanceTile
           label="Wrong passwords"
-          tone={totals && totals.failedSignIns > 0 ? "warning" : undefined}
+          icon={CircleAlert}
+          tone={totals && totals.failedSignIns > 0 ? "warning" : "neutral"}
+          value={totals?.failedSignIns ?? "—"}
+          note={inPeriod}
         />
-        <Total
-          value={totals?.blocked}
+        <GlanceTile
           label="Sign-ins blocked"
-          tone={totals && totals.blocked > 0 ? "danger" : undefined}
+          icon={Ban}
+          tone={totals && totals.blocked > 0 ? "danger" : "neutral"}
+          value={totals?.blocked ?? "—"}
+          note={
+            totals && totals.blocked > 0 ? "each for 15 minutes" : inPeriod
+          }
+          noteTone={Boolean(totals && totals.blocked > 0)}
         />
-      </dl>
+      </Glance>
 
       {/* The filters on a sunken panel of their own, apart from the results. */}
       <div
@@ -238,33 +254,6 @@ export function SecurityLog({
           onClose={() => setOpen(null)}
         />
       )}
-    </div>
-  );
-}
-
-/** One of the three totals: a number and what it counts. */
-function Total({
-  value,
-  label,
-  tone,
-}: {
-  value: number | undefined;
-  label: string;
-  tone?: "warning" | "danger";
-}) {
-  return (
-    <div className="flex flex-col-reverse gap-0.5 rounded-md border border-line-subtle bg-surface px-4 py-3">
-      <dt className="text-xs text-fg-subtle">{label}</dt>
-      <dd
-        className={cx(
-          "numeric text-2xl font-semibold",
-          tone === "warning" && "text-warning-text",
-          tone === "danger" && "text-danger-text",
-          tone === undefined && "text-fg",
-        )}
-      >
-        {value ?? "—"}
-      </dd>
     </div>
   );
 }

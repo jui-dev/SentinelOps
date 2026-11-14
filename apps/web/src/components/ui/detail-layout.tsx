@@ -17,7 +17,8 @@ export type GlanceTone =
   | "info"
   | "warning"
   | "investigating"
-  | "resolved";
+  | "resolved"
+  | "danger";
 
 /** Each tile's icon square: a quiet fill in one of the system's own tones. */
 const CHIPS: Record<GlanceTone, string> = {
@@ -29,6 +30,7 @@ const CHIPS: Record<GlanceTone, string> = {
     "border-status-investigating-line bg-status-investigating-subtle text-status-investigating-text",
   resolved:
     "border-status-resolved-line bg-status-resolved-subtle text-status-resolved-text",
+  danger: "border-danger-line bg-danger-subtle text-danger-text",
 };
 
 /** A tile's note in its tone, for a figure that wants noticing. */
@@ -39,6 +41,7 @@ const NOTE_TONES: Record<GlanceTone, string> = {
   warning: "text-warning-text",
   investigating: "text-status-investigating-text",
   resolved: "text-status-resolved-text",
+  danger: "text-danger-text",
 };
 
 export function GlanceTile({
