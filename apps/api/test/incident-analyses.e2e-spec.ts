@@ -92,6 +92,8 @@ describe('Incident analyses (e2e)', () => {
 
   const prisma = {
     $transaction: vi.fn(),
+    // lockActiveMembership: the row it locks, or none for someone removed.
+    $queryRaw: vi.fn(),
     membership: { findFirst: vi.fn() },
     incident: { findFirst: vi.fn() },
     incidentAnalysis: {
@@ -162,6 +164,7 @@ describe('Incident analyses (e2e)', () => {
       work(prisma),
     );
     prisma.membership.findFirst.mockResolvedValue(null);
+    prisma.$queryRaw.mockResolvedValue([{ id: 'locked' }]);
     prisma.incident.findFirst.mockResolvedValue(incidentRow());
     prisma.incidentAnalysis.create.mockResolvedValue(analysisRow);
     prisma.incidentAnalysis.updateMany.mockResolvedValue({ count: 1 });
@@ -558,6 +561,19 @@ describe('Incident analyses (e2e)', () => {
         ownerMembershipId: '0199a1b2-c3d4-7000-8000-0000000000ff',
         version: 1,
       });
+
+      expect(response.status).toBe(404);
+      expect(response.body.code).toBe('MEMBERSHIP_NOT_FOUND');
+      expect(prisma.incidentAnalysis.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('should refuse an owner the Admin removed from the organization, as one who never belonged', async () => {
+      admitAs('ADMIN');
+      prisma.incident.findFirst.mockResolvedValue(draft());
+      // The lock finds no row that still belongs.
+      prisma.$queryRaw.mockResolvedValue([]);
+
+      const response = await send('put', ownerPath, reassign);
 
       expect(response.status).toBe(404);
       expect(response.body.code).toBe('MEMBERSHIP_NOT_FOUND');

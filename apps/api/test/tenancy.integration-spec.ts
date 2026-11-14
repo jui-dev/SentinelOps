@@ -338,6 +338,8 @@ describe('tenancy (integration)', () => {
           passwordChangeRequired: false,
         },
         teams: [],
+        removal: null,
+        openWork: [],
       });
     });
 

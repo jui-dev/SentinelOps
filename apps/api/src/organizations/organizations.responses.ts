@@ -2,6 +2,7 @@ import { toOrganizationResponse } from '../auth/auth.responses.js';
 import { permissionsFor } from '../authorization/role-permissions.js';
 import type { Role } from '../generated/prisma/enums.js';
 import type {
+  MemberOpenWorkResponse,
   OrganizationDetailResponse,
   OrganizationMembershipResponse,
 } from './organizations.contract.js';
@@ -37,7 +38,32 @@ interface MembershipRow {
   teamMemberships: {
     team: { id: string; name: string; slug: string };
   }[];
+  removedAt: Date | null;
+  removedBy: { id: string; name: string } | null;
+  /** Selected only for a reader who manages members. */
+  incidentResponses?: { incident: IncidentRef }[];
+  analysesOwned?: { incident: IncidentRef }[];
 }
+
+interface IncidentRef {
+  number: number;
+  title: string;
+}
+
+const openWorkOf = (membership: MembershipRow): MemberOpenWorkResponse[] =>
+  [
+    ...(membership.incidentResponses ?? []).map(({ incident }) => ({
+      kind: 'INVESTIGATING' as const,
+      incident,
+    })),
+    ...(membership.analysesOwned ?? []).map(({ incident }) => ({
+      kind: 'DRAFT_ANALYSIS' as const,
+      incident,
+    })),
+  ].map(({ kind, incident }) => ({
+    kind,
+    incident: { number: incident.number, title: incident.title },
+  }));
 
 export const toOrganizationDetailResponse = (
   organization: OrganizationRow,
@@ -76,4 +102,15 @@ export const toOrganizationMembershipResponse = (
     name: team.name,
     slug: team.slug,
   })),
+  ...(accountSetup && {
+    removal: membership.removedAt
+      ? {
+          removedAt: membership.removedAt.toISOString(),
+          removedBy: membership.removedBy
+            ? { id: membership.removedBy.id, name: membership.removedBy.name }
+            : null,
+        }
+      : null,
+    openWork: openWorkOf(membership),
+  }),
 });

@@ -22,7 +22,7 @@ export interface IncidentNotificationEvent {
 }
 
 /** Only members whose accounts still exist are told anything. */
-const activeMember = { user: { deletedAt: null } } as const;
+const activeMember = { user: { deletedAt: null }, removedAt: null } as const;
 
 /**
  * Writes the notifications a change reports, inside the transaction that
@@ -202,6 +202,7 @@ export class NotificationsWriter {
       ? await tx.membership.findMany({
           where: {
             organizationId,
+            removedAt: null,
             user: {
               deletedAt: null,
               incidentsDeclared: { some: { id: change.incidentId } },

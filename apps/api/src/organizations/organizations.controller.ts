@@ -1,4 +1,14 @@
-import { Body, Get, Param, Patch, Post, Put } from '@nestjs/common';
+import {
+  Body,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Patch,
+  Post,
+  Put,
+} from '@nestjs/common';
 
 import type { OrganizationResponse } from '../auth/auth.contract.js';
 import { CurrentUserId } from '../auth/current-user.decorator.js';
@@ -16,12 +26,14 @@ import {
   changeRoleSchema,
   createMemberSchema,
   resetPasswordSchema,
+  restoreMemberSchema,
   updateOrganizationSchema,
 } from './organizations.schemas.js';
 import type {
   ChangeRoleRequest,
   CreateMemberRequest,
   ResetPasswordRequest,
+  RestoreMemberRequest,
   UpdateOrganizationRequest,
 } from './organizations.schemas.js';
 import { OrganizationsService } from './organizations.service.js';
@@ -159,6 +171,47 @@ export class OrganizationsController {
       membershipId,
       body,
       { membershipId: membership.membershipId, userId },
+    );
+  }
+
+  /**
+   * Removes someone from the organization: their access ends, their history
+   * stays. 200 with the member, now carrying `removal`. 409 for the caller
+   * themselves, the last Admin, someone removed already, or someone with
+   * open work to hand over first.
+   */
+  @Delete('memberships/:membershipId')
+  @RequirePermission(Permission.MEMBERS_MANAGE)
+  removeMember(
+    @CurrentMembership() membership: OrganizationContext,
+    @Param('membershipId') membershipId: string,
+    @CurrentUserId() userId: string,
+  ): Promise<OrganizationMembershipResponse> {
+    return this.organizations.removeMember(
+      membership.organizationId,
+      membershipId,
+      { membershipId: membership.membershipId, userId },
+    );
+  }
+
+  /**
+   * Brings a removed person back in the role named, on no team. 200 with the
+   * member; 409 MEMBER_NOT_REMOVED for someone who belongs already.
+   */
+  @Post('memberships/:membershipId/restore')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission(Permission.MEMBERS_MANAGE)
+  restoreMember(
+    @CurrentMembership() membership: OrganizationContext,
+    @Param('membershipId') membershipId: string,
+    @Body({ schema: restoreMemberSchema }) body: RestoreMemberRequest,
+    @CurrentUserId() userId: string,
+  ): Promise<OrganizationMembershipResponse> {
+    return this.organizations.restoreMember(
+      membership.organizationId,
+      membershipId,
+      body,
+      userId,
     );
   }
 

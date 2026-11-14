@@ -1,3 +1,4 @@
+import { lockActiveMembership } from '../organizations/active-membership.js';
 import { Injectable, Logger } from '@nestjs/common';
 
 import { Permission } from '../authorization/permissions.js';
@@ -2086,6 +2087,17 @@ export class IncidentsService {
         let statusChanged = false;
 
         if (!existing) {
+          // Not someone whose removal is committing: see lockActiveMembership.
+          if (
+            !(await lockActiveMembership(
+              tx,
+              organizationId,
+              actor.membershipId,
+            ))
+          ) {
+            throw organizationNotFound();
+          }
+
           await this.requireMayStart(
             tx,
             organizationId,
@@ -2206,6 +2218,12 @@ export class IncidentsService {
           },
         });
         const next = nextResponseAccess(current, input);
+        for (const id of next.assigneeIds) {
+          if (!(await lockActiveMembership(tx, organizationId, id))) {
+            throw membershipNotFound();
+          }
+        }
+
         const people = await tx.membership.findMany({
           where: { organizationId, id: { in: next.assigneeIds } },
           select: { id: true, role: true, user: { select: { name: true } } },

@@ -474,7 +474,8 @@ export class AuthService {
       select: {
         ...userSelection,
         memberships: {
-          where: { organization: { deletedAt: null } },
+          // An organization they were removed from is no longer theirs.
+          where: { organization: { deletedAt: null }, removedAt: null },
           select: {
             id: true,
             role: true,

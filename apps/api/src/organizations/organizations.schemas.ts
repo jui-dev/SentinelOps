@@ -80,6 +80,13 @@ export const changeRoleSchema = z.strictObject({
 
 export type ChangeRoleRequest = z.infer<typeof changeRoleSchema>;
 
+/** Restoring a removed person: the role they come back in. Required. */
+export const restoreMemberSchema = z.strictObject({
+  role: roleSchema,
+});
+
+export type RestoreMemberRequest = z.infer<typeof restoreMemberSchema>;
+
 /**
  * Resetting a member's password: the new one-time password the Admin hands
  * them. The same rules as any password; they choose their own at next

@@ -1,3 +1,4 @@
+import { lockActiveMembership } from '../organizations/active-membership.js';
 import { Injectable, Logger } from '@nestjs/common';
 
 import { recordActivity } from '../activity/activity.recorder.js';
@@ -36,7 +37,9 @@ import type {
 const RECORD_NOT_FOUND = 'P2025';
 
 /** Only members whose accounts still exist are shown or counted. */
-const visibleMember = { membership: { user: { deletedAt: null } } } as const;
+const visibleMember = {
+  membership: { user: { deletedAt: null }, removedAt: null },
+} as const;
 
 /** Columns a team response is built from. */
 const teamSelection = {
@@ -478,14 +481,20 @@ export class TeamsService {
       member = await this.prisma.$transaction(async (tx) => {
         await this.requireTeam(tx, organizationId, teamId);
 
-        const membership = await tx.membership.findFirst({
-          where: {
-            id: input.membershipId,
-            organizationId,
-            user: { deletedAt: null },
-          },
-          select: { id: true },
-        });
+        const membership = (await lockActiveMembership(
+          tx,
+          organizationId,
+          input.membershipId,
+        ))
+          ? await tx.membership.findFirst({
+              where: {
+                id: input.membershipId,
+                organizationId,
+                user: { deletedAt: null },
+              },
+              select: { id: true },
+            })
+          : null;
 
         if (!membership) {
           throw membershipNotFound();

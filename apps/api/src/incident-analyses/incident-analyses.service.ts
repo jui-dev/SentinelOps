@@ -1,3 +1,4 @@
+import { lockActiveMembership } from '../organizations/active-membership.js';
 import { Injectable, Logger } from '@nestjs/common';
 
 import { PrismaService } from '../database/prisma.service.js';
@@ -707,12 +708,19 @@ export class IncidentAnalysesService {
     return membership.userId;
   }
 
-  /** 404 MEMBERSHIP_NOT_FOUND unless it is an active member of this organization. */
+  /**
+   * 404 MEMBERSHIP_NOT_FOUND unless it is an active member of this
+   * organization — not removed, and held so until the transaction ends.
+   */
   private async requireActiveMember(
     db: Prisma.TransactionClient,
     organizationId: string,
     membershipId: string,
   ): Promise<void> {
+    if (!(await lockActiveMembership(db, organizationId, membershipId))) {
+      throw membershipNotFound();
+    }
+
     const membership = await db.membership.findFirst({
       where: { id: membershipId, organizationId, user: { deletedAt: null } },
       select: { id: true },

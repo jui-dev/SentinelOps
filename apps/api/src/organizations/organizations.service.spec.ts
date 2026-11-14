@@ -41,6 +41,10 @@ const membershipRow = {
       },
     },
   ],
+  removedAt: null,
+  removedBy: null,
+  incidentResponses: [],
+  analysesOwned: [],
 };
 
 const knownError = (code: string, index?: string) =>
@@ -341,6 +345,20 @@ describe('OrganizationsService', () => {
           select: { team: { select: { id: true, name: true, slug: true } } },
           orderBy: { team: { name: 'asc' } },
         },
+        removedAt: true,
+        removedBy: { select: { id: true, name: true } },
+        // The Admin is told what would stop a removal; never anything else
+        // about the incidents.
+        incidentResponses: {
+          where: { status: 'INVESTIGATING' },
+          select: { incident: { select: { number: true, title: true } } },
+          orderBy: { incident: { number: 'asc' } },
+        },
+        analysesOwned: {
+          where: { status: 'DRAFT' },
+          select: { incident: { select: { number: true, title: true } } },
+          orderBy: { incident: { number: 'asc' } },
+        },
       });
     });
 
@@ -363,6 +381,8 @@ describe('OrganizationsService', () => {
               slug: 'payments',
             },
           ],
+          removal: null,
+          openWork: [],
         },
       ]);
     });
@@ -436,6 +456,8 @@ describe('OrganizationsService', () => {
         passwordChangeRequired: true,
       },
       teamMemberships: [],
+      removedAt: null,
+      removedBy: null,
     };
 
     const ready = () => {
@@ -615,6 +637,8 @@ describe('OrganizationsService', () => {
         createdAt: '2026-09-01T12:00:00.000Z',
         user: newMembershipRow.user,
         teams: [],
+        removal: null,
+        openWork: [],
       });
       expect(JSON.stringify(response)).not.toContain(input.temporaryPassword);
     });

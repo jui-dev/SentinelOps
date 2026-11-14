@@ -28,7 +28,7 @@ export class MembershipResolver {
    * The caller's membership in `organizationId`, or null.
    *
    * Null covers every reason uniformly: no such organization, a soft-deleted
-   * one, no membership, or a soft-deleted caller. The last filter matters
+   * one, no membership, a removed one, or a soft-deleted caller. The last filter matters
    * because the JWT guard reads no database, so this is the first point at
    * which a deleted account is noticed on a tenant route.
    *
@@ -47,6 +47,9 @@ export class MembershipResolver {
       where: {
         organizationId,
         userId,
+        // Someone the Admin removed is not a member: their access ends here,
+        // on the very next request.
+        removedAt: null,
         organization: { deletedAt: null },
         user: { deletedAt: null },
       },

@@ -171,6 +171,8 @@ model User {
   /// Activity log entries this user caused, or — for a sign-in — whose
   /// account it was.
   activityEntries     ActivityEntry[]
+  /// Memberships this user removed, as an Admin.
+  membershipsRemoved  Membership[]       @relation("MembershipsRemoved")
 
   @@map("users")
 }
@@ -182,10 +184,15 @@ model User {
 /// A surrogate id rather than a composite key, so a later audit record or invitation
 /// can reference one specific grant, and so a membership has a REST identity.
 ///
-/// Hard lifecycle, unlike its two parents: revoking access must actually remove the
-/// grant. A soft-deleted membership that a future authorization check forgets to
-/// filter is a security hole, not a data-loss risk — and the record of what someone
-/// did lives in incidents and audit entries, not in the grant that permitted it.
+/// Removed, not deleted, when someone leaves: `removedAt` is set, and the row stays
+/// so their responses, analyses, and timeline entries keep a member to point at —
+/// the responder and analysis-owner keys are Restrict for exactly that. A removed
+/// membership is a security hole if any check forgets it, so the rule is narrow:
+/// admission refuses one (MembershipResolver), and every query that finds members
+/// to act on, notify, place, assign, or count filters `removedAt: null`. Reads of
+/// history do not, so the past still names them. Removal also deletes their team
+/// placements and assignments, so team-based queries need no filter of their own.
+/// test/member-removal.integration-spec.ts pins this, the race included.
 ///
 /// The `onDelete: Cascade` below is referential integrity for a *physical* row
 /// deletion (an erasure request, a local reset), not the ordinary lifecycle. The
@@ -199,9 +206,16 @@ model Membership {
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  /// When the Admin removed them from the organization; null while they
+  /// belong. Restoring clears it. A CHECK keeps removedById null unless this
+  /// is set.
+  removedAt   DateTime? @map("removed_at") @db.Timestamptz(3)
+  /// Who removed them. SetNull: the record outlives the remover's account.
+  removedById String?   @map("removed_by_id") @db.Uuid
 
   organization        Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user                User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  removedBy           User?               @relation("MembershipsRemoved", fields: [removedById], references: [id], onDelete: SetNull)
   teamMemberships     TeamMembership[]
   /// Restrict, like the responder key itself: a membership that has
   /// responded to an incident cannot be physically deleted. Nothing in the
@@ -1115,6 +1129,8 @@ enum ActivityAction {
   MEMBER_ADDED
   ROLE_CHANGED
   PASSWORD_RESET
+  MEMBER_REMOVED
+  MEMBER_RESTORED
   INVITATION_SENT
   INVITATION_REVOKED
   INVITATION_ACCEPTED

@@ -2325,6 +2325,37 @@ describe('core domain schema (integration)', () => {
     });
   });
 
+  describe('member removal', () => {
+    it('should record who removed someone only for a removal', async () => {
+      const organization = await anOrganization('acme');
+      const ada = await aUser('ada@example.com');
+      const admin = await prisma.user.create({
+        data: { email: 'admin@example.com', name: 'Admin' },
+      });
+      const membership = await prisma.membership.create({
+        data: { organizationId: organization.id, userId: ada.id },
+      });
+
+      await expect(
+        prisma.$executeRawUnsafe(
+          'UPDATE memberships SET removed_by_id = $1::uuid WHERE id = $2::uuid',
+          admin.id,
+          membership.id,
+        ),
+      ).rejects.toSatisfy(
+        (error: unknown) =>
+          error instanceof Error && error.message.includes('23514'),
+      );
+
+      const removed = await prisma.membership.update({
+        where: { id: membership.id },
+        data: { removedAt: new Date(), removedById: admin.id },
+      });
+
+      expect(removed.removedById).toBe(admin.id);
+    });
+  });
+
   describe('the role enum', () => {
     it('should default a membership to RESPONDER', async () => {
       const organization = await anOrganization('acme');
@@ -2398,7 +2429,8 @@ describe('core domain schema (integration)', () => {
            AND column_name IN (
              'created_at', 'updated_at', 'deleted_at', 'expires_at',
              'revoked_at', 'accepted_at', 'archived_at', 'resolved_at',
-             'started_at', 'completed_at', 'read_at', 'published_at'
+             'started_at', 'completed_at', 'read_at', 'published_at',
+             'removed_at'
            )`,
       );
 
@@ -2418,7 +2450,8 @@ describe('core domain schema (integration)', () => {
       // incident_analyses adds created_at, updated_at, and published_at (3).
       // known_issues adds created_at, updated_at, and archived_at (3).
       // activity_entries only created_at (1): an entry is never edited.
-      expect(columns).toHaveLength(37);
+      // memberships adds removed_at (1): when someone was removed.
+      expect(columns).toHaveLength(38);
       for (const column of columns) {
         expect(column.data_type).toBe('timestamp with time zone');
       }

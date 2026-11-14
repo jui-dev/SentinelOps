@@ -73,6 +73,32 @@ export interface OrganizationMembershipResponse {
   createdAt: string;
   user: MemberUserResponse;
   teams: MemberTeamResponse[];
+  /**
+   * Account setup, for a caller holding `members:manage` only; absent for
+   * everyone else, who never sees a removed member at all.
+   *
+   * Null while they belong. Set once the Admin removed them: when, and by
+   * whom (null once that account is gone). Their role is the one they held.
+   */
+  removal?: MemberRemovalResponse | null;
+  /**
+   * What stops removing them now, for a caller holding `members:manage`
+   * only. Empty when nothing does. Each is fixed where it is linked:
+   * a response to complete, or an analysis to hand to someone else.
+   */
+  openWork?: MemberOpenWorkResponse[];
+}
+
+export interface MemberRemovalResponse {
+  removedAt: string;
+  removedBy: { id: string; name: string } | null;
+}
+
+/** One piece of open work that blocks a removal. */
+export interface MemberOpenWorkResponse {
+  /** INVESTIGATING: a response under way. DRAFT_ANALYSIS: an unpublished analysis they own. */
+  kind: 'INVESTIGATING' | 'DRAFT_ANALYSIS';
+  incident: { number: number; title: string };
 }
 
 /**

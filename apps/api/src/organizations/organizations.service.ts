@@ -25,9 +25,13 @@ import type {
   OrganizationRoleResponse,
 } from './organizations.contract.js';
 import {
+  cannotRemoveSelf,
   cannotResetOwnPassword,
   lastAdmin,
+  memberHasOpenWork,
+  memberNotRemoved,
   memberOfOtherOrganizations,
+  memberRemoved,
   membershipNotFound,
 } from './organizations.errors.js';
 import {
@@ -38,6 +42,7 @@ import type {
   ChangeRoleRequest,
   CreateMemberRequest,
   ResetPasswordRequest,
+  RestoreMemberRequest,
   UpdateOrganizationRequest,
 } from './organizations.schemas.js';
 
@@ -80,7 +85,47 @@ const membershipSelection = {
     // Team names are unique within an organization, so this is total.
     orderBy: { team: { name: 'asc' } },
   },
+  removedAt: true,
+  removedBy: { select: { id: true, name: true } },
 } as const;
+
+/** The incident a piece of open work belongs to: enough to name and link it. */
+const openWorkIncident = {
+  select: { incident: { select: { number: true, title: true } } },
+  orderBy: { incident: { number: 'asc' } },
+} as const;
+
+/**
+ * A membership as whoever manages members reads it: with the open work that
+ * would stop removing them — a response under way, an unpublished analysis
+ * they own.
+ */
+const managedMembershipSelection = {
+  ...membershipSelection,
+  incidentResponses: {
+    where: { status: 'INVESTIGATING' },
+    ...openWorkIncident,
+  },
+  analysesOwned: { where: { status: 'DRAFT' }, ...openWorkIncident },
+} as const;
+
+/**
+ * Removed members are seen only by whoever manages members, to restore them;
+ * for everyone else they are gone, as if they never belonged.
+ */
+const removedVisibleTo = (reader: MembershipReader) =>
+  hasPermission(reader.role, Permission.MEMBERS_MANAGE)
+    ? {}
+    : { removedAt: null };
+
+/** Locks the organization's Admins who still belong, in one statement. */
+const lockAdmins = (tx: Prisma.TransactionClient, organizationId: string) =>
+  tx.$queryRaw<{ id: string }[]>`
+    SELECT id FROM memberships
+    WHERE organization_id = ${organizationId}::uuid
+      AND role = 'ADMIN' AND removed_at IS NULL
+    ORDER BY id
+    FOR UPDATE`;
 
 /**
  * Organization-scoped reads, and adding a member.
@@ -246,9 +291,12 @@ export class OrganizationsService {
         organizationId,
         organization: { deletedAt: null },
         user: { deletedAt: null },
+        ...removedVisibleTo(reader),
         ...membershipScope(reader),
       },
-      select: membershipSelection,
+      select: hasPermission(reader.role, Permission.MEMBERS_MANAGE)
+        ? managedMembershipSelection
+        : membershipSelection,
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
     });
 
@@ -275,6 +323,7 @@ export class OrganizationsService {
         organizationId,
         organization: { deletedAt: null },
         user: { deletedAt: null },
+        removedAt: null,
       },
       _count: { _all: true },
     });
@@ -312,9 +361,12 @@ export class OrganizationsService {
         organizationId,
         organization: { deletedAt: null },
         user: { deletedAt: null },
+        ...removedVisibleTo(reader),
         ...membershipScope(reader),
       },
-      select: membershipSelection,
+      select: hasPermission(reader.role, Permission.MEMBERS_MANAGE)
+        ? managedMembershipSelection
+        : membershipSelection,
     });
 
     if (!membership) {
@@ -376,6 +428,22 @@ export class OrganizationsService {
 
         if (!organization) {
           throw organizationNotFound();
+        }
+
+        // Someone removed from here comes back by being restored, keeping
+        // their history: asked first, so the email's answer is not the
+        // generic one an account elsewhere gets.
+        const removed = await tx.membership.findFirst({
+          where: {
+            organizationId,
+            removedAt: { not: null },
+            user: { email: input.email, deletedAt: null },
+          },
+          select: { id: true },
+        });
+
+        if (removed) {
+          throw memberRemoved();
         }
 
         const user = await tx.user.create({
@@ -497,11 +565,7 @@ export class OrganizationsService {
     }
 
     const { membership, from } = await this.prisma.$transaction(async (tx) => {
-      const admins = await tx.$queryRaw<{ id: string }[]>`
-        SELECT id FROM memberships
-        WHERE organization_id = ${organizationId}::uuid AND role = 'ADMIN'
-        ORDER BY id
-        FOR UPDATE`;
+      const admins = await lockAdmins(tx, organizationId);
 
       const current = await tx.membership.findFirst({
         where: {
@@ -510,11 +574,15 @@ export class OrganizationsService {
           organization: { deletedAt: null },
           user: { deletedAt: null },
         },
-        select: { id: true, role: true },
+        select: { id: true, role: true, removedAt: true },
       });
 
       if (!current) {
         throw membershipNotFound();
+      }
+
+      if (current.removedAt) {
+        throw memberRemoved();
       }
 
       if (
@@ -607,12 +675,17 @@ export class OrganizationsService {
         select: {
           id: true,
           userId: true,
+          removedAt: true,
           user: { select: { _count: { select: { memberships: true } } } },
         },
       });
 
       if (!target) {
         throw membershipNotFound();
+      }
+
+      if (target.removedAt) {
+        throw memberRemoved();
       }
 
       if (target.id === actor.membershipId) {
@@ -657,6 +730,195 @@ export class OrganizationsService {
       organizationId,
       membershipId: membership.id,
       userId: membership.user.id,
+    });
+
+    return toOrganizationMembershipResponse(membership, { accountSetup: true });
+  }
+
+  /**
+   * Removes someone from the organization, for when they leave. Their access
+   * ends with the next request they make: admission refuses a removed
+   * membership. They come off their teams and lose any assignment, in the
+   * same transaction; their responses, updates, and analyses stay, under
+   * their name, and the row stays to point them at.
+   *
+   * Refused, all 409: an Admin removing themselves (CANNOT_REMOVE_SELF), the
+   * last Admin (LAST_ADMIN), someone already removed (MEMBER_REMOVED), and
+   * someone with open work (MEMBER_HAS_OPEN_WORK) — a response still under
+   * way, or an unpublished analysis they own — which is handed over first so
+   * nothing is left with nobody to finish it.
+   *
+   * The Admins and the target are locked first. Starting a response, taking
+   * an analysis, a team place, or an assignment lock the member's row too
+   * (lockActiveMembership), so none of them can land on someone whose
+   * removal is committing: whichever comes second sees the first.
+   *
+   * They are not notified: they can no longer read this organization.
+   */
+  async removeMember(
+    organizationId: string,
+    membershipId: string,
+    actor: { membershipId: string; userId: string },
+    now: Date = new Date(),
+  ): Promise<OrganizationMembershipResponse> {
+    if (!isResourceId(membershipId)) {
+      throw membershipNotFound();
+    }
+
+    const membership = await this.prisma.$transaction(async (tx) => {
+      const admins = await lockAdmins(tx, organizationId);
+
+      await tx.$queryRaw`
+        SELECT id FROM memberships
+        WHERE id = ${membershipId}::uuid
+          AND organization_id = ${organizationId}::uuid
+        FOR UPDATE`;
+
+      const target = await tx.membership.findFirst({
+        where: {
+          id: membershipId,
+          organizationId,
+          organization: { deletedAt: null },
+          user: { deletedAt: null },
+        },
+        select: managedMembershipSelection,
+      });
+
+      if (!target) {
+        throw membershipNotFound();
+      }
+
+      if (target.removedAt) {
+        throw memberRemoved();
+      }
+
+      if (target.id === actor.membershipId) {
+        throw cannotRemoveSelf();
+      }
+
+      if (target.role === 'ADMIN' && admins.length <= 1) {
+        throw lastAdmin();
+      }
+
+      if (target.incidentResponses.length > 0 || target.analysesOwned.length > 0) {
+        throw memberHasOpenWork();
+      }
+
+      await tx.teamMembership.deleteMany({
+        where: { organizationId, membershipId: target.id },
+      });
+
+      const assignments = await tx.incidentAssignee.deleteMany({
+        where: { organizationId, membershipId: target.id },
+      });
+
+      const removed = await tx.membership.update({
+        where: { id: target.id },
+        data: { removedAt: now, removedById: actor.userId },
+        select: managedMembershipSelection,
+      });
+
+      await recordActivity(tx, {
+        organizationId,
+        action: 'MEMBER_REMOVED',
+        actorId: actor.userId,
+        subject: { type: 'MEMBERSHIP', id: removed.id, name: removed.user.name },
+        changes: [
+          { field: 'role', before: target.role, after: null },
+          {
+            field: 'teams',
+            before: teamNamesOf(target.teamMemberships),
+            after: null,
+          },
+          {
+            field: 'assignments',
+            before: assignments.count > 0 ? String(assignments.count) : null,
+            after: null,
+          },
+        ],
+      });
+
+      return removed;
+    });
+
+    this.logger.log('Removed a member from the organization', {
+      organizationId,
+      membershipId: membership.id,
+      userId: membership.user.id,
+    });
+
+    return toOrganizationMembershipResponse(membership, { accountSetup: true });
+  }
+
+  /**
+   * Brings back someone the Admin removed, in the role named — they may
+   * return to a different job. They come back on no team, so they see no
+   * incidents until they are placed; and with the password they already
+   * have, which only they know. Their history is theirs again.
+   *
+   * 409 MEMBER_NOT_REMOVED for someone who belongs already.
+   */
+  async restoreMember(
+    organizationId: string,
+    membershipId: string,
+    input: RestoreMemberRequest,
+    actorId: string,
+  ): Promise<OrganizationMembershipResponse> {
+    if (!isResourceId(membershipId)) {
+      throw membershipNotFound();
+    }
+
+    const { membership, from } = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`
+        SELECT id FROM memberships
+        WHERE id = ${membershipId}::uuid
+          AND organization_id = ${organizationId}::uuid
+        FOR UPDATE`;
+
+      const target = await tx.membership.findFirst({
+        where: {
+          id: membershipId,
+          organizationId,
+          organization: { deletedAt: null },
+          user: { deletedAt: null },
+        },
+        select: { id: true, role: true, removedAt: true },
+      });
+
+      if (!target) {
+        throw membershipNotFound();
+      }
+
+      if (!target.removedAt) {
+        throw memberNotRemoved();
+      }
+
+      const restored = await tx.membership.update({
+        where: { id: target.id },
+        data: { removedAt: null, removedById: null, role: input.role },
+        select: managedMembershipSelection,
+      });
+
+      await recordActivity(tx, {
+        organizationId,
+        action: 'MEMBER_RESTORED',
+        actorId,
+        subject: {
+          type: 'MEMBERSHIP',
+          id: restored.id,
+          name: restored.user.name,
+        },
+        changes: [{ field: 'role', before: null, after: restored.role }],
+      });
+
+      return { membership: restored, from: target.role };
+    });
+
+    this.logger.log('Restored a removed member', {
+      organizationId,
+      membershipId: membership.id,
+      from,
+      to: membership.role,
     });
 
     return toOrganizationMembershipResponse(membership, { accountSetup: true });

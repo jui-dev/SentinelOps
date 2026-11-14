@@ -117,6 +117,10 @@ describe('organization response mappers', () => {
             },
           },
         ],
+        removedAt: null,
+        removedBy: null,
+        incidentResponses: [],
+        analysesOwned: [],
       };
 
       expect(
@@ -132,7 +136,50 @@ describe('organization response mappers', () => {
           passwordChangeRequired: true,
         },
         teams: [{ id: 'team-1', name: 'Payments', slug: 'payments' }],
+        removal: null,
+        openWork: [],
       });
+    });
+
+    it('should tell whoever manages members of a removal and of open work, and nobody else', () => {
+      const row = {
+        id: 'membership-1',
+        role: 'RESPONDER',
+        createdAt: CREATED,
+        user: {
+          id: 'user-1',
+          name: 'Ada Lovelace',
+          email: 'ada@example.com',
+          passwordChangeRequired: false,
+        },
+        teamMemberships: [],
+        removedAt: new Date('2026-11-03T09:00:00.000Z'),
+        removedBy: { id: 'user-2', name: 'Dev Admin' },
+        incidentResponses: [
+          { incident: { number: 151, title: 'Webhooks delayed', status: 'INVESTIGATING' } },
+        ],
+        analysesOwned: [{ incident: { number: 139, title: 'Stale rates' } }],
+      };
+
+      expect(
+        toOrganizationMembershipResponse(row, { accountSetup: true }),
+      ).toMatchObject({
+        removal: {
+          removedAt: '2026-11-03T09:00:00.000Z',
+          removedBy: { id: 'user-2', name: 'Dev Admin' },
+        },
+        openWork: [
+          { kind: 'INVESTIGATING', incident: { number: 151, title: 'Webhooks delayed' } },
+          { kind: 'DRAFT_ANALYSIS', incident: { number: 139, title: 'Stale rates' } },
+        ],
+      });
+
+      const forColleague = toOrganizationMembershipResponse(row, {
+        accountSetup: false,
+      });
+
+      expect(forColleague).not.toHaveProperty('removal');
+      expect(forColleague).not.toHaveProperty('openWork');
     });
 
     it('should leave account setup out for a reader who does not set accounts up', () => {
@@ -148,6 +195,8 @@ describe('organization response mappers', () => {
             passwordChangeRequired: true,
           },
           teamMemberships: [],
+          removedAt: null,
+          removedBy: null,
         },
         { accountSetup: false },
       );
@@ -170,6 +219,8 @@ describe('organization response mappers', () => {
         email: 'ada@example.com',
         passwordChangeRequired: false,
       },
+      removedAt: null,
+      removedBy: null,
     };
 
     it('should list every team, in the order selected', () => {

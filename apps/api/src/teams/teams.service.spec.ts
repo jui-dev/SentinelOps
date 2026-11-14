@@ -557,7 +557,7 @@ describe('TeamsService', () => {
           where: {
             organizationId: ORG,
             teamId: TEAM,
-            membership: { user: { deletedAt: null } },
+            membership: { user: { deletedAt: null }, removedAt: null },
           },
         }),
       );
@@ -607,7 +607,7 @@ describe('TeamsService', () => {
           teamId: TEAM,
           membershipId: MEMBERSHIP,
           team: { organization: { deletedAt: null } },
-          membership: { user: { deletedAt: null } },
+          membership: { user: { deletedAt: null }, removedAt: null },
         },
       });
       expect(prisma.team.findFirst).not.toHaveBeenCalled();

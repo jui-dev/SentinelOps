@@ -98,6 +98,12 @@ export const sentenceOf = (entry: ActivityEntryResponse): Sentence => {
     MEMBER_ADDED: { before: "Added the member", target },
     ROLE_CHANGED: { before: "Changed the role of", target },
     PASSWORD_RESET: { before: "Reset the password of", target },
+    MEMBER_REMOVED: {
+      before: "Removed",
+      target,
+      after: "from the organization",
+    },
+    MEMBER_RESTORED: { before: "Restored", target },
     INVITATION_SENT: { before: "Invited", target },
     INVITATION_REVOKED: { before: "Withdrew the invitation for", target },
     INVITATION_ACCEPTED: {
@@ -147,6 +153,8 @@ export const ACTION_TITLE: Record<ActivityAction, string> = {
   MEMBER_ADDED: "Member added",
   ROLE_CHANGED: "Role changed",
   PASSWORD_RESET: "Password reset",
+  MEMBER_REMOVED: "Member removed",
+  MEMBER_RESTORED: "Member restored",
   INVITATION_SENT: "Invitation sent",
   INVITATION_REVOKED: "Invitation withdrawn",
   INVITATION_ACCEPTED: "Invitation accepted",
@@ -243,9 +251,14 @@ export const noteOf = (entry: ActivityEntryResponse): string | null => {
 
   switch (entry.action) {
     case "MEMBER_ADDED":
+    case "MEMBER_RESTORED":
     case "INVITATION_SENT":
     case "INVITATION_ACCEPTED":
       return role?.after ? `As ${article(formatValue("role", role.after))}` : null;
+    case "MEMBER_REMOVED":
+      return role?.before
+        ? `Was ${article(formatValue("role", role.before))}`
+        : null;
     case "KNOWN_ISSUE_CREATED": {
       const service = changeOf(entry, "service")?.after;
       const pending = changeOf(entry, "status")?.after === "PENDING_REVIEW";

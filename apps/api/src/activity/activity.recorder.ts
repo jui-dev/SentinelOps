@@ -90,7 +90,12 @@ export const recordAccountActivity = async (
   },
 ): Promise<void> => {
   const memberships = await tx.membership.findMany({
-    where: { userId: account.userId, organization: { deletedAt: null } },
+    where: {
+      userId: account.userId,
+      organization: { deletedAt: null },
+      // An organization they were removed from is not told what they do.
+      removedAt: null,
+    },
     select: {
       id: true,
       organizationId: true,

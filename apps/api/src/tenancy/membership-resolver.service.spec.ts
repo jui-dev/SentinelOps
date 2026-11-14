@@ -24,6 +24,7 @@ describe('MembershipResolver', () => {
       where: {
         organizationId: ORG_ID,
         userId: USER_ID,
+        removedAt: null,
         organization: { deletedAt: null },
         user: { deletedAt: null },
       },

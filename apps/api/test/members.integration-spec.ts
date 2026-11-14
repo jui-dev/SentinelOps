@@ -133,6 +133,8 @@ describe('members (integration)', () => {
         passwordChangeRequired: true,
       },
       teams: [],
+      removal: null,
+      openWork: [],
     });
 
     const user = await prisma.user.findUniqueOrThrow({
