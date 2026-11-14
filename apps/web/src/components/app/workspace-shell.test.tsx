@@ -581,6 +581,28 @@ describe("WorkspaceShell", () => {
       );
     });
 
+    it("opens the change-password page from the account menu, remembering where they were", async () => {
+      const user = userEvent.setup();
+
+      at("/orgs/acme-ops/incidents", "acme-ops");
+      api();
+
+      renderShell();
+
+      await user.click(
+        await screen.findByRole("button", { name: "Account: Ada Lovelace" }),
+      );
+      await user.click(
+        within(screen.getByRole("menu", { name: "Account" })).getByRole("menuitem", {
+          name: "Change password",
+        }),
+      );
+
+      expect(navigation.push).toHaveBeenCalledWith(
+        "/change-password?from=%2Forgs%2Facme-ops%2Fincidents",
+      );
+    });
+
     it("offers the organization's notifications from the bell, and none outside it", async () => {
       at("/orgs/acme-ops", "acme-ops");
       api({ permissions: [...FULL, "notifications:read"] });

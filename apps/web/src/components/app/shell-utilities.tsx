@@ -2,6 +2,7 @@
 
 import {
   ChevronDown,
+  KeyRound,
   LogOut,
   Monitor,
   Moon,
@@ -9,10 +10,11 @@ import {
   User,
   UserRound,
 } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 
 import { stripIconButtonClasses } from "@/components/app/strip-button";
+import { changePasswordHref } from "@/components/auth/change-password-form";
 import { NotificationsBell } from "@/components/notifications/notifications-bell";
 import {
   Menu,
@@ -149,6 +151,7 @@ export function initialsOf(name: string): string {
  */
 export function AccountMenu() {
   const router = useRouter();
+  const pathname = usePathname();
   const { logout } = useSession();
   const me = useCurrentUser();
   const membership = useRouteMembership();
@@ -222,6 +225,14 @@ export function AccountMenu() {
           }
         >
           Your profile
+        </MenuItem>
+      )}
+      {user && (
+        <MenuItem
+          icon={KeyRound}
+          onSelect={() => router.push(changePasswordHref(pathname))}
+        >
+          Change password
         </MenuItem>
       )}
       <MenuItem icon={LogOut} onSelect={() => void onLogout()}>

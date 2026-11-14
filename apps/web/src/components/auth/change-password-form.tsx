@@ -1,11 +1,11 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 
 import { SessionUnavailable } from "@/components/app/session-unavailable";
-import { ErrorAlert } from "@/components/ui/alert";
+import { Alert, ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { PageSpinner } from "@/components/ui/spinner";
@@ -16,6 +16,20 @@ import { useCurrentUser, useSession } from "@/lib/auth/session-provider";
 import { AuthHeading } from "./auth-heading";
 
 const MISMATCH = "The passwords do not match.";
+
+/**
+ * Where to go back to, from `?from=`. Only a path inside this app is
+ * accepted — `//host` and `/\host` would leave it — so the link can never
+ * send anyone to another site.
+ */
+export const returnPathOf = (from: string | null): string =>
+  from && from.startsWith("/") && !from.startsWith("//") && !from.startsWith("/\\")
+    ? from
+    : "/";
+
+/** The page's address for someone who chose to change their password here. */
+export const changePasswordHref = (from: string): string =>
+  `/change-password?from=${encodeURIComponent(from)}`;
 
 const messageFor = (error: unknown): string | undefined => {
   if (!isApiError(error)) return undefined;
@@ -37,9 +51,11 @@ export function ChangePasswordForm() {
   const router = useRouter();
   const { status, changePassword, logout } = useSession();
   const me = useCurrentUser();
+  const returnPath = returnPathOf(useSearchParams().get("from"));
   const [error, setError] = useState<unknown>(null);
   const [mismatch, setMismatch] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [changed, setChanged] = useState(false);
 
   useEffect(() => {
     if (status === "unauthenticated") router.replace("/login");
@@ -51,6 +67,20 @@ export function ChangePasswordForm() {
   }
 
   const required = me.data.passwordChangeRequired;
+
+  if (changed) {
+    return (
+      <div className="flex flex-col gap-5">
+        <AuthHeading title="Password changed" />
+        <Alert tone="success" title="Your new password is saved.">
+          <p>Every other device you were signed in on has been signed out.</p>
+        </Alert>
+        <Button size="lg" onClick={() => router.replace(returnPath)}>
+          Back to work
+        </Button>
+      </div>
+    );
+  }
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -72,7 +102,14 @@ export function ChangePasswordForm() {
         currentPassword: String(form.get("currentPassword") ?? ""),
         newPassword,
       });
-      router.replace("/");
+      // Someone on a one-time password goes straight on into the app; anyone
+      // who came here by choice is told it worked before going back.
+      if (required) {
+        router.replace("/");
+      } else {
+        setChanged(true);
+        setSubmitting(false);
+      }
     } catch (caught) {
       setError(caught);
       setSubmitting(false);
@@ -127,9 +164,19 @@ export function ChangePasswordForm() {
         {submitting ? "Saving…" : "Save password"}
       </Button>
       <div className="pt-1">
-        <Button variant="quiet" size="sm" onClick={() => void logout()}>
-          Log out instead
-        </Button>
+        {required ? (
+          <Button variant="quiet" size="sm" onClick={() => void logout()}>
+            Log out instead
+          </Button>
+        ) : (
+          <Button
+            variant="quiet"
+            size="sm"
+            onClick={() => router.replace(returnPath)}
+          >
+            Cancel
+          </Button>
+        )}
       </div>
     </form>
   );

@@ -16,10 +16,14 @@ import { renderWithSession } from "@/test/render";
 
 import { ChangePasswordForm } from "./change-password-form";
 
-const navigation = vi.hoisted(() => ({ replace: vi.fn() }));
+const navigation = vi.hoisted(() => ({
+  replace: vi.fn(),
+  search: new URLSearchParams(),
+}));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace: navigation.replace, push: vi.fn() }),
+  useSearchParams: () => navigation.search,
 }));
 
 const onOneTimePassword = { ...currentUser, passwordChangeRequired: true };
@@ -55,6 +59,7 @@ describe("ChangePasswordForm", () => {
   beforeEach(() => {
     clearAccessToken();
     navigation.replace.mockReset();
+    navigation.search = new URLSearchParams();
   });
 
   it("asks someone on a one-time password to choose their own", async () => {
@@ -141,6 +146,72 @@ describe("ChangePasswordForm", () => {
       await screen.findByText("The current password is incorrect"),
     ).toBeDefined();
     expect(navigation.replace).not.toHaveBeenCalled();
+  });
+
+  describe("for someone who chose to change it", () => {
+    const changing = (request: SentRequest) =>
+      route(request) === "POST /auth/password"
+        ? jsonResponse(200, {
+            accessToken: "new-token",
+            expiresIn: 900,
+            tokenType: "Bearer",
+            user: currentUser,
+          })
+        : undefined;
+
+    const fillOwn = async () => {
+      const user = userEvent.setup();
+
+      await user.type(await screen.findByLabelText("Current password"), "old-passphrase-1");
+      await user.type(screen.getByLabelText("New password"), "my-own-passphrase");
+      await user.type(screen.getByLabelText("Confirm new password"), "my-own-passphrase");
+      await user.click(screen.getByRole("button", { name: "Save password" }));
+
+      return user;
+    };
+
+    it("asks for the current password and offers Cancel, not Log out", async () => {
+      navigation.search = new URLSearchParams({ from: "/orgs/acme-ops/incidents" });
+      api(currentUser);
+
+      renderWithSession(<ChangePasswordForm />);
+
+      expect(
+        await screen.findByRole("heading", { name: "Change your password" }),
+      ).toBeDefined();
+      expect(screen.queryByRole("button", { name: "Log out instead" })).toBeNull();
+
+      await userEvent.setup().click(screen.getByRole("button", { name: "Cancel" }));
+
+      expect(navigation.replace).toHaveBeenCalledWith("/orgs/acme-ops/incidents");
+    });
+
+    it("confirms the change, then goes back to where they were", async () => {
+      navigation.search = new URLSearchParams({ from: "/orgs/acme-ops/incidents" });
+      api(currentUser, changing);
+
+      renderWithSession(<ChangePasswordForm />);
+      const user = await fillOwn();
+
+      expect(
+        await screen.findByRole("heading", { name: "Password changed" }),
+      ).toBeDefined();
+      expect(navigation.replace).not.toHaveBeenCalled();
+
+      await user.click(screen.getByRole("button", { name: "Back to work" }));
+
+      expect(navigation.replace).toHaveBeenCalledWith("/orgs/acme-ops/incidents");
+    });
+
+    it("never goes back to another site", async () => {
+      navigation.search = new URLSearchParams({ from: "//evil.example/steal" });
+      api(currentUser);
+
+      renderWithSession(<ChangePasswordForm />);
+      await userEvent.setup().click(await screen.findByRole("button", { name: "Cancel" }));
+
+      expect(navigation.replace).toHaveBeenCalledWith("/");
+    });
   });
 
   it("sends a signed-out visitor to log in", async () => {
