@@ -1,5 +1,6 @@
 "use client";
 
+import { FormerMember } from "@/components/organizations/former-member";
 import { ListChecks, Lock, ShieldCheck } from "lucide-react";
 import { Fragment, useMemo, useState } from "react";
 
@@ -382,7 +383,10 @@ function ChangeRow({
       <TD className="py-3 align-top leading-6">
         <span className="flex flex-col">
           <span className="truncate font-medium text-fg">{entry.actor.name}</span>
-          {role && (
+          {/* Removed since: no role here now, so the grey mark in its place. */}
+          {entry.actor.former ? (
+            <FormerMember className="mt-0.5 self-start" />
+          ) : role && (
             <span className="truncate text-xs text-fg-subtle">
               {roleMeta(role).label}
             </span>

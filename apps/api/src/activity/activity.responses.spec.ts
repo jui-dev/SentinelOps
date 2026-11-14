@@ -33,7 +33,7 @@ describe('toActivityEntryResponse', () => {
       action: 'ROLE_CHANGED',
       area: 'PEOPLE',
       occurredAt: '2026-11-12T14:32:14.000Z',
-      actor: { id: 'actor-1', name: 'Dev Admin' },
+      actor: { id: 'actor-1', name: 'Dev Admin', former: false },
       subject: { type: 'MEMBERSHIP', id: 'membership-1', name: 'Sam Okafor' },
       changes: [
         { field: 'role', before: 'RESPONDER', after: 'INCIDENT_MANAGER' },

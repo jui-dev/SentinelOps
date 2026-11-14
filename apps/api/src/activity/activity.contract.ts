@@ -74,7 +74,8 @@ export interface ActivityEntryResponse {
   action: ActivityAction;
   area: ActivityArea;
   occurredAt: string;
-  actor: { id: string; name: string };
+  /** `former`: removed from this organization since. */
+  actor: { id: string; name: string; former: boolean };
   subject: { type: ActivitySubjectType; id: string; name: string } | null;
   changes: ActivityChange[];
   client: { ipAddress: string | null; browser: string | null } | null;

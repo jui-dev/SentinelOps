@@ -400,7 +400,9 @@ const incidentDetailSelection = {
       status: true,
       startedAt: true,
       completedAt: true,
-      membership: { select: { id: true, user: { select: { name: true } } } },
+      membership: {
+        select: { id: true, removedAt: true, user: { select: { name: true } } },
+      },
     },
     orderBy: responderOrder,
   },
@@ -2558,10 +2560,11 @@ export class IncidentsService {
     }
 
     // Each actor's role here now, read once for the whole timeline. Someone
-    // who has left the organization has none.
+    // who has left the organization — removed by the Admin — has none.
     const memberships = await this.prisma.membership.findMany({
       where: {
         organizationId,
+        removedAt: null,
         userId: { in: [...new Set(incident.activity.map((a) => a.actor.id))] },
       },
       select: { userId: true, role: true },

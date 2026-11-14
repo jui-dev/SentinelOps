@@ -1,5 +1,6 @@
 "use client";
 
+import { FormerMember } from "@/components/organizations/former-member";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowUp } from "lucide-react";
 import { useState } from "react";
@@ -172,7 +173,8 @@ function describe(
 
 /**
  * Who acted, and their role here now, in its colour: who raised, decided,
- * or worked the incident, read at a glance down the timeline.
+ * or worked the incident, read at a glance down the timeline. Someone the
+ * Admin has removed since has no role, and is marked Former member.
  */
 function Actor({
   entry,
@@ -187,6 +189,12 @@ function Actor({
   return (
     <>
       <span className="font-semibold text-fg">{mine ? "You" : entry.actor.name}</span>
+      {role === null && (
+        <>
+          <span className="sr-only">, </span>
+          <FormerMember className="ml-1.5 align-middle" />
+        </>
+      )}
       {meta && (
         <span className={cx("text-xs font-medium", meta.tone.text)}>
           <span aria-hidden="true" className="text-fg-subtle">

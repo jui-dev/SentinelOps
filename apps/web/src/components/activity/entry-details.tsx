@@ -1,5 +1,6 @@
 "use client";
 
+import { FormerMember } from "@/components/organizations/former-member";
 import { Lock } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
@@ -162,7 +163,10 @@ export function EntryDetails({
               </span>
             </dd>
             <dt className="text-fg-subtle">Done by</dt>
-            <dd className="text-fg">{entry.actor.name}</dd>
+            <dd className="flex items-center gap-1.5 text-fg">
+              {entry.actor.name}
+              {entry.actor.former && <FormerMember />}
+            </dd>
             <dt className="text-fg-subtle">From</dt>
             <dd className="data text-fg-muted">
               {entry.client

@@ -469,6 +469,7 @@ describe('Incidents (e2e)', () => {
             {
               membershipId: '0199a1b2-c3d4-7000-8000-0000000000bb',
               name: 'Priya Shah',
+              former: false,
               status: 'COMPLETED',
               startedAt: '2026-09-18T12:00:00.000Z',
               completedAt: '2026-09-18T12:00:00.000Z',

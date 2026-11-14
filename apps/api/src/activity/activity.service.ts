@@ -7,6 +7,7 @@ import { CHANGE_AREAS } from './activity.actions.js';
 import type { ChangeArea } from './activity.actions.js';
 import type {
   ActivityEntryDetailResponse,
+  ActivityEntryResponse,
   ActivityPageResponse,
   ActivitySubjectType,
 } from './activity.contract.js';
@@ -62,6 +63,15 @@ const NEWEST_FIRST = [
  * organization's entries are never read, and an entry of theirs is answered
  * 404 exactly as one that does not exist.
  */
+/** An entry with its actor marked as removed since, when they are. */
+const markFormer = <T extends ActivityEntryResponse>(
+  entry: T,
+  former: ReadonlySet<string>,
+): T =>
+  former.has(entry.actor.id)
+    ? { ...entry, actor: { ...entry.actor, former: true } }
+    : entry;
+
 @Injectable()
 export class ActivityService {
   constructor(private readonly prisma: PrismaService) {}
@@ -110,13 +120,14 @@ export class ActivityService {
     ]);
     const page = rows.slice(0, ACTIVITY_PAGE_SIZE);
     const last = page.at(-1);
+    const former = await this.formerActors(organizationId, page);
 
     return {
       // Wrong passwords tried one after another read as one row.
-      entries:
-        query.view === 'security'
-          ? foldRepeats(page)
-          : page.map(toActivityEntryResponse),
+      entries: (query.view === 'security'
+        ? foldRepeats(page)
+        : page.map(toActivityEntryResponse)
+      ).map((entry) => markFormer(entry, former)),
       securityTotals,
       nextCursor:
         rows.length > ACTIVITY_PAGE_SIZE && last !== undefined
@@ -165,14 +176,45 @@ export class ActivityService {
         security ? this.usualClientBefore(organizationId, row) : null,
       ]);
 
+    const former = await this.formerActors(organizationId, [
+      row,
+      ...history,
+      ...(next === null ? [] : [next]),
+    ]);
+
     return {
-      ...toActivityEntryResponse(row),
-      history: history.map(toActivityEntryResponse),
+      ...markFormer(toActivityEntryResponse(row), former),
+      history: history
+        .map(toActivityEntryResponse)
+        .map((entry) => markFormer(entry, former)),
       subjectNow,
       attempts,
-      next: next === null ? null : toActivityEntryResponse(next),
+      next:
+        next === null ? null : markFormer(toActivityEntryResponse(next), former),
       usualClient,
     };
+  }
+
+  /**
+   * Which of these entries' actors the Admin has removed from the
+   * organization since: one query for the page.
+   */
+  private async formerActors(
+    organizationId: string,
+    rows: readonly { actorId: string }[],
+  ): Promise<ReadonlySet<string>> {
+    if (rows.length === 0) return new Set();
+
+    const removed = await this.prisma.membership.findMany({
+      where: {
+        organizationId,
+        removedAt: { not: null },
+        userId: { in: [...new Set(rows.map(({ actorId }) => actorId))] },
+      },
+      select: { userId: true },
+    });
+
+    return new Set(removed.map(({ userId }) => userId));
   }
 
   /** Sign-ins, wrong passwords and blocks under `where`, each counted. */

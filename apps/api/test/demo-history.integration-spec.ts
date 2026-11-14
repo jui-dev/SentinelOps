@@ -8,6 +8,7 @@ import { DEV_ORGANIZATION, DEV_PERSONAS } from './../src/dev/dev-account.js';
 import { DevAccountService } from './../src/dev/dev-account.service.js';
 import { buildDemoActivity } from './../src/dev/demo-history/demo-activity.js';
 import { buildDemoKnownIssues } from './../src/dev/demo-history/demo-known-issues.js';
+import { FORMER_MEMBER } from './../src/dev/demo-history/demo-story.js';
 import { buildDemoHistory } from './../src/dev/demo-history/build-demo-history.js';
 import {
   DemoHistoryService,
@@ -29,7 +30,9 @@ describe('demo history (integration)', () => {
   const anchor = new Date('2026-09-20T00:00:00.000Z');
   const history = buildDemoHistory(anchor);
   const nameOf = (email: string) =>
-    DEV_PERSONAS.find((persona) => persona.email === email)!.name;
+    email === FORMER_MEMBER.email
+      ? FORMER_MEMBER.name
+      : DEV_PERSONAS.find((persona) => persona.email === email)!.name;
 
   let app: INestApplication;
   let devAccount: DevAccountService;
@@ -124,7 +127,8 @@ describe('demo history (integration)', () => {
       responders: history.flatMap((incident) => incident.responders).length,
       activities: history.flatMap((incident) => incident.activity).length,
       knownIssues: buildDemoKnownIssues(history).length,
-      activityEntries: buildDemoActivity(anchor).length,
+      // And the former member's removal, months before the week.
+      activityEntries: buildDemoActivity(anchor).length + 1,
     });
 
     // Read as the dev Admin, who oversees every incident.
@@ -396,7 +400,8 @@ describe('demo history (integration)', () => {
       subject: { type: 'MEMBERSHIP', name: 'Sam Okafor' },
     });
     expect(changes.areaCounts).toMatchObject({
-      PEOPLE: 4,
+      // Four this week, and the former member's removal, months ago.
+      PEOPLE: 5,
       TEAMS: 2,
       SERVICES: 2,
       ORGANIZATION: 1,
@@ -440,6 +445,61 @@ describe('demo history (integration)', () => {
       exists: true,
       slug: 'risk',
     });
+  });
+
+  it('should keep a former member: her past responses, removed by the Admin after the last of them', async () => {
+    await demo.replace(anchor);
+
+    const maya = await prisma.membership.findFirstOrThrow({
+      where: { organizationId, user: { email: 'maya@example.com' } },
+      select: {
+        id: true,
+        removedAt: true,
+        removedBy: { select: { name: true } },
+        teamMemberships: { select: { id: true } },
+        user: { select: { passwordHash: true } },
+        incidentResponses: {
+          select: { status: true, completedAt: true },
+        },
+      },
+    });
+
+    expect(maya.removedBy?.name).toBe('Dev Admin');
+    expect(maya.teamMemberships).toEqual([]);
+    // She never signs in to the demo.
+    expect(maya.user.passwordHash).toBeNull();
+    expect(maya.incidentResponses.length).toBeGreaterThan(0);
+    for (const response of maya.incidentResponses) {
+      expect(response.status).toBe('COMPLETED');
+      expect(response.completedAt!.getTime()).toBeLessThan(
+        maya.removedAt!.getTime(),
+      );
+    }
+
+    // The timeline names her with no role: a former member.
+    const respondedTo = await prisma.incidentResponder.findFirstOrThrow({
+      where: { membershipId: maya.id },
+      select: { incident: { select: { number: true } } },
+    });
+    const admin = await membershipOf('admin@example.com');
+    const timeline = await incidents.timeline(
+      organizationId,
+      { membershipId: admin.id, role: admin.role },
+      String(respondedTo.incident.number),
+    );
+    const hers = timeline.filter(({ actor }) => actor.name === 'Maya Torres');
+
+    expect(hers.length).toBeGreaterThan(0);
+    expect(hers.every(({ actor }) => actor.role === null)).toBe(true);
+
+    // Running it again keeps one of her, still removed.
+    await demo.replace(anchor);
+
+    expect(
+      await prisma.membership.count({
+        where: { organizationId, user: { email: 'maya@example.com' } },
+      }),
+    ).toBe(1);
   });
 
   it('should touch no other organization', async () => {

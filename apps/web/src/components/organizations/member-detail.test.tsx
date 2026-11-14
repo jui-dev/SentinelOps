@@ -182,6 +182,41 @@ describe("a member's page", () => {
     ).toBe("/orgs/acme-ops/members");
   });
 
+  it("shows someone removed as a former member, with their past work only", async () => {
+    api(ADMIN, [], (request) =>
+      route(request) === `GET ${base}/memberships/${GRACE}`
+        ? jsonResponse(200, {
+            ...grace([]),
+            removal: {
+              removedAt: "2026-11-03T09:00:00.000Z",
+              removedBy: { id: currentUser.id, name: "Ada Lovelace" },
+            },
+            openWork: [],
+          })
+        : undefined,
+    );
+
+    renderMember();
+
+    const banner = (await screen.findByText(/Grace was removed from/)).closest(
+      '[role="status"]',
+    ) as HTMLElement;
+
+    expect(banner.textContent).toContain("Grace was removed from");
+    expect(banner.textContent).toContain("by Ada Lovelace");
+    expect(
+      within(banner).getByRole("link", { name: "Members" }).getAttribute("href"),
+    ).toBe("/orgs/acme-ops/members");
+    expect(screen.getAllByText("Former member").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Active")).toBeNull();
+
+    const glance = screen.getByLabelText("Grace Hopper at a glance");
+
+    expect(within(glance).getByText("Role before")).toBeDefined();
+    // What they do now: nothing, so no teams or services to show.
+    expect(screen.queryByRole("heading", { name: /^Teams/ })).toBeNull();
+  });
+
   it("gives facts about them at a glance, never measures", async () => {
     api(ADMIN, [PAYMENTS, PLATFORM]);
 

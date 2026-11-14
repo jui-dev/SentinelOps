@@ -409,6 +409,78 @@ describe('member removal (integration)', () => {
     });
   });
 
+  describe('what they did, after they are removed', () => {
+    it('should keep their name everywhere, marked former, with no role', async () => {
+      const open = await incident();
+      const responders = `/organizations/${fx.orgA}/incidents/${open.number}/responders/me`;
+
+      // Dave works the incident through the API, so the timeline has him.
+      expect((await call('post', responders, fx.dave)).status).toBeLessThan(300);
+      expect(
+        (await call('post', `${responders}/complete`, fx.dave)).status,
+      ).toBeLessThan(300);
+
+      await prisma.activityEntry.create({
+        data: {
+          organizationId: fx.orgA,
+          action: 'SIGNED_IN',
+          area: 'SECURITY',
+          actorId: fx.dave,
+          actorName: 'dave',
+        },
+      });
+
+      expect((await remove(fx.daveMembership)).status).toBe(200);
+
+      const detail = await call(
+        'get',
+        `/organizations/${fx.orgA}/incidents/${open.number}`,
+        fx.alice,
+      );
+
+      expect(detail.body.responders).toEqual([
+        expect.objectContaining({ name: 'dave', former: true }),
+      ]);
+
+      const timeline = await call(
+        'get',
+        `/organizations/${fx.orgA}/incidents/${open.number}/timeline`,
+        fx.alice,
+      );
+      const his = timeline.body.filter(
+        ({ actor }: { actor: { id: string } }) => actor.id === fx.dave,
+      );
+
+      expect(his.length).toBeGreaterThan(0);
+      for (const entry of his) {
+        expect(entry.actor).toEqual({ id: fx.dave, name: 'dave', role: null });
+      }
+
+      const log = await call(
+        'get',
+        `/organizations/${fx.orgA}/activity?view=security`,
+        fx.alice,
+      );
+
+      expect(log.body.entries[0].actor).toEqual({
+        id: fx.dave,
+        name: 'dave',
+        former: true,
+      });
+
+      // Restored, he is himself again.
+      await restore(fx.daveMembership, 'RESPONDER');
+
+      const again = await call(
+        'get',
+        `/organizations/${fx.orgA}/incidents/${open.number}`,
+        fx.alice,
+      );
+
+      expect(again.body.responders[0].former).toBe(false);
+    });
+  });
+
   describe('a removed person', () => {
     beforeEach(async () => {
       await remove(fx.daveMembership);

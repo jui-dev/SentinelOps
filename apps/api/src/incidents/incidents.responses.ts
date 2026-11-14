@@ -205,7 +205,7 @@ interface IncidentResponderRow {
   status: IncidentResponderStatus;
   startedAt: Date;
   completedAt: Date | null;
-  membership: { id: string; user: { name: string } };
+  membership: { id: string; removedAt: Date | null; user: { name: string } };
 }
 
 interface IncidentDetailRow extends IncidentRow {
@@ -222,6 +222,7 @@ export const toIncidentDetailResponse = (
   responders: incident.responders.map((responder) => ({
     membershipId: responder.membership.id,
     name: responder.membership.user.name,
+    former: responder.membership.removedAt != null,
     status: responder.status,
     startedAt: responder.startedAt.toISOString(),
     completedAt: responder.completedAt?.toISOString() ?? null,

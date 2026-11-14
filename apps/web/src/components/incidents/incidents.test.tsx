@@ -1768,6 +1768,53 @@ describe("incidents", () => {
       );
     });
 
+    it("marks someone removed since as a former member, on the timeline and among the people", async () => {
+      api(READ_ONLY, {
+        detail: incident({
+          responders: [
+            {
+              membershipId: daniel.id,
+              name: "Daniel Okafor",
+              former: true,
+              status: "COMPLETED",
+              startedAt: "2026-09-18T12:05:00.000Z",
+              completedAt: "2026-09-18T13:00:00.000Z",
+            },
+          ],
+        }),
+        timeline: [
+          activity({
+            id: "0199a1b2-c3d4-7000-8000-000000000120",
+            actor: { id: daniel.user.id, name: "Daniel Okafor", role: null },
+          }),
+          activity({
+            id: "0199a1b2-c3d4-7000-8000-000000000121",
+            type: "DECLARED",
+            message: null,
+            toValue: "SEV2",
+            actor: { id: currentUser.id, name: "Ada Lovelace", role: "ADMIN" },
+          }),
+        ],
+      });
+
+      inOrganization(<IncidentDetail />);
+
+      const timeline = await sectionOf(/^Timeline/);
+      const entries = await within(timeline).findAllByRole("listitem");
+      const daniels = entries.find((entry) =>
+        entry.textContent?.includes("Daniel Okafor"),
+      );
+      // The caller reads as "You".
+      const adas = entries.find((entry) => entry.textContent?.includes("You"));
+
+      expect(daniels?.textContent).toContain("Former member");
+      expect(adas?.textContent).not.toContain("Former member");
+
+      const people = await screen.findByRole("list", { name: "Payments" });
+
+      expect(people.textContent).toContain("Former member");
+    });
+
     it("tells the story on the timeline, newest first, with nothing to post for a reader", async () => {
       api(READ_ONLY, {
         timeline: [

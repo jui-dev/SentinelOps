@@ -422,6 +422,8 @@ export type IncidentResponderStatus = "INVESTIGATING" | "COMPLETED";
 export interface IncidentResponderResponse {
   membershipId: string;
   name: string;
+  /** Removed from the organization since; their response stays theirs. */
+  former?: boolean;
   status: IncidentResponderStatus;
   startedAt: string;
   completedAt: string | null;
@@ -565,7 +567,8 @@ export interface IncidentKeyMomentResponse {
 export interface IncidentAnalysisResponse {
   status: IncidentAnalysisStatus;
   version: number;
-  owner: { membershipId: string; name: string };
+  /** `former`: removed from the organization since. */
+  owner: { membershipId: string; name: string; former?: boolean };
   summary: string | null;
   impact: string | null;
   cause: string | null;
@@ -1261,7 +1264,8 @@ export interface ActivityEntryResponse {
   action: ActivityAction;
   area: ActivityArea;
   occurredAt: string;
-  actor: { id: string; name: string };
+  /** `former`: removed from this organization since. */
+  actor: { id: string; name: string; former?: boolean };
   subject: { type: ActivitySubjectType; id: string; name: string } | null;
   changes: ActivityChange[];
   client: ActivityClient | null;

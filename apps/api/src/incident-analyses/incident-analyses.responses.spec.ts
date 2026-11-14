@@ -22,7 +22,7 @@ const row = {
   createdAt: AT,
   updatedAt: LATER,
   publishedAt: null,
-  owner: { id: 'membership-1', user: { name: 'Dave Duarte' } },
+  owner: { id: 'membership-1', removedAt: null, user: { name: 'Dave Duarte' } },
   createdBy: { id: 'user-1', name: 'Alice Anders' },
   publishedBy: null,
 } satisfies IncidentAnalysisRow & Record<string, unknown>;
@@ -59,7 +59,7 @@ describe('toIncidentAnalysisResponse', () => {
     ).toStrictEqual({
       status: 'DRAFT',
       version: 3,
-      owner: { membershipId: 'membership-1', name: 'Dave Duarte' },
+      owner: { membershipId: 'membership-1', name: 'Dave Duarte', former: false },
       summary: 'Card payments failed for 2 hours.',
       impact: null,
       cause: null,

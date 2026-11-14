@@ -56,7 +56,8 @@ export const toActivityEntryResponse = (
   action: row.action,
   area: row.area,
   occurredAt: row.createdAt.toISOString(),
-  actor: { id: row.actorId, name: row.actorName },
+  // Settled by the service, which knows who has been removed since.
+  actor: { id: row.actorId, name: row.actorName, former: false },
   subject:
     row.subjectType !== null && row.subjectId !== null
       ? {

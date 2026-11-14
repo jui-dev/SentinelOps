@@ -18,6 +18,7 @@ import { serviceHref } from "@/components/services/service-scope";
 import { teamHref, teamsHref } from "@/components/teams/team-scope";
 import { Alert, ErrorAlert } from "@/components/ui/alert";
 import { cx } from "@/components/ui/cx";
+import { FormerMember } from "@/components/organizations/former-member";
 import { RoleBadge } from "@/components/roles/role-meta";
 import {
   CardRow,
@@ -28,6 +29,7 @@ import {
 import { EmptyNote, EmptyState } from "@/components/ui/empty-state";
 import { linkClasses } from "@/components/ui/link";
 import { PageBody, PageHeader } from "@/components/ui/page";
+import { IsoDate } from "@/components/ui/timestamp";
 import { PageSpinner, Spinner } from "@/components/ui/spinner";
 import { Permission } from "@/lib/api/contracts";
 import type {
@@ -250,6 +252,8 @@ function MemberPage({ member }: { member: Member }) {
   const canReadTheirHistory =
     canReadIncidents && (isSelf || canOverseeIncidents);
   const isYou = member.user.id === me.data?.id;
+  // Only whoever manages members is sent a removed person at all.
+  const removal = member.removal ?? null;
   const first = member.user.name.split(/\s+/)[0];
   const teamIds = new Set(member.teams.map(({ id }) => id));
   const covered = services.data?.filter((service) =>
@@ -289,7 +293,12 @@ function MemberPage({ member }: { member: Member }) {
           <span className="flex items-center gap-3.5">
             <span
               aria-hidden="true"
-              className="grid size-12 shrink-0 place-items-center rounded-full border border-accent-line bg-accent-subtle text-base font-semibold text-accent-text"
+              className={cx(
+                "grid size-12 shrink-0 place-items-center rounded-full border text-base font-semibold",
+                removal
+                  ? "border-dashed border-line-strong text-fg-subtle"
+                  : "border-accent-line bg-accent-subtle text-accent-text",
+              )}
             >
               {initialsOf(member.user.name)}
             </span>
@@ -301,9 +310,13 @@ function MemberPage({ member }: { member: Member }) {
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="break-all">{member.user.email}</span>
             <span aria-hidden="true">·</span>
-            <RoleBadge role={member.role} />
+            {removal ? (
+              <FormerMember className="text-xs" />
+            ) : (
+              <RoleBadge role={member.role} />
+            )}
             {/* Only whoever sets accounts up is sent this. */}
-            {setup === undefined ? null : setup ? (
+            {removal || setup === undefined ? null : setup ? (
               <span
                 className={cx(
                   BADGE,
@@ -327,7 +340,25 @@ function MemberPage({ member }: { member: Member }) {
       />
       <PageBody width="full">
         <div className="flex flex-col gap-6">
+          {removal && (
+            <Alert
+              tone="info"
+              title={`${first} was removed from ${organization.name}`}
+            >
+              <p>
+                Removed <IsoDate value={removal.removedAt} />
+                {removal.removedBy && ` by ${removal.removedBy.name}`}. This
+                page shows their past work only. To bring them back, use
+                Restore under the Removed filter on{" "}
+                <Link href={membersHref(organization.slug)} className={linkClasses}>
+                  Members
+                </Link>
+                .
+              </p>
+            </Alert>
+          )}
           {canManageMembers &&
+            !removal &&
             member.role === "RESPONDER" &&
             member.teams.length === 0 && (
             <Alert tone="warning" title={`${first} is on no team`}>
@@ -352,7 +383,7 @@ function MemberPage({ member }: { member: Member }) {
           {/* Facts about the person, never measures of them. */}
           <Glance label={`${member.user.name} at a glance`} columns={4}>
             <GlanceTile
-              label="Role"
+              label={removal ? "Role before" : "Role"}
               icon={BadgeCheck}
               tone="neutral"
               value={formatRole(member.role)}
@@ -376,6 +407,8 @@ function MemberPage({ member }: { member: Member }) {
               value={formatDate(member.createdAt)}
             />
           </Glance>
+          {/* Teams and services are what they do now: a removed person has none. */}
+          {!removal && (
           <CardRow layout="halves">
             <Teams member={member} services={services.data} />
             {canReadServices ? (
@@ -388,6 +421,7 @@ function MemberPage({ member }: { member: Member }) {
               <div />
             )}
           </CardRow>
+          )}
           {canReadTheirHistory && (
             <MemberResponses membershipId={member.id} name={first} />
           )}

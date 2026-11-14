@@ -3365,6 +3365,7 @@ describe('incidents (integration)', () => {
         {
           membershipId: fx.daveInA,
           name: 'Dave Duarte',
+          former: false,
           status: 'INVESTIGATING',
           startedAt: expect.any(String),
           completedAt: null,

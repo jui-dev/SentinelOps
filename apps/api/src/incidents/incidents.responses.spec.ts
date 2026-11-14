@@ -119,6 +119,7 @@ describe('incident responses', () => {
       membership: {
         id,
         role: 'RESPONDER',
+        removedAt: null,
         user: { id: `user-${id}`, name, email: `${id}@example.com` },
       },
     });
@@ -136,6 +137,7 @@ describe('incident responses', () => {
       {
         membershipId: 'm-1',
         name: 'Priya Shah',
+        former: false,
         status: 'INVESTIGATING',
         startedAt: CREATED.toISOString(),
         completedAt: null,
@@ -143,6 +145,7 @@ describe('incident responses', () => {
       {
         membershipId: 'm-2',
         name: 'Sam Okafor',
+        former: false,
         status: 'COMPLETED',
         startedAt: CREATED.toISOString(),
         completedAt: RESOLVED.toISOString(),

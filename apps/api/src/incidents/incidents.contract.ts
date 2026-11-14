@@ -121,6 +121,8 @@ export type IncidentResponseAccess = 'PENDING' | 'OPEN' | 'ASSIGNED';
 export interface IncidentResponderResponse {
   membershipId: string;
   name: string;
+  /** Removed from the organization since: their response stays theirs. */
+  former: boolean;
   status: IncidentResponderStatus;
   startedAt: string;
   completedAt: string | null;

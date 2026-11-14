@@ -16,6 +16,34 @@ import type { DemoSubject } from './demo-activity.js';
 import { buildDemoHistory } from './build-demo-history.js';
 import { buildDemoKnownIssues } from './demo-known-issues.js';
 import { checkDemoHistory } from './check-demo-history.js';
+import { ADMIN, FORMER_MEMBER } from './demo-story.js';
+import type { DemoIncident } from './build-demo-history.js';
+
+const DAY = 24 * 60 * 60 * 1000;
+
+/**
+ * When the former member was removed: a few days after the last thing she
+ * did, so nothing of hers is under way — as the API requires of a removal.
+ */
+export const formerMemberRemovedAt = (
+  history: readonly DemoIncident[],
+  anchor: Date,
+): Date => {
+  const last = Math.max(
+    0,
+    ...history.flatMap((incident) =>
+      incident.responders
+        .filter(({ responder }) => responder === FORMER_MEMBER.email)
+        .map(({ startedAt, completedAt }) =>
+          (completedAt ?? startedAt).getTime(),
+        ),
+    ),
+  );
+
+  return new Date(
+    last > 0 ? last + 3 * DAY : anchor.getTime() - (26 - FORMER_MEMBER.lastWeek) * 7 * DAY,
+  );
+};
 
 export interface DemoHistoryResult {
   anchor: Date;
@@ -88,6 +116,9 @@ export class DemoHistoryService {
       async (tx) => {
         const organizationId = await this.lockOrganization(tx);
         const ids = await this.resolveStructure(tx, organizationId);
+        const removedAt = formerMemberRemovedAt(history, anchor);
+
+        await this.ensureFormerMember(tx, organizationId, ids, removedAt);
 
         const { count: removed } = await tx.incident.deleteMany({
           where: { organizationId },
@@ -181,7 +212,9 @@ export class DemoHistoryService {
 
         // The activity log: removed, as the incidents were, and rewritten.
         const nameOf = (email: string) =>
-          DEV_PERSONAS.find((persona) => persona.email === email)!.name;
+          email === FORMER_MEMBER.email
+            ? FORMER_MEMBER.name
+            : DEV_PERSONAS.find((persona) => persona.email === email)!.name;
         const subjectOf = (subject: DemoSubject | null) => {
           switch (subject?.kind) {
             case 'member':
@@ -213,6 +246,23 @@ export class DemoHistoryService {
           }
         };
         const log = buildDemoActivity(anchor);
+        // The Admin signs in every day of the log, so there is always one.
+        const fromAdmin = log.find((entry) => entry.actor === ADMIN)!;
+
+        // The Admin removing the former member, where it happened in the
+        // history: before the week the log otherwise covers.
+        log.unshift({
+          at: removedAt,
+          action: 'MEMBER_REMOVED',
+          actor: ADMIN,
+          subject: { kind: 'member', email: FORMER_MEMBER.email },
+          changes: [
+            { field: 'role', before: FORMER_MEMBER.role, after: null },
+            { field: 'teams', before: FORMER_MEMBER.team, after: null },
+          ],
+          ipAddress: fromAdmin.ipAddress,
+          userAgent: fromAdmin.userAgent,
+        });
 
         await tx.activityEntry.deleteMany({ where: { organizationId } });
         await tx.activityEntry.createMany({
@@ -391,5 +441,48 @@ export class DemoHistoryService {
     }
 
     return ids;
+  }
+
+  /**
+   * The former member: her account, with no password — she never signs in
+   * to the demo — and her membership, removed by the Admin at `removedAt`.
+   * Made once and kept, so running the history again finds her.
+   */
+  private async ensureFormerMember(
+    tx: Prisma.TransactionClient,
+    organizationId: string,
+    ids: { users: Record<string, string>; memberships: Record<string, string> },
+    removedAt: Date,
+  ): Promise<void> {
+    const user = await tx.user.upsert({
+      where: { email: FORMER_MEMBER.email },
+      create: { email: FORMER_MEMBER.email, name: FORMER_MEMBER.name },
+      update: {},
+      select: { id: true },
+    });
+    const membership = await tx.membership.upsert({
+      where: { organizationId_userId: { organizationId, userId: user.id } },
+      create: {
+        organizationId,
+        userId: user.id,
+        role: FORMER_MEMBER.role,
+        removedAt,
+        removedById: ids.users[ADMIN],
+      },
+      update: {
+        role: FORMER_MEMBER.role,
+        removedAt,
+        removedById: ids.users[ADMIN],
+      },
+      select: { id: true },
+    });
+
+    // Removal took her off her team.
+    await tx.teamMembership.deleteMany({
+      where: { organizationId, membershipId: membership.id },
+    });
+
+    ids.users[FORMER_MEMBER.email] = user.id;
+    ids.memberships[FORMER_MEMBER.email] = membership.id;
   }
 }

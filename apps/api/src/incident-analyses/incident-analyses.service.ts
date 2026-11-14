@@ -53,7 +53,9 @@ const analysisSelection = {
   createdAt: true,
   updatedAt: true,
   publishedAt: true,
-  owner: { select: { id: true, user: { select: { name: true } } } },
+  owner: {
+    select: { id: true, removedAt: true, user: { select: { name: true } } },
+  },
   createdBy: { select: { id: true, name: true } },
   publishedBy: { select: { id: true, name: true } },
 } as const;

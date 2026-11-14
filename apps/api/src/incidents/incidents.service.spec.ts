@@ -1044,6 +1044,7 @@ describe('IncidentsService', () => {
         {
           membershipId: MEMBERSHIP,
           name: 'Priya Shah',
+          former: false,
           status: 'INVESTIGATING',
           startedAt: started.toISOString(),
           completedAt: null,
@@ -1371,7 +1372,7 @@ describe('IncidentsService', () => {
       expect(timeline).toHaveLength(1);
       // Each actor's role here now, read once for the timeline.
       expect(prisma.membership.findMany).toHaveBeenCalledWith({
-        where: { organizationId: ORG, userId: { in: [USER] } },
+        where: { organizationId: ORG, removedAt: null, userId: { in: [USER] } },
         select: { userId: true, role: true },
       });
       expect(timeline[0].actor.role).toBeNull();

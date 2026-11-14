@@ -286,6 +286,33 @@ describe("activity log", () => {
     await expectNoAxeViolations(document.body);
   });
 
+  it("marks who has been removed since as a former member, in place of a role", async () => {
+    const byFormer = entry("f1", {
+      actor: { id: "0199a1b2-c3d4-7000-8000-000000000044", name: "Maya Torres", former: true },
+    });
+    const removed = entry("f2", {
+      action: "MEMBER_REMOVED",
+      area: "PEOPLE",
+      occurredAt: ago(1),
+      subject: { type: "MEMBERSHIP", id: SAM_ID, name: "Maya Torres" },
+      changes: [{ field: "role", before: "RESPONDER", after: null }],
+    });
+    api(ADMIN, () => page([removed, byFormer]));
+    render();
+
+    const table = await screen.findByRole("table", { name: "Changes" });
+    const rows = within(table).getAllByRole("row");
+    const mayas = rows.find((row) => row.textContent?.includes("Created the team"));
+    const removal = rows.find((row) => row.textContent?.includes("Removed"));
+
+    expect(mayas?.textContent).toContain("Former member");
+    expect(removal?.textContent).toContain(
+      "Removed Maya Torres from the organization",
+    );
+    expect(removal?.textContent).toContain("Was a Responder");
+    expect(removal?.textContent).not.toContain("Former member");
+  });
+
   it("narrows the log by area, person, search and period", async () => {
     const user = userEvent.setup();
     const { requests } = api(ADMIN);

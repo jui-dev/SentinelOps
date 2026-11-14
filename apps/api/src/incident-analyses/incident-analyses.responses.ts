@@ -27,7 +27,7 @@ export interface IncidentAnalysisRow {
   createdAt: Date;
   updatedAt: Date;
   publishedAt: Date | null;
-  owner: { id: string; user: { name: string } };
+  owner: { id: string; removedAt: Date | null; user: { name: string } };
   createdBy: { id: string; name: string };
   publishedBy: { id: string; name: string } | null;
 }
@@ -41,6 +41,7 @@ export const toIncidentAnalysisResponse = (
   owner: {
     membershipId: analysis.owner.id,
     name: analysis.owner.user.name,
+    former: analysis.owner.removedAt != null,
   },
   summary: analysis.summary,
   impact: analysis.impact,

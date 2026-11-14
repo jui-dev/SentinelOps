@@ -11,6 +11,8 @@
  *
  *   W1–W5    a steady baseline across all three services
  *   W6–W8    Payments' card-network migration: a SEV1 and its aftermath
+ *   W1–W8    Maya Torres works Platform with Lee, then leaves; the Admin
+ *            removes her, so her responses read as a Former member's
  *   W11      Authentication's signing-key rotation SEV1, worked by Lee alone
  *   W12–W13  a holiday lull
  *   W16–W18  Risk's fraud-model rollout, with Sam and Jordan busiest
@@ -39,10 +41,26 @@ export const SAM = 'sam@example.com';
 export const LEE = 'lee@example.com';
 export const JORDAN = 'jordan@example.com';
 
+/**
+ * Someone who used to work here: a Platform Responder through week 8, who
+ * then left and was removed. Not a sign-in persona — the demo history makes
+ * her account, with no password, and removes her membership.
+ */
+export const MAYA = 'maya@example.com';
+
+export const FORMER_MEMBER = {
+  email: MAYA,
+  name: 'Maya Torres',
+  role: 'RESPONDER',
+  team: 'Platform',
+  /** The last week she started responses in. */
+  lastWeek: 8,
+} as const;
+
 /** Who is on each team, as dev-account.ts places them. */
 export const TEAM_MEMBERS: Record<DevTeam, readonly string[]> = {
   Payments: [PRIYA, SAM],
-  Platform: [LEE],
+  Platform: [LEE, MAYA],
   Risk: [SAM, JORDAN],
 };
 
@@ -59,6 +77,8 @@ export const AWAY: Record<string, readonly [number, number]> = {
   [SAM]: [9, 9],
   [PRIYA]: [13, 14],
   [LEE]: [19, 20],
+  // Gone for good after week 8.
+  [MAYA]: [FORMER_MEMBER.lastWeek + 1, Number.POSITIVE_INFINITY],
 };
 
 /** How often the Reporter raises an incident rather than whoever decides. */

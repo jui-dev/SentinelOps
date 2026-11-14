@@ -1,5 +1,6 @@
 "use client";
 
+import { FormerMember } from "@/components/organizations/former-member";
 import { CircleCheck } from "lucide-react";
 
 import { useOrganization } from "@/components/organizations/organization-scope";
@@ -55,6 +56,8 @@ export type PersonState = "investigating" | "complete" | "not-joined";
 export interface Person {
   membershipId: string;
   name: string;
+  /** Removed from the organization since they responded. */
+  former?: boolean;
   state: PersonState;
   /** When their part started, and ended once complete. */
   startedAt?: string;
@@ -155,6 +158,7 @@ export function PeopleRow({
                 }
               />
               <span className="font-medium">{you ? "You" : person.name}</span>
+              {person.former && <FormerMember />}
               {person.state === "investigating" ? (
                 <span className="data text-xs text-status-investigating-text">
                   investigating{" "}

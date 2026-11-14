@@ -1,5 +1,6 @@
 "use client";
 
+import { FormerMember } from "@/components/organizations/former-member";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
@@ -87,7 +88,10 @@ function StatusLine({
           )}
         </p>
         <p className="flex flex-wrap items-center gap-x-2 text-sm text-fg-subtle">
-          <span>Owner {analysis.owner.name}</span>
+          <span className="inline-flex items-center gap-1.5">
+            Owner {analysis.owner.name}
+            {analysis.owner.former && <FormerMember />}
+          </span>
           {dot}
           <span>
             Started <LocalDateTime value={analysis.createdAt} /> by{" "}

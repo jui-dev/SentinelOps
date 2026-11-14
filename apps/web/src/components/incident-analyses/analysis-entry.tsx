@@ -1,5 +1,6 @@
 "use client";
 
+import { FormerMember } from "@/components/organizations/former-member";
 import { Check, FilePenLine, FileText } from "lucide-react";
 import Link from "next/link";
 import { useId } from "react";
@@ -218,7 +219,10 @@ export function AnalysisEntry({
           </>
         )}
         <span aria-hidden="true">·</span>
-        <span>owned by {isOwner ? "you" : data.owner.name}</span>
+        <span className="inline-flex items-center gap-1.5">
+          owned by {isOwner ? "you" : data.owner.name}
+          {data.owner.former && <FormerMember />}
+        </span>
       </span>
     );
     action = canWrite

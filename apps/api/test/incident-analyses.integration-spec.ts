@@ -439,7 +439,7 @@ describe('incident analyses (integration)', () => {
       expect(started.body).toEqual({
         status: 'DRAFT',
         version: 1,
-        owner: { membershipId: fx.aliceInA, name: 'Alice Anders' },
+        owner: { membershipId: fx.aliceInA, name: 'Alice Anders', former: false },
         summary: null,
         impact: null,
         cause: null,
@@ -514,6 +514,7 @@ describe('incident analyses (integration)', () => {
       expect(started.body.owner).toEqual({
         membershipId: fx.daveInA,
         name: 'Dave Duarte',
+        former: false,
       });
       // Started by the caller, whoever owns it.
       expect(started.body.createdBy).toEqual({

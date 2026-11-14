@@ -56,7 +56,8 @@ export interface IncidentKeyMomentResponse {
 export interface IncidentAnalysisResponse {
   status: IncidentAnalysisStatus;
   version: number;
-  owner: { membershipId: string; name: string };
+  /** `former`: removed from the organization since; the analysis keeps them. */
+  owner: { membershipId: string; name: string; former: boolean };
   summary: string | null;
   impact: string | null;
   cause: string | null;
