@@ -81,6 +81,32 @@ export interface OrganizationMembershipResponse {
   };
   /** Every team in this organization they are on, by name; empty for none. */
   teams: { id: string; name: string; slug: string }[];
+  /**
+   * Sent only to whoever manages members, who alone sees removed people.
+   * Null while they belong; once removed, when and by whom (null once that
+   * account is gone). Their role is the one they held.
+   */
+  removal?: MemberRemoval | null;
+  /**
+   * Sent only to whoever manages members: what stops removing them now — a
+   * response under way, or an unpublished analysis they own. Empty for none.
+   */
+  openWork?: MemberOpenWork[];
+}
+
+export interface MemberRemoval {
+  removedAt: string;
+  removedBy: { id: string; name: string } | null;
+}
+
+export interface MemberOpenWork {
+  kind: "INVESTIGATING" | "DRAFT_ANALYSIS";
+  incident: { number: number; title: string };
+}
+
+/** `POST /organizations/:organizationId/memberships/:membershipId/restore`. */
+export interface RestoreMemberRequest {
+  role: Role;
 }
 
 /** `POST /organizations/:organizationId/memberships`. */
@@ -1301,6 +1327,14 @@ export const ApiErrorCode = {
   CANNOT_RESET_OWN_PASSWORD: "CANNOT_RESET_OWN_PASSWORD",
   /** Their account opens another organization too; not reset from here. */
   MEMBER_OF_OTHER_ORGANIZATIONS: "MEMBER_OF_OTHER_ORGANIZATIONS",
+  /** They were removed from the organization: restored, not acted on. */
+  MEMBER_REMOVED: "MEMBER_REMOVED",
+  /** Restoring someone who belongs already. */
+  MEMBER_NOT_REMOVED: "MEMBER_NOT_REMOVED",
+  /** An Admin removing themselves. */
+  CANNOT_REMOVE_SELF: "CANNOT_REMOVE_SELF",
+  /** A response under way, or a draft analysis they own, to hand over first. */
+  MEMBER_HAS_OPEN_WORK: "MEMBER_HAS_OPEN_WORK",
   /** Only a Responder can be assigned to an incident. */
   ASSIGNEE_CANNOT_RESPOND: "ASSIGNEE_CANNOT_RESPOND",
   /** A settled severity is changed in the incident, not with the decision. */

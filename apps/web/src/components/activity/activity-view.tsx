@@ -3,7 +3,7 @@
 import { ListChecks, Lock, ShieldCheck } from "lucide-react";
 import { Fragment, useMemo, useState } from "react";
 
-import { useMemberships } from "@/components/organizations/membership-list";
+import { useMembershipsWithRemoved } from "@/components/organizations/membership-list";
 import {
   useCan,
   useOrganization,
@@ -147,7 +147,8 @@ function ActivityLog() {
 
 function ChangesLog({ initialSince }: { initialSince: string | undefined }) {
   const organization = useOrganization();
-  const memberships = useMemberships(organization.id);
+  // Removed people included: the log still names what they did.
+  const memberships = useMembershipsWithRemoved(organization.id);
   const [search, setSearch] = useState("");
   const [area, setArea] = useState<ChangeArea | undefined>(undefined);
   const [actorId, setActorId] = useState("");

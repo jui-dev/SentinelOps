@@ -745,6 +745,20 @@ describe("changing a role", () => {
   });
 });
 
+/** Opens a row's More menu and finds its Reset password item. */
+const resetItemOf = async (
+  user: ReturnType<typeof userEvent.setup>,
+  name: string,
+) => {
+  await user.click(
+    await screen.findByRole("button", { name: `More actions for ${name}` }),
+  );
+
+  return within(
+    screen.getByRole("menu", { name: `More actions for ${name}` }),
+  ).getByRole("menuitem", { name: /Reset password/ });
+};
+
 describe("resetting a password", () => {
   beforeEach(() => {
     clearAccessToken();
@@ -762,23 +776,22 @@ describe("resetting a password", () => {
     },
   };
 
-  it("offers Reset password to whoever manages members, never on their own row", async () => {
+  it("offers Reset password in a row's More menu, never on their own row", async () => {
+    const user = userEvent.setup();
     api(MANAGE, [ada, linus]);
 
     renderMembers();
 
-    const theirs = await screen.findByRole("button", {
-      name: "Reset the password of Linus Torvalds",
-    });
-    const own = screen.getByRole("button", {
-      name: "Reset the password of Ada Lovelace",
-    });
+    const theirs = await resetItemOf(user, "Linus Torvalds");
 
-    expect((theirs as HTMLButtonElement).disabled).toBe(false);
-    expect((own as HTMLButtonElement).disabled).toBe(true);
-    expect(own.getAttribute("title")).toBe(
-      "Change your own password from your account",
-    );
+    expect(theirs.getAttribute("aria-disabled")).toBeNull();
+
+    await user.keyboard("{Escape}");
+
+    const own = await resetItemOf(user, "Ada Lovelace");
+
+    expect(own.getAttribute("aria-disabled")).toBe("true");
+    expect(own.textContent).toContain("Change your own from your account");
   });
 
   it("offers no Reset password to someone who only reads the directory", async () => {
@@ -787,7 +800,7 @@ describe("resetting a password", () => {
     renderMembers();
 
     await screen.findByRole("link", { name: "View Linus Torvalds" });
-    expect(screen.queryByRole("button", { name: /Reset the password/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /More actions for/ })).toBeNull();
   });
 
   it("says what happens, sends the new password, and shows the sign-in details once", async () => {
@@ -802,11 +815,7 @@ describe("resetting a password", () => {
     );
 
     renderMembers();
-    await user.click(
-      await screen.findByRole("button", {
-        name: "Reset the password of Linus Torvalds",
-      }),
-    );
+    await user.click(await resetItemOf(user, "Linus Torvalds"));
 
     const dialog = screen.getByRole("dialog", {
       name: "Reset Linus Torvalds's password",
@@ -846,11 +855,7 @@ describe("resetting a password", () => {
     );
 
     renderMembers();
-    await user.click(
-      await screen.findByRole("button", {
-        name: "Reset the password of Linus Torvalds",
-      }),
-    );
+    await user.click(await resetItemOf(user, "Linus Torvalds"));
     const dialog = screen.getByRole("dialog", {
       name: "Reset Linus Torvalds's password",
     });
@@ -1236,5 +1241,208 @@ describe("generateOneTimePassword", () => {
       expect(password.length).toBeGreaterThanOrEqual(12);
       expect(password).not.toMatch(/[lo01]/);
     }
+  });
+});
+
+describe("removing someone from the organization", () => {
+  beforeEach(() => {
+    clearAccessToken();
+  });
+
+  const linus = {
+    ...grace,
+    id: "0199a1b2-c3d4-7000-8000-0000000000cc",
+    user: {
+      ...grace.user,
+      id: "0199a1b2-c3d4-7000-8000-000000000003",
+      name: "Linus Torvalds",
+      email: "linus@example.com",
+      passwordChangeRequired: false,
+    },
+    teams: [{ id: PAYMENTS.id, name: "Payments", slug: "payments" }],
+    removal: null,
+    openWork: [],
+  };
+
+  const removedMaya = {
+    ...grace,
+    id: "0199a1b2-c3d4-7000-8000-0000000000dd",
+    user: {
+      ...grace.user,
+      id: "0199a1b2-c3d4-7000-8000-000000000004",
+      name: "Maya Torres",
+      email: "maya@example.com",
+      passwordChangeRequired: false,
+    },
+    removal: {
+      removedAt: "2026-11-03T09:00:00.000Z",
+      removedBy: { id: currentUser.id, name: "Ada Lovelace" },
+    },
+    openWork: [],
+  };
+
+  const removeItemOf = async (
+    user: ReturnType<typeof userEvent.setup>,
+    name: string,
+  ) => {
+    await user.click(
+      await screen.findByRole("button", { name: `More actions for ${name}` }),
+    );
+
+    return within(
+      screen.getByRole("menu", { name: `More actions for ${name}` }),
+    ).getByRole("menuitem", { name: /Remove from organization/ });
+  };
+
+  it("says what ends and what stays, then removes them", async () => {
+    const user = userEvent.setup();
+    const { requests } = api(MANAGE, [ada, linus], (request) =>
+      route(request) === `DELETE ${base}/memberships/${linus.id}`
+        ? jsonResponse(200, { ...linus, teams: [], removal: removedMaya.removal })
+        : undefined,
+    );
+
+    renderMembers();
+    await user.click(await removeItemOf(user, "Linus Torvalds"));
+
+    const dialog = screen.getByRole("dialog", {
+      name: `Remove Linus Torvalds from ${organization.name}?`,
+    });
+
+    expect(dialog.textContent).toContain("Payments");
+    expect(dialog.textContent).toContain("They are not notified.");
+
+    await user.click(
+      within(dialog).getByRole("button", { name: "Remove from organization" }),
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: /Remove Linus Torvalds/ }),
+      ).toBeNull(),
+    );
+    expect(
+      requests.some(
+        (r) => route(r) === `DELETE ${base}/memberships/${linus.id}`,
+      ),
+    ).toBe(true);
+  });
+
+  it("keeps Remove greyed with every reason, and links open work to where it is handed over", async () => {
+    const user = userEvent.setup();
+    const busy = {
+      ...linus,
+      openWork: [
+        {
+          kind: "INVESTIGATING",
+          incident: { number: 151, title: "Webhooks delayed" },
+        },
+        {
+          kind: "DRAFT_ANALYSIS",
+          incident: { number: 139, title: "Stale rates" },
+        },
+      ],
+    };
+    api(MANAGE, [ada, busy]);
+
+    renderMembers();
+
+    const item = await removeItemOf(user, "Linus Torvalds");
+    const menu = screen.getByRole("menu", {
+      name: "More actions for Linus Torvalds",
+    });
+
+    expect(item.getAttribute("aria-disabled")).toBe("true");
+    expect(
+      within(menu).getByRole("menuitem", { name: /Still investigating INC-151/ }),
+    ).toBeDefined();
+    expect(
+      within(menu).getByRole("menuitem", {
+        name: /unpublished analysis of INC-139/,
+      }),
+    ).toBeDefined();
+
+    // Picking it does nothing.
+    await user.click(item);
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    await user.keyboard("{Escape}");
+
+    const own = await removeItemOf(user, "Ada Lovelace");
+
+    expect(own.getAttribute("aria-disabled")).toBe("true");
+    expect(
+      screen.getByRole("menu", { name: "More actions for Ada Lovelace" })
+        .textContent,
+    ).toContain("You can't remove yourself.");
+  });
+
+  it("shows removed people only under Removed, and restores them in the role chosen", async () => {
+    const user = userEvent.setup();
+    const { requests } = api(MANAGE, [ada, linus, removedMaya], (request) =>
+      route(request) === `POST ${base}/memberships/${removedMaya.id}/restore`
+        ? jsonResponse(200, { ...removedMaya, role: "REPORTER", removal: null })
+        : undefined,
+    );
+
+    renderMembers();
+
+    await screen.findByText("Linus Torvalds");
+    expect(screen.queryByText("Maya Torres")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: /^Removed/ }));
+
+    expect(await screen.findByText("Maya Torres")).toBeDefined();
+    expect(screen.queryByText("Linus Torvalds")).toBeNull();
+    expect(screen.getByText("Former member")).toBeDefined();
+
+    await user.click(screen.getByRole("button", { name: "Restore Maya Torres" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Restore Maya Torres?" });
+    const before = within(dialog).getByRole("radio", { name: /^Responder/ });
+
+    expect((before as HTMLInputElement).checked).toBe(true);
+    expect(dialog.textContent).toContain("Their role before");
+
+    await user.click(within(dialog).getByRole("radio", { name: /^Reporter/ }));
+    await user.click(within(dialog).getByRole("button", { name: "Restore" }));
+
+    await waitFor(() =>
+      expect(
+        requests.find(
+          (r) =>
+            route(r) === `POST ${base}/memberships/${removedMaya.id}/restore`,
+        )?.body,
+      ).toEqual({ role: "REPORTER" }),
+    );
+  });
+
+  it("offers Restore when Add member is given a removed person's email", async () => {
+    const user = userEvent.setup();
+    api(MANAGE, [ada, removedMaya], (request) =>
+      route(request) === `POST ${base}/memberships`
+        ? apiError(409, "MEMBER_REMOVED")
+        : undefined,
+    );
+
+    const dialog = await renderAddMember();
+
+    await user.type(await within(dialog).findByLabelText("Name"), "Maya");
+    await user.type(within(dialog).getByLabelText("Email"), "Maya@example.com");
+    await user.type(
+      within(dialog).getByLabelText("One-time password"),
+      "one-time-password-123",
+    );
+    await chooseRole(user, dialog, "Responder");
+    await user.click(submit(dialog));
+
+    await user.click(
+      await within(dialog).findByRole("button", { name: "Restore Maya Torres" }),
+    );
+
+    expect(screen.queryByRole("dialog", { name: "Add member" })).toBeNull();
+    expect(
+      screen.getByRole("dialog", { name: "Restore Maya Torres?" }),
+    ).toBeDefined();
   });
 });

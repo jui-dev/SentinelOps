@@ -64,15 +64,18 @@ const useResponsesUnderWay = (member: Member, enabled: boolean) => {
 };
 
 /** One role to choose: its icon, name, and job, in its colour once chosen. */
-function RoleChoice({
+export function RoleChoice({
   role,
   checked,
   current,
+  currentLabel = "Current",
   onChange,
 }: {
   role: Role;
   checked: boolean;
   current: boolean;
+  /** What the marker on the role they hold says. */
+  currentLabel?: string;
   onChange: () => void;
 }) {
   const meta = ROLE_META[role];
@@ -112,7 +115,7 @@ function RoleChoice({
           </span>
           {current && (
             <span className="rounded-sm border border-line px-1.5 text-2xs font-semibold text-fg-subtle">
-              Current
+              {currentLabel}
             </span>
           )}
         </span>

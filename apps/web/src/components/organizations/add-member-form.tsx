@@ -22,8 +22,12 @@ import { Spinner } from "@/components/ui/spinner";
 import { ROLE_META, ROLE_ORDER } from "@/components/roles/role-meta";
 import { teamsHref, useTeams } from "@/components/teams/team-scope";
 import { ApiErrorCode, Permission } from "@/lib/api/contracts";
-import type { CreateMemberRequest, Role } from "@/lib/api/contracts";
-import { createMember, listServices } from "@/lib/api/endpoints";
+import type {
+  CreateMemberRequest,
+  OrganizationMembershipResponse,
+  Role,
+} from "@/lib/api/contracts";
+import { createMember, listMemberships, listServices } from "@/lib/api/endpoints";
 import { fieldErrorsOf, isApiError } from "@/lib/api/errors";
 import { queryKeys } from "@/lib/api/query-keys";
 
@@ -446,15 +450,48 @@ function AddedMember({
   );
 }
 
+/**
+ * The removed person an email belongs to, when adding them was refused for
+ * it: read from the list, which whoever adds members is sent in full. The
+ * list is read directly, not through the Members list's hook, which imports
+ * this file.
+ */
+const useRemovedByEmail = (
+  organizationId: string,
+  email: string | undefined,
+): OrganizationMembershipResponse | undefined => {
+  const memberships = useQuery({
+    queryKey: queryKeys.memberships(organizationId),
+    queryFn: () => listMemberships(organizationId),
+    enabled: email !== undefined,
+  });
+  const wanted = email?.trim().toLowerCase();
+
+  return memberships.data?.find(
+    (member) =>
+      member.removal && member.user.email.toLowerCase() === wanted,
+  );
+};
+
 function AddMemberForm({
   onAdded,
   onCancel,
+  onRestore,
 }: {
   onAdded: (added: Added) => void;
   onCancel: () => void;
+  /** Their email is a removed person's: restore them instead. */
+  onRestore: (member: OrganizationMembershipResponse) => void;
 }) {
   const organization = useOrganization();
   const create = useCreateMember(organization.id);
+  const wasRemoved =
+    isApiError(create.error, 409) &&
+    create.error.code === ApiErrorCode.MEMBER_REMOVED;
+  const removed = useRemovedByEmail(
+    organization.id,
+    wasRemoved ? create.variables?.email : undefined,
+  );
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [shown, setShown] = useState(true);
@@ -515,8 +552,31 @@ function AddMemberForm({
       className="flex flex-col gap-4"
     >
       <RequiredNote />
-      {create.isError && (
-        <ErrorAlert error={create.error} message={messageFor(create.error)} />
+      {wasRemoved ? (
+        <Alert
+          tone="warning"
+          title={
+            removed
+              ? `${removed.user.name} was removed from ${organization.name}.`
+              : "This person was removed from the organization."
+          }
+        >
+          <div className="flex flex-col items-start gap-2">
+            <p className="text-fg-muted">
+              Restore them instead: their history stays theirs, and they sign
+              in with the password they already have.
+            </p>
+            {removed && (
+              <Button size="sm" onClick={() => onRestore(removed)}>
+                Restore {removed.user.name}
+              </Button>
+            )}
+          </div>
+        </Alert>
+      ) : (
+        create.isError && (
+          <ErrorAlert error={create.error} message={messageFor(create.error)} />
+        )
       )}
 
       <FormPart title="Who" first>
@@ -652,7 +712,14 @@ function AddMemberForm({
  * sign-in details replace the form; a stray click on the backdrop then does
  * not close it, since the password is shown only this once.
  */
-export function AddMemberDialog({ onClose }: { onClose: () => void }) {
+export function AddMemberDialog({
+  onClose,
+  onRestore,
+}: {
+  onClose: () => void;
+  /** Their email is a removed person's: restore them instead. */
+  onRestore: (member: OrganizationMembershipResponse) => void;
+}) {
   const [added, setAdded] = useState<Added | null>(null);
   // Remounted on "Add another", so the form starts empty.
   const [round, setRound] = useState(0);
@@ -675,7 +742,12 @@ export function AddMemberDialog({ onClose }: { onClose: () => void }) {
           }}
         />
       ) : (
-        <AddMemberForm key={round} onAdded={setAdded} onCancel={onClose} />
+        <AddMemberForm
+          key={round}
+          onAdded={setAdded}
+          onCancel={onClose}
+          onRestore={onRestore}
+        />
       )}
     </FormDialog>
   );

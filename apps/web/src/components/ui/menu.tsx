@@ -194,14 +194,30 @@ export function MenuSeparator() {
   return <div role="separator" className="my-1 h-px bg-line-subtle" />;
 }
 
-/** An action. Picking it closes the menu first. */
+/**
+ * An action. Picking it closes the menu first.
+ *
+ * `danger` is for the one consequential action, set apart below a
+ * separator. `description` is a second, quieter line under the label.
+ * `disabled` leaves the item in the menu, reachable and announced as
+ * unavailable — so whoever finds it can also find why, in `describedBy`.
+ */
 export function MenuItem({
   icon: Icon,
   onSelect,
+  tone = "default",
+  description,
+  disabled = false,
+  describedBy,
   children,
 }: {
   icon?: LucideIcon;
   onSelect: () => void;
+  tone?: "default" | "danger";
+  description?: ReactNode;
+  disabled?: boolean;
+  /** The id of whatever says why it is disabled. */
+  describedBy?: string;
   children: ReactNode;
 }) {
   const { close } = useMenu();
@@ -211,16 +227,40 @@ export function MenuItem({
       type="button"
       role="menuitem"
       tabIndex={-1}
+      aria-disabled={disabled || undefined}
+      aria-describedby={describedBy}
       onClick={() => {
+        if (disabled) return;
         close();
         onSelect();
       }}
-      className={cx(itemClasses, "text-fg-muted")}
+      className={cx(
+        itemClasses,
+        description != null && "h-auto items-start py-2",
+        disabled
+          ? "cursor-not-allowed text-fg-disabled hover:bg-transparent hover:text-fg-disabled"
+          : tone === "danger"
+            ? "text-danger-text hover:bg-danger-subtle hover:text-danger-text focus-visible:bg-danger-subtle focus-visible:text-danger-text"
+            : "text-fg-muted",
+      )}
     >
       {Icon && (
-        <Icon aria-hidden="true" strokeWidth={1.75} className="size-4 shrink-0" />
+        <Icon
+          aria-hidden="true"
+          strokeWidth={1.75}
+          className={cx("size-4 shrink-0", description != null && "mt-0.5")}
+        />
       )}
-      {children}
+      {description ? (
+        <span className="flex min-w-0 flex-col gap-0.5">
+          <span className="font-medium">{children}</span>
+          <span className="text-xs font-normal text-fg-subtle">
+            {description}
+          </span>
+        </span>
+      ) : (
+        children
+      )}
     </button>
   );
 }

@@ -10,8 +10,10 @@ import { EmptyNote } from "@/components/ui/empty-state";
 import { linkClasses } from "@/components/ui/link";
 import { PageBody, PageHeader } from "@/components/ui/page";
 import { Permission } from "@/lib/api/contracts";
+import type { OrganizationMembershipResponse } from "@/lib/api/contracts";
 
 import { AddMemberDialog } from "./add-member-form";
+import { RestoreMemberDialog } from "./member-removal";
 import { MembershipList, useMemberships } from "./membership-list";
 import { useCan, useOrganization } from "./organization-scope";
 
@@ -53,6 +55,8 @@ function Directory() {
   // Advice only, like every useCan: the API authorizes adding regardless.
   const canAddMembers = useCan(Permission.MEMBERS_MANAGE);
   const [adding, setAdding] = useState(false);
+  const [restoring, setRestoring] =
+    useState<OrganizationMembershipResponse | null>(null);
 
   return (
     <>
@@ -80,7 +84,19 @@ function Directory() {
         <MembershipList />
       </PageBody>
       {canAddMembers && adding && (
-        <AddMemberDialog onClose={() => setAdding(false)} />
+        <AddMemberDialog
+          onClose={() => setAdding(false)}
+          onRestore={(member) => {
+            setAdding(false);
+            setRestoring(member);
+          }}
+        />
+      )}
+      {canAddMembers && restoring && (
+        <RestoreMemberDialog
+          member={restoring}
+          onClose={() => setRestoring(null)}
+        />
       )}
     </>
   );

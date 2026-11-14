@@ -1,15 +1,27 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { ChevronRight, IdCard, KeyRound, Plus, Search } from "lucide-react";
+import {
+  ChevronRight,
+  Ellipsis,
+  IdCard,
+  KeyRound,
+  Plus,
+  RotateCcw,
+  Search,
+  UserMinus,
+} from "lucide-react";
 import Link from "next/link";
 import { Fragment, useId, useState } from "react";
 
 import { initialsOf } from "@/components/app/shell-utilities";
 import { ROLE_META, ROLE_ORDER } from "@/components/roles/role-meta";
+import { incidentAnalysisHref } from "@/components/incident-analyses/analysis-queries";
+import { incidentHref } from "@/components/incidents/incident-queries";
 import { ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { cx } from "@/components/ui/cx";
+import { Menu, MenuHeading, MenuItem, MenuSeparator } from "@/components/ui/menu";
 import { rowActionClasses } from "@/components/ui/row-action";
 import { Spinner } from "@/components/ui/spinner";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
@@ -19,17 +31,41 @@ import type { OrganizationMembershipResponse, Role } from "@/lib/api/contracts";
 import { listMemberships } from "@/lib/api/endpoints";
 import { queryKeys } from "@/lib/api/query-keys";
 import { useCurrentUser } from "@/lib/auth/session-provider";
+import { useRouter } from "next/navigation";
 
 import { ChangeRoleDialog } from "./change-role-dialog";
 import { ResetPasswordDialog } from "./reset-password-dialog";
 import { MemberPeek } from "./member-peek";
+import {
+  RemoveMemberDialog,
+  RestoreMemberDialog,
+  blockerText,
+  isRemoved,
+  removalBlockers,
+} from "./member-removal";
 import { AddToTeamDialog, RemoveFromTeamDialog } from "./member-placement";
 import { memberHref } from "./member-paths";
 import { useCan, useOrganization } from "./organization-scope";
 
 type Member = OrganizationMembershipResponse;
 
+/**
+ * The people who belong to the organization now. Whoever manages members is
+ * also sent the people removed from it, to restore them; they are left out
+ * here, so no picker, count or checklist offers someone who has left.
+ */
 export const useMemberships = (organizationId: string) =>
+  useQuery({
+    queryKey: queryKeys.memberships(organizationId),
+    queryFn: () => listMemberships(organizationId),
+    select: (members: Member[]) => members.filter((m) => !isRemoved(m)),
+  });
+
+/**
+ * Everyone the reader is sent, removed people included: for the Members
+ * list's Removed filter, and for history, which still names them.
+ */
+export const useMembershipsWithRemoved = (organizationId: string) =>
   useQuery({
     queryKey: queryKeys.memberships(organizationId),
     queryFn: () => listMemberships(organizationId),
@@ -48,7 +84,7 @@ const isUnplaced = (member: Member) =>
 
 // ── Filters ────────────────────────────────────────────────────────────────
 
-type FilterId = "all" | Role | "awaiting" | "unplaced";
+type FilterId = "all" | Role | "awaiting" | "unplaced" | "removed";
 
 const FILTERS: {
   id: FilterId;
@@ -61,25 +97,33 @@ const FILTERS: {
   /** About account setup and placement: offered to whoever manages members. */
   setup?: boolean;
 }[] = [
-  { id: "all", label: "All", matches: () => true },
+  // Removed people are in none of these: only under Removed, so the
+  // everyday list stays the people who work here.
+  { id: "all", label: "All", matches: (m) => !isRemoved(m) },
   ...ROLE_ORDER.map((role) => ({
     id: role,
     label: ROLE_META[role].plural,
-    matches: (m: Member) => m.role === role,
+    matches: (m: Member) => !isRemoved(m) && m.role === role,
     role,
   })),
   {
     id: "awaiting",
     label: "Awaiting sign-in",
-    matches: (m) => m.user.passwordChangeRequired === true,
+    matches: (m) => !isRemoved(m) && m.user.passwordChangeRequired === true,
     attention: true,
     setup: true,
   },
   {
     id: "unplaced",
     label: "No team",
-    matches: isUnplaced,
+    matches: (m) => !isRemoved(m) && isUnplaced(m),
     attention: true,
+    setup: true,
+  },
+  {
+    id: "removed",
+    label: "Removed",
+    matches: isRemoved,
     setup: true,
   },
 ];
@@ -301,10 +345,225 @@ function MemberStatus({ member }: { member: Member }) {
   );
 }
 
+/**
+ * The row's less frequent account actions, behind ⋯: resetting a password,
+ * and — set apart below a separator — removing them from the organization.
+ * When removal is not possible now, it stays in the menu, greyed, with each
+ * reason; a piece of open work is a link to where it is handed over.
+ */
+function MoreActions({
+  member,
+  admins,
+  onResetPassword,
+  onRemove,
+}: {
+  member: Member;
+  admins: number;
+  onResetPassword: () => void;
+  onRemove: () => void;
+}) {
+  const organization = useOrganization();
+  const me = useCurrentUser();
+  const router = useRouter();
+  const reasonsId = useId();
+  const own = member.user.id === me.data?.id;
+  const blockers = removalBlockers(member, { meId: me.data?.id, admins });
+
+  return (
+    <Menu
+      label={`More actions for ${member.user.name}`}
+      className="w-80"
+      trigger={(props) => (
+        <button
+          type="button"
+          aria-label={`More actions for ${member.user.name}`}
+          className={cx(
+            rowActionClasses("accent"),
+            "border-line bg-surface px-1.5 text-fg-muted aria-expanded:border-accent-rim aria-expanded:text-fg",
+          )}
+          {...props}
+        >
+          <Ellipsis aria-hidden="true" strokeWidth={2} className="size-4" />
+        </button>
+      )}
+    >
+      <MenuHeading>Account</MenuHeading>
+      <MenuItem
+        icon={KeyRound}
+        disabled={own}
+        description={own ? "Change your own from your account" : undefined}
+        onSelect={onResetPassword}
+      >
+        Reset password
+      </MenuItem>
+      <MenuSeparator />
+      <MenuItem
+        icon={UserMinus}
+        tone="danger"
+        disabled={blockers.length > 0}
+        describedBy={blockers.length > 0 ? reasonsId : undefined}
+        description={
+          blockers.length > 0
+            ? "Not yet — see why below"
+            : "Ends their access. Their history stays."
+        }
+        onSelect={onRemove}
+      >
+        Remove from organization
+      </MenuItem>
+      {blockers.length > 0 && (
+        <div id={reasonsId} className="flex flex-col pb-1">
+          {blockers.map((blocker) =>
+            blocker.kind === "WORK" ? (
+              // A way to the fix, so it is an item: reachable by the keys.
+              <MenuItem
+                key={`${blocker.work.kind}-${blocker.work.incident.number}`}
+                onSelect={() =>
+                  router.push(
+                    blocker.work.kind === "INVESTIGATING"
+                      ? incidentHref(organization.slug, blocker.work.incident.number)
+                      : incidentAnalysisHref(
+                          organization.slug,
+                          blocker.work.incident.number,
+                        ),
+                  )
+                }
+              >
+                <span className="flex items-start gap-2 py-1 text-xs whitespace-normal">
+                  <span aria-hidden="true" className="mt-1 size-1.5 shrink-0 rounded-full bg-warning-solid" />
+                  <span>{blockerText(blocker)}</span>
+                </span>
+              </MenuItem>
+            ) : (
+              <p
+                key={blocker.kind}
+                className="flex items-start gap-2 px-3 py-1.5 text-xs text-fg-muted"
+              >
+                <span aria-hidden="true" className="mt-1 size-1.5 shrink-0 rounded-full bg-fg-subtle" />
+                {blockerText(blocker)}
+              </p>
+            ),
+          )}
+        </div>
+      )}
+    </Menu>
+  );
+}
+
+/** The heading over the people removed from the organization. */
+function RemovedGroupRow({ count, columns }: { count: number; columns: number }) {
+  return (
+    <tr>
+      <th
+        scope="colgroup"
+        colSpan={columns}
+        className="border-b border-line-subtle bg-sunken px-3 pt-4 pb-2.5 text-left font-normal sm:px-4"
+      >
+        <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-line-strong bg-hover px-2.5 py-0.5 text-xs font-semibold text-fg-muted">
+            <UserMinus aria-hidden="true" strokeWidth={2.25} className="size-3.5" />
+            Removed
+          </span>
+          <span className="text-xs text-fg-muted">
+            No access. Their history stays, marked Former member.
+          </span>
+          <span className="numeric ml-auto text-xs text-fg-subtle">
+            {count} {count === 1 ? "person" : "people"}
+          </span>
+        </span>
+      </th>
+    </tr>
+  );
+}
+
+/** Someone removed: who they were, when they left, and Restore. */
+function RemovedRow({
+  member,
+  onRestore,
+}: {
+  member: Member;
+  onRestore: () => void;
+}) {
+  const organization = useOrganization();
+  const meta = ROLE_META[member.role as Role];
+
+  return (
+    <TR>
+      <TD>
+        <div className="flex items-center gap-2.5">
+          <span
+            aria-hidden="true"
+            className="grid size-8 shrink-0 place-items-center rounded-full border border-dashed border-line-strong text-xs font-semibold text-fg-subtle"
+          >
+            {initialsOf(member.user.name)}
+          </span>
+          <span className="flex min-w-0 flex-col">
+            <span className="truncate font-medium text-fg-muted">
+              {member.user.name}
+            </span>
+            <span className="truncate text-xs text-fg-subtle">
+              {member.user.email}
+            </span>
+          </span>
+        </div>
+      </TD>
+      <TD className="hidden md:table-cell">
+        <span
+          className={cx(
+            "inline-flex rounded-full border px-2.5 py-px text-xs opacity-80",
+            meta.tone.text,
+            meta.tone.line,
+          )}
+        >
+          {meta.label}
+        </span>
+      </TD>
+      <TD className="hidden sm:table-cell">
+        <span className={cx(BADGE, "border-line-strong bg-hover text-fg-muted")}>
+          Former member
+        </span>
+      </TD>
+      <TD kind="data" className="hidden lg:table-cell">
+        {member.removal && (
+          <span className="flex flex-col gap-0.5">
+            <IsoDate value={member.removal.removedAt} />
+            {member.removal.removedBy && (
+              <span className="text-xs text-fg-subtle">
+                by {member.removal.removedBy.name}
+              </span>
+            )}
+          </span>
+        )}
+      </TD>
+      <TD kind="actions">
+        <div className="flex items-center justify-end gap-2">
+          <Link
+            href={memberHref(organization.slug, member.id)}
+            aria-label={`View ${member.user.name}`}
+            className={rowActionClasses("accent")}
+          >
+            View
+            <ChevronRight aria-hidden="true" strokeWidth={2} className="size-3.5" />
+          </Link>
+          <button
+            type="button"
+            aria-label={`Restore ${member.user.name}`}
+            onClick={onRestore}
+            className={rowActionClasses("info")}
+          >
+            <RotateCcw aria-hidden="true" strokeWidth={2.25} className="size-3.5" />
+            Restore
+          </button>
+        </div>
+      </TD>
+    </TR>
+  );
+}
+
 // ── The list ───────────────────────────────────────────────────────────────
 
 type Dialog = {
-  kind: "add" | "remove" | "role" | "password";
+  kind: "add" | "remove" | "role" | "password" | "removeOrg" | "restore";
   memberId: string;
 } | null;
 
@@ -317,7 +576,7 @@ type Dialog = {
  */
 export function MembershipList() {
   const organization = useOrganization();
-  const memberships = useMemberships(organization.id);
+  const memberships = useMembershipsWithRemoved(organization.id);
   const me = useCurrentUser();
   // Placing people on teams is team configuration: whoever manages teams.
   const canPlace = useCan(Permission.TEAMS_MANAGE);
@@ -348,7 +607,10 @@ export function MembershipList() {
   const shown = all.filter(
     (member) => matches(member) && matchesSearch(member, query),
   );
-  const admins = all.filter(({ role }) => role === "ADMIN").length;
+  const admins = all.filter(
+    (member) => member.role === "ADMIN" && !isRemoved(member),
+  ).length;
+  const showingRemoved = filter === "removed";
   // Read from the list as it stands, so a dialog shows the latest teams.
   const target = dialog && all.find(({ id }) => id === dialog.memberId);
   const close = () => setDialog(null);
@@ -367,9 +629,13 @@ export function MembershipList() {
         <THead>
           <TR>
             <TH>Person</TH>
-            <TH className="hidden md:table-cell">Teams</TH>
+            <TH className="hidden md:table-cell">
+              {showingRemoved ? "Role before" : "Teams"}
+            </TH>
             {canManage && <TH className="hidden sm:table-cell">Status</TH>}
-            <TH className="hidden lg:table-cell">Joined</TH>
+            <TH className="hidden lg:table-cell">
+              {showingRemoved ? "Removed" : "Joined"}
+            </TH>
             <TH align="end">Action</TH>
           </TR>
         </THead>
@@ -390,6 +656,19 @@ export function MembershipList() {
                 </Button>
               </TD>
             </TR>
+          ) : showingRemoved ? (
+            <>
+              <RemovedGroupRow count={shown.length} columns={columns} />
+              {shown.map((member) => (
+                <RemovedRow
+                  key={member.id}
+                  member={member}
+                  onRestore={() =>
+                    setDialog({ kind: "restore", memberId: member.id })
+                  }
+                />
+              ))}
+            </>
           ) : (
             ROLE_ORDER.map((role) => {
               const group = shown.filter((member) => member.role === role);
@@ -550,27 +829,16 @@ export function MembershipList() {
                       </button>
                     )}
                     {canManage && (
-                      <button
-                        type="button"
-                        aria-label={`Reset the password of ${member.user.name}`}
-                        title={
-                          member.user.id === me.data?.id
-                            ? "Change your own password from your account"
-                            : undefined
-                        }
-                        disabled={member.user.id === me.data?.id}
-                        onClick={() =>
+                      <MoreActions
+                        member={member}
+                        admins={admins}
+                        onResetPassword={() =>
                           setDialog({ kind: "password", memberId: member.id })
                         }
-                        className={rowActionClasses("accent")}
-                      >
-                        <KeyRound
-                          aria-hidden="true"
-                          strokeWidth={2}
-                          className="size-3.5"
-                        />
-                        Reset password
-                      </button>
+                        onRemove={() =>
+                          setDialog({ kind: "removeOrg", memberId: member.id })
+                        }
+                      />
                     )}
                   </div>
                 </TD>
@@ -606,6 +874,12 @@ export function MembershipList() {
       )}
       {canManage && target && dialog.kind === "password" && (
         <ResetPasswordDialog key={target.id} member={target} onClose={close} />
+      )}
+      {canManage && target && dialog.kind === "removeOrg" && (
+        <RemoveMemberDialog key={target.id} member={target} onClose={close} />
+      )}
+      {canManage && target && dialog.kind === "restore" && (
+        <RestoreMemberDialog key={target.id} member={target} onClose={close} />
       )}
     </div>
   );

@@ -52,6 +52,7 @@ import type {
   OrganizationMembershipResponse,
   OrganizationRoleResponse,
   ResetPasswordRequest,
+  RestoreMemberRequest,
   OrganizationResponse,
   Page,
   PostIncidentUpdateRequest,
@@ -163,6 +164,27 @@ export const resetMemberPassword = (
   authenticatedRequest<OrganizationMembershipResponse>(
     `${organizationPath(organizationId)}/memberships/${encodeURIComponent(membershipId)}/password`,
     { method: "PUT", body },
+  );
+
+/**
+ * Removes someone from the organization: their access ends, their history
+ * stays. Answers with their membership, now carrying `removal`.
+ */
+export const removeMember = (organizationId: string, membershipId: string) =>
+  authenticatedRequest<OrganizationMembershipResponse>(
+    `${organizationPath(organizationId)}/memberships/${encodeURIComponent(membershipId)}`,
+    { method: "DELETE" },
+  );
+
+/** Brings a removed person back, in the role named, on no team. */
+export const restoreMember = (
+  organizationId: string,
+  membershipId: string,
+  body: RestoreMemberRequest,
+) =>
+  authenticatedRequest<OrganizationMembershipResponse>(
+    `${organizationPath(organizationId)}/memberships/${encodeURIComponent(membershipId)}/restore`,
+    { method: "POST", body },
   );
 
 /** Gives a member another role; answers with their membership. */

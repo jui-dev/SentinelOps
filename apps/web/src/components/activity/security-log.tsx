@@ -3,7 +3,7 @@
 import { Ban, CircleAlert, LogIn } from "lucide-react";
 import { Fragment, useMemo, useState } from "react";
 
-import { useMemberships } from "@/components/organizations/membership-list";
+import { useMembershipsWithRemoved } from "@/components/organizations/membership-list";
 import { useOrganization } from "@/components/organizations/organization-scope";
 import { roleMeta } from "@/components/roles/role-meta";
 import { ErrorAlert } from "@/components/ui/alert";
@@ -60,7 +60,8 @@ export function SecurityLog({
   initialSince: string | undefined;
 }) {
   const organization = useOrganization();
-  const memberships = useMemberships(organization.id);
+  // Removed people included: the log still names what they did.
+  const memberships = useMembershipsWithRemoved(organization.id);
   const [search, setSearch] = useState("");
   const [result, setResult] = useState<SecurityAction | "">("");
   const [period, setPeriod] = useState<PeriodValue>("7d");
