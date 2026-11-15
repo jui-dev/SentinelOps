@@ -460,7 +460,7 @@ export function IncidentBoard({
               ? [{ kind: "status", from: active ? "sm" : "lg" } as const]
               : []),
             { kind: "person", from: "md" },
-            ...(active ? [{ kind: "group", from: "xl" } as const] : []),
+            ...(active ? [{ kind: "group", from: "2xl" } as const] : []),
             { kind: "datetime", from: "lg" },
             "duration",
             "actions",
@@ -478,7 +478,7 @@ export function IncidentBoard({
           <TH className="hidden md:table-cell">
             {member ? "Team response" : "Responders"}
           </TH>
-          {active && <TH className="hidden xl:table-cell">Who can respond</TH>}
+          {active && <TH className="hidden 2xl:table-cell">Who can respond</TH>}
           <TH className="hidden lg:table-cell">Last update</TH>
           <TH align="end">{active ? "Open for" : "Lasted"}</TH>
           <TH align="end">Actions</TH>
@@ -554,7 +554,7 @@ export function IncidentBoard({
                   </span>
                   {active && (
                     // Its own column once there is room for one.
-                    <ResponseAccessMark incident={incident} className="text-xs xl:hidden" />
+                    <ResponseAccessMark incident={incident} className="text-xs 2xl:hidden" />
                   )}
                 </TD>
                 {showStatus && (
@@ -572,7 +572,7 @@ export function IncidentBoard({
                   <ResponseCell incident={incident} showWait={member} />
                 </TD>
                 {active && (
-                  <TD className="hidden text-sm xl:table-cell">
+                  <TD className="hidden text-sm 2xl:table-cell">
                     <ResponseAccessMark incident={incident} />
                   </TD>
                 )}

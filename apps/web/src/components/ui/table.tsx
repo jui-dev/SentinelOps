@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import type {
+  CSSProperties,
   HTMLAttributes,
   ReactNode,
   TdHTMLAttributes,
@@ -60,17 +61,68 @@ const COLUMN_WIDTHS = {
 
 export type ColumnKind = keyof typeof COLUMN_WIDTHS;
 
+/**
+ * The same widths in rem, for the table's minimum width (below). `main` is
+ * the least a name or title is allowed: past that, the table scrolls sideways
+ * rather than squeezing it until its words run under the next column.
+ */
+const COLUMN_REMS: Record<ColumnKind, number> = {
+  main: 14,
+  time: 6,
+  severity: 6.5,
+  count: 6.5,
+  duration: 6.5,
+  date: 7.5,
+  label: 9.5,
+  datetime: 9.5,
+  status: 11.5,
+  person: 12,
+  group: 14,
+  wide: 16,
+  actions: 10,
+  actions2: 14,
+};
+
 /** The breakpoint a column first shows at; below it, it is hidden. */
 const SHOWN_FROM = {
   sm: "hidden sm:table-column",
   md: "hidden md:table-column",
   lg: "hidden lg:table-column",
   xl: "hidden xl:table-column",
+  "2xl": "hidden 2xl:table-column",
 } as const;
+
+type Breakpoint = keyof typeof SHOWN_FROM;
+
+const BREAKPOINTS: readonly Breakpoint[] = ["sm", "md", "lg", "xl", "2xl"];
 
 export type TableColumn =
   | ColumnKind
-  | { kind: ColumnKind; from: keyof typeof SHOWN_FROM };
+  | { kind: ColumnKind; from: Breakpoint };
+
+/**
+ * The table's minimum width at each breakpoint: the columns shown there,
+ * added up. Set as custom properties the table's own classes read, since a
+ * width worked out at runtime cannot be a class of its own.
+ */
+const minWidths = (columns: readonly TableColumn[]) => {
+  const at = (breakpoint?: Breakpoint) =>
+    columns.reduce((sum, column) => {
+      const { kind, from } =
+        typeof column === "string" ? { kind: column, from: undefined } : column;
+      const shown =
+        !from ||
+        (breakpoint !== undefined &&
+          BREAKPOINTS.indexOf(from) <= BREAKPOINTS.indexOf(breakpoint));
+
+      return shown ? sum + COLUMN_REMS[kind] : sum;
+    }, 0);
+
+  return {
+    "--table-min": `${at()}rem`,
+    ...Object.fromEntries(BREAKPOINTS.map((b) => [`--table-min-${b}`, `${at(b)}rem`])),
+  } as CSSProperties;
+};
 
 const VariantContext = createContext<TableVariant>("reference");
 
@@ -152,7 +204,8 @@ export function Table({
         <table
           aria-label={label}
           data-sticky-header={stickyHeader || undefined}
-          className="group/table w-full table-fixed border-separate border-spacing-0 text-sm"
+          style={minWidths(columns)}
+          className="group/table w-full min-w-(--table-min) table-fixed border-separate border-spacing-0 text-sm sm:min-w-(--table-min-sm) md:min-w-(--table-min-md) lg:min-w-(--table-min-lg) xl:min-w-(--table-min-xl) 2xl:min-w-(--table-min-2xl)"
         >
           <colgroup>
             {columns.map((column, index) => {
