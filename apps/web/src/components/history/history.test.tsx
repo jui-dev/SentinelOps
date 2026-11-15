@@ -525,7 +525,7 @@ describe("incident history", () => {
 
     expect(region.textContent).toMatch(/Incidents in this period\s*14/);
     // Three columns of headings a reader can trace each value to.
-    for (const heading of ["Time", "Severity", "Incident", "In this period", "Status", "Lasted", "Action"]) {
+    for (const heading of ["Time", "Severity", "Incident", "In this period", "Status", "Lasted", "Actions"]) {
       expect(within(table).getByRole("columnheader", { name: heading })).toBeDefined();
     }
 

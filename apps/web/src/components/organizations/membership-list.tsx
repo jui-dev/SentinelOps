@@ -525,7 +525,15 @@ export function MembershipList() {
         onFilter={setFilter}
         setup={canManage}
       />
-      <Table label="Members">
+      <Table label="Members"
+          columns={[
+            "main",
+            { kind: "group", from: "md" },
+            ...(canManage ? [{ kind: "status", from: "sm" } as const] : []),
+            { kind: "date", from: "lg" },
+            ...(hasActions ? ["actions" as const] : []),
+          ]}
+        >
         <THead>
           <TR>
             <TH>Person</TH>
@@ -536,7 +544,7 @@ export function MembershipList() {
             <TH className="hidden lg:table-cell">
               {showingRemoved ? "Removed" : "Joined"}
             </TH>
-            {hasActions && <TH align="end">Action</TH>}
+            {hasActions && <TH align="end">Actions</TH>}
           </TR>
         </THead>
         <TBody>

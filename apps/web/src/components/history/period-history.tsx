@@ -278,16 +278,9 @@ export function PeriodHistory({
   } else {
     body = (
       <div className="flex flex-col gap-3">
-        <Table label="Incidents in this period" variant="operational" fixed>
-          <colgroup>
-            <col className="w-18" />
-            <col className="w-24 sm:w-28" />
-            <col />
-            <col className="hidden w-64 md:table-column" />
-            <col className="hidden w-32 sm:table-column" />
-            <col className="w-24 sm:w-28" />
-            <col className="w-22" />
-          </colgroup>
+        <Table label="Incidents in this period" variant="operational"
+          columns={["time", "severity", "main", { kind: "wide", from: "md" }, { kind: "status", from: "sm" }, "duration", "actions"]}
+        >
           <THead>
             <TR>
               <TH>Time</TH>
@@ -296,7 +289,7 @@ export function PeriodHistory({
               <TH className="hidden md:table-cell">In this period</TH>
               <TH className="hidden sm:table-cell">Status</TH>
               <TH align="end">Lasted</TH>
-              <TH align="end">Action</TH>
+              <TH align="end">Actions</TH>
             </TR>
           </THead>
           {days.map(({ day, items: dayItems }) => {

@@ -179,23 +179,16 @@ export function SecurityLog({
       {log.isPending ? (
         <Spinner label="Loading the sign-ins" />
       ) : (
-        <Table label="Sign-ins and security" variant="operational" fixed>
-          <colgroup>
-            <col className="w-20" />
-            <col className="w-[40%]" />
-            <col className="w-56" />
-            <col />
-            <col className="w-24" />
-          </colgroup>
+        <Table label="Sign-ins and security" variant="operational"
+          columns={["time", "main", "person", "group", "actions"]}
+        >
           <THead>
             <tr>
               <TH>When</TH>
               <TH>Result</TH>
               <TH>Account</TH>
               <TH>From</TH>
-              <TH>
-                <span className="sr-only">Details</span>
-              </TH>
+              <TH align="end">Actions</TH>
             </tr>
           </THead>
           <TBody>

@@ -187,7 +187,7 @@ describe("Tabs", () => {
 describe("Table", () => {
   it("is named, with column headers, and can say why it is empty", () => {
     render(
-      <Table label="Members">
+      <Table label="Members" columns={["main", "date"]}>
         <THead>
           <TR>
             <TH>Name</TH>
@@ -210,7 +210,12 @@ describe("Table", () => {
 
   it("keeps an interactive row to one link, and a sticky header to table semantics", () => {
     render(
-      <Table label="Incidents" variant="operational" stickyHeader fixed>
+      <Table
+        label="Incidents"
+        variant="operational"
+        stickyHeader
+        columns={["main", "duration"]}
+      >
         <THead>
           <TR>
             <TH>Incident</TH>
@@ -248,7 +253,7 @@ describe("Table", () => {
 
   it("is not a tab stop when it does not need scrolling", () => {
     const { container } = render(
-      <Table label="Members">
+      <Table label="Members" columns={["main"]}>
         <TBody>
           <TR>
             <TD>Ada</TD>
@@ -258,6 +263,52 @@ describe("Table", () => {
     );
 
     expect(container.querySelector("[tabindex]")).toBeNull();
+  });
+});
+
+describe("Table columns", () => {
+  it("sizes each column by its kind, the same in every table, and hides one below its breakpoint", () => {
+    const { container } = render(
+      <Table
+        label="Services"
+        columns={["main", { kind: "group", from: "sm" }, "label", "actions2"]}
+      >
+        <TBody>
+          <TR>
+            <TD>Payment API</TD>
+            <TD>Payments</TD>
+            <TD>Critical</TD>
+            <TD kind="actions">Edit</TD>
+          </TR>
+        </TBody>
+      </Table>,
+    );
+    const other = render(
+      <Table label="Teams" columns={["main", "count", "actions2"]}>
+        <TBody>
+          <TR>
+            <TD>Payments</TD>
+            <TD>2</TD>
+            <TD kind="actions">Edit</TD>
+          </TR>
+        </TBody>
+      </Table>,
+    );
+
+    const cols = [...container.querySelectorAll("col")];
+    const otherCols = [...other.container.querySelectorAll("col")];
+
+    // Fixed layout, so widths hold whatever the cells hold.
+    expect(container.querySelector("table")?.className).toContain("table-fixed");
+    // The main column takes the rest; the others have their kind's width.
+    expect(cols[0].className).toBe("");
+    expect(cols[1].className).toContain("hidden sm:table-column");
+    // The same kind is the same width in both tables.
+    expect(cols[3].className).toBe(otherCols[2].className);
+    // Equal padding either side of every cell: equal gaps between columns.
+    for (const cell of container.querySelectorAll("td")) {
+      expect(cell.className).toContain("px-4");
+    }
   });
 });
 

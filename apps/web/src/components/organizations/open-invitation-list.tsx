@@ -130,7 +130,16 @@ function OpenInvitations({ canManage }: { canManage: boolean }) {
           New invitations are listed here until they are accepted or revoked.
         </EmptyNote>
       ) : (
-        <Table label="Open invitations">
+        <Table label="Open invitations"
+          columns={[
+            "main",
+            "label",
+            "status",
+            { kind: "person", from: "md" },
+            "date",
+            ...(canManage ? ["actions" as const] : []),
+          ]}
+        >
           <THead>
             <TR>
               <TH>Email</TH>
@@ -139,9 +148,7 @@ function OpenInvitations({ canManage }: { canManage: boolean }) {
               <TH className="hidden md:table-cell">Invited by</TH>
               <TH>Expires</TH>
               {canManage && (
-                <TH align="end">
-                  <span className="sr-only">Actions</span>
-                </TH>
+                <TH align="end">Actions</TH>
               )}
             </TR>
           </THead>

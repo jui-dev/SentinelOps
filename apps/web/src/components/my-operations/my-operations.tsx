@@ -228,19 +228,15 @@ function WorkCard({
           <EmptyNote title={empty.title}>{empty.body}</EmptyNote>
         </div>
       ) : (
-        <Table label={title} variant="operational" fixed>
-          <colgroup>
-            <col className="w-24 sm:w-28" />
-            <col />
-            <col className="w-28" />
-            <col className="w-22" />
-          </colgroup>
+        <Table label={title} variant="operational"
+          columns={["severity", "main", "datetime", "actions"]}
+        >
           <THead>
             <TR>
               <TH>Severity</TH>
               <TH>Incident</TH>
               <TH>{when}</TH>
-              <TH align="end">Action</TH>
+              <TH align="end">Actions</TH>
             </TR>
           </THead>
           <TBody>

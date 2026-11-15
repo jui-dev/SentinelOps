@@ -157,16 +157,15 @@ export function MemberResponses({
         <Table
           label={self ? "Your recent responses" : "Recent responses"}
           variant="operational"
-          fixed
+          columns={[
+            "severity",
+            "main",
+            { kind: "group", from: "lg" },
+            { kind: "group", from: "lg" },
+            "status",
+            { kind: "status", from: "sm" },
+          ]}
         >
-          <colgroup>
-            <col className="w-21 sm:w-24" />
-            <col />
-            <col className="hidden w-[16%] lg:table-column" />
-            <col className="hidden w-[13%] lg:table-column" />
-            <col className="w-44" />
-            <col className="hidden w-32 sm:table-column" />
-          </colgroup>
           <THead>
             <TR>
               <TH>Severity</TH>

@@ -317,7 +317,7 @@ describe("the members overview", () => {
 
     await screen.findByRole("link", { name: "Linus Torvalds" });
     expect(screen.queryByRole("button", { name: /^Manage/ })).toBeNull();
-    expect(screen.queryByRole("columnheader", { name: "Action" })).toBeNull();
+    expect(screen.queryByRole("columnheader", { name: "Actions" })).toBeNull();
   });
 });
 

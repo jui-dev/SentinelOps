@@ -271,23 +271,16 @@ function ChangesLog({ initialSince }: { initialSince: string | undefined }) {
       {log.isPending ? (
         <Spinner label="Loading the activity log" />
       ) : (
-        <Table label="Changes" variant="operational" fixed>
-          <colgroup>
-            <col className="w-20" />
-            <col className="w-48" />
-            <col />
-            <col className="w-40" />
-            <col className="w-24" />
-          </colgroup>
+        <Table label="Changes" variant="operational"
+          columns={["time", "person", "main", "label", "actions"]}
+        >
           <THead>
             <tr>
               <TH>When</TH>
               <TH>Done by</TH>
               <TH>What happened</TH>
               <TH>Area</TH>
-              <TH>
-                <span className="sr-only">Details</span>
-              </TH>
+              <TH align="end">Actions</TH>
             </tr>
           </THead>
           <TBody>

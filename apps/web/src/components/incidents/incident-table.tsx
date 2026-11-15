@@ -162,16 +162,15 @@ export function IncidentTable({
       label={label}
       variant="operational"
       stickyHeader={stickyHeader}
-      fixed
-    >
-      <colgroup>
-        <col className="w-21 sm:w-24" />
-        <col />
-        {showService && <col className="hidden w-[16%] xl:table-column" />}
-        {showTeam && <col className="hidden w-[14%] xl:table-column" />}
-        <col className="hidden w-30 sm:table-column" />
-        <col className="w-19 sm:w-22" />
-      </colgroup>
+          columns={[
+            "severity",
+            "main",
+            ...(showService ? [{ kind: "group", from: "xl" } as const] : []),
+            ...(showTeam ? [{ kind: "group", from: "xl" } as const] : []),
+            { kind: "status", from: "sm" },
+            "duration",
+          ]}
+        >
       <THead>
         <TR>
           <TH>Severity</TH>

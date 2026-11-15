@@ -517,14 +517,22 @@ function ServiceList({
         filter={filter}
         onFilter={setFilter}
       />
-      <Table label={filter === "archived" ? "Archived services" : "Services"}>
+      <Table label={filter === "archived" ? "Archived services" : "Services"}
+          columns={[
+            "main",
+            { kind: "group", from: "sm" },
+            "label",
+            ...(withStatus ? [{ kind: "status", from: "md" } as const] : []),
+            canManage ? "actions2" : "actions",
+          ]}
+        >
         <THead>
           <TR>
             <TH>Service</TH>
             <TH className="hidden sm:table-cell">Owner team</TH>
             <TH>Criticality</TH>
             {withStatus && <TH className="hidden md:table-cell">Status</TH>}
-            <TH align="end">Action</TH>
+            <TH align="end">Actions</TH>
           </TR>
         </THead>
         <TBody>

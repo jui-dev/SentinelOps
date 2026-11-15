@@ -163,7 +163,7 @@ describe("teams", () => {
       expect(view.getAttribute("href")).toBe("/orgs/acme-ops/teams/platform");
       expect(view.textContent).toBe("View");
       expect(
-        screen.getByRole("columnheader", { name: "Action" }),
+        screen.getByRole("columnheader", { name: "Actions" }),
       ).toBeDefined();
       // The name is text, not a second way in.
       expect(screen.getByText("Platform").closest("a")).toBeNull();

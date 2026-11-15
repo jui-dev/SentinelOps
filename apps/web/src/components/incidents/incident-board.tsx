@@ -452,19 +452,20 @@ export function IncidentBoard({
   const columns = (showStatus ? 7 : 6) + (active ? 1 : 0);
 
   return (
-    <Table label={label} variant="operational" stickyHeader fixed>
-      <colgroup>
-        <col className="w-27 sm:w-30" />
-        <col />
-        {showStatus && (
-          <col className={cx("hidden w-34", active ? "sm:table-column" : "lg:table-column")} />
-        )}
-        <col className={cx("hidden md:table-column", member ? "w-44" : "w-40")} />
-        {active && <col className="hidden w-44 xl:table-column" />}
-        <col className="hidden w-28 lg:table-column" />
-        <col className="w-19 sm:w-22" />
-        <col className={member ? "w-30" : "w-22"} />
-      </colgroup>
+    <Table label={label} variant="operational" stickyHeader
+          columns={[
+            "severity",
+            "main",
+            ...(showStatus
+              ? [{ kind: "status", from: active ? "sm" : "lg" } as const]
+              : []),
+            { kind: "person", from: "md" },
+            ...(active ? [{ kind: "group", from: "xl" } as const] : []),
+            { kind: "datetime", from: "lg" },
+            "duration",
+            "actions",
+          ]}
+        >
       <THead>
         <TR>
           <TH>Severity</TH>
@@ -480,7 +481,7 @@ export function IncidentBoard({
           {active && <TH className="hidden xl:table-cell">Who can respond</TH>}
           <TH className="hidden lg:table-cell">Last update</TH>
           <TH align="end">{active ? "Open for" : "Lasted"}</TH>
-          <TH align="end">Action</TH>
+          <TH align="end">Actions</TH>
         </TR>
       </THead>
       <TBody>

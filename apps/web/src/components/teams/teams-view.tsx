@@ -85,13 +85,15 @@ function TeamList({
   }
 
   return (
-    <Table label="Teams">
+    <Table label="Teams"
+          columns={["main", "count", "count", onEdit ? "actions2" : "actions"]}
+        >
       <THead>
         <TR>
           <TH>Name</TH>
           <TH align="end">Members</TH>
           <TH align="end">Services</TH>
-          <TH align="end">Action</TH>
+          <TH align="end">Actions</TH>
         </TR>
       </THead>
       <TBody>

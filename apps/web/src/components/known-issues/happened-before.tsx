@@ -131,13 +131,15 @@ export function HappenedBefore({ incident }: { incident: IncidentResponse }) {
             />
           </dl>
           <div className="overflow-x-auto">
-            <Table label="Earlier times" variant="operational">
+            <Table label="Earlier times" variant="operational"
+          columns={["severity", "main", { kind: "date", from: "sm" }, { kind: "duration", from: "sm" }, "label"]}
+        >
               <THead>
                 <TR>
                   <TH>Severity</TH>
                   <TH>Incident</TH>
                   <TH className="hidden sm:table-cell">Declared</TH>
-                  <TH className="hidden sm:table-cell">Lasted</TH>
+                  <TH align="end" className="hidden sm:table-cell">Lasted</TH>
                   <TH>Analysis</TH>
                 </TR>
               </THead>
@@ -161,7 +163,7 @@ export function HappenedBefore({ incident }: { incident: IncidentResponse }) {
                     <TD kind="data" className="hidden sm:table-cell">
                       <IsoDate value={other.createdAt} />
                     </TD>
-                    <TD kind="data" className="hidden sm:table-cell">
+                    <TD kind="data" align="end" className="hidden sm:table-cell">
                       {other.resolvedAt ? (
                         <Duration from={other.createdAt} to={other.resolvedAt} />
                       ) : (

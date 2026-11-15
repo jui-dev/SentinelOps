@@ -42,7 +42,9 @@ export function OrganizationPicker() {
             </p>
           </EmptyState>
         ) : (
-          <Table label="Your organizations">
+          <Table label="Your organizations"
+          columns={["main", "group", "label"]}
+        >
             <THead>
               <TR>
                 <TH>Organization</TH>

@@ -22,6 +22,56 @@ import { cx } from "./cx";
  */
 export type TableVariant = "reference" | "operational";
 
+/**
+ * One width for each kind of column, shared by every table, so a column of a
+ * kind is the same width wherever it appears and lines up across pages. The
+ * `main` column — a name, a title — takes what is left. Every cell has the
+ * same padding either side, so the gap between any two columns is 32 px.
+ * Widths include that padding.
+ */
+const COLUMN_WIDTHS = {
+  main: "",
+  /** A clock time: 14:02. */
+  time: "w-24",
+  severity: "w-26",
+  /** A count, aligned right. */
+  count: "w-26",
+  /** A duration, aligned right: 2h 14m. */
+  duration: "w-26",
+  /** A date: 2026-11-14. */
+  date: "w-30",
+  /** A short label or pill: a role, an area, a criticality, a result. */
+  label: "w-38",
+  /** A date with its time, or a relative time. */
+  datetime: "w-38",
+  /** A status pill, with room for a second line. */
+  status: "w-46",
+  /** A person's name. */
+  person: "w-48",
+  /** A team, a service, or a few of them. */
+  group: "w-56",
+  /** A longer line of secondary text. */
+  wide: "w-64",
+  /** One row button. */
+  actions: "w-40",
+  /** Two row buttons side by side. */
+  actions2: "w-56",
+} as const;
+
+export type ColumnKind = keyof typeof COLUMN_WIDTHS;
+
+/** The breakpoint a column first shows at; below it, it is hidden. */
+const SHOWN_FROM = {
+  sm: "hidden sm:table-column",
+  md: "hidden md:table-column",
+  lg: "hidden lg:table-column",
+  xl: "hidden xl:table-column",
+} as const;
+
+export type TableColumn =
+  | ColumnKind
+  | { kind: ColumnKind; from: keyof typeof SHOWN_FROM };
+
 const VariantContext = createContext<TableVariant>("reference");
 
 /** Whether the element's content is wider than the element. */
@@ -50,8 +100,8 @@ const useOverflowing = () => {
 export function Table({
   label,
   variant = "reference",
+  columns,
   stickyHeader = false,
-  fixed = false,
   children,
   className,
 }: {
@@ -59,13 +109,17 @@ export function Table({
   label: string;
   variant?: TableVariant;
   /**
+   * Its columns, in order, each by kind: the widths come from the shared
+   * scale and the layout is fixed. A column hidden on narrow screens names
+   * the breakpoint it shows from; its header and cells hide at the same one.
+   */
+  columns: readonly TableColumn[];
+  /**
    * Keeps the column headers in view while the page scrolls. Only while the
    * table fits its width: a table that scrolls sideways has its own scroll
    * container, which a sticky header cannot escape.
    */
   stickyHeader?: boolean;
-  /** Fixed layout: widths from a <colgroup>, so truncation is exact. */
-  fixed?: boolean;
   children: ReactNode;
   className?: string;
 }) {
@@ -98,12 +152,26 @@ export function Table({
         <table
           aria-label={label}
           data-sticky-header={stickyHeader || undefined}
-          className={cx(
-            "group/table w-full border-separate border-spacing-0",
-            variant === "operational" ? "text-sm" : "text-base",
-            fixed && "table-fixed",
-          )}
+          className="group/table w-full table-fixed border-separate border-spacing-0 text-sm"
         >
+          <colgroup>
+            {columns.map((column, index) => {
+              const { kind, from } =
+                typeof column === "string"
+                  ? { kind: column, from: undefined }
+                  : column;
+
+              return (
+                <col
+                  key={index}
+                  data-kind={kind}
+                  className={
+                    cx(COLUMN_WIDTHS[kind], from && SHOWN_FROM[from]) || undefined
+                  }
+                />
+              );
+            })}
+          </colgroup>
           {children}
         </table>
       </div>
@@ -164,7 +232,7 @@ export function TH({
       className={cx(
         // Its own surface and an edge beneath: a header at a glance, and
         // strong enough to trace any value up to its column.
-        "h-9 border-b border-line bg-thead px-3 align-middle sm:px-4 text-xs font-semibold tracking-[0.01em] whitespace-nowrap text-fg-muted first:rounded-tl-sm last:rounded-tr-sm",
+        "h-9 border-b border-line bg-thead px-4 align-middle text-xs font-semibold tracking-[0.01em] whitespace-nowrap text-fg-muted first:rounded-tl-sm last:rounded-tr-sm",
         // Sticky, it keeps its surface and edge over the rows beneath.
         "group-data-sticky-header/table:sticky group-data-sticky-header/table:top-0 group-data-sticky-header/table:z-10",
         align === "end" ? "text-right" : "text-left",
@@ -194,14 +262,15 @@ export function TD({
   return (
     <td
       className={cx(
-        "border-b border-line-subtle px-3 align-middle transition-colors sm:px-4 duration-(--duration-fast) group-last/row:border-b-0 group-hover/row:bg-hover",
+        "border-b border-line-subtle px-4 align-middle transition-colors duration-(--duration-fast) group-last/row:border-b-0 group-hover/row:bg-hover",
         // The last row's hover fill keeps to the surface's rounded corners.
         "group-last/row:first:rounded-bl-sm group-last/row:last:rounded-br-sm",
-        variant === "operational" ? "h-11" : "h-12.5",
+        // 40 px rows for lists scanned under pressure, 48 px for setup lists.
+        variant === "operational" ? "h-10" : "h-12",
         kind === "muted" && "text-fg-muted",
         kind === "data" && "data whitespace-nowrap text-fg-muted",
         kind === "numeric" && "numeric whitespace-nowrap text-fg-muted",
-        kind === "actions" && "w-px whitespace-nowrap",
+        kind === "actions" && "whitespace-nowrap",
         align === "end" || kind === "actions" ? "text-right" : "text-left",
         className,
       )}
@@ -220,7 +289,7 @@ export function TableEmpty({
 }) {
   return (
     <tr>
-      <td colSpan={columns} className="px-3 py-6 text-sm text-fg-muted sm:px-4">
+      <td colSpan={columns} className="px-4 py-6 text-sm text-fg-muted">
         {children}
       </td>
     </tr>
