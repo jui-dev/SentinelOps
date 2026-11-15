@@ -18,7 +18,7 @@ import { cx } from "@/components/ui/cx";
 import { FormDialog } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageBody, PageHeader } from "@/components/ui/page";
-import { Spinner } from "@/components/ui/spinner";
+import { ListLoading } from "@/components/ui/spinner";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { Permission } from "@/lib/api/contracts";
 import type { TeamResponse } from "@/lib/api/contracts";
@@ -57,7 +57,7 @@ function TeamList({
     });
 
   if (teams.isError) return <ErrorAlert error={teams.error} />;
-  if (!teams.data) return <Spinner label="Loading teams…" />;
+  if (!teams.data) return <ListLoading label="Loading teams…" />;
 
   if (teams.data.length === 0) {
     // The API answers with the teams the caller may see, so an empty list

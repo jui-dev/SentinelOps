@@ -24,7 +24,7 @@ import {
   FilterOption,
   FilterSearch,
 } from "@/components/ui/filter-bar";
-import { Spinner } from "@/components/ui/spinner";
+import { ListLoading } from "@/components/ui/spinner";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { IsoDate } from "@/components/ui/timestamp";
 import { Permission } from "@/lib/api/contracts";
@@ -473,7 +473,7 @@ export function MembershipList() {
     });
 
   if (memberships.isError) return <ErrorAlert error={memberships.error} />;
-  if (!memberships.data) return <Spinner label="Loading members…" />;
+  if (!memberships.data) return <ListLoading label="Loading members…" />;
 
   const all = memberships.data;
   const matches = FILTERS.find(({ id }) => id === filter)!.matches;

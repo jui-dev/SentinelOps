@@ -23,7 +23,7 @@ import { ErrorAlert } from "@/components/ui/alert";
 import { cx } from "@/components/ui/cx";
 import { EmptyNote } from "@/components/ui/empty-state";
 import { OnwardLink } from "@/components/ui/onward-link";
-import { Spinner } from "@/components/ui/spinner";
+import { ListLoading, Spinner } from "@/components/ui/spinner";
 import { stretchedLinkClasses } from "@/components/ui/table";
 import {
   Duration,
@@ -420,7 +420,7 @@ function ActiveOperations({
   const list = useIncidentList(organization.id, "active");
 
   if (list.isError) return <ErrorAlert error={list.error} />;
-  if (!list.data) return <Spinner label="Loading active incidents…" />;
+  if (!list.data) return <ListLoading label="Loading active incidents…" />;
 
   const incidents = list.data.pages[0]?.items.slice(0, TOP_ACTIVE) ?? [];
 

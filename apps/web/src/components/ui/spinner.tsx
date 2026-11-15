@@ -38,3 +38,35 @@ export function PageSpinner({
     </div>
   );
 }
+
+/**
+ * A list on its way: its frame, already the height a few rows take, with
+ * faint rows where the rows will be and the spinner's words above them —
+ * so nothing below it moves when the list arrives.
+ */
+export function ListLoading({
+  label = "Loading…",
+  rows = 4,
+}: {
+  label?: string;
+  rows?: number;
+}) {
+  return (
+    <div className="flex flex-col gap-3">
+      <Spinner label={label} />
+      <div
+        aria-hidden="true"
+        className="divide-y divide-line-subtle overflow-hidden rounded-md border border-line-subtle bg-surface"
+      >
+        <div className="h-10 bg-thead" />
+        {Array.from({ length: rows }, (_, index) => (
+          <div key={index} className="flex h-12 items-center gap-4 px-4">
+            <span className="h-2.5 w-1/4 rounded-full bg-line-subtle motion-safe:animate-pulse" />
+            <span className="h-2.5 w-1/6 rounded-full bg-line-subtle motion-safe:animate-pulse" />
+            <span className="ml-auto h-2.5 w-16 rounded-full bg-line-subtle motion-safe:animate-pulse" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}

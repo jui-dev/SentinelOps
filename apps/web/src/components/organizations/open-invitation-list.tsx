@@ -10,7 +10,7 @@ import { Alert, ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { EmptyNote } from "@/components/ui/empty-state";
 import { Section } from "@/components/ui/page";
-import { Spinner } from "@/components/ui/spinner";
+import { ListLoading } from "@/components/ui/spinner";
 import { Status } from "@/components/ui/status";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { IsoDate } from "@/components/ui/timestamp";
@@ -113,7 +113,7 @@ function OpenInvitations({ canManage }: { canManage: boolean }) {
   };
 
   if (invitations.isError) return <ErrorAlert error={invitations.error} />;
-  if (!invitations.data) return <Spinner label="Loading invitations…" />;
+  if (!invitations.data) return <ListLoading label="Loading invitations…" />;
 
   const stale = isApiError(revoke.error, 404) || isApiError(revoke.error, 409);
 

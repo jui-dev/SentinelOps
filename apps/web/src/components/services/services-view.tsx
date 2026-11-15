@@ -34,7 +34,7 @@ import { EmptyState, NoMatches } from "@/components/ui/empty-state";
 import { Field } from "@/components/ui/field";
 import { PageBody, PageHeader } from "@/components/ui/page";
 import { Select } from "@/components/ui/select";
-import { Spinner } from "@/components/ui/spinner";
+import { ListLoading, Spinner } from "@/components/ui/spinner";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { linkClasses } from "@/components/ui/link";
 import {
@@ -442,7 +442,7 @@ function ServiceList({
     });
 
   if (services.isError) return <ErrorAlert error={services.error} />;
-  if (!services.data) return <Spinner label="Loading services…" />;
+  if (!services.data) return <ListLoading label="Loading services…" />;
 
   if (services.data.length === 0) {
     return (
