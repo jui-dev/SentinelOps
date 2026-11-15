@@ -599,7 +599,7 @@ describe("teams", () => {
           await screen.findByRole("table", { name: "Recently resolved incidents" }),
         ).getByText("Login failures 3"),
       ).toBeDefined();
-      expect(screen.getByText("Platform is responsible for these now")).toBeDefined();
+      expect(screen.getByText("Platform is responsible for these now.")).toBeDefined();
 
       // The glance counts them: the active list, and a 30-day resolved one.
       const glance = screen.getByLabelText("Platform at a glance");

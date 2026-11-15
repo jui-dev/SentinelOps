@@ -1,6 +1,6 @@
 "use client";
 
-import { BadgeCheck, CircleCheck, Network, Siren } from "lucide-react";
+import { BadgeCheck, CircleCheck, History, Info, Network, Siren, Users } from "lucide-react";
 import Link from "next/link";
 
 
@@ -11,6 +11,7 @@ import {
   useIncidentList,
 } from "@/components/incidents/incident-queries";
 import { IncidentTable } from "@/components/incidents/incident-table";
+import { INSTRUMENT } from "@/components/overview/analytical-view-header";
 import {
   useCan,
   useOrganization,
@@ -24,6 +25,7 @@ import {
   GlanceTile,
 } from "@/components/ui/detail-layout";
 import type { GlanceTone } from "@/components/ui/detail-layout";
+import { cx } from "@/components/ui/cx";
 import { EmptyNote } from "@/components/ui/empty-state";
 import { linkClasses } from "@/components/ui/link";
 import { OnwardLink } from "@/components/ui/onward-link";
@@ -113,7 +115,10 @@ function ActiveIncidents({ service }: { service: ServiceResponse }) {
     <DetailCard
       id="active-incidents"
       title="Active incidents"
+      icon={Siren}
+      family="operations"
       meta={items?.length}
+      description={`${service.ownerTeam.name} is responsible for these now.`}
       action={
         <OnwardLink href={viewAllHref(organization.slug, service)}>
           View all in Incidents
@@ -145,6 +150,7 @@ function ActiveIncidents({ service }: { service: ServiceResponse }) {
           label="Active incidents"
           showService={false}
           showTeam={false}
+          wrapTitles
         />
       )}
     </DetailCard>
@@ -162,8 +168,11 @@ function RecentlyResolved({ service }: { service: ServiceResponse }) {
     <DetailCard
       id="resolved-incidents"
       title="Recently resolved"
+      icon={History}
+      family="resolved"
       aside="Most recent first"
-      footer={
+      description="The last incidents on this service to be resolved."
+      action={
         items && items.length > 0 ? (
           <OnwardLink href={viewAllHref(organization.slug, service)}>
             View all in Incidents
@@ -188,6 +197,7 @@ function RecentlyResolved({ service }: { service: ServiceResponse }) {
           label="Recently resolved incidents"
           showService={false}
           showTeam={false}
+          wrapTitles
         />
       )}
     </DetailCard>
@@ -215,11 +225,13 @@ function WhoResponds({ service }: { service: ServiceResponse }) {
     <DetailCard
       id="who-responds"
       title="Who responds"
+      icon={Users}
+      family="investigating"
       meta={members.data?.length}
-      footer={<>The members of {team}, which owns this service.</>}
+      description={<>The members of {team}, which owns this service.</>}
     >
       {isApiError(members.error, 404) ? (
-        <p className="px-4 py-4 text-sm text-fg-muted sm:px-5">
+        <p className="text-sm text-fg-muted">
           {service.ownerTeam.name} responds to this service&apos;s incidents.
         </p>
       ) : members.isError ? (
@@ -235,7 +247,7 @@ function WhoResponds({ service }: { service: ServiceResponse }) {
       ) : (
         <ul
           aria-label={`Who responds to ${service.name}`}
-          className="divide-y divide-line-subtle sm:max-h-84 sm:overflow-y-auto"
+          className={cx(INSTRUMENT, "divide-y divide-line-subtle overflow-hidden sm:max-h-84 sm:overflow-y-auto")}
         >
           {members.data.map((member) => (
             <li
@@ -270,8 +282,13 @@ function About({ service }: { service: ServiceResponse }) {
   const criticality = criticalityOf(service.criticality);
 
   return (
-    <DetailCard id="about" title="About">
-      <dl className="grid grid-cols-[7rem_minmax(0,1fr)] gap-x-3 gap-y-2.5 px-4 py-4 text-sm sm:px-5">
+    <DetailCard
+      id="about"
+      title="About"
+      icon={Info}
+      description="How this service is set up."
+    >
+      <dl className={cx(INSTRUMENT, "grid grid-cols-[7rem_minmax(0,1fr)] gap-x-3 gap-y-2.5 px-4 py-4 text-sm")}>
         <dt className="text-fg-subtle">Criticality</dt>
         <dd className="flex flex-col gap-1">
           <CriticalityMark criticality={service.criticality} />

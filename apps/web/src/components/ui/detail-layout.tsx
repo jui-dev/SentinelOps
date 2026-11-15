@@ -1,6 +1,9 @@
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { SectionIcon } from "@/components/overview/overview-panel";
+import type { SectionFamily } from "@/components/overview/overview-panel";
+
 import { cx } from "./cx";
 
 /**
@@ -160,12 +163,20 @@ export function Glance({
  * One of the page's cards: a header band of one height, its content, and a
  * note pinned to its foot — so two cards side by side line up top, header,
  * and bottom whatever each holds.
+ *
+ * Given an icon, it is drawn as the Overview's sections are: the icon in a
+ * tile of its family, the title with its count and label as pills, a line
+ * saying what it holds beneath, and its content inset on the section's
+ * ground — a list on an inner panel of its own (`INSTRUMENT`).
  */
 export function DetailCard({
   id,
   title,
   meta,
   aside,
+  description,
+  icon,
+  family = "setup",
   action,
   footer,
   className,
@@ -176,11 +187,62 @@ export function DetailCard({
   meta?: ReactNode;
   /** A short line beside the title: what the card covers. */
   aside?: ReactNode;
+  /** With an icon: what the section holds, beneath its title. */
+  description?: ReactNode;
+  icon?: LucideIcon;
+  family?: SectionFamily;
   action?: ReactNode;
   footer?: ReactNode;
   className?: string;
   children: ReactNode;
 }) {
+  if (icon) {
+    return (
+      <section
+        id={id}
+        aria-labelledby={`${id}-title`}
+        className={cx(
+          "flex min-w-0 flex-col overflow-hidden rounded-lg border border-section-line bg-section-ground shadow-card",
+          className,
+        )}
+      >
+        <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 border-b border-section-divider bg-section-head px-4 py-3 sm:px-5">
+          <div className="flex min-w-0 items-start gap-3">
+            <SectionIcon icon={icon} family={family} />
+            <div className="flex min-w-0 flex-col gap-0.5">
+              <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                <h2
+                  id={`${id}-title`}
+                  className="text-lg leading-6 font-semibold tracking-[-0.01em] text-fg"
+                >
+                  {title}
+                  {meta !== undefined && (
+                    <span className="numeric ml-2.5 inline-flex translate-y-[-1px] items-center rounded-full border border-line bg-surface px-2 py-0.5 align-middle text-xs font-medium tracking-normal text-fg-muted">
+                      {meta}
+                    </span>
+                  )}
+                </h2>
+                {aside && (
+                  <span className="inline-flex items-center rounded-full border border-line bg-surface px-2 py-0.5 text-xs font-medium text-fg-muted">
+                    {aside}
+                  </span>
+                )}
+              </div>
+              {description && <p className="text-sm text-fg-muted">{description}</p>}
+            </div>
+          </div>
+          {action && <div className="pt-1">{action}</div>}
+        </div>
+        <div className="flex-1 p-4 sm:p-5">{children}</div>
+        {footer && (
+          <div className="border-t border-section-divider px-4 py-2.5 text-xs leading-relaxed text-fg-subtle sm:px-5">
+            {footer}
+          </div>
+        )}
+      </section>
+    );
+  }
+
   return (
     <section
       id={id}

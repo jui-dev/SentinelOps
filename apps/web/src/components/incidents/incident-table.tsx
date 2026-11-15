@@ -29,11 +29,13 @@ function IncidentRow({
   state,
   showService,
   showTeam,
+  wrapTitles,
 }: {
   incident: IncidentResponse;
   state: IncidentState;
   showService: boolean;
   showTeam: boolean;
+  wrapTitles: boolean;
 }) {
   const organization = useOrganization();
   const active = state === "active";
@@ -69,7 +71,10 @@ function IncidentRow({
           </span>{" "}
           <span
             title={incident.title}
-            className="line-clamp-2 font-medium text-fg group-hover:text-accent-text group-hover:underline sm:line-clamp-none sm:truncate"
+            className={cx(
+              "font-medium text-fg group-hover:text-accent-text group-hover:underline",
+              wrapTitles ? "line-clamp-3" : "line-clamp-2 sm:line-clamp-none sm:truncate",
+            )}
           >
             {incident.title}
           </span>
@@ -79,7 +84,13 @@ function IncidentRow({
          * service and team fold under the title — and on a phone the status
          * too — so the title always keeps its room.
          */}
-        <span className="block truncate text-xs text-fg-muted sm:pl-[calc(4.25rem+0.5rem)] xl:hidden">
+        <span
+          className={cx(
+            "block truncate text-xs text-fg-muted sm:pl-[calc(4.25rem+0.5rem)]",
+            // A narrow table keeps them folded under the title at every width.
+            !wrapTitles && "xl:hidden",
+          )}
+        >
           {active && (
             <span className="sm:hidden">
               {statusOf(incident.status).label} ·{" "}
@@ -90,10 +101,10 @@ function IncidentRow({
             .join(" · ")}
         </span>
       </TD>
-      {showService && (
+      {showService && !wrapTitles && (
         <TD className="hidden truncate xl:table-cell">{incident.service.name}</TD>
       )}
-      {showTeam && (
+      {showTeam && !wrapTitles && (
         <TD kind="muted" className="hidden truncate xl:table-cell">
           {incident.team.name}
         </TD>
@@ -142,6 +153,7 @@ export function IncidentTable({
   stickyHeader = false,
   showService = true,
   showTeam = true,
+  wrapTitles = false,
 }: {
   incidents: readonly IncidentResponse[];
   state: IncidentState;
@@ -154,6 +166,12 @@ export function IncidentTable({
    * the column's room goes to the titles instead of repeating a name.
    */
   showTeam?: boolean;
+  /**
+   * Titles wrap rather than truncate, and the service and team fold under
+   * the title instead of taking columns — for the narrower tables of a
+   * service's or team's page, where one line says too little.
+   */
+  wrapTitles?: boolean;
 }) {
   const active = state === "active";
 
@@ -165,8 +183,8 @@ export function IncidentTable({
           columns={[
             "severity",
             "main",
-            ...(showService ? [{ kind: "group", from: "xl" } as const] : []),
-            ...(showTeam ? [{ kind: "group", from: "xl" } as const] : []),
+            ...(showService && !wrapTitles ? [{ kind: "group", from: "xl" } as const] : []),
+            ...(showTeam && !wrapTitles ? [{ kind: "group", from: "xl" } as const] : []),
             { kind: "status", from: "sm" },
             "duration",
           ]}
@@ -175,8 +193,8 @@ export function IncidentTable({
         <TR>
           <TH>Severity</TH>
           <TH>Incident</TH>
-          {showService && <TH className="hidden xl:table-cell">Service</TH>}
-          {showTeam && (
+          {showService && !wrapTitles && <TH className="hidden xl:table-cell">Service</TH>}
+          {showTeam && !wrapTitles && (
             <TH className="hidden xl:table-cell">Responsible team</TH>
           )}
           {active ? (
@@ -200,6 +218,7 @@ export function IncidentTable({
             state={state}
             showService={showService}
             showTeam={showTeam}
+            wrapTitles={wrapTitles}
           />
         ))}
       </TBody>

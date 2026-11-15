@@ -6,6 +6,7 @@ import {
   ChevronDown,
   ChevronUp,
   CircleCheck,
+  History,
   Siren,
   Users,
 } from "lucide-react";
@@ -25,6 +26,7 @@ import {
   useCan,
   useOrganization,
 } from "@/components/organizations/organization-scope";
+import { INSTRUMENT } from "@/components/overview/analytical-view-header";
 import { CriticalityMark } from "@/components/services/criticality-mark";
 import { serviceHref, useServices } from "@/components/services/service-scope";
 import { ErrorAlert } from "@/components/ui/alert";
@@ -181,8 +183,10 @@ function ActiveIncidents() {
     <DetailCard
       id="active-incidents"
       title="Active incidents"
+      icon={Siren}
+      family="operations"
       meta={items?.length}
-      aside={`${team.name} is responsible for these now`}
+      description={`${team.name} is responsible for these now.`}
       action={
         <OnwardLink href={viewAllHref(organization.slug, team.id)}>
           View all in Incidents
@@ -220,6 +224,7 @@ function ActiveIncidents() {
             label="Active incidents"
             stickyHeader
             showTeam={false}
+            wrapTitles
           />
         </div>
       )}
@@ -239,8 +244,11 @@ function RecentlyResolved() {
     <DetailCard
       id="resolved-incidents"
       title="Recently resolved"
+      icon={History}
+      family="resolved"
       aside="Most recent first"
-      footer={
+      description={`The last incidents ${team.name} resolved.`}
+      action={
         items && items.length > 0 ? (
           <OnwardLink href={viewAllHref(organization.slug, team.id)}>
             View all in Incidents
@@ -264,6 +272,7 @@ function RecentlyResolved() {
           state="resolved"
           label="Recently resolved incidents"
           showTeam={false}
+          wrapTitles
         />
       )}
     </DetailCard>
@@ -289,7 +298,10 @@ function Members() {
     <DetailCard
       id="members"
       title="Members"
+      icon={Users}
+      family="investigating"
       meta={members.data?.length}
+      description={`Who is on ${team.name}, and responds to its incidents.`}
       action={
         all.length > MEMBERS_SHOWN && (
           <ShowAllToggle
@@ -329,7 +341,7 @@ function Members() {
           id={listId}
           aria-label={`Members of ${team.name}`}
           tabIndex={expanded ? 0 : undefined}
-          className={cx("divide-y divide-line-subtle", expanded && SCROLL_REGION)}
+          className={cx(INSTRUMENT, "divide-y divide-line-subtle overflow-hidden", expanded && SCROLL_REGION)}
         >
           {shown.map((member) => (
             <li
@@ -385,7 +397,10 @@ function OwnedServices() {
     <DetailCard
       id="services"
       title="Services owned"
+      icon={Boxes}
+      family="setup"
       meta={owned?.length}
+      description={`Incidents on these services come to ${team.name}.`}
       action={
         owned &&
         owned.length > SERVICES_SHOWN && (
@@ -397,7 +412,6 @@ function OwnedServices() {
           />
         )
       }
-      footer={`Incidents on these services come to ${team.name}.`}
     >
       {services.isError ? (
         <div className="p-4">
@@ -414,7 +428,7 @@ function OwnedServices() {
           id={listId}
           aria-label={`Services owned by ${team.name}`}
           tabIndex={expanded ? 0 : undefined}
-          className={cx("divide-y divide-line-subtle", expanded && SCROLL_REGION)}
+          className={cx(INSTRUMENT, "divide-y divide-line-subtle overflow-hidden", expanded && SCROLL_REGION)}
         >
           {shown.map((service) => (
             <li key={service.id}>
