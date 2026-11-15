@@ -37,9 +37,9 @@ import { queryKeys } from "@/lib/api/query-keys";
  * teams, never about a person. A member sees where their own updates fell
  * as dots on the rows; nobody else's are ever sent.
  *
- * Drawn in a well of its own, teal-black for a member's teams and
- * blue-black for every team (see `flow-teams` and `flow-organization` in
- * globals.css), in a frame of fixed size: past what fits, it scrolls inside
+ * Framed as every other Overview section — the thead band over the plain
+ * surface (see `flow-teams` and `flow-organization` in globals.css) — in a
+ * frame of fixed size: past what fits, it scrolls inside
  * itself, with the day axis pinned above and the incident names pinned
  * beside. Fourteen days are given more width than the frame has, so they
  * scroll sideways rather than squeeze.
@@ -897,16 +897,16 @@ export function IncidentFlow({
     <section
       aria-labelledby="incident-flow-title"
       className={cx(
-        "flex min-w-0 flex-col overflow-hidden rounded-lg border border-(--flow-rim) shadow-[0_12px_32px_rgb(0_0_0/0.25)]",
+        "flex min-w-0 flex-col overflow-hidden rounded-lg border border-line bg-surface",
         scope === "teams" ? "flow-teams" : "flow-organization",
       )}
-      style={{
-        backgroundImage: "linear-gradient(180deg, var(--flow-top), var(--flow-bottom))",
-      }}
     >
-      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-b border-(--flow-rule) bg-(--flow-head) px-4 py-3.5 sm:px-5">
+      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-b border-line bg-thead px-4 py-3 sm:px-5">
         <div className="flex min-w-0 flex-col gap-0.5">
-          <h2 id="incident-flow-title" className="text-base font-semibold text-fg">
+          <h2
+            id="incident-flow-title"
+            className="text-lg leading-6 font-semibold tracking-[-0.01em] text-fg"
+          >
             {scope === "teams" ? "Your teams' incidents" : "Response flow"}
           </h2>
           <p className="text-sm text-fg-muted">

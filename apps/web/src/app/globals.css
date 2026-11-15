@@ -570,43 +570,38 @@
 }
 
 /*
- * Response flow (incident-flow.tsx): a timeline drawn in a well of its own,
- * so it reads as a different instrument from the cards around it — and in a
- * different well for each reading, so whose flow it is shows at a glance:
+ * Response flow (incident-flow.tsx): framed as every other Overview
+ * section — the thead band over the plain surface, bounded by the
+ * workspace's own lines — so it sits among them as one of them. The two
+ * readings share the one frame; what tells them apart is the title.
  *
- *   flow-teams         a member's own teams: deep teal-black
- *   flow-organization  every team, for whoever oversees: deep blue-black
+ *   flow-teams         a member's own teams
+ *   flow-organization  every team, for whoever oversees
  *
- * Both draw the same marks: amber stripes while an incident waits for a
- * first responder, the flow blue while it is worked, and an end in the
- * resolved family once resolved — brighter on teal, where the resolved hue
- * would otherwise sink into its ground. Light mode keeps the same families
- * as pale tints. The scrollbar's thumb is retinted to the well.
+ * Both draw the same marks: amber while an incident waits for a first
+ * responder, the flow blue while it is worked, and the resolved teal once
+ * resolved.
  */
 @utility flow-teams {
-  --flow-top: light-dark(#eef8f8, #0e2426);
-  --flow-bottom: light-dark(#f7fbfb, #081517);
-  --flow-head: light-dark(#e2f1f1, #112b2e);
-  --flow-strip: light-dark(#eaf5f5, #091a1c);
-  --flow-rule: light-dark(#cfe5e5, #173436);
-  --flow-line: light-dark(#b5d6d6, #22494b);
-  --flow-rim: light-dark(#a8d0d0, #1d4245);
-  --flow-resolved: light-dark(#00705f, #7fe0d4);
-  --color-line-strong: var(--flow-line);
-  --color-line-control: var(--flow-rim);
+  --flow-top: var(--color-surface);
+  --flow-bottom: var(--color-surface);
+  --flow-head: var(--color-thead);
+  --flow-strip: color-mix(in oklab, var(--color-surface) 50%, var(--color-thead));
+  --flow-rule: var(--color-line-subtle);
+  --flow-line: var(--color-line);
+  --flow-rim: var(--color-line);
+  --flow-resolved: var(--color-flow-resolved);
 }
 
 @utility flow-organization {
-  --flow-top: light-dark(#eef3fb, #0f1f33);
-  --flow-bottom: light-dark(#f7f9fd, #0a1522);
-  --flow-head: light-dark(#e2ebf8, #12253c);
-  --flow-strip: light-dark(#eaf0fa, #0a1624);
-  --flow-rule: light-dark(#d3dff0, #1a2f47);
-  --flow-line: light-dark(#bccde6, #24405f);
-  --flow-rim: light-dark(#a9bfe0, #1f3a5a);
-  --flow-resolved: light-dark(#00705f, #3cc2b1);
-  --color-line-strong: var(--flow-line);
-  --color-line-control: var(--flow-rim);
+  --flow-top: var(--color-surface);
+  --flow-bottom: var(--color-surface);
+  --flow-head: var(--color-thead);
+  --flow-strip: color-mix(in oklab, var(--color-surface) 50%, var(--color-thead));
+  --flow-rule: var(--color-line-subtle);
+  --flow-line: var(--color-line);
+  --flow-rim: var(--color-line);
+  --flow-resolved: var(--color-flow-resolved);
 }
 
 /*

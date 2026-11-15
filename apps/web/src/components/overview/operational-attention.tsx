@@ -1,8 +1,7 @@
 "use client";
 
-import { ArrowRight, Circle, CircleCheck, UserCheck, Users } from "lucide-react";
+import { ArrowRight, Check, CircleCheck, UserCheck, Users } from "lucide-react";
 import Link from "next/link";
-import type { ReactNode } from "react";
 
 import {
   incidentHref,
@@ -11,10 +10,12 @@ import {
 import { incidentKey, SeverityMark } from "@/components/incidents/severity";
 import { useOrganization } from "@/components/organizations/organization-scope";
 import { ErrorAlert } from "@/components/ui/alert";
+import { ButtonContent, buttonClasses } from "@/components/ui/button";
+import type { ButtonIcon, ButtonVariant } from "@/components/ui/button";
 import { cx } from "@/components/ui/cx";
 import { Spinner } from "@/components/ui/spinner";
 import { stretchedLinkClasses } from "@/components/ui/table";
-import { Duration } from "@/components/ui/timestamp";
+import { Duration, useMinuteClock } from "@/components/ui/timestamp";
 import type { IncidentDetailResponse } from "@/lib/api/contracts";
 
 import { OverviewPanel } from "./overview-panel";
@@ -26,34 +27,24 @@ import { OverviewPanel } from "./overview-panel";
  * Current state, not a feed: each list is the API's answer to "what is
  * waiting on me", polled, and an incident leaves it once the work is done
  * elsewhere. Nothing is marked read, and nothing is acted on here — every
- * item links to its incident, where starting, completing, and resolving
+ * row links to its incident, where starting, completing, and resolving
  * live.
  *
  * Which parts show follows the caller's permissions, as the API answered
- * them: `manage` gives "Waiting on you" — who should respond, while that is
- * undecided, and what is ready to resolve — and `respond` gives "Your
- * work": what the Admin assigned the caller, what their teams need picked
- * up, and their own responses. A list that only some readers ever fill —
- * a decision, an assignment — shows only while it holds something. Each
- * is a panel of the Overview, framed like the ones above it.
+ * them: `manage` gives "Waiting on you" — who should respond, and what is
+ * ready to resolve — and `respond` gives "Your work": what the Admin
+ * assigned the caller, what their teams need picked up, and their own
+ * responses. "Assigned to you" shows only while it holds something; the
+ * others always keep their place, so the panel does not change shape.
  *
- * Side by side on a wide screen when both are shown, as one pair of action
- * panels; one alone takes the whole width. The grid is drawn here rather
- * than by the page, because only here is it known how many panels there
- * are — the page would have to work the permissions out a second time.
+ * Each panel is one frame cut into halves (or thirds) side by side, one
+ * per list: a slim header — a dot in the list's colour, its name, what it
+ * asks, its count — over rows of the same shape everywhere. Past four rows
+ * a list scrolls inside its own height, so a busy day never pushes the
+ * rest of the Overview down.
  *
- * Drawn in three strengths, so what needs the caller is seen first:
- *
- *   pending  work waiting for someone to act — ready to resolve, a team
- *            needing a responder: the accent surface and edge
- *   current  the caller's own investigations: the accent edge on the
- *            plain surface
- *   empty    one quiet line, no frame
- *
- * The glyphs are the lifecycle's own — a teal check for response work
- * complete, a crimson open circle for not started, the blue dot for
- * investigating — so a state reads the same wherever it is drawn. The
- * accent is left to what asks for a decision: the frame and the cue.
+ * The colour is spent on the list's header and its cue, never on the
+ * frame: blue for a decision or a pickup, teal for what closes an incident.
  */
 export function OperationalAttention() {
   const organization = useOrganization();
@@ -77,7 +68,6 @@ export function OperationalAttention() {
 
   if (!manage && !showWork) return null;
 
-  const both = manage !== null && showWork;
   // Both of the Admin's lists, each incident once.
   const waiting = manage
     ? new Set([...manage.needsDecision, ...manage.readyToResolve].map(({ id }) => id)).size
@@ -90,22 +80,14 @@ export function OperationalAttention() {
               {
                 id: "assigned-to-you",
                 title: "Assigned to you",
-                strength: "pending" as const,
+                asks: "The Admin asked you to respond",
+                tone: "accent" as const,
                 incidents: respond.assignedToYou,
                 empty: "",
-                cue: "Open",
+                cue: { label: "Open", variant: "view" as const, icon: UserCheck },
                 row: (incident: IncidentDetailResponse) => ({
-                  headline: (
-                    <>
-                      <UserCheck
-                        aria-hidden="true"
-                        strokeWidth={2.25}
-                        className="size-3.5 text-accent-text"
-                      />
-                      The Admin asked you to respond
-                    </>
-                  ),
-                  detail: <NotStarted incident={incident} />,
+                  detail: "Nobody has started",
+                  since: incident.createdAt,
                 }),
               },
             ]
@@ -113,43 +95,31 @@ export function OperationalAttention() {
         {
           id: "needs-your-team",
           title: "Needs your team",
-          strength: "pending",
+          asks: "Nobody has started",
+          tone: "accent",
           incidents: respond.needsYourTeam,
           empty: "No team incidents need picking up.",
-          cue: "Open",
+          cue: { label: "Open", variant: "view", icon: ArrowRight },
           row: (incident) => ({
-            headline: (
-              <>
-                <Circle
-                  aria-hidden="true"
-                  strokeWidth={2.25}
-                  className="size-3.5 text-status-declared-text"
-                />
-                {incident.team.name} needs a responder
-              </>
-            ),
-            detail: <NotStarted incident={incident} />,
+            detail: `${incident.team.name} needs a responder`,
+            since: incident.createdAt,
           }),
         },
         {
           id: "your-active-responses",
           title: "Your active responses",
-          strength: "current",
+          asks: "You are investigating",
+          tone: "accent",
           incidents: respond.yourResponses,
           empty: "You have no active responses.",
-          cue: "Open",
-          row: (incident) => ({
-            headline: (
-              <>
-                <span
-                  aria-hidden="true"
-                  className="size-2 rounded-full bg-status-investigating-text"
-                />
-                You are investigating
-              </>
-            ),
-            detail: <Investigating incident={incident} />,
-          }),
+          cue: { label: "Open", variant: "view", icon: ArrowRight },
+          row: (incident) => {
+            const own = incident.responders.find(
+              ({ membershipId }) => membershipId === organization.membership.id,
+            );
+
+            return { detail: "Started", since: own?.startedAt, ago: true };
+          },
         },
       ]
     : [];
@@ -161,22 +131,16 @@ export function OperationalAttention() {
   );
 
   return (
-    // Its children are the panels themselves — no wrapper between — so
-    // each is a cell of this grid. Two columns only when there are two; one
-    // otherwise, sized to the page (`minmax(0, 1fr)`) rather than to its
-    // content, so a long title truncates instead of widening the page.
-    <div className={cx("grid grid-cols-1 gap-6", both && "2xl:grid-cols-2")}>
+    // Its children are the panels themselves — no wrapper between. One
+    // column at every width: each panel already sets its lists side by side.
+    <div className="grid grid-cols-1 gap-6">
       {manage && (
         <OverviewPanel
           id="waiting-on-you"
           title="Waiting on you"
-          // The one frame that says "act" — and only while there is
-          // something to act on. Your work stays a plain section: work
-          // under way, not a decision.
           tone={waiting > 0 ? "action" : "default"}
           // How much is waiting, where the other panels say what period
-          // they cover — solid, as the header's one strong cue. Nothing
-          // waiting is said by the line inside, not by a nought here.
+          // they cover. Nothing waiting is said by the lists themselves.
           label={
             waiting > 0 ? (
               <span
@@ -194,350 +158,261 @@ export function OperationalAttention() {
           }
           description="Incidents that need your decision to move forward."
         >
-          <div className="flex flex-col gap-5">
-            {manage.needsDecision.length > 0 && (
-              <AttentionGroup
-                id="needs-a-decision"
-                title="Needs a decision"
-                strength="pending"
-                incidents={manage.needsDecision}
-                empty=""
-                cue="Decide"
-                row={(incident) => ({
-                  headline: (
-                    <>
-                      <Users
-                        aria-hidden="true"
-                        strokeWidth={2.25}
-                        className="size-3.5 text-warning-text"
-                      />
-                      Choose who responds
-                    </>
-                  ),
-                  detail: (
-                    <>
-                      <span>
-                        {incident.team.name} can see it, but nobody can start yet.
-                      </span>
-                      <Dot />
-                      <span>
-                        Open{" "}
-                        <span className="data">
-                          <Duration from={incident.createdAt} />
-                        </span>
-                      </span>
-                    </>
-                  ),
-                })}
-              />
-            )}
-            <AttentionGroup
-              id="ready-to-resolve"
-              title="Ready to resolve"
-              strength="resolve"
-              incidents={manage.readyToResolve}
-              empty={
-                manage.needsDecision.length > 0
-                  ? "Nothing is ready to resolve."
-                  : "Nothing is waiting for your action."
-              }
-              cue="Review"
-              row={(incident) => ({
-                headline: (
-                  <>
-                    <CircleCheck
-                      aria-hidden="true"
-                      strokeWidth={2.25}
-                      className="size-3.5 text-status-resolved-text"
-                    />
-                    Response work complete — ready to resolve
-                  </>
-                ),
-                detail: <ResponseComplete incident={incident} />,
-              })}
-            />
-          </div>
+          <AttentionFrame
+            groups={[
+              {
+                id: "needs-a-decision",
+                title: "Needs a decision",
+                asks: "Choose who responds",
+                tone: "accent",
+                incidents: manage.needsDecision,
+                empty: "No decisions waiting.",
+                cue: { label: "Decide", variant: "primary", icon: Users },
+                row: (incident) => ({
+                  detail: `${incident.team.name} can see it, but nobody can start yet`,
+                  since: incident.createdAt,
+                }),
+              },
+              {
+                id: "ready-to-resolve",
+                title: "Ready to resolve",
+                asks: "Response work complete",
+                tone: "resolved",
+                incidents: manage.readyToResolve,
+                empty: "Nothing is ready to resolve.",
+                cue: { label: "Resolve", variant: "complete", icon: Check },
+                row: (incident) => {
+                  const last = lastFinished(incident);
+                  const count = incident.responders.length;
+
+                  return {
+                    detail: last
+                      ? count > 1
+                        ? `${count} responders finished, last ${last.name}`
+                        : `${last.name} finished`
+                      : "Everyone has finished",
+                    since: last?.completedAt ?? undefined,
+                    ago: true,
+                  };
+                },
+              },
+            ]}
+          />
         </OverviewPanel>
       )}
       {showWork && (
         <OverviewPanel
           id="your-work"
           title="Your work"
-          // No label: each group already carries its own count, and two
-          // numbers in one header would say nothing the lists do not.
+          // No label: each list already carries its own count.
           description="What you were asked to do, what your teams need picked up, and what you are working on."
         >
-          {/* Closer than the panel's own rhythm: these are two halves of
-              one question, not two sections. */}
-          <div className="flex flex-col gap-5">
-            {workGroups.map((group) => (
-              <AttentionGroup key={group.id} {...group} />
-            ))}
-          </div>
+          <AttentionFrame groups={workGroups} />
         </OverviewPanel>
       )}
     </div>
   );
 }
 
-type Strength = "resolve" | "pending" | "current";
+type Tone = "accent" | "resolved";
 
-/** The list's frame, by how much it asks of the caller. */
-const FRAMES: Record<Strength, string> = {
-  // Ready to resolve: the resolved teal's surface, with no border — the
-  // tint alone says which decision it waits on: the one that closes an
-  // incident.
-  resolve: "bg-status-resolved-subtle divide-status-resolved-line",
-  // Someone needs to act: the accent surface, and its edge.
-  pending:
-    "border-accent-line border-l-accent-mark bg-accent-subtle divide-accent-line",
-  // Under way: the edge alone, on the plain surface.
-  current: "border-line border-l-accent-mark bg-surface divide-line-subtle",
-};
-
-/** The frame's own colour, for its count, its cue and a hovered title. */
-const CUES: Record<Strength, { text: string; hover: string }> = {
-  resolve: {
+/** A list's own colour: its header's dot, wash, name and count. */
+const TONES: Record<Tone, { dot: string; wash: string; text: string; count: string }> = {
+  accent: {
+    dot: "bg-accent-text",
+    wash: "bg-[color-mix(in_oklab,var(--color-surface)_95%,var(--color-accent-text))]",
+    text: "text-accent-text",
+    count: "bg-accent-subtle text-accent-text",
+  },
+  resolved: {
+    dot: "bg-status-resolved-text",
+    wash: "bg-[color-mix(in_oklab,var(--color-surface)_95%,var(--color-status-resolved-text))]",
     text: "text-status-resolved-text",
-    hover: "group-hover/row:text-status-resolved-text",
-  },
-  pending: {
-    text: "text-accent-text",
-    hover: "group-hover/row:text-accent-text",
-  },
-  current: {
-    text: "text-accent-text",
-    hover: "group-hover/row:text-accent-text",
+    count: "bg-status-resolved-subtle text-status-resolved-text",
   },
 };
+
+/** Rows a list shows before it scrolls: four, at `h-16` each. */
+const SCROLLS_AFTER = 4;
+
+/** A day, past which a wait reads as late. */
+const LATE = 24 * 60 * 60_000;
 
 interface GroupProps {
   id: string;
   title: string;
-  strength: Strength;
+  /** What the list asks of the caller, beside its name. */
+  asks: string;
+  tone: Tone;
   incidents: IncidentDetailResponse[];
   empty: string;
-  /** The visible word for following a row's link. */
-  cue: string;
-  /** What is needed, in words, and why — for one incident. */
+  /** The row's visible cue: the link's affordance, not a second control. */
+  cue: { label: string; variant: ButtonVariant; icon: ButtonIcon };
+  /** Why the incident waits, and since when. */
   row: (incident: IncidentDetailResponse) => {
-    headline: ReactNode;
-    detail: ReactNode;
+    detail: string;
+    since?: string;
+    /** The age is a time ago ("3m ago") rather than a wait ("3m"). */
+    ago?: boolean;
   };
 }
 
 /**
- * One list, headed by its name and count. With incidents, it is framed by
- * its strength; empty, it is its heading and one quiet line, so it never
- * competes with a list that holds work.
+ * One frame cut into a column per list: stacked on a narrow screen, side
+ * by side from `lg` — three from `xl` — divided by a hairline.
  */
-function AttentionGroup({
-  id,
-  title,
-  strength,
-  incidents,
-  empty,
-  cue,
-  row,
-}: GroupProps) {
-  if (incidents.length === 0) {
-    return (
-      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-        <h3 id={`${id}-title`} className="text-sm font-medium text-fg-muted">
-          {title}
-        </h3>
-        <p className="text-sm text-fg-subtle">{empty}</p>
-      </div>
-    );
-  }
-
+function AttentionFrame({ groups }: { groups: GroupProps[] }) {
   return (
-    <div className="flex min-w-0 flex-col gap-2">
-      <div className="flex items-baseline gap-2">
-        <h3 id={`${id}-title`} className="text-sm font-semibold text-fg">
-          {title}
-        </h3>
-        <span className={cx("numeric text-sm font-semibold", CUES[strength].text)}>
-          {incidents.length}
-        </span>
-      </div>
-      <ul
-        aria-labelledby={`${id}-title`}
-        className={cx(
-          "divide-y overflow-hidden rounded-md",
-          strength !== "resolve" && "border border-l-[3px]",
-          FRAMES[strength],
-        )}
-      >
-        {incidents.map((incident) => (
-          <AttentionRow
-            key={incident.id}
-            incident={incident}
-            strength={strength}
-            cue={cue}
-            {...row(incident)}
-          />
-        ))}
-      </ul>
+    <div
+      className={cx(
+        "grid grid-cols-1 divide-y divide-line-subtle overflow-hidden rounded-md border border-line-subtle",
+        groups.length > 2
+          ? "xl:grid-cols-3 xl:divide-x xl:divide-y-0"
+          : "lg:grid-cols-2 lg:divide-x lg:divide-y-0",
+      )}
+    >
+      {groups.map((group) => (
+        <AttentionGroup key={group.id} {...group} />
+      ))}
     </div>
   );
 }
 
 /**
- * One incident, read top to bottom: what is needed, in words; the incident
- * — severity, number, title — whose link stretches over the row; then why,
- * and for how long. The cue on the right is the link's affordance, not a
- * second control.
+ * One list: its slim header, then its rows — or, empty, one quiet line
+ * the height of a row, so the halves stay level.
+ */
+function AttentionGroup({ id, title, asks, tone, incidents, empty, cue, row }: GroupProps) {
+  const colours = TONES[tone];
+  const scrolls = incidents.length > SCROLLS_AFTER;
+
+  return (
+    <div className="flex min-w-0 flex-col">
+      <div className={cx("flex min-h-11 items-center gap-2.5 px-4 py-2", colours.wash)}>
+        <span aria-hidden="true" className={cx("size-2 shrink-0 rounded-full", colours.dot)} />
+        <h3 id={`${id}-title`} className={cx("shrink-0 text-sm font-semibold", colours.text)}>
+          {title}
+        </h3>
+        <p className="min-w-0 truncate text-xs text-fg-muted">{asks}</p>
+        <span
+          className={cx(
+            "numeric ml-auto inline-flex min-w-6 shrink-0 items-center justify-center rounded-full px-2 py-0.5 text-xs font-bold",
+            incidents.length > 0 ? colours.count : "bg-sunken text-fg-subtle",
+          )}
+        >
+          {incidents.length}
+        </span>
+      </div>
+      {incidents.length === 0 ? (
+        <p className="flex h-16 items-center gap-2.5 border-t border-line-subtle px-4 text-sm text-fg-muted">
+          <CircleCheck aria-hidden="true" className="size-4 text-fg-subtle" />
+          {empty}
+        </p>
+      ) : (
+        <ul
+          aria-labelledby={`${id}-title`}
+          // A list that scrolls can be reached and scrolled from the keyboard.
+          tabIndex={scrolls ? 0 : undefined}
+          className={cx(
+            "scrollbar-thin max-h-64 divide-y divide-line-subtle overflow-y-auto border-t border-line-subtle",
+            "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus",
+          )}
+        >
+          {incidents.map((incident) => (
+            <AttentionRow key={incident.id} incident={incident} cue={cue} {...row(incident)} />
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/**
+ * One incident, in a row the same height everywhere: severity, number and
+ * title — the link, stretched over the row — above its team and why it
+ * waits; then how long, and the cue.
  */
 function AttentionRow({
   incident,
-  strength,
   cue,
-  headline,
   detail,
+  since,
+  ago = false,
 }: {
   incident: IncidentDetailResponse;
-  strength: Strength;
-  cue: string;
-  headline: ReactNode;
-  detail: ReactNode;
+  cue: GroupProps["cue"];
+  detail: string;
+  since?: string;
+  ago?: boolean;
 }) {
   const organization = useOrganization();
+  const now = useMinuteClock();
+  const late = since !== undefined && now.getTime() - Date.parse(since) > LATE;
 
   return (
-    <li
-      className={cx(
-        "group/row relative flex items-center gap-4 px-4 py-3.5 transition-colors duration-(--duration-fast) has-[a:focus-visible]:outline-2 has-[a:focus-visible]:-outline-offset-2 has-[a:focus-visible]:outline-focus",
-        strength === "current" ? "hover:bg-hover" : "hover:bg-surface",
-      )}
-    >
-      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-        <p className="inline-flex items-center gap-1.5 text-sm font-semibold text-fg">
-          {headline}
-        </p>
-        <div className="flex min-w-0 items-center gap-3">
-          <SeverityMark
-            severity={incident.severity}
-            emphasis
-            className="shrink-0 text-sm"
-          />
+    <li className="group/row relative flex h-16 items-center gap-3 px-4 transition-colors duration-(--duration-fast) hover:bg-hover has-[a:focus-visible]:outline-2 has-[a:focus-visible]:-outline-offset-2 has-[a:focus-visible]:outline-focus">
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <SeverityMark severity={incident.severity} className="shrink-0 text-xs" />
           <Link
             href={incidentHref(organization.slug, incident.number)}
-            className={cx(
-              "flex min-w-0 items-baseline gap-2 underline-offset-2",
-              stretchedLinkClasses,
-            )}
+            className={cx("flex min-w-0 items-baseline gap-2", stretchedLinkClasses)}
           >
-            <span className="data shrink-0 text-sm text-fg-muted">
+            <span className="data shrink-0 text-xs text-fg-subtle">
               {incidentKey(incident.number)}
             </span>{" "}
             <span
               title={incident.title}
-              className={cx(
-                "truncate text-[0.9375rem] font-medium text-fg group-hover/row:underline",
-                CUES[strength].hover,
-              )}
+              className="truncate text-sm font-medium text-fg underline-offset-2 group-hover/row:underline"
             >
               {incident.title}
             </span>
           </Link>
         </div>
-        <p className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-fg-muted">
-          {detail}
+        <p className="flex min-w-0 items-center gap-1.5 text-xs whitespace-nowrap text-fg-muted">
+          <span className="shrink-0 text-fg">{incident.team.name}</span>
+          <span aria-hidden="true" className="text-fg-subtle">
+            ·
+          </span>
+          <span className="truncate">{detail}</span>
         </p>
       </div>
+      {since && (
+        <span
+          className={cx(
+            "data shrink-0 text-right text-xs",
+            late ? "text-warning-text" : "text-fg-muted",
+          )}
+        >
+          {ago ? (
+            <>
+              <Duration from={since} /> ago
+            </>
+          ) : (
+            <Duration from={since} />
+          )}
+        </span>
+      )}
       <span
         aria-hidden="true"
         className={cx(
-          "hidden shrink-0 items-center gap-1 text-sm font-medium sm:inline-flex",
-          CUES[strength].text,
+          buttonClasses({ variant: cue.variant, size: "sm" }),
+          "pointer-events-none hidden shrink-0 sm:inline-flex",
         )}
       >
-        {cue}
-        <ArrowRight className="size-3.5" />
+        <ButtonContent icon={cue.icon}>{cue.label}</ButtonContent>
       </span>
     </li>
   );
 }
 
-const Dot = () => (
-  <span aria-hidden="true" className="text-fg-subtle">
-    ·
-  </span>
-);
-
-/** Who finished last, and when, so the item says what changed. */
-function ResponseComplete({ incident }: { incident: IncidentDetailResponse }) {
-  const last = incident.responders
+/** Who finished last, so the row says what changed. */
+function lastFinished(incident: IncidentDetailResponse) {
+  return incident.responders
     .filter(({ completedAt }) => completedAt !== null)
     .reduce<IncidentDetailResponse["responders"][number] | undefined>(
       (latest, responder) =>
-        !latest || responder.completedAt! > latest.completedAt!
-          ? responder
-          : latest,
+        !latest || responder.completedAt! > latest.completedAt! ? responder : latest,
       undefined,
     );
-  const count = incident.responders.length;
-
-  return (
-    <>
-      {last?.completedAt && (
-        <>
-          <span>
-            {count > 1
-              ? `${count} responders finished, last ${last.name}`
-              : `${last.name} finished`}{" "}
-            <span className="data">
-              <Duration from={last.completedAt} />
-            </span>{" "}
-            ago
-          </span>
-          <Dot />
-        </>
-      )}
-      <span>{incident.team.name}</span>
-    </>
-  );
-}
-
-/** Nobody has started; how long the incident has been open. */
-function NotStarted({ incident }: { incident: IncidentDetailResponse }) {
-  return (
-    <>
-      <span>No one has started investigating this incident.</span>
-      <Dot />
-      <span>
-        Open{" "}
-        <span className="data">
-          <Duration from={incident.createdAt} />
-        </span>
-      </span>
-    </>
-  );
-}
-
-/** The caller's own response, and how long they have been on it. */
-function Investigating({ incident }: { incident: IncidentDetailResponse }) {
-  const organization = useOrganization();
-  const own = incident.responders.find(
-    ({ membershipId }) => membershipId === organization.membership.id,
-  );
-
-  return (
-    <>
-      {own && (
-        <>
-          <span>
-            Started{" "}
-            <span className="data">
-              <Duration from={own.startedAt} />
-            </span>{" "}
-            ago
-          </span>
-          <Dot />
-        </>
-      )}
-      <span>{incident.team.name}</span>
-    </>
-  );
 }

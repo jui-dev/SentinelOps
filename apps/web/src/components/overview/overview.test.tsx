@@ -2681,12 +2681,13 @@ describe("the operations overview", () => {
         ).toBeTruthy();
 
         // The rendered tree, not the component structure: both panels are
-        // direct cells of one grid, and nothing else is.
+        // direct cells of one grid, and nothing else is — stacked, since
+        // each sets its own lists side by side.
         const { grid, cells } = cellsOf(waiting);
 
         expect(cells).toEqual([waiting, work]);
         expect(isGrid(grid)).toBe(true);
-        expect(grid.className).toContain("2xl:grid-cols-2");
+        expect(grid.className).not.toContain("grid-cols-2");
       });
 
       it("frames Waiting on you as a decision only while one is waiting", async () => {
@@ -2717,7 +2718,9 @@ describe("the operations overview", () => {
         const list = within(waiting).getByRole("list", {
           name: "Ready to resolve",
         });
-        expect(list.className).toContain("bg-status-resolved-subtle");
+        expect(
+          within(waiting).getByRole("heading", { name: "Ready to resolve" }).className,
+        ).toContain("text-status-resolved-text");
         expect(list.className).not.toMatch(/accent/);
         // Work under way is not a decision: related, not the same.
         expect(work.getAttribute("data-tone")).toBe("default");
@@ -2746,7 +2749,8 @@ describe("the operations overview", () => {
         });
 
         expect(waiting.getAttribute("data-tone")).toBe("action");
-        expect(within(decide).getByText("Choose who responds")).toBeDefined();
+        expect(within(waiting).getByText("Choose who responds")).toBeDefined();
+        expect(decide.textContent).toMatch(/can see it, but nobody can start yet/);
         expect(
           within(waiting).getByText("Nothing is ready to resolve."),
         ).toBeDefined();
@@ -2773,7 +2777,7 @@ describe("the operations overview", () => {
           "assigned-to-you-title",
         );
         expect(
-          within(lists[0]).getByText("The Admin asked you to respond"),
+          within(work).getByText("The Admin asked you to respond"),
         ).toBeDefined();
       });
 
@@ -2903,12 +2907,10 @@ describe("the operations overview", () => {
           .getAttribute("href"),
       ).toBe("/orgs/acme-ops/incidents/42");
       expect(row.textContent).toMatch(/SEV1/);
-      expect(row.textContent).toMatch(
-        /Response work complete — ready to resolve/,
-      );
+      expect(within(waiting).getByText("Response work complete")).toBeDefined();
       expect(row.textContent).toMatch(/Payments/);
       expect(row.textContent).toMatch(
-        /2 responders finished, last Priya Shah 3m ago/,
+        /2 responders finished, last Priya Shah.*3m ago/,
       );
       // Nothing to act on here: the incident page resolves.
       expect(within(waiting).queryByRole("button")).toBeNull();
@@ -2932,8 +2934,9 @@ describe("the operations overview", () => {
         name: "Waiting on you",
       });
 
+      expect(within(waiting).getByText("No decisions waiting.")).toBeDefined();
       expect(
-        within(waiting).getByText("Nothing is waiting for your action."),
+        within(waiting).getByText("Nothing is ready to resolve."),
       ).toBeDefined();
       expect(within(waiting).queryByRole("list")).toBeNull();
     });
@@ -2958,18 +2961,16 @@ describe("the operations overview", () => {
         within(needs).getByRole("link", { name: "INC-43 Fraud scores missing" }),
       ).toBeDefined();
       expect(needs.textContent).toMatch(/Risk needs a responder/);
-      expect(needs.textContent).toMatch(
-        /No one has started investigating this incident/,
-      );
-      expect(needs.textContent).toMatch(/Open 2h/);
+      expect(within(work).getByText("Nobody has started")).toBeDefined();
+      expect(needs.textContent).toMatch(/needs a responder.*2h/);
 
       expect(
         within(yours).getByRole("link", {
           name: "INC-44 Settlement files late",
         }),
       ).toBeDefined();
-      expect(yours.textContent).toMatch(/You are investigating/);
-      expect(yours.textContent).toMatch(/Started 40m ago/);
+      expect(within(work).getByText("You are investigating")).toBeDefined();
+      expect(yours.textContent).toMatch(/Started.*40m ago/);
 
       expect(within(work).queryByRole("button")).toBeNull();
       expect(
