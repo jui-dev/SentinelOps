@@ -106,7 +106,9 @@ model Organization {
   /// development machine, by the demo workspace (src/dev/). Real
   /// organizations never hold demo data, so the demo can be reset or removed
   /// as a whole without touching anything else. Never set in production.
-  isDemo Boolean @default(false) @map("is_demo")
+  isDemo        Boolean        @default(false) @map("is_demo")
+  /// The demo workspace's own record, on a demo organization alone.
+  demoWorkspace DemoWorkspace?
 
   memberships        Membership[]
   invitations        Invitation[]
@@ -179,6 +181,7 @@ model User {
   activityEntries     ActivityEntry[]
   /// Memberships this user removed, as an Admin.
   membershipsRemoved  Membership[]       @relation("MembershipsRemoved")
+  demoWorkspacesReset DemoWorkspace[]    @relation("DemoWorkspacesReset")
 
   @@map("users")
 }
@@ -210,8 +213,8 @@ model Membership {
   userId         String @map("user_id") @db.Uuid
   role           Role   @default(RESPONDER)
 
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
   /// When the Admin removed them from the organization; null while they
   /// belong. Restoring clears it. A CHECK keeps removedById null unless this
   /// is set.
@@ -1227,4 +1230,21 @@ model ActivityEntry {
   /// Serves the Restrict check when a user row is physically deleted.
   @@index([actorId])
   @@map("activity_entries")
+}
+
+/// A demo organization's record of its own upkeep (src/dev/demo-workspace/):
+/// when it was last reset, by whom, and the day its generated history ends
+/// on. One row per demo organization, made by its first reset; a real
+/// organization never has one.
+model DemoWorkspace {
+  organizationId String    @id @map("organization_id") @db.Uuid
+  lastResetAt    DateTime? @map("last_reset_at") @db.Timestamptz(3)
+  lastResetById  String?   @map("last_reset_by_id") @db.Uuid
+  /// 00:00 UTC of the day the generated history ends on.
+  historyEndsAt  DateTime? @map("history_ends_at") @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lastResetBy  User?        @relation("DemoWorkspacesReset", fields: [lastResetById], references: [id], onDelete: SetNull)
+
+  @@map("demo_workspaces")
 }
