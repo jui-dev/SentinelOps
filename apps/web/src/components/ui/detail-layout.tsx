@@ -45,18 +45,18 @@ const NOTE_TONES: Record<GlanceTone, string> = {
 };
 
 /**
- * The tile's wash in light (`tint-wash`): the family of its tone. Dark keeps
+ * The tile's wash in light (`tint-wash`): a named pastel for its tone. Dark keeps
  * the tile's own edge, so it is as it was. Whole class strings, so the
  * stylesheet finds every one of them.
  */
 const WASHES: Record<GlanceTone, string> = {
-  neutral: "[--family:var(--color-fg-muted)]",
-  accent: "[--family:var(--color-accent)]",
-  info: "[--family:var(--color-info-text)]",
-  warning: "[--family:var(--color-warning-text)]",
-  investigating: "[--family:var(--color-status-investigating-text)]",
-  resolved: "[--family:var(--color-status-resolved-text)]",
-  danger: "[--family:var(--color-wash-active)]",
+  neutral: "wash-mist",
+  accent: "wash-steel",
+  info: "wash-sky",
+  warning: "wash-sand",
+  investigating: "wash-steel",
+  resolved: "wash-mint",
+  danger: "wash-rose",
 };
 
 export function GlanceTile({
@@ -80,7 +80,7 @@ export function GlanceTile({
     // the icon sits in the term, placed at the tile's leading edge.
     <div
       className={cx(
-        "tint-wash relative flex min-w-0 flex-col justify-center gap-0.5 rounded-lg border bg-surface py-3.5 pr-4 pl-17 shadow-[0_1px_2px_light-dark(rgb(15_29_51/0.06),transparent)] [--wash-line:var(--color-line)]",
+        "tint-wash relative flex min-w-0 flex-col justify-center gap-0.5 rounded-lg border bg-surface py-3.5 pr-4 pl-17 shadow-card [--wash-line:var(--color-line)]",
         WASHES[tone],
       )}
     >

@@ -1359,7 +1359,7 @@ describe("the operations overview", () => {
       expect(card?.getAttribute("data-trace")).toBe("true");
       expect(card?.className).toMatch(/(?:^|\s)tint-family(?:\s|$)/);
       // In light it washes in rose, whatever the severity.
-      expect(card?.className).toContain("[--wash-family:var(--color-wash-active)]");
+      expect(card?.className).toMatch(/(?:^|\s)wash-rose(?:\s|$)/);
       const traced = row.querySelectorAll("[data-trace]");
       expect(traced).toHaveLength(1);
       for (const other of row.querySelectorAll("[data-family]:not([data-trace])")) {

@@ -85,8 +85,29 @@
    */
   --color-band-top: light-dark(#ffffff, #04060d);
   --color-band-bottom: light-dark(#ffffff, #090d17);
-  /* Active incidents' wash, in light: rose, calmer than the severity's own. */
-  --color-wash-active: light-dark(#a8364f, #a8364f);
+  /*
+   * The summary cards' washes, in light only (`tint-wash` and the `wash-*`
+   * utilities): clear pastels from the system's own families, each a
+   * diagonal from its colour at the top-left to near-white at the foot —
+   * named pairs rather than a family mixed with white, which turns greyish.
+   * Both halves are the same: in dark the wash is never drawn.
+   *
+   *   rose   active incidents      sky    services, information
+   *   steel  responders, the accent  mint  resolved, all clear
+   *   sand   what waits on someone  mist   a neutral figure
+   */
+  --color-wash-rose-from: light-dark(#fde7eb, #fde7eb);
+  --color-wash-rose-to: light-dark(#fff7f8, #fff7f8);
+  --color-wash-sky-from: light-dark(#dcebf8, #dcebf8);
+  --color-wash-sky-to: light-dark(#f5f9fd, #f5f9fd);
+  --color-wash-steel-from: light-dark(#e1e8f7, #e1e8f7);
+  --color-wash-steel-to: light-dark(#f6f8fd, #f6f8fd);
+  --color-wash-mint-from: light-dark(#d8efec, #d8efec);
+  --color-wash-mint-to: light-dark(#f3faf9, #f3faf9);
+  --color-wash-sand-from: light-dark(#f3eadb, #f3eadb);
+  --color-wash-sand-to: light-dark(#fbf8f2, #fbf8f2);
+  --color-wash-mist-from: light-dark(#e6ebf2, #e6ebf2);
+  --color-wash-mist-to: light-dark(#f8fafc, #f8fafc);
   /* An accent-tinted control's hover, in the workspace. */
   --color-selected: light-dark(#ccddee, #1d3557);
 
@@ -661,19 +682,16 @@
  * browser does, in OKLab, to hold the card's text to 4.5:1 and its icon to
  * 3:1.
  *
- * In light every summary tile also takes a wash of its family (`tint-wash`,
- * below), so a band of them has colour without being loud, and the icon's
- * tile is white on it. A card may wash in another family than its icon's
- * (`--wash-family`): active incidents wash in rose whatever their severity,
- * so the card is calm while its icon still says how bad things are.
+ * In light every summary tile also takes a wash (`tint-wash`, below), so a
+ * band of them has colour without being loud, and the icon's tile is white
+ * on it. A card's wash is named apart from its icon's family: active
+ * incidents wash in rose whatever their severity, so the card is calm while
+ * its icon still says how bad things are.
  */
 @utility tint-family {
   --wash-line: color-mix(in oklab, var(--family) 14%, var(--color-line-subtle));
   background-color: color-mix(in oklab, var(--family) 3%, var(--color-surface));
-  border-color: light-dark(
-    color-mix(in oklab, var(--wash-family, var(--family)) 22%, var(--color-line-subtle)),
-    var(--wash-line)
-  );
+  border-color: light-dark(transparent, var(--wash-line));
 }
 
 @utility tint-family-tile {
@@ -685,27 +703,49 @@
 }
 
 /*
- * A summary tile's wash, in light only: a soft diagonal of its family over
- * white, edged a little stronger. In dark the gradient is transparent and
- * the edge is the tile's own (`--wash-line`, else line-subtle), so dark is
- * as it was.
+ * A summary tile's wash, in light only: a diagonal from its pastel (a
+ * `wash-*` utility, below; mist when none is named) at the top-left to
+ * near-white at the foot, with no edge — a soft shadow lifts it. In dark the
+ * gradient is transparent and the edge is the tile's own (`--wash-line`,
+ * else line-subtle), so dark is as it was.
  */
 @utility tint-wash {
   background-image: linear-gradient(
     in oklab 135deg,
-    light-dark(
-      color-mix(in oklab, var(--wash-family, var(--family)) 4%, #ffffff),
-      transparent
-    ),
-    light-dark(
-      color-mix(in oklab, var(--wash-family, var(--family)) 12%, #ffffff),
-      transparent
-    )
+    light-dark(var(--wash-from, var(--color-wash-mist-from)), transparent),
+    light-dark(var(--wash-to, var(--color-wash-mist-to)), transparent)
   );
-  border-color: light-dark(
-    color-mix(in oklab, var(--wash-family, var(--family)) 22%, var(--color-line-subtle)),
-    var(--wash-line, var(--color-line-subtle))
-  );
+  border-color: light-dark(transparent, var(--wash-line, var(--color-line-subtle)));
+}
+
+@utility wash-rose {
+  --wash-from: var(--color-wash-rose-from);
+  --wash-to: var(--color-wash-rose-to);
+}
+
+@utility wash-sky {
+  --wash-from: var(--color-wash-sky-from);
+  --wash-to: var(--color-wash-sky-to);
+}
+
+@utility wash-steel {
+  --wash-from: var(--color-wash-steel-from);
+  --wash-to: var(--color-wash-steel-to);
+}
+
+@utility wash-mint {
+  --wash-from: var(--color-wash-mint-from);
+  --wash-to: var(--color-wash-mint-to);
+}
+
+@utility wash-sand {
+  --wash-from: var(--color-wash-sand-from);
+  --wash-to: var(--color-wash-sand-to);
+}
+
+@utility wash-mist {
+  --wash-from: var(--color-wash-mist-from);
+  --wash-to: var(--color-wash-mist-to);
 }
 
 /*

@@ -531,48 +531,40 @@ describe.each<Theme>(["light", "dark"])("the metric cards in %s", (theme) => {
 });
 
 /**
- * The summary tiles' wash in light (`tint-wash`): a diagonal of the family
- * over white, from a little to more. Its stronger end is what text must
- * hold on, and the icon sits on a near-white tile on it.
+ * The summary tiles' washes in light (`tint-wash`, `wash-*`): a diagonal
+ * from each named pastel to near-white. Text must hold on both ends, and
+ * every icon a tile of that wash can carry must hold on its near-white tile
+ * over the deeper end.
  */
-describe("the summary tiles' wash in light", () => {
-  const WASHED = [
-    "wash-active",
-    "signal-critical",
-    "signal-high",
-    "signal-caution",
-    "signal-advisory",
-    "signal-nominal",
-    "fg-muted",
-    "accent",
-    "info-text",
-    "warning-text",
-    "status-investigating-text",
-    "status-resolved-text",
-    "service-mark",
-  ];
-  const strongest = css.match(
-    /@utility tint-wash \{[\s\S]*?var\(--family\)\) (\d+)%, #ffffff\),\s*transparent\s*\)\s*\)/,
-  );
+describe("the summary tiles' washes in light", () => {
+  const WASHES: Record<string, string[]> = {
+    rose: ["signal-critical", "signal-high", "signal-caution", "signal-advisory", "danger-text"],
+    sky: ["service-mark", "info-text"],
+    steel: ["status-investigating-text", "accent-text"],
+    mint: ["status-resolved-text", "signal-nominal"],
+    sand: ["warning-text"],
+    mist: ["fg-muted"],
+  };
 
-  it("mixes as the stylesheet says", () => {
-    expect(strongest?.[1]).toBeDefined();
-  });
+  it.each(Object.keys(WASHES))("keeps the %s wash's text and icons legible", (wash) => {
+    const ends = [`wash-${wash}-from`, `wash-${wash}-to`].map((name) => colour(name, "light"));
 
-  it.each(WASHED)("keeps a %s tile's text and icon legible", (family) => {
-    const ground = mix(colour(family, "light"), Number(strongest![1]) / 100, "#ffffff");
-    const tile = mix("#ffffff", 0.8, ground);
-
-    for (const text of ["fg", "fg-muted", "fg-subtle"]) {
-      expect(
-        contrast(colour(text, "light"), ground),
-        `${text} on a ${family} wash`,
-      ).toBeGreaterThanOrEqual(TEXT);
+    for (const ground of ends) {
+      for (const text of ["fg", "fg-muted", "fg-subtle"]) {
+        expect(
+          contrast(colour(text, "light"), ground),
+          `${text} on the ${wash} wash (${ground})`,
+        ).toBeGreaterThanOrEqual(TEXT);
+      }
     }
-    expect(
-      contrast(colour(family, "light"), tile),
-      `the ${family} icon on its tile`,
-    ).toBeGreaterThanOrEqual(UI);
+    const tile = mix("#ffffff", 0.8, ends[0]);
+
+    for (const icon of WASHES[wash]) {
+      expect(
+        contrast(colour(icon, "light"), tile),
+        `the ${icon} icon on a ${wash} tile`,
+      ).toBeGreaterThanOrEqual(UI);
+    }
   });
 });
 

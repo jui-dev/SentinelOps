@@ -61,6 +61,25 @@ const FAMILIES = {
 
 type Family = keyof typeof FAMILIES;
 
+/**
+ * Each family's wash in light (`tint-wash`): a clear pastel of its own, as
+ * the mockup chose — sky for the services, steel for the people on them,
+ * mint for what is resolved or all clear, mist for a neutral figure. The
+ * severities wash only on the incidents card, which is rose whatever its
+ * severity (`TRACE_FRAME`).
+ */
+const WASHES: Record<Family, string> = {
+  critical: "wash-rose",
+  high: "wash-rose",
+  caution: "wash-rose",
+  advisory: "wash-rose",
+  nominal: "wash-mint",
+  investigating: "wash-steel",
+  resolved: "wash-mint",
+  service: "wash-sky",
+  neutral: "wash-mist",
+};
+
 const SEVERITY_FAMILY: Record<IncidentSeverity, Family> = {
   SEV1: "critical",
   SEV2: "high",
@@ -105,7 +124,7 @@ function SeverityMix({
  * of its family (`tint-wash`); its edge comes from there, in both themes.
  */
 const CARD =
-  "tint-wash relative flex min-h-[5.75rem] flex-col justify-center gap-0.5 rounded-lg border py-3.5 pr-4 pl-16 shadow-[0_1px_2px_light-dark(rgb(15_29_51/0.06),transparent)]";
+  "tint-wash relative flex min-h-[5.75rem] flex-col justify-center gap-0.5 rounded-lg border py-3.5 pr-4 pl-16 shadow-card";
 
 /** The ground of a card that carries no trace of its family. */
 const NEUTRAL_FRAME = "bg-surface";
@@ -114,7 +133,7 @@ const NEUTRAL_FRAME = "bg-surface";
  * The card counting something wrong: a trace of its severity in dark; in
  * light, a rose wash, whatever the severity — its icon still says that.
  */
-const TRACE_FRAME = "tint-family [--wash-family:var(--color-wash-active)]";
+const TRACE_FRAME = "tint-family wash-rose";
 
 /** The icon's tile: a compact square marker in the card's family. */
 const TILE =
@@ -154,7 +173,7 @@ function Figure({
       data-trace={trace || undefined}
       className={cx(
         CARD,
-        trace ? TRACE_FRAME : NEUTRAL_FRAME,
+        trace ? TRACE_FRAME : cx(NEUTRAL_FRAME, WASHES[family]),
         FAMILIES[family],
       )}
     >
