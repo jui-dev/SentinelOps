@@ -284,8 +284,9 @@ export function TH({
       scope="col"
       className={cx(
         // Its own surface and an edge beneath: a header at a glance, and
-        // strong enough to trace any value up to its column.
-        "h-9 border-b border-line bg-thead px-4 align-middle text-xs font-semibold tracking-[0.01em] whitespace-nowrap text-fg-muted first:rounded-tl-sm last:rounded-tr-sm",
+        // strong enough to trace any value up to its column — the frame's
+        // navy with its words reversed out, in light.
+        "h-9 border-b border-table-head-line bg-table-head px-4 align-middle text-xs font-semibold tracking-[0.01em] whitespace-nowrap text-table-head-fg first:rounded-tl-sm last:rounded-tr-sm",
         // Sticky, it keeps its surface and edge over the rows beneath.
         "group-data-sticky-header/table:sticky group-data-sticky-header/table:top-0 group-data-sticky-header/table:z-10",
         align === "end" ? "text-right" : "text-left",
@@ -315,7 +316,10 @@ export function TD({
   return (
     <td
       className={cx(
-        "border-b border-line-subtle px-4 align-middle transition-colors duration-(--duration-fast) group-last/row:border-b-0 group-hover/row:bg-hover",
+        "border-b border-line-subtle px-4 align-middle transition-colors duration-(--duration-fast) group-last/row:border-b-0 group-hover/row:bg-row-hover",
+        // The hovered row's edge at its start, in light: which row the
+        // pointer is on, without a heavy fill. Transparent in dark.
+        "group-hover/row:first:shadow-[inset_3px_0_0_var(--color-row-hover-edge)]",
         // The last row's hover fill keeps to the surface's rounded corners.
         "group-last/row:first:rounded-bl-sm group-last/row:last:rounded-br-sm",
         // 40 px rows for lists scanned under pressure, 48 px for setup lists.

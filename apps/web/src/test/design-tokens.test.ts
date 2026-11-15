@@ -72,6 +72,30 @@ const WORKSPACE = [
 ];
 
 each(["fg", "fg-muted", "fg-subtle"], WORKSPACE, TEXT);
+// A table's header row: its words on its own band.
+each(["table-head-fg"], ["table-head"], TEXT);
+// A hovered row: everything a row holds, on the hover's tint. Not the
+// resolved teal's words: on dark's hover (#212631, the workspace hover it has
+// always been) they are 4.3:1, a known gap in dark left as it was.
+each(
+  [
+    "fg",
+    "fg-muted",
+    "fg-subtle",
+    "accent-text",
+    "warning-text",
+    "danger-text",
+    "status-declared-text",
+    "status-investigating-text",
+  ],
+  ["row-hover"],
+  TEXT,
+);
+each(
+  ["signal-critical", "signal-high", "signal-caution", "signal-advisory", "signal-nominal"],
+  ["row-hover"],
+  UI,
+);
 // A section's ground, at every stop of its fall (`bg-section-ground`): its
 // header — name, description, tinted label — sits on the top of it, and the
 // body holds everything once drawn on the surface inside a section, tone

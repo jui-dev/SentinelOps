@@ -97,6 +97,22 @@
   --color-sunken: light-dark(#f1f4f7, #0d1018);
   --color-field: light-dark(#ffffff, #0d1018);
   /*
+   * A table's header row and a hovered row (ui/table.tsx, and the Overview's
+   * Current operations list). In light the header is the frame's navy with
+   * its words reversed out, so a table reads at once inside a pale section;
+   * a hovered row takes a pale blue tint with a navy edge at its start, so
+   * the row under the pointer is plain without a heavy fill. In dark each is
+   * the role it always was: the thead band, muted words, the line beneath,
+   * the workspace hover, and no edge.
+   */
+  --color-table-head: light-dark(#1d3557, #1e242e);
+  --color-table-head-fg: light-dark(#e8eef6, #a6acb6);
+  --color-table-head-line: light-dark(#1d3557, #303540);
+  --color-table-head-line-subtle: light-dark(#1d3557, #252a34);
+  --color-row-hover: light-dark(#edf2f9, #212631);
+  --color-row-hover-edge: light-dark(#1d3557, transparent);
+
+  /*
    * A section of a page (OverviewPanel, DetailCard, the Response flow).
    *
    * In light a ground of sea glass that falls from deeper at the header to

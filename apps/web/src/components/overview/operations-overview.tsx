@@ -208,7 +208,7 @@ function ColumnHeader() {
     <div
       aria-hidden="true"
       className={cx(
-        "hidden h-9 items-center gap-x-4 border-b border-line-subtle bg-thead text-xs font-semibold tracking-[0.01em] whitespace-nowrap text-fg-muted xl:grid",
+        "hidden h-9 items-center gap-x-4 border-b border-table-head-line-subtle bg-table-head text-xs font-semibold tracking-[0.01em] whitespace-nowrap text-table-head-fg xl:grid",
         INSET,
         COLUMNS,
       )}
@@ -317,7 +317,7 @@ function OperationRow({
   return (
     <li
       className={cx(
-        "group/row relative grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-4 gap-y-1.5 py-3 transition-colors duration-(--duration-fast) hover:bg-hover xl:items-center xl:gap-y-0",
+        "group/row relative grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-4 gap-y-1.5 py-3 transition-colors duration-(--duration-fast) hover:bg-row-hover hover:shadow-[inset_3px_0_0_var(--color-row-hover-edge)] xl:items-center xl:gap-y-0",
         INSET,
         COLUMNS,
         "has-[[data-row-link]:focus-visible]:outline-2 has-[[data-row-link]:focus-visible]:-outline-offset-2 has-[[data-row-link]:focus-visible]:outline-focus",
