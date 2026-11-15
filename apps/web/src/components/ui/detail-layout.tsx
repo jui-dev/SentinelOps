@@ -95,7 +95,15 @@ export function GlanceTile({
   );
 }
 
-/** The band that holds a page's tiles, two or four across. */
+/**
+ * The band that holds a page's tiles, two or four across.
+ *
+ * The one rule for a band's ground: what SUMMARISES — a page's figures, an
+ * incident's or an analysis's facts — sits on the rail's dark gradient, as
+ * this does; what CONTROLS a list — search, filters, a period — sits on the
+ * plain surface (ui/filter-bar.tsx). So a reader can tell at a glance which
+ * bands are read and which are used.
+ */
 export function Glance({
   label,
   columns,

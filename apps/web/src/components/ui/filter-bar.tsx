@@ -15,6 +15,9 @@ import { cx } from "./cx";
  * each kind of filter is a labelled track of joined options, one of which
  * is raised when chosen. A bar wider than the screen scrolls sideways
  * inside itself rather than breaking onto a second line.
+ *
+ * On the plain surface, never the rail's gradient: controls are on the
+ * surface, summaries on the gradient (see `Glance`, detail-layout.tsx).
  */
 export function FilterBar({
   label,
