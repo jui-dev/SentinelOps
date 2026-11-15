@@ -103,9 +103,9 @@
    * a list — stays white on it. In dark each is the role it always was:
    * surface, thead, line.
    */
-  --color-section: light-dark(#f1f7f7, #191d27);
-  --color-section-head: light-dark(#e3efef, #1e242e);
-  --color-section-line: light-dark(#cfe1e2, #303540);
+  --color-section: light-dark(#e9f2f2, #191d27);
+  --color-section-head: light-dark(#dbeaea, #1e242e);
+  --color-section-line: light-dark(#c5d9da, #303540);
   --color-hover: light-dark(#eff3f7, #212631);
 
   /* Text */
