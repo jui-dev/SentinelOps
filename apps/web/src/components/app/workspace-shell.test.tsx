@@ -443,6 +443,20 @@ describe("WorkspaceShell", () => {
       expect(within(strip).getByText(organization.slug)).toBeDefined();
     });
 
+    it("offers How it works to everyone in the strip, and marks it on its page", async () => {
+      at("/orgs/acme-ops/how-it-works", "acme-ops");
+      api();
+
+      renderShell();
+
+      const link = await within(screen.getByRole("banner")).findByRole("link", {
+        name: "How it works",
+      });
+
+      expect(link.getAttribute("href")).toBe("/orgs/acme-ops/how-it-works");
+      expect(link.getAttribute("aria-current")).toBe("page");
+    });
+
     it("switches organization when there is more than one", async () => {
       const user = userEvent.setup();
 

@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  BookOpen,
   ChevronDown,
   KeyRound,
   LogOut,
@@ -10,9 +11,11 @@ import {
   User,
   UserRound,
 } from "lucide-react";
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 
+import { organizationPath } from "@/components/app/navigation";
 import { stripIconButtonClasses } from "@/components/app/strip-button";
 import { changePasswordHref } from "@/components/auth/change-password-form";
 import { NotificationsBell } from "@/components/notifications/notifications-bell";
@@ -24,6 +27,7 @@ import {
   MenuSection,
   MenuSeparator,
 } from "@/components/ui/menu";
+import { cx } from "@/components/ui/cx";
 import { useMinuteClock } from "@/components/ui/timestamp";
 import { useRouteMembership } from "@/components/organizations/organization-scope";
 import { formatRole } from "@/components/organizations/format";
@@ -242,9 +246,45 @@ export function AccountMenu() {
   );
 }
 
+/** The workflow page's address in an organization. */
+export const howItWorksHref = (orgSlug: string) =>
+  `${organizationPath(orgSlug)}/how-it-works`;
+
+/**
+ * The way to how SentinelOps works, for everyone in the organization: a
+ * pill in the strip, before the clock, raised while its page is open.
+ */
+function HowItWorksLink() {
+  const membership = useRouteMembership();
+  const pathname = usePathname();
+
+  if (!membership) return null;
+
+  const href = howItWorksHref(membership.organization.slug);
+  const current = pathname === href;
+
+  return (
+    <Link
+      href={href}
+      aria-current={current ? "page" : undefined}
+      className={cx(
+        "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-xs font-semibold transition-colors duration-(--duration-fast) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-strip-focus",
+        current
+          ? "border-strip-accent bg-strip-accent text-strip-raised"
+          : "border-strip-accent/45 bg-strip-accent/10 text-strip-fg hover:bg-strip-accent/20",
+      )}
+    >
+      <BookOpen aria-hidden="true" strokeWidth={1.75} className="size-3.5" />
+      {/* On a phone, the icon alone: its name stays for assistive technology. */}
+      <span className="sr-only sm:not-sr-only">How it works</span>
+    </Link>
+  );
+}
+
 export function ShellUtilities() {
   return (
     <div className="flex items-center gap-3">
+      <HowItWorksLink />
       <ShellClock />
       <span aria-hidden="true" className="hidden h-5 w-px bg-strip-line sm:block" />
       <div className="flex items-center gap-0.5">
