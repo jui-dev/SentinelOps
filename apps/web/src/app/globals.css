@@ -119,6 +119,8 @@
   --color-wash-mint-dark: light-dark(#13282a, #13282a);
   --color-wash-sand-dark: light-dark(#292317, #292317);
   --color-wash-mist-dark: light-dark(#20252f, #20252f);
+  /* A washed card's edge: none in light, a plain grey in dark wherever it sits. */
+  --color-card-edge: light-dark(transparent, #2b313c);
   /* An accent-tinted control's hover, in the workspace. */
   --color-selected: light-dark(#ccddee, #1d3557);
 
@@ -791,8 +793,9 @@
 /*
  * A card washed in its family in both themes (the incident page's facts and
  * figures): the light pastel diagonal of `tint-wash` in light, and in dark a
- * subtle tint of the family fading into the surface. No edge in light, the
- * quiet line-subtle in dark; never a coloured bar.
+ * subtle tint of the family fading into the surface. No edge in light, a
+ * plain grey in dark (`card-edge`, fixed so no panel can tint it); never a
+ * coloured bar.
  */
 @utility card-wash {
   background-color: var(--color-surface);
@@ -801,7 +804,7 @@
     light-dark(var(--wash-from, var(--color-wash-mist-from)), var(--wash-dark, var(--color-wash-mist-dark))),
     light-dark(var(--wash-to, var(--color-wash-mist-to)), var(--color-surface))
   );
-  border-color: light-dark(transparent, var(--color-line-subtle));
+  border-color: var(--color-card-edge);
 }
 
 @utility wash-rose {
