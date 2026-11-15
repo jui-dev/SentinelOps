@@ -80,11 +80,11 @@
   /*
    * A band that summarises — a page's tiles, an incident's facts — and the
    * bars docked over the page. In dark, the rail's own ground (rail-top →
-   * rail-mid), as it always was; in light a soft mist, since the rail there
-   * is navy and a band of figures should stay calm.
+   * rail-mid), as it always was; in light plain white, so the washed tiles
+   * carry the colour and the band itself stays calm.
    */
-  --color-band-top: light-dark(#e6ecf5, #04060d);
-  --color-band-bottom: light-dark(#edf1f7, #090d17);
+  --color-band-top: light-dark(#ffffff, #04060d);
+  --color-band-bottom: light-dark(#ffffff, #090d17);
   /* Active incidents' wash, in light: rose, calmer than the severity's own. */
   --color-wash-active: light-dark(#a8364f, #a8364f);
   /* An accent-tinted control's hover, in the workspace. */

@@ -120,7 +120,7 @@ export function GlanceTile({
  *
  * The one rule for a band's ground: what SUMMARISES — a page's figures, an
  * incident's or an analysis's facts — sits on the band gradient (`band-top`
- * → `band-bottom`: the rail's own dark ground in dark, a soft mist in light,
+ * → `band-bottom`: the rail's own dark ground in dark, plain white in light,
  * where the rail is navy), as this does; what CONTROLS a list — search,
  * filters, a period — sits on the plain surface (ui/filter-bar.tsx). So a
  * reader can tell at a glance which bands are read and which are used.
