@@ -531,7 +531,18 @@ const signedIn = (permissions: string[]) =>
             teams: [{ id: team.id, name: team.name, slug: team.slug }],
           });
       case `GET ${base}/teams`:
-        return jsonResponse(200, [team]);
+        // A second team the Admin is not on, so there is somewhere to add them.
+        return jsonResponse(200, [
+          team,
+          {
+            ...team,
+            id: "0199a1b2-c3d4-7000-8000-0000000000d2",
+            name: "Payments",
+            slug: "payments",
+            memberCount: 0,
+            serviceCount: 0,
+          },
+        ]);
       case `GET ${base}/incidents/flow?days=7`:
         // A member's team, one incident still waiting and one worked.
         return jsonResponse(200, {
@@ -999,10 +1010,14 @@ it("Reset password", async () => {
       signedIn(ADMIN);
       const { container } = inWorkspace(<MembersView />);
 
+      // Placement is one of the choices in the member's Manage dialog.
       (
-        await screen.findByRole("button", {
-          name: `Add ${currentUser.name} to a team`,
-        })
+        await screen.findByRole("button", { name: `Manage ${currentUser.name}` })
+      ).click();
+      (
+        await within(
+          await screen.findByRole("dialog", { name: `Manage ${currentUser.name}` }),
+        ).findByRole("button", { name: /^Add to a team/ })
       ).click();
       await screen.findByRole("dialog", {
         name: `Add ${currentUser.name} to a team`,
@@ -1015,9 +1030,12 @@ it("Reset password", async () => {
       const { container } = inWorkspace(<MembersView />);
 
       (
-        await screen.findByRole("button", {
-          name: `Remove ${currentUser.name} from a team`,
-        })
+        await screen.findByRole("button", { name: `Manage ${currentUser.name}` })
+      ).click();
+      (
+        await within(
+          await screen.findByRole("dialog", { name: `Manage ${currentUser.name}` }),
+        ).findByRole("button", { name: /^Take off a team/ })
       ).click();
       const dialog = await screen.findByRole("dialog", {
         name: `Remove ${currentUser.name} from a team`,
