@@ -272,7 +272,7 @@ function RecentlyResolved() {
 
 /**
  * Who is on the team, read only. Placement is changed from the Members
- * list's Action column, so there is one place to do it: this card says where.
+ * list's Manage dialog, so there is one place to do it: this card says where.
  */
 function Members() {
   const organization = useOrganization();
@@ -303,7 +303,7 @@ function Members() {
       footer={
         canPlace ? (
           <>
-            To add or remove someone, use the Action column on{" "}
+            To add or remove someone, use Manage on{" "}
             <Link href={membersHref(organization.slug)} className={linkClasses}>
               Members
             </Link>

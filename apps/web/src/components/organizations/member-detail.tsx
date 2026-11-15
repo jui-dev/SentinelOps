@@ -88,7 +88,7 @@ function MemberNotFound({ orgSlug }: { orgSlug: string }) {
 
 /**
  * The teams they are on, each with what it owns. Read only: placement is
- * changed from the Members list's Action column, and this card says so.
+ * changed from the Members list's Manage dialog, and this card says so.
  */
 function Teams({
   member,
@@ -367,7 +367,7 @@ function MemberPage({ member }: { member: Member }) {
                 {canPlace && (
                   <>
                     {" "}
-                    Add them to a team from the Action column on{" "}
+                    Add them to a team with Manage on{" "}
                     <Link
                       href={membersHref(organization.slug)}
                       className={linkClasses}
@@ -434,7 +434,7 @@ function MemberPage({ member }: { member: Member }) {
 /**
  * One member, read only: who they are, the teams they are on, what those
  * teams own, and — for themselves or oversight — the incidents they worked.
- * Placement is changed from the Members list's Action column, one place for
+ * Placement is changed from the Members list's Manage dialog, one place for
  * it; this page says where.
  */
 export function MemberDetail() {

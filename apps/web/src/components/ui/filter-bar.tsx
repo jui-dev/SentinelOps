@@ -7,14 +7,15 @@ import type { FormEvent, ReactNode, SelectHTMLAttributes } from "react";
 import { cx } from "./cx";
 
 /**
- * Every list's filters, drawn one way: one bar, one line, never wrapping.
+ * Every list's filters, drawn one way: one bar, on one line while it fits.
  *
  *   [⌕] │ ROLE [ All 7 · Admins 1 · … ]  SETUP [ Awaiting sign-in 0 · … ]   …
  *
  * The search is a button until it is wanted, then a field in its place;
  * each kind of filter is a labelled track of joined options, one of which
- * is raised when chosen. A bar wider than the screen scrolls sideways
- * inside itself rather than breaking onto a second line.
+ * is raised when chosen. A bar wider than its room breaks onto a second
+ * line between filters — never inside one — so no filter is ever hidden
+ * past its edge.
  *
  * On the plain surface, never the rail's gradient: controls are on the
  * surface, summaries on the gradient (see `Glance`, detail-layout.tsx).
@@ -37,7 +38,7 @@ export function FilterBar({
       role="search"
       aria-label={label}
       className={cx(
-        "scrollbar-thin flex min-h-13 items-center gap-3.5 overflow-x-auto rounded-lg border border-line-subtle bg-surface px-2.5 py-2 whitespace-nowrap",
+        "flex min-h-13 flex-wrap items-center gap-x-3.5 gap-y-2 rounded-lg border border-line-subtle bg-surface px-2.5 py-2 whitespace-nowrap",
         className,
       )}
     >

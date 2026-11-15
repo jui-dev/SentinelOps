@@ -53,7 +53,7 @@ const messageFor = (error: unknown): string | undefined => {
 
 /**
  * Gives a member who has forgotten their password a new one-time password,
- * from the Members list's Action column — the one place it is done. Says
+ * from the Members list's Manage dialog — the one place it is done. Says
  * what happens before it does it: their sessions end everywhere, and they
  * choose their own password at next sign-in. Once done, the new sign-in
  * details replace the form, shown this once.

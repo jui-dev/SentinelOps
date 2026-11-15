@@ -133,7 +133,7 @@ export function RoleChoice({
 }
 
 /**
- * Gives a member another role, from the Members list's Action column — the
+ * Gives a member another role, from the Members list's Manage dialog — the
  * one place a role is changed. Says what the change gives and takes away
  * before it is made, and that a response already under way stays theirs to
  * complete.

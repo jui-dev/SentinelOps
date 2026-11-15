@@ -261,9 +261,9 @@ function IncidentHeader({
             </p>
           )}
         </div>
-        <dl className="flex min-w-60 flex-[0_1_18rem] flex-col justify-center gap-2 self-center rounded-lg border border-card-edge bg-hero-inset px-4 py-3 text-sm">
+        <dl className="flex min-w-72 flex-[0_1_20rem] flex-col justify-center gap-2 self-center rounded-lg border border-card-edge bg-hero-inset px-4 py-3 text-sm">
           <div className="flex items-center justify-between gap-3">
-            <dt className="text-fg-muted">Severity</dt>
+            <dt className="whitespace-nowrap text-fg-muted">Severity</dt>
             <dd className="flex items-center gap-2 font-semibold">
               <SeverityMark severity={incident.severity} label />
               {!incident.severityConfirmed && (
@@ -279,7 +279,7 @@ function IncidentHeader({
           </div>
           <div className="h-px bg-line-subtle" />
           <div className="flex items-center justify-between gap-3">
-            <dt className="text-fg-muted">Status</dt>
+            <dt className="whitespace-nowrap text-fg-muted">Status</dt>
             <dd>
               <StatusMark status={incident.status} />
             </dd>
@@ -288,8 +288,8 @@ function IncidentHeader({
             <>
               <div className="h-px bg-line-subtle" />
               <div className="flex items-center justify-between gap-3">
-                <dt className="text-fg-muted">Known issue</dt>
-                <dd>
+                <dt className="whitespace-nowrap text-fg-muted">Known issue</dt>
+                <dd className="text-right">
                   <KnownIssueMark incident={incident} />
                 </dd>
               </div>
