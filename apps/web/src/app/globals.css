@@ -60,23 +60,23 @@
   --color-selected: light-dark(#ccddee, #1d3557);
 
   /* The workspace, and what sits on it. */
-  --color-canvas: light-dark(#f6f8fa, #131720);
+  --color-canvas: light-dark(#f7f9fa, #131720);
   --color-surface: light-dark(#ffffff, #191d27);
-  --color-thead: light-dark(#eef1f6, #1e242e);
-  --color-sunken: light-dark(#f1f2f6, #0d1018);
+  --color-thead: light-dark(#f2f5f8, #1e242e);
+  --color-sunken: light-dark(#f1f4f7, #0d1018);
   --color-field: light-dark(#ffffff, #0d1018);
-  --color-hover: light-dark(#f1f3f8, #212631);
+  --color-hover: light-dark(#eff3f7, #212631);
 
   /* Text */
-  --color-fg: light-dark(#0e1219, #e6e8ec);
-  --color-fg-muted: light-dark(#454e5e, #a6acb6);
-  --color-fg-subtle: light-dark(#5c6577, #868d99);
+  --color-fg: light-dark(#132036, #e6e8ec);
+  --color-fg-muted: light-dark(#46546a, #a6acb6);
+  --color-fg-subtle: light-dark(#566377, #868d99);
   --color-fg-disabled: light-dark(#a0a8b5, #4c5567);
 
   /* Lines */
-  --color-line-subtle: light-dark(#e3e6ec, #252a34);
-  --color-line: light-dark(#d9dce3, #303540);
-  --color-line-strong: light-dark(#b9c0cb, #3a4252);
+  --color-line-subtle: light-dark(#e4e9ef, #252a34);
+  --color-line: light-dark(#d8dfe8, #303540);
+  --color-line-strong: light-dark(#b6c1ce, #3a4252);
   --color-line-control: light-dark(#838c9b, #6a7486);
 
   /*
@@ -104,15 +104,20 @@
   --color-on-accent: light-dark(#ffffff, #ffffff);
   --color-focus: light-dark(#1d3557, #9cc2ea);
 
-  /* Feedback */
+  /*
+   * Feedback. Warning is amber in dark and sand in light: a quiet warm
+   * neutral with a bronze word, so "waiting / needs action" reads without
+   * a yellow on the light workspace. SEV3 keeps its amber — that is the
+   * severity scale, not this family.
+   */
   --color-danger-text: light-dark(#b42318, #ff8a80);
   --color-danger-subtle: light-dark(#fef1f0, #2a1215);
   --color-danger-line: light-dark(#f4c7c3, #5c2126);
   --color-danger-solid: light-dark(#c8322a, #e0453b);
-  --color-warning-text: light-dark(#8a5300, #f5b94a);
-  --color-warning-subtle: light-dark(#fff6e5, #2a1f0b);
-  --color-warning-line: light-dark(#f2d49b, #5a4418);
-  --color-warning-solid: light-dark(#c77c02, #e0a23a);
+  --color-warning-text: light-dark(#74562a, #f5b94a);
+  --color-warning-subtle: light-dark(#f6f0e6, #2a1f0b);
+  --color-warning-line: light-dark(#e2d5c0, #5a4418);
+  --color-warning-solid: light-dark(#a6834f, #e0a23a);
   --color-success-text: light-dark(#146c43, #5fd39a);
   --color-success-subtle: light-dark(#edf8f2, #0e2419);
   --color-success-line: light-dark(#b5dec8, #1e4d35);
@@ -251,9 +256,12 @@
    */
   --color-flow-declared: light-dark(#2f6fd6, #5b8def);
   --color-flow-resolved: light-dark(#008f7f, #1f9e8f);
-  /* Waiting for a first responder: amber stripes on their own ground. */
-  --color-flow-wait: light-dark(#c98a1a, #e8b04a);
-  --color-flow-wait-gap: light-dark(#fbefd6, #3a2a0e);
+  /*
+   * Waiting for a first responder: stripes on their own ground — amber in
+   * dark, sand in light, the same family as the warning tones beside them.
+   */
+  --color-flow-wait: light-dark(#b3925f, #e8b04a);
+  --color-flow-wait-gap: light-dark(#efe6d6, #3a2a0e);
 
   /*
    * One analytical view's frame (Recent operational health): a step raised
