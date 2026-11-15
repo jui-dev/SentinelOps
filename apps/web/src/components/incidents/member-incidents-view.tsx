@@ -2,12 +2,10 @@
 
 import {
   ChevronsDown,
-  Search,
   X,
 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import type { FormEvent } from "react";
 
 import {
   useCan,
@@ -18,6 +16,12 @@ import { ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { cx } from "@/components/ui/cx";
 import { EmptyNote } from "@/components/ui/empty-state";
+import {
+  FilterBar,
+  FilterDivider,
+  FilterGroup,
+  FilterSearch,
+} from "@/components/ui/filter-bar";
 import { PageBody, PageHeader } from "@/components/ui/page";
 import { Spinner } from "@/components/ui/spinner";
 import { useMinWidth } from "@/components/ui/use-min-width";
@@ -219,102 +223,21 @@ function MemberFilterBar({
       else params.delete(name);
     });
 
-  const onSearch = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    set("q", search.trim());
-  };
 
   const severity = searchParams.get("severity") ?? "";
   const team = searchParams.get("team") ?? "";
   const ofTeam = (teamId: string) =>
     count?.byTeam.find((each) => each.teamId === teamId)?.count ?? 0;
-  const tally = (value: number | undefined, pressed: boolean) =>
-    value === undefined ? null : (
-      <span className={cx("numeric", pressed ? "text-on-accent" : "text-fg-subtle")}>
-        {value}
-      </span>
-    );
 
   return (
-    <div
-      role="search"
-      aria-label="Filter incidents"
-      className="flex flex-col gap-3 rounded-lg border border-line-subtle bg-rail-top p-3"
-    >
+    <div className="flex flex-col gap-3">
       {error ? <ErrorAlert error={error} /> : null}
-      <div className="flex flex-wrap items-center gap-2">
-        <form onSubmit={onSearch} className="w-full sm:mr-1 sm:w-64 xl:w-72">
-          <div className="relative">
-            <label htmlFor="incident-search" className="sr-only">
-              Search
-            </label>
-            <Search
-              aria-hidden="true"
-              className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-fg-subtle"
-            />
-            <input
-              id="incident-search"
-              name="q"
-              type="search"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search by title or INC-42"
-              maxLength={200}
-              autoComplete="off"
-              className="h-9 w-full rounded-md border border-line-control bg-field pr-3 pl-9 text-sm text-fg placeholder:text-fg-subtle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
-            />
-          </div>
-        </form>
-        {teams.data && teams.data.length > 1 && (
-          <>
-            <div
-              role="group"
-              aria-label="Team"
-              className="scrollbar-thin flex w-full gap-1.5 overflow-x-auto sm:w-auto sm:flex-wrap sm:overflow-visible"
-            >
-              <FilterChip pressed={team === ""} onClick={() => set("team", "")}>
-                All your teams {tally(count?.total, team === "")}
-              </FilterChip>
-              {teams.data.map((each) => (
-                <FilterChip
-                  key={each.id}
-                  pressed={team === each.id}
-                  onClick={() => set("team", team === each.id ? "" : each.id)}
-                >
-                  {each.name} {tally(count && ofTeam(each.id), team === each.id)}
-                </FilterChip>
-              ))}
-            </div>
-            <span aria-hidden="true" className="mx-1 hidden h-5 w-px bg-line sm:block" />
-          </>
-        )}
-        <div
-          role="group"
-          aria-label="Severity"
-          className="scrollbar-thin flex w-full gap-1.5 overflow-x-auto sm:w-auto sm:flex-wrap sm:overflow-visible"
-        >
-          <FilterChip pressed={severity === ""} onClick={() => set("severity", "")}>
-            Any severity {tally(count?.total, severity === "")}
-          </FilterChip>
-          {SEVERITY_LEVELS.map((level) => (
-            <FilterChip
-              key={level.value}
-              pressed={severity === level.value}
-              onClick={() =>
-                set("severity", severity === level.value ? "" : level.value)
-              }
-            >
-              <SeverityGlyph severity={level.value} />
-              {/* The space is for the name ("SEV1 Critical"); flex drops it. */}
-              {level.value}{" "}
-              <span className="sr-only">{level.label}</span>
-              {tally(count?.bySeverity[level.value], severity === level.value)}
-            </FilterChip>
-          ))}
-        </div>
-        {active && (
-          <span className="ml-auto">
-            <Button icon={X}
+      <FilterBar
+        label="Filter incidents"
+        end={
+          active && (
+            <Button
+              icon={X}
               variant="quiet"
               size="sm"
               onClick={() =>
@@ -325,9 +248,64 @@ function MemberFilterBar({
             >
               Clear filters
             </Button>
-          </span>
+          )
+        }
+      >
+        <FilterSearch
+          id="incident-search"
+          label="Search"
+          value={search}
+          onChange={setSearch}
+          onSubmit={() => set("q", search.trim())}
+          placeholder="Title, or INC-42"
+          maxLength={200}
+        />
+        <FilterDivider />
+        {teams.data && teams.data.length > 1 && (
+          <FilterGroup label="Team">
+            <FilterChip
+              pressed={team === ""}
+              onClick={() => set("team", "")}
+              count={count?.total}
+            >
+              All your teams
+            </FilterChip>
+            {teams.data.map((each) => (
+              <FilterChip
+                key={each.id}
+                pressed={team === each.id}
+                onClick={() => set("team", team === each.id ? "" : each.id)}
+                count={count && ofTeam(each.id)}
+              >
+                {each.name}
+              </FilterChip>
+            ))}
+          </FilterGroup>
         )}
-      </div>
+        <FilterGroup label="Severity">
+          <FilterChip
+            pressed={severity === ""}
+            onClick={() => set("severity", "")}
+            count={count?.total}
+          >
+            Any
+          </FilterChip>
+          {SEVERITY_LEVELS.map((level) => (
+            <FilterChip
+              key={level.value}
+              pressed={severity === level.value}
+              onClick={() =>
+                set("severity", severity === level.value ? "" : level.value)
+              }
+              count={count?.bySeverity[level.value]}
+            >
+              <SeverityGlyph severity={level.value} />
+              {/* The space is for the name ("SEV1 Critical"); flex drops it. */}
+              {level.value} <span className="sr-only">{level.label}</span>
+            </FilterChip>
+          ))}
+        </FilterGroup>
+      </FilterBar>
     </div>
   );
 }

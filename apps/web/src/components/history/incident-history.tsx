@@ -27,6 +27,7 @@ import { Button } from "@/components/ui/button";
 import { cx } from "@/components/ui/cx";
 import { CardRow, Glance, GlanceTile } from "@/components/ui/detail-layout";
 import { EmptyNote } from "@/components/ui/empty-state";
+import { FilterGroup } from "@/components/ui/filter-bar";
 import { PageBody, PageHeader } from "@/components/ui/page";
 import { Spinner } from "@/components/ui/spinner";
 import { formatDuration, useMinuteClock } from "@/components/ui/timestamp";
@@ -141,14 +142,14 @@ type PeriodSelection = ReturnType<typeof usePeriodSelection>;
 
 /**
  * The period: a choice of preset or custom range, and which days that is,
- * in a band of the rail's own ground.
+ * on the same surface as the filters beneath it.
  */
 function PeriodBand({ selection }: { selection: PeriodSelection }) {
   const { choice, period, editing } = selection;
 
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-lg border border-line-subtle bg-linear-to-b from-rail-top to-rail-mid px-3.5 py-3">
-      <div role="group" aria-label="Period" className="flex flex-wrap gap-1.5">
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-lg border border-line-subtle bg-surface px-2.5 py-2">
+      <FilterGroup label="Period">
         {PERIOD_CHOICES.map((each) => (
           <FilterChip
             key={each.value}
@@ -158,7 +159,7 @@ function PeriodBand({ selection }: { selection: PeriodSelection }) {
             {each.label}
           </FilterChip>
         ))}
-      </div>
+      </FilterGroup>
       <span aria-hidden="true" className="hidden h-5 w-px bg-line sm:block" />
       <p className="flex flex-wrap items-center gap-x-2 text-sm text-fg-muted">
         <CalendarDays

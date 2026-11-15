@@ -587,8 +587,8 @@ describe("incident history", () => {
 
     await user.click(screen.getByRole("button", { name: "SEV1 Critical" }));
     await user.click(within(show).getByRole("button", { name: "Still open 3" }));
-    await user.type(screen.getByRole("searchbox", { name: "Search" }), "webhook");
-    await user.click(screen.getByRole("button", { name: "Search" }));
+    await user.click(screen.getByRole("button", { name: "Open search" }));
+    await user.type(screen.getByRole("searchbox", { name: "Search" }), "webhook{Enter}");
 
     expect(navigation.snapshot()).toBe("severity=SEV1&show=open&q=webhook");
     await waitFor(() =>

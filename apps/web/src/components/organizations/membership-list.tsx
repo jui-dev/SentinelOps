@@ -4,19 +4,25 @@ import { useQuery } from "@tanstack/react-query";
 import {
   ChevronRight,
   RotateCcw,
-  Search,
   Settings2,
   UserMinus,
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { Fragment, useId, useState } from "react";
+import { Fragment, useState } from "react";
 
 import { initialsOf } from "@/components/app/shell-utilities";
 import { ROLE_META, ROLE_ORDER } from "@/components/roles/role-meta";
 import { ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { cx } from "@/components/ui/cx";
+import {
+  FilterBar,
+  FilterDivider,
+  FilterGroup,
+  FilterOption,
+  FilterSearch,
+} from "@/components/ui/filter-bar";
 import { Spinner } from "@/components/ui/spinner";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { IsoDate } from "@/components/ui/timestamp";
@@ -147,80 +153,46 @@ function Toolbar({
   /** Whether to offer the account-setup and placement filters. */
   setup: boolean;
 }) {
-  const searchId = useId();
+  const offered = FILTERS.filter((each) => setup || !each.setup);
+  const option = (each: (typeof FILTERS)[number]) => (
+    <FilterOption
+      key={each.id}
+      pressed={each.id === filter}
+      onClick={() => onFilter(each.id)}
+      count={members.filter(each.matches).length}
+      attention={each.attention}
+    >
+      {each.role && (
+        <span
+          aria-hidden="true"
+          className={cx(
+            "size-2 rounded-full border",
+            ROLE_META[each.role].tone.line,
+            ROLE_META[each.role].tone.subtle,
+          )}
+        />
+      )}
+      {each.label}
+    </FilterOption>
+  );
+  const setupFilters = offered.filter((each) => each.setup);
 
   return (
-    // Held in a band of the rail's own ground, as a team's glance is: the
-    // ways to find people, set apart from the people found.
-    <div
-      role="search"
-      aria-label="Find members"
-      className="flex flex-wrap items-center gap-3 rounded-lg border border-line-subtle bg-linear-to-b from-rail-top to-rail-mid p-3"
-    >
-      <div className="relative w-full sm:w-80">
-        <label htmlFor={searchId} className="sr-only">
-          Search members
-        </label>
-        <Search
-          aria-hidden="true"
-          className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-fg-subtle"
-        />
-        <input
-          id={searchId}
-          type="search"
-          value={query}
-          onChange={(event) => onQuery(event.target.value)}
-          placeholder="Search by name or email"
-          className="h-9 w-full rounded-md border border-line-control bg-field pr-3 pl-9 text-sm text-fg placeholder:text-fg-subtle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
-        />
-      </div>
-      <div role="group" aria-label="Show" className="flex flex-wrap gap-1.5">
-        {FILTERS.filter((each) => setup || !each.setup).map((each) => {
-          const count = members.filter(each.matches).length;
-          const on = each.id === filter;
-
-          return (
-            <button
-              key={each.id}
-              type="button"
-              aria-pressed={on}
-              onClick={() => onFilter(each.id)}
-              className={cx(
-                "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-sm transition-colors duration-(--duration-fast) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
-                on
-                  ? "border-accent-rim bg-accent text-on-accent"
-                  : "border-line bg-surface text-fg-muted hover:bg-hover hover:text-fg",
-              )}
-            >
-              {each.role && (
-                <span
-                  aria-hidden="true"
-                  className={cx(
-                    "size-2 rounded-full border",
-                    ROLE_META[each.role].tone.line,
-                    on ? "bg-on-accent" : ROLE_META[each.role].tone.subtle,
-                  )}
-                />
-              )}
-              {/* The space is for the name ("All 3"); flex layout drops it. */}
-              {each.label}{" "}
-              <span
-                className={cx(
-                  "numeric text-xs",
-                  on
-                    ? "text-on-accent/80"
-                    : each.attention && count > 0
-                      ? "text-warning-text"
-                      : "text-fg-subtle",
-                )}
-              >
-                {count}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-    </div>
+    <FilterBar label="Find members">
+      <FilterSearch
+        label="Search members"
+        value={query}
+        onChange={onQuery}
+        placeholder="Name or email"
+      />
+      <FilterDivider />
+      <FilterGroup label="Role">
+        {offered.filter((each) => !each.setup).map(option)}
+      </FilterGroup>
+      {setupFilters.length > 0 && (
+        <FilterGroup label="Setup">{setupFilters.map(option)}</FilterGroup>
+      )}
+    </FilterBar>
   );
 }
 

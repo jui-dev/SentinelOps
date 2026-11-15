@@ -648,7 +648,8 @@ describe("incidents", () => {
 
         inOrganization(<IncidentsView />);
 
-        await user.type(await screen.findByLabelText("Search"), "  INC-42 ");
+        await user.click(await screen.findByRole("button", { name: "Open search" }));
+        await user.type(screen.getByLabelText("Search"), "  INC-42 ");
         expect(navigation.replace).not.toHaveBeenCalled();
 
         await user.keyboard("{Enter}");

@@ -278,6 +278,7 @@ describe("services", () => {
       inOrganization(<ServicesView />);
 
       await screen.findByText("Legacy Portal");
+      await user.click(screen.getByRole("button", { name: "Open search" }));
       await user.type(screen.getByLabelText("Search services"), "payments");
       // Both are Payments', found by their team.
       expect(screen.getByText("Payment API")).toBeDefined();

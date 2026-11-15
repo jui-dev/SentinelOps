@@ -6,11 +6,10 @@ import {
   Eye,
   Pencil,
   Plus,
-  Search,
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { Fragment, useId, useState } from "react";
+import { Fragment, useState } from "react";
 import type { FormEvent } from "react";
 
 import {
@@ -22,6 +21,13 @@ import { teamHref, teamsHref, useTeams } from "@/components/teams/team-scope";
 import { ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { cx } from "@/components/ui/cx";
+import {
+  FilterBar,
+  FilterDivider,
+  FilterGroup,
+  FilterOption,
+  FilterSearch,
+} from "@/components/ui/filter-bar";
 import { DialogActions, FormDialog } from "@/components/ui/dialog";
 import { FormExample } from "@/components/ui/form-example";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -367,75 +373,38 @@ function Toolbar({
   filter: FilterId;
   onFilter: (value: FilterId) => void;
 }) {
-  const searchId = useId();
   const offered = FILTERS.filter(
     ({ id }) => withStatus || id !== "active-incidents",
   );
+  const option = (each: (typeof FILTERS)[number]) => (
+    <FilterOption
+      key={each.id}
+      pressed={each.id === filter}
+      onClick={() => onFilter(each.id)}
+      count={services.filter((service) => matches(each.id, service, statuses)).length}
+      attention={each.attention}
+    >
+      {each.label}
+    </FilterOption>
+  );
+  const shows = new Set<FilterId>(["active-incidents", "archived"]);
 
   return (
-    // The ways to find services, in a band of the rail's own ground, as the
-    // Members page's are.
-    <div
-      role="search"
-      aria-label="Find services"
-      className="flex flex-wrap items-center gap-3 rounded-lg border border-line-subtle bg-linear-to-b from-rail-top to-rail-mid p-3"
-    >
-      <div className="relative w-full sm:w-80">
-        <label htmlFor={searchId} className="sr-only">
-          Search services
-        </label>
-        <Search
-          aria-hidden="true"
-          className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-fg-subtle"
-        />
-        <input
-          id={searchId}
-          type="search"
-          value={query}
-          onChange={(event) => onQuery(event.target.value)}
-          placeholder="Search by name or team"
-          className="h-9 w-full rounded-md border border-line-control bg-field pr-3 pl-9 text-sm text-fg placeholder:text-fg-subtle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
-        />
-      </div>
-      <div role="group" aria-label="Show" className="flex flex-wrap gap-1.5">
-        {offered.map((each) => {
-          const count = services.filter((service) =>
-            matches(each.id, service, statuses),
-          ).length;
-          const on = each.id === filter;
-
-          return (
-            <button
-              key={each.id}
-              type="button"
-              aria-pressed={on}
-              onClick={() => onFilter(each.id)}
-              className={cx(
-                "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-sm transition-colors duration-(--duration-fast) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
-                on
-                  ? "border-accent-rim bg-accent text-on-accent"
-                  : "border-line bg-surface text-fg-muted hover:bg-hover hover:text-fg",
-              )}
-            >
-              {/* The space is for the name ("All 3"); flex layout drops it. */}
-              {each.label}{" "}
-              <span
-                className={cx(
-                  "numeric text-xs",
-                  on
-                    ? "text-on-accent/80"
-                    : each.attention && count > 0
-                      ? "text-warning-text"
-                      : "text-fg-subtle",
-                )}
-              >
-                {count}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-    </div>
+    <FilterBar label="Find services">
+      <FilterSearch
+        label="Search services"
+        value={query}
+        onChange={onQuery}
+        placeholder="Name or team"
+      />
+      <FilterDivider />
+      <FilterGroup label="Criticality">
+        {offered.filter(({ id }) => !shows.has(id)).map(option)}
+      </FilterGroup>
+      <FilterGroup label="Show">
+        {offered.filter(({ id }) => shows.has(id)).map(option)}
+      </FilterGroup>
+    </FilterBar>
   );
 }
 

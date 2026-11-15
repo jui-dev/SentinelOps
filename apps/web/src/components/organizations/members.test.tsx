@@ -299,6 +299,8 @@ describe("the members overview", () => {
     expect(names()).toEqual(["Ada Lovelace"]);
 
     await user.click(screen.getByRole("button", { name: "All 3" }));
+    // The search is a button until it is wanted.
+    await user.click(screen.getByRole("button", { name: "Open search" }));
     await user.type(screen.getByLabelText("Search members"), "LINUS@");
     expect(names()).toEqual(["Linus Torvalds"]);
 

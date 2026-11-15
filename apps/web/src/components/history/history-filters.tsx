@@ -1,16 +1,19 @@
 "use client";
 
-import {
-  Search,
-  X,
-} from "lucide-react";
+import { X } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import type { FormEvent } from "react";
 
-import { FilterChip, useReplaceParams } from "@/components/incidents/incident-filters";
+import { useReplaceParams } from "@/components/incidents/incident-filters";
 import { SEVERITY_LEVELS, SeverityGlyph } from "@/components/incidents/severity";
 import { Button } from "@/components/ui/button";
+import {
+  FilterBar,
+  FilterDivider,
+  FilterGroup,
+  FilterOption,
+  FilterSearch,
+} from "@/components/ui/filter-bar";
 import type {
   IncidentHistoryFilters,
   IncidentHistoryShow,
@@ -71,8 +74,8 @@ export const useHistoryFilters = () => {
 };
 
 /**
- * Search, severity, and which of the period's incidents, in a band of the
- * rail's own ground, as the Incidents page's filters are. Chips apply at
+ * Search, severity, and which of the period's incidents, in the filter bar
+ * every list shares. Chips apply at
  * once, one of each at a time; the search when it is submitted. Each `show`
  * chip carries the period's own count, so what a choice leaves is known
  * before it is made.
@@ -104,54 +107,44 @@ export function HistoryFilterBar({
       else params.delete(name);
     });
 
-  const onSearch = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    set("q", search.trim());
-  };
 
   const severity = searchParams.get("severity") ?? "";
   const show = searchParams.get("show") ?? "";
 
   return (
-    <div
-      role="search"
-      aria-label="Filter this period's incidents"
-      className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-lg border border-line-subtle bg-linear-to-b from-rail-top to-rail-mid p-3"
+    <FilterBar
+      label="Filter this period's incidents"
+      end={
+        active && (
+          <Button
+            icon={X}
+            variant="quiet"
+            size="sm"
+            onClick={() =>
+              replace((params) => PARAMS.forEach((name) => params.delete(name)))
+            }
+          >
+            Clear filters
+          </Button>
+        )
+      }
     >
-      <form
-        onSubmit={onSearch}
-        className="flex w-full items-center gap-2 sm:w-auto sm:basis-72"
-      >
-        <div className="relative min-w-0 flex-1">
-          <label htmlFor="history-search" className="sr-only">
-            Search
-          </label>
-          <Search
-            aria-hidden="true"
-            className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-fg-subtle"
-          />
-          <input
-            id="history-search"
-            name="q"
-            type="search"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Title, or INC-42"
-            maxLength={200}
-            autoComplete="off"
-            className="h-9 w-full rounded-md border border-line-control bg-field pr-3 pl-9 text-sm text-fg placeholder:text-fg-subtle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
-          />
-        </div>
-        <Button icon={Search} type="submit" variant="secondary">
-          Search
-        </Button>
-      </form>
-      <div role="group" aria-label="Severity" className="flex flex-wrap gap-1.5">
-        <FilterChip pressed={severity === ""} onClick={() => set("severity", "")}>
+      <FilterSearch
+        id="history-search"
+        label="Search"
+        value={search}
+        onChange={setSearch}
+        onSubmit={() => set("q", search.trim())}
+        placeholder="Title, or INC-42"
+        maxLength={200}
+      />
+      <FilterDivider />
+      <FilterGroup label="Severity">
+        <FilterOption pressed={severity === ""} onClick={() => set("severity", "")}>
           Any
-        </FilterChip>
+        </FilterOption>
         {SEVERITY_LEVELS.map((level) => (
-          <FilterChip
+          <FilterOption
             key={level.value}
             pressed={severity === level.value}
             onClick={() =>
@@ -161,55 +154,32 @@ export function HistoryFilterBar({
             <SeverityGlyph severity={level.value} />
             {/* The space is for the name ("SEV1 Critical"); flex drops it. */}
             {level.value} <span className="sr-only">{level.label}</span>
-          </FilterChip>
+          </FilterOption>
         ))}
-      </div>
-      <span aria-hidden="true" className="hidden h-5 w-px bg-line sm:block" />
-      <div role="group" aria-label="Show" className="flex flex-wrap gap-1.5">
-        <FilterChip pressed={show === ""} onClick={() => set("show", "")}>
+      </FilterGroup>
+      <FilterGroup label="Show">
+        <FilterOption
+          pressed={show === ""}
+          onClick={() => set("show", "")}
+          count={counts?.total}
+        >
           Everything
-          {counts && <ChipCount value={counts.total} />}
-        </FilterChip>
+        </FilterOption>
         {SHOW_CHOICES.map((choice) => (
-          <FilterChip
+          <FilterOption
             key={choice.value}
             pressed={show === choice.value}
             onClick={() =>
               set("show", show === choice.value ? "" : choice.value)
             }
-          >
-            {choice.label}
-            {counts && (
-              <ChipCount
-                value={choice.value === "open" ? counts.open : counts.resolved}
-              />
-            )}
-          </FilterChip>
-        ))}
-      </div>
-      {active && (
-        <span className="ml-auto">
-          <Button icon={X}
-            variant="quiet"
-            size="sm"
-            onClick={() =>
-              replace((params) => PARAMS.forEach((name) => params.delete(name)))
+            count={
+              counts && (choice.value === "open" ? counts.open : counts.resolved)
             }
           >
-            Clear filters
-          </Button>
-        </span>
-      )}
-    </div>
-  );
-}
-
-/** A chip's count: quieter than its label, and read as part of its name. */
-function ChipCount({ value }: { value: number }) {
-  return (
-    <>
-      {" "}
-      <span className="numeric text-xs opacity-75">{value}</span>
-    </>
+            {choice.label}
+          </FilterOption>
+        ))}
+      </FilterGroup>
+    </FilterBar>
   );
 }
