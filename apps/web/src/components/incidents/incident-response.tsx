@@ -703,7 +703,9 @@ export function OversightPanel({
     >
       <dl
         aria-label={`${incidentKey(incident.number)} at a glance`}
-        className="grid grid-cols-2 gap-2.5 sm:grid-cols-4"
+        // The four figures on their own inner panel: white in light, the
+        // darkest ground in dark, as the panel's other parts are.
+        className="ink-region grid grid-cols-2 gap-2.5 rounded-md border border-ink-line bg-ink p-3 sm:grid-cols-4"
       >
         <Figure
           label="First response"
