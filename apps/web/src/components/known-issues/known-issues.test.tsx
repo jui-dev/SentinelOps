@@ -286,7 +286,7 @@ describe("known issues", () => {
     render();
 
     await user.click(await screen.findByRole("button", { name: `Archive ${webhooks.name}` }));
-    await user.click(screen.getByRole("checkbox", { name: "Show archived" }));
+    await user.click(screen.getByRole("button", { name: /^With archived/ }));
     await user.click(await screen.findByRole("button", { name: `Restore ${retired.name}` }));
 
     await waitFor(() =>
@@ -308,6 +308,7 @@ describe("known issues", () => {
     render();
 
     await groupOf("Payment API");
+    await user.click(screen.getByRole("button", { name: "Open search" }));
     await user.type(screen.getByLabelText("Find a known issue"), "webhook");
 
     expect(screen.getByText("Webhook retries backing up")).toBeDefined();

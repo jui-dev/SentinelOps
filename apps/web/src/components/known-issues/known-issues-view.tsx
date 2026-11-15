@@ -27,6 +27,14 @@ import { Button } from "@/components/ui/button";
 import { cx } from "@/components/ui/cx";
 import { DialogActions, FormDialog } from "@/components/ui/dialog";
 import { EmptyNote } from "@/components/ui/empty-state";
+import {
+  FilterBar,
+  FilterDivider,
+  FilterGroup,
+  FilterOption,
+  FilterSearch,
+  FilterSelect,
+} from "@/components/ui/filter-bar";
 import { Field, TextArea } from "@/components/ui/field";
 import { linkClasses } from "@/components/ui/link";
 import { PageBody, PageHeader } from "@/components/ui/page";
@@ -137,40 +145,44 @@ function KnownIssuesList() {
               Keep, edit or merge each one marked New.
             </p>
           )}
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="min-w-56 flex-1">
-              <Field
-                label="Find a known issue"
-                type="search"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                autoComplete="off"
-              />
-            </div>
-            <div className="w-56">
-              <Select
-                label="Service"
-                value={serviceId}
-                onChange={(event) => setServiceId(event.target.value)}
+          <FilterBar label="Find known issues">
+            <FilterSearch
+              label="Find a known issue"
+              value={search}
+              onChange={setSearch}
+              placeholder="Issue name"
+            />
+            <FilterDivider />
+            <FilterGroup label="Show">
+              <FilterOption
+                pressed={!showArchived}
+                onClick={() => setShowArchived(false)}
+                count={knownIssues.data ? inUse.length : undefined}
               >
-                <option value="">All services</option>
-                {(services.data ?? []).map((service) => (
-                  <option key={service.id} value={service.id}>
-                    {service.name}
-                  </option>
-                ))}
-              </Select>
-            </div>
-            <label className="flex h-8 items-center gap-2 text-sm text-fg-muted">
-              <input
-                type="checkbox"
-                checked={showArchived}
-                onChange={(event) => setShowArchived(event.target.checked)}
-                className="size-4 accent-accent"
-              />
-              Show archived
-            </label>
-          </div>
+                In use
+              </FilterOption>
+              <FilterOption
+                pressed={showArchived}
+                onClick={() => setShowArchived(true)}
+                count={knownIssues.data ? all.length : undefined}
+              >
+                With archived
+              </FilterOption>
+            </FilterGroup>
+            <FilterSelect
+              label="Service"
+              className="w-44"
+              value={serviceId}
+              onChange={(event) => setServiceId(event.target.value)}
+            >
+              <option value="">All services</option>
+              {(services.data ?? []).map((service) => (
+                <option key={service.id} value={service.id}>
+                  {service.name}
+                </option>
+              ))}
+            </FilterSelect>
+          </FilterBar>
 
           {knownIssues.isError ? (
             <ErrorAlert error={knownIssues.error} />
@@ -183,7 +195,7 @@ function KnownIssuesList() {
             </EmptyNote>
           ) : groups.length === 0 ? (
             <EmptyNote title="No known issues match">
-              Try another search, service, or show archived ones.
+              Try another search or service, or include archived ones.
             </EmptyNote>
           ) : (
             groups.map((issues) => (
