@@ -203,7 +203,7 @@ describe("the response flow", () => {
     ]);
   });
 
-  it("says the team-level figures, and puts what waits for someone first", async () => {
+  it("says the team-level figures, and each row's team", async () => {
     api();
     renderFlow();
 
@@ -213,16 +213,6 @@ describe("the response flow", () => {
     expect(figure("Most at once")).toMatch(/^2from /);
     expect(figure("Waiting now")).toBe("1nobody has started");
 
-    // The incident nobody has started, as a card above the table.
-    const waitingCards = screen.getByRole("region", { name: "Waiting for someone · 1" });
-
-    expect(
-      within(waitingCards)
-        .getByRole("link", {
-          name: "INC-76, Card network declines spike, Payments: waiting 2h 15m, nobody has started",
-        })
-        .getAttribute("href"),
-    ).toBe("/orgs/acme-ops/incidents/76");
     // Each row says its team, in a column of its own.
     const frame = screen.getByRole("region", { name: "Incidents over the last 7 days" });
 
@@ -394,13 +384,7 @@ describe("the response flow on a phone", () => {
     const list = screen.getByRole("region", { name: "Incidents over the last 7 days" });
 
     await user.click(payments);
-    // Gone from the list; the card of what waits for someone still says it.
     expect(within(list).queryByRole("link", { name: /INC-76/ })).toBeNull();
-    expect(
-      within(screen.getByRole("region", { name: "Waiting for someone · 1" })).getByRole("link", {
-        name: /^INC-76/,
-      }),
-    ).toBeDefined();
   });
 
   it("gives an overseer responders and each team's figures", async () => {

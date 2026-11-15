@@ -553,67 +553,6 @@ interface FlowRow {
   team: string;
 }
 
-/**
- * Incidents nobody has started, longest waiting first: each a card that
- * opens it, with how long it has waited. What needs someone now, before
- * how the week went.
- */
-function WaitingNow({ rows }: { rows: readonly FlowRow[] }) {
-  const organization = useOrganization();
-  const shown = rows.slice(0, 3);
-
-  return (
-    <section
-      aria-labelledby="flow-waiting"
-      className="flex flex-col gap-2 border-b border-(--flow-rule) px-4 py-3.5 sm:px-5"
-    >
-      <h3 id="flow-waiting" className="label-caps text-warning-text">
-        Waiting for someone · {rows.length}
-      </h3>
-      <ul className="flex flex-col gap-2">
-        {shown.map(({ incident, team }) => {
-          const key = incidentKey(incident.number);
-
-          return (
-            <li key={incident.number}>
-              <Link
-                href={incidentHref(organization.slug, incident.number)}
-                aria-label={`${key}, ${incident.title}, ${team}: waiting ${formatDuration(incident.waitMs)}, nobody has started`}
-                className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-warning-line bg-warning-subtle px-3.5 py-2.5 transition-colors duration-(--duration-fast) hover:border-warning-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-              >
-                <span
-                  aria-hidden="true"
-                  className="w-1 self-stretch rounded-full"
-                  style={{ backgroundColor: WAIT }}
-                />
-                <SeverityMark severity={incident.severity} className="shrink-0 text-xs" />
-                <span className="data shrink-0 text-xs text-fg-subtle">{key}</span>
-                <span className="min-w-0 truncate text-sm font-medium text-fg">
-                  {incident.title}
-                </span>
-                <TeamTag name={team} />
-                <span className="ml-auto flex flex-col items-end">
-                  <span className="data text-lg leading-6 font-semibold text-warning-text">
-                    {formatDuration(incident.waitMs)}
-                  </span>
-                  <span className="text-2xs text-fg-muted">
-                    since declared · nobody has started
-                  </span>
-                </span>
-              </Link>
-            </li>
-          );
-        })}
-      </ul>
-      {rows.length > shown.length && (
-        <p className="text-xs text-fg-muted">
-          And {rows.length - shown.length} more in the list below.
-        </p>
-      )}
-    </section>
-  );
-}
-
 /** What a row's bar says, in full, beside the bar. */
 function BarTooltip({
   incident,
@@ -696,9 +635,6 @@ function FlowFrame({
     .sort(
       (a, b) => Date.parse(b.incident.createdAt) - Date.parse(a.incident.createdAt),
     );
-  const waiting = rows
-    .filter(({ incident }) => phaseOf(incident) === "waiting")
-    .sort((a, b) => b.incident.waitMs - a.incident.waitMs);
   // The phone's list still groups by team; a team with nothing on now
   // starts folded where every team is shown, a member's own teams open.
   const folded =
@@ -748,12 +684,9 @@ function FlowFrame({
     );
   }
 
-  const waitingCards = waiting.length > 0 && <WaitingNow rows={waiting} />;
-
   if (!wide) {
     return (
       <>
-        {waitingCards}
         <FlowList
           flow={flow}
           teams={teams}
@@ -778,7 +711,6 @@ function FlowFrame({
 
   return (
     <>
-      {waitingCards}
       <div className="flex items-baseline justify-between gap-3 px-4 pt-3.5 pb-2 sm:px-5">
         <h3 className="label-caps text-fg-subtle">
           {flow.days === 7 ? "This week" : `Last ${flow.days} days`} ·{" "}

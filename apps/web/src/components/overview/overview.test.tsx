@@ -1483,16 +1483,11 @@ describe("the operations overview", () => {
       current.compareDocumentPosition(flow) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(flow.className).toMatch(/flow-organization/);
-    // In the table, with its team, and first as what waits for someone.
+    // In the table, with its team.
     expect(
       await within(flow).findByRole("link", {
         name: /^INC-42, Card payments failing, [^:]+: waiting 2h$/,
       }),
-    ).toBeDefined();
-    expect(
-      within(
-        within(flow).getByRole("region", { name: /^Waiting for someone · / }),
-      ).getByRole("link", { name: /^INC-42, Card payments failing/ }),
     ).toBeDefined();
     expect(requests.some((request) => request.path.endsWith("/incidents/flow?days=7"))).toBe(
       true,
