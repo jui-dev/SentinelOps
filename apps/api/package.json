@@ -25,6 +25,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:status": "prisma migrate status",
     "prisma:studio": "prisma studio",
+    "demo": "nest build && node dist/dev/demo-workspace/demo-workspace.cli.js",
     "demo:history": "nest build && node dist/dev/demo-history/demo-history.cli.js"
   },
   "dependencies": {
