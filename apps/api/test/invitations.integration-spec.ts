@@ -689,6 +689,7 @@ describe('invitations (integration)', () => {
           name: 'Acme Operations',
           slug: 'acme-operations',
           createdAt: expect.any(String),
+          demo: false,
         },
       });
       expect(await membershipOf(fx.orgA, fx.erin)).toEqual({ role: 'ADMIN' });

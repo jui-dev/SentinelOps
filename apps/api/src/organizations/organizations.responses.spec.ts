@@ -16,6 +16,7 @@ describe('organization response mappers', () => {
         // Columns a careless select could carry. None may reach the wire.
         updatedAt: CREATED,
         deletedAt: null,
+        isDemo: true,
       };
 
       expect(
@@ -28,6 +29,7 @@ describe('organization response mappers', () => {
         name: 'Acme Operations',
         slug: 'acme-operations',
         createdAt: '2026-09-01T12:00:00.000Z',
+        demo: true,
         membership: {
           id: 'membership-1',
           role: 'ADMIN',
@@ -64,6 +66,7 @@ describe('organization response mappers', () => {
           name: 'Acme Operations',
           slug: 'acme-operations',
           createdAt: CREATED,
+          isDemo: false,
         },
         { membershipId: 'membership-2', role: 'RESPONDER' },
       );
@@ -156,7 +159,13 @@ describe('organization response mappers', () => {
         removedAt: new Date('2026-11-03T09:00:00.000Z'),
         removedBy: { id: 'user-2', name: 'Dev Admin' },
         incidentResponses: [
-          { incident: { number: 151, title: 'Webhooks delayed', status: 'INVESTIGATING' } },
+          {
+            incident: {
+              number: 151,
+              title: 'Webhooks delayed',
+              status: 'INVESTIGATING',
+            },
+          },
         ],
         analysesOwned: [{ incident: { number: 139, title: 'Stale rates' } }],
       };
@@ -169,8 +178,14 @@ describe('organization response mappers', () => {
           removedBy: { id: 'user-2', name: 'Dev Admin' },
         },
         openWork: [
-          { kind: 'INVESTIGATING', incident: { number: 151, title: 'Webhooks delayed' } },
-          { kind: 'DRAFT_ANALYSIS', incident: { number: 139, title: 'Stale rates' } },
+          {
+            kind: 'INVESTIGATING',
+            incident: { number: 151, title: 'Webhooks delayed' },
+          },
+          {
+            kind: 'DRAFT_ANALYSIS',
+            incident: { number: 139, title: 'Stale rates' },
+          },
         ],
       });
 

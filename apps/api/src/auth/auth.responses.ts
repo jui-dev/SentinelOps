@@ -36,6 +36,7 @@ interface OrganizationRow {
   name: string;
   slug: string;
   createdAt: Date;
+  isDemo: boolean;
 }
 
 interface MembershipRow {
@@ -61,6 +62,7 @@ export const toOrganizationResponse = (
   name: organization.name,
   slug: organization.slug,
   createdAt: organization.createdAt.toISOString(),
+  demo: organization.isDemo,
 });
 
 export const toMembershipResponse = (

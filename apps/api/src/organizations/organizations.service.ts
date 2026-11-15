@@ -58,6 +58,7 @@ const organizationSelection = {
   name: true,
   slug: true,
   createdAt: true,
+  isDemo: true,
 } as const;
 
 /**

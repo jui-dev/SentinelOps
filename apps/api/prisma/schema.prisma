@@ -102,6 +102,12 @@ model Organization {
   /// number. Internal: never selected into a response.
   lastIncidentNumber Int @default(0) @map("last_incident_number")
 
+  /// A demonstration organization: everything in it is generated, on a
+  /// development machine, by the demo workspace (src/dev/). Real
+  /// organizations never hold demo data, so the demo can be reset or removed
+  /// as a whole without touching anything else. Never set in production.
+  isDemo Boolean @default(false) @map("is_demo")
+
   memberships        Membership[]
   invitations        Invitation[]
   teams              Team[]

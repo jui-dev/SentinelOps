@@ -23,6 +23,11 @@ export interface OrganizationResponse {
   name: string;
   slug: string;
   createdAt: string;
+  /**
+   * A demonstration organization: everything in it is generated, on a
+   * development machine. Marked wherever its name is shown.
+   */
+  demo: boolean;
 }
 
 export interface MembershipResponse {

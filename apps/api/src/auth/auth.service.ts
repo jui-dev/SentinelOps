@@ -480,7 +480,13 @@ export class AuthService {
             id: true,
             role: true,
             organization: {
-              select: { id: true, name: true, slug: true, createdAt: true },
+              select: {
+                id: true,
+                name: true,
+                slug: true,
+                createdAt: true,
+                isDemo: true,
+              },
             },
           },
           orderBy: { createdAt: 'asc' },

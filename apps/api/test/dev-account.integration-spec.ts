@@ -164,6 +164,27 @@ describe('development organization (integration)', () => {
     expect(await teamsOf('sam@example.com')).toEqual(['Payments']);
   });
 
+  it('should mark the organization as the demo, on every boot', async () => {
+    await devAccount.ensure();
+
+    const flag = () =>
+      prisma.organization.findUniqueOrThrow({
+        where: { slug: DEV_ORGANIZATION.slug },
+        select: { isDemo: true },
+      });
+
+    expect(await flag()).toEqual({ isDemo: true });
+
+    // An organization made before the flag existed is marked on the next boot.
+    await prisma.organization.update({
+      where: { slug: DEV_ORGANIZATION.slug },
+      data: { isDemo: false },
+    });
+    await devAccount.ensure();
+
+    expect(await flag()).toEqual({ isDemo: true });
+  });
+
   it('should restore a persona that can no longer sign in', async () => {
     await devAccount.ensure();
     await prisma.user.update({

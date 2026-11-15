@@ -1,6 +1,6 @@
 "use client";
 
-import { Menu } from "lucide-react";
+import { FlaskConical, Menu } from "lucide-react";
 import { createContext, useContext } from "react";
 import type { ReactNode } from "react";
 
@@ -110,6 +110,16 @@ export function SituationStrip({
           <span className="truncate text-sm font-medium text-strip-fg">
             {membership.organization.name}
           </span>
+          {/* Everything in a demo organization is generated: always said. */}
+          {membership.organization.demo && (
+            <span
+              title="A demo organization: everything in it is generated on this machine"
+              className="inline-flex shrink-0 items-center gap-1 self-center rounded-full bg-strip-signal-caution px-2 py-px text-2xs font-bold tracking-[0.05em] text-strip-raised uppercase"
+            >
+              <FlaskConical aria-hidden="true" strokeWidth={2.25} className="size-3" />
+              Demo
+            </span>
+          )}
           <span aria-hidden="true" className="hidden text-strip-muted md:inline">
             /
           </span>

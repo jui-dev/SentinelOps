@@ -73,11 +73,12 @@ export class DevAccountService implements OnApplicationBootstrap {
       const organization = existing
         ? await tx.organization.update({
             where: { id: existing.id },
-            data: { deletedAt: null },
+            // Always the demo: whatever is in it is generated.
+            data: { deletedAt: null, isDemo: true },
             select: { id: true },
           })
         : await tx.organization.create({
-            data: DEV_ORGANIZATION,
+            data: { ...DEV_ORGANIZATION, isDemo: true },
             select: { id: true },
           });
       const organizationId = organization.id;

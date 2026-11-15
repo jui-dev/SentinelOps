@@ -75,6 +75,7 @@ export const organization = {
   name: "Acme Operations",
   slug: "acme-ops",
   createdAt: "2026-09-01T12:00:00.000Z",
+  demo: false,
 };
 
 export const currentUser = {

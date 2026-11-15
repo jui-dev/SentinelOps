@@ -228,6 +228,7 @@ describe('authorization (integration)', () => {
         name: 'Acme Incident Response',
         slug: 'acme-operations',
         createdAt: expect.any(String),
+        demo: false,
       });
 
       const after = await stateOf(fx.orgA.id);

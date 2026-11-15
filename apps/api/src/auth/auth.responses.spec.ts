@@ -33,6 +33,7 @@ const organizationRow = {
   createdAt: CREATED_AT,
   updatedAt: CREATED_AT,
   deletedAt: new Date('2026-02-01T00:00:00.000Z'),
+  isDemo: false,
 };
 
 const membershipRow = {
@@ -82,6 +83,7 @@ describe('auth responses', () => {
         name: 'Acme Operations',
         slug: 'acme-operations',
         createdAt: '2026-01-02T03:04:05.678Z',
+        demo: false,
       });
     });
 
@@ -103,6 +105,7 @@ describe('auth responses', () => {
           name: 'Acme Operations',
           slug: 'acme-operations',
           createdAt: '2026-01-02T03:04:05.678Z',
+          demo: false,
         },
       });
     });
@@ -138,6 +141,7 @@ describe('auth responses', () => {
               name: 'Acme Operations',
               slug: 'acme-operations',
               createdAt: '2026-01-02T03:04:05.678Z',
+              demo: false,
             },
           },
         ],

@@ -43,6 +43,8 @@ export interface OrganizationResponse {
   name: string;
   slug: string;
   createdAt: string;
+  /** A demonstration organization, generated on a development machine. */
+  demo: boolean;
 }
 
 /** One membership, with the organization it grants access to. */

@@ -18,6 +18,7 @@ interface OrganizationRow {
   name: string;
   slug: string;
   createdAt: Date;
+  isDemo: boolean;
 }
 
 interface CallerMembership {

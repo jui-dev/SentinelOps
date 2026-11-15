@@ -109,7 +109,13 @@ describe('OrganizationsService', () => {
 
       expect(prisma.organization.findFirst).toHaveBeenCalledExactlyOnceWith({
         where: { id: ORG_A, deletedAt: null },
-        select: { id: true, name: true, slug: true, createdAt: true },
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          createdAt: true,
+          isDemo: true,
+        },
       });
     });
 
@@ -192,7 +198,13 @@ describe('OrganizationsService', () => {
       expect(prisma.organization.update).toHaveBeenCalledExactlyOnceWith({
         where: { id: ORG_A, deletedAt: null },
         data: { name: 'Renamed' },
-        select: { id: true, name: true, slug: true, createdAt: true },
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          createdAt: true,
+          isDemo: true,
+        },
       });
     });
 

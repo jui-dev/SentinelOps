@@ -190,6 +190,7 @@ describe('tenancy (integration)', () => {
         name: 'Acme Operations',
         slug: 'acme-operations',
         createdAt: expect.any(String),
+        demo: false,
         membership: {
           id: fx.aliceInA,
           role: 'ADMIN',

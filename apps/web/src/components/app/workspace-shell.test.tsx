@@ -54,6 +54,7 @@ const other = {
   name: "Borealis Platform",
   slug: "borealis",
   createdAt: "2026-09-02T12:00:00.000Z",
+  demo: false,
 };
 
 const api = ({
@@ -455,6 +456,36 @@ describe("WorkspaceShell", () => {
 
       expect(link.getAttribute("href")).toBe("/orgs/acme-ops/how-it-works");
       expect(link.getAttribute("aria-current")).toBe("page");
+    });
+
+    it("marks a demo organization in the strip, and only a demo one", async () => {
+      at("/orgs/acme-ops", "acme-ops");
+      api({
+        memberships: [
+          {
+            ...currentUser.memberships[0],
+            organization: { ...organization, demo: true },
+          },
+        ],
+      });
+
+      renderShell();
+
+      const strip = screen.getByRole("banner");
+
+      expect(await within(strip).findByText("Demo")).toBeDefined();
+    });
+
+    it("does not mark an organization that is not a demo", async () => {
+      at("/orgs/acme-ops", "acme-ops");
+      api();
+
+      renderShell();
+
+      const strip = screen.getByRole("banner");
+
+      expect(await within(strip).findByText(organization.name)).toBeDefined();
+      expect(within(strip).queryByText("Demo")).toBeNull();
     });
 
     it("switches organization when there is more than one", async () => {
