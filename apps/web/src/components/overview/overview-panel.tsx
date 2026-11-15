@@ -24,6 +24,12 @@ export const SECTION_FAMILIES = {
   activity: "[--family:var(--color-activity-operational-4)]",
   /** Getting set up: a neutral. */
   setup: "[--family:var(--color-fg-muted)]",
+  /** An incident's response, being worked: the investigating blue. */
+  investigating: "[--family:var(--color-status-investigating-text)]",
+  /** An incident's response, done: the resolved teal. */
+  resolved: "[--family:var(--color-status-resolved-text)]",
+  /** Waiting on someone: the warning sand. */
+  waiting: "[--family:var(--color-warning-text)]",
 } as const;
 
 export type SectionFamily = keyof typeof SECTION_FAMILIES;

@@ -108,6 +108,17 @@
   --color-wash-sand-to: light-dark(#fbf8f2, #fbf8f2);
   --color-wash-mist-from: light-dark(#e6ebf2, #e6ebf2);
   --color-wash-mist-to: light-dark(#f8fafc, #f8fafc);
+  /*
+   * The same washes as a card's ground in dark (`card-wash`): a quiet tint
+   * of each family at the top-left, fading into the surface — subtle, so a
+   * card has its colour without glowing. Their light halves are never drawn.
+   */
+  --color-wash-rose-dark: light-dark(#2a1c20, #2a1c20);
+  --color-wash-sky-dark: light-dark(#182634, #182634);
+  --color-wash-steel-dark: light-dark(#1d2536, #1d2536);
+  --color-wash-mint-dark: light-dark(#13282a, #13282a);
+  --color-wash-sand-dark: light-dark(#292317, #292317);
+  --color-wash-mist-dark: light-dark(#20252f, #20252f);
   /* An accent-tinted control's hover, in the workspace. */
   --color-selected: light-dark(#ccddee, #1d3557);
 
@@ -777,34 +788,56 @@
   border-color: light-dark(transparent, var(--wash-line, var(--color-line-subtle)));
 }
 
+/*
+ * A card washed in its family in both themes (the incident page's facts and
+ * figures): the light pastel diagonal of `tint-wash` in light, and in dark a
+ * subtle tint of the family fading into the surface. No edge in light, the
+ * quiet line-subtle in dark; never a coloured bar.
+ */
+@utility card-wash {
+  background-color: var(--color-surface);
+  background-image: linear-gradient(
+    in oklab 135deg,
+    light-dark(var(--wash-from, var(--color-wash-mist-from)), var(--wash-dark, var(--color-wash-mist-dark))),
+    light-dark(var(--wash-to, var(--color-wash-mist-to)), var(--color-surface))
+  );
+  border-color: light-dark(transparent, var(--color-line-subtle));
+}
+
 @utility wash-rose {
   --wash-from: var(--color-wash-rose-from);
   --wash-to: var(--color-wash-rose-to);
+  --wash-dark: var(--color-wash-rose-dark);
 }
 
 @utility wash-sky {
   --wash-from: var(--color-wash-sky-from);
   --wash-to: var(--color-wash-sky-to);
+  --wash-dark: var(--color-wash-sky-dark);
 }
 
 @utility wash-steel {
   --wash-from: var(--color-wash-steel-from);
   --wash-to: var(--color-wash-steel-to);
+  --wash-dark: var(--color-wash-steel-dark);
 }
 
 @utility wash-mint {
   --wash-from: var(--color-wash-mint-from);
   --wash-to: var(--color-wash-mint-to);
+  --wash-dark: var(--color-wash-mint-dark);
 }
 
 @utility wash-sand {
   --wash-from: var(--color-wash-sand-from);
   --wash-to: var(--color-wash-sand-to);
+  --wash-dark: var(--color-wash-sand-dark);
 }
 
 @utility wash-mist {
   --wash-from: var(--color-wash-mist-from);
   --wash-to: var(--color-wash-mist-to);
+  --wash-dark: var(--color-wash-mist-dark);
 }
 
 /*

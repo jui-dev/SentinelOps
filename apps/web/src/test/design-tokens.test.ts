@@ -614,6 +614,25 @@ describe.each<Theme>(["light", "dark"])("the section icons in %s", (theme) => {
   });
 });
 
+/**
+ * The cards washed in their family in dark (`card-wash`: the incident page's
+ * facts and figures): every text a card holds, on the deepest end of each
+ * tint. Dark only: the tints are never drawn in light.
+ */
+describe("the cards' washes in dark", () => {
+  it.each(["rose", "sky", "steel", "mint", "sand", "mist"])(
+    "keeps text legible on the %s tint",
+    (wash) => {
+      for (const text of ["fg", "fg-muted", "fg-subtle"]) {
+        expect(
+          contrast(colour(text, "dark"), colour(`wash-${wash}-dark`, "dark")),
+          `${text} on the ${wash} tint`,
+        ).toBeGreaterThanOrEqual(TEXT);
+      }
+    },
+  );
+});
+
 describe("design tokens", () => {
   it("parses the colour tokens", () => {
     expect(tokens.size).toBeGreaterThan(40);

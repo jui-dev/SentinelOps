@@ -186,6 +186,7 @@ export function RespondersPanel({ incident }: { incident: IncidentDetailResponse
     return (
       <Panel
         id="responders"
+        icon={Users}
         title="Next step · Responders"
         tone="amber"
         headline={
@@ -241,6 +242,7 @@ export function RespondersPanel({ incident }: { incident: IncidentDetailResponse
     return (
       <Panel
         id="responders"
+        icon={Users}
         title="Responders"
         tone="blue"
         headline={
@@ -275,6 +277,7 @@ export function RespondersPanel({ incident }: { incident: IncidentDetailResponse
   return (
     <Panel
       id="responders"
+      icon={Users}
       title="Responders"
       tone="blue"
       headline={

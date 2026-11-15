@@ -1,5 +1,6 @@
 "use client";
 
+import { History } from "lucide-react";
 import Link from "next/link";
 import { useId } from "react";
 
@@ -7,6 +8,8 @@ import { incidentAnalysisHref } from "@/components/incident-analyses/analysis-qu
 import { incidentHref, useIncidentRepeats } from "@/components/incidents/incident-queries";
 import { incidentKey, SeverityMark } from "@/components/incidents/severity";
 import { useOrganization } from "@/components/organizations/organization-scope";
+import { INSTRUMENT } from "@/components/overview/analytical-view-header";
+import { SectionIcon } from "@/components/overview/overview-panel";
 import { ErrorAlert } from "@/components/ui/alert";
 import { cx } from "@/components/ui/cx";
 import { linkClasses } from "@/components/ui/link";
@@ -96,21 +99,31 @@ export function HappenedBefore({ incident }: { incident: IncidentResponse }) {
     <section
       id="happened-before"
       aria-labelledby={headingId}
-      className="overflow-hidden rounded-lg border border-line bg-surface"
+      className="overflow-hidden rounded-lg border border-section-line bg-section-ground shadow-card"
     >
-      <div className="flex flex-col gap-1 border-b border-line-subtle px-5 py-4 sm:px-6">
-        <h2 id={headingId} className="text-base font-semibold text-fg">
-          Happened before
-        </h2>
-        <p className="text-sm text-fg-muted">
-          Known issue: {incident.knownIssue.name} ·{" "}
-          {earlier.length === 0
-            ? "this is the first time on record"
-            : `${earlier.length} earlier ${earlier.length === 1 ? "time" : "times"} on ${incident.service.name}`}
-        </p>
+      <div className="flex items-start gap-3 border-b border-section-divider bg-section-head px-5 py-4 sm:px-6">
+        <SectionIcon icon={History} family="setup" />
+        <div className="flex min-w-0 flex-col gap-1">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <h2 id={headingId} className="text-lg leading-6 font-semibold text-fg">
+              Happened before
+            </h2>
+            <span className="numeric inline-flex items-center rounded-full border border-line bg-sunken px-2 py-0.5 text-xs font-medium text-fg-muted">
+              {earlier.length === 0 ? "First time" : `${earlier.length} earlier`}
+            </span>
+          </div>
+          <p className="text-sm text-fg-muted">
+            Known issue: {incident.knownIssue.name} ·{" "}
+            {earlier.length === 0
+              ? "this is the first time on record"
+              : `${earlier.length} earlier ${earlier.length === 1 ? "time" : "times"} on ${incident.service.name}`}
+          </p>
+        </div>
       </div>
       {earlier.length > 0 && (
-        <>
+        // The figures and the table on the section's own inner panel.
+        <div className="p-4 sm:p-5">
+        <div className={cx(INSTRUMENT, "overflow-hidden")}>
           <dl
             aria-label="The earlier times at a glance"
             className="grid grid-cols-2 divide-line-subtle border-b border-line-subtle bg-sunken lg:grid-cols-4 lg:divide-x"
@@ -187,10 +200,11 @@ export function HappenedBefore({ incident }: { incident: IncidentResponse }) {
               </TBody>
             </Table>
           </div>
-        </>
+        </div>
+        </div>
       )}
       {notes.length > 0 && (
-        <p className="border-t border-line-subtle px-5 py-3 text-xs text-fg-muted sm:px-6">
+        <p className="border-t border-section-divider px-5 py-3 text-xs text-fg-muted sm:px-6">
           {notes.join(" ")}
         </p>
       )}

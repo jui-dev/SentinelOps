@@ -282,17 +282,23 @@ function FactCard({
   // The group holds its term and descriptions directly, as a list's group
   // must; the icon sits in the term, placed beside them by the grid.
   return (
-    <div className="grid min-w-0 grid-cols-[2rem_minmax(0,1fr)] items-center gap-x-3 gap-y-0.5 rounded-lg border border-line bg-linear-to-b from-surface to-sunken px-3.5 py-2.5 sm:grid-cols-[2.5rem_minmax(0,1fr)] sm:px-4 sm:py-3.5">
+    // A card washed in its family: a pastel in light, a subtle tint in dark.
+    <div
+      className={cx(
+        "card-wash grid min-w-0 grid-cols-[2rem_minmax(0,1fr)] items-center gap-x-3 gap-y-0.5 rounded-lg border px-3.5 py-2.5 shadow-card sm:grid-cols-[2.5rem_minmax(0,1fr)] sm:px-4 sm:py-3.5",
+        tone === "orange" && "wash-sky",
+        tone === "blue" && "wash-steel",
+        tone === "teal" && "wash-sand",
+      )}
+    >
       <dt className="contents">
         <span
           aria-hidden="true"
           className={cx(
-            "row-span-3 grid size-8 place-items-center rounded-lg border sm:size-10",
-            tone === "orange" && "border-warning-line bg-warning-subtle text-warning-text",
-            tone === "blue" &&
-              "border-status-investigating-line bg-status-investigating-subtle text-status-investigating-text",
-            tone === "teal" &&
-              "border-status-resolved-line bg-status-resolved-subtle text-status-resolved-text",
+            "row-span-3 grid size-8 place-items-center rounded-lg bg-hero-inset shadow-[0_1px_2px_light-dark(rgb(15_29_51/0.08),transparent)] sm:size-10",
+            tone === "orange" && "text-service-mark",
+            tone === "blue" && "text-status-investigating-text",
+            tone === "teal" && "text-warning-text",
           )}
         >
           <Icon strokeWidth={2} className="size-4.5" />
@@ -541,7 +547,7 @@ function Lifecycle({ incident }: { incident: IncidentDetailResponse }) {
     return (
       <ol
         aria-label="Lifecycle"
-        className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-line bg-surface px-4.5 py-3 text-sm sm:flex-nowrap"
+        className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-section-line bg-surface px-4.5 py-3 text-sm shadow-card sm:flex-nowrap"
       >
         <li className="flex min-w-0 flex-1 items-center gap-3">
           <span className={done}>
@@ -588,7 +594,7 @@ function Lifecycle({ incident }: { incident: IncidentDetailResponse }) {
   return (
     <ol
       aria-label="Lifecycle"
-      className="grid gap-3.5 rounded-lg border border-line bg-surface px-4 py-4 sm:grid-cols-3 sm:gap-0 sm:px-5 sm:py-4.5"
+      className="grid gap-3.5 rounded-lg border border-section-line bg-surface px-4 py-4 shadow-card sm:grid-cols-3 sm:gap-0 sm:px-5 sm:py-4.5"
     >
       <Step
         label="Declared"

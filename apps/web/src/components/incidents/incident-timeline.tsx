@@ -5,12 +5,15 @@ import { FormerMember } from "@/components/organizations/former-member";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowUp,
+  ScrollText,
   Send,
 } from "lucide-react";
 import { useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 
 import { useOrganization } from "@/components/organizations/organization-scope";
+import { INSTRUMENT } from "@/components/overview/analytical-view-header";
+import { SectionIcon } from "@/components/overview/overview-panel";
 import { ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { roleMeta } from "@/components/roles/role-meta";
@@ -322,7 +325,7 @@ function TimelineEntry({
       <span aria-hidden="true" className="flex justify-center pt-0.5">
         <span
           className={cx(
-            "grid size-5.5 place-items-center rounded-full border border-line bg-band-bottom",
+            "grid size-5.5 place-items-center rounded-full border border-line bg-ink",
             marker?.colour,
           )}
         >
@@ -689,26 +692,24 @@ export function IncidentTimeline({
     <section
       id="timeline"
       aria-labelledby="timeline-title"
-      className="overflow-hidden rounded-lg border border-line-subtle bg-linear-to-b from-band-top to-band-bottom shadow-[0_16px_40px_rgb(0_0_0/0.28),inset_0_1px_0_rgb(255_255_255/0.03)]"
+      // In the sections' frame, as the Overview's are: an icon, the title, a
+      // label; then the story on the section's own inner panel.
+      className="overflow-hidden rounded-lg border border-section-line bg-section-ground shadow-card"
     >
-      <div
-        className={cx(
-          "flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-line-subtle px-4 py-3.5 sm:px-6",
-          tone === "member"
-            ? "bg-linear-to-r from-status-resolved-subtle via-status-investigating-subtle/40 to-transparent"
-            : "bg-linear-to-r from-status-investigating-subtle via-status-investigating-subtle/30 to-transparent",
-        )}
-      >
-        <h2 id="timeline-title" className="flex items-baseline gap-2 text-lg font-semibold text-fg">
-          Timeline
-          {timeline.data && (
-            <span className="numeric text-sm font-normal text-fg-muted">
-              {timeline.data.length}
-              <span className="sr-only"> entries</span>
-            </span>
-          )}
-          <span className="text-xs font-normal text-fg-subtle">newest first</span>
-        </h2>
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-section-divider bg-section-head px-4 py-3.5 sm:px-6">
+        <span className="flex items-center gap-3">
+          <SectionIcon icon={ScrollText} family={tone === "member" ? "resolved" : "flow"} />
+          <h2 id="timeline-title" className="flex items-center gap-2.5 text-lg font-semibold text-fg">
+            Timeline
+            {timeline.data && (
+              <span className="numeric inline-flex items-center rounded-full border border-line bg-sunken px-2 py-0.5 text-xs font-medium text-fg-muted">
+                {timeline.data.length}
+                <span className="sr-only"> entries</span>
+                <span aria-hidden="true">&nbsp;· newest first</span>
+              </span>
+            )}
+          </h2>
+        </span>
         {timeline.data && timeline.data.length > 0 && (
           <span className="flex flex-wrap items-center gap-2">
             {unread.length > 0 && (
@@ -735,7 +736,9 @@ export function IncidentTimeline({
           </span>
         )}
       </div>
-      <div className="px-4 pb-5 sm:px-6">{content}</div>
+      <div className="p-4 sm:p-5">
+        <div className={cx(INSTRUMENT, "px-4 pb-5 sm:px-6")}>{content}</div>
+      </div>
     </section>
   );
 }

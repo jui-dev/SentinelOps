@@ -2,11 +2,15 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
+  Activity,
   CircleCheck,
+  Eye,
+  Hourglass,
   Lock,
   Play,
   X,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { useId, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 
@@ -15,6 +19,7 @@ import {
   useOrganization,
 } from "@/components/organizations/organization-scope";
 import { Permission } from "@/lib/api/contracts";
+import { SectionIcon } from "@/components/overview/overview-panel";
 import { Alert, ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { cx } from "@/components/ui/cx";
@@ -100,6 +105,21 @@ export const firstStartOf = (incident: IncidentDetailResponse) =>
  * small caps title, a headline, a line beneath, and whatever the role does.
  * Teal for a member's own response, blue for oversight, quiet for a reader.
  */
+/** Each tone's icon and family, for the panel's header. */
+const PANEL_TONES = {
+  teal: { icon: CircleCheck, family: "resolved", pill: "border-status-resolved-line bg-status-resolved-subtle text-status-resolved-text" },
+  blue: { icon: Activity, family: "investigating", pill: "border-status-investigating-line bg-status-investigating-subtle text-status-investigating-text" },
+  amber: { icon: Hourglass, family: "waiting", pill: "border-warning-line bg-warning-subtle text-warning-text" },
+  quiet: { icon: Eye, family: "setup", pill: "border-line bg-sunken text-fg-muted" },
+} as const;
+
+/**
+ * A role's panel on the incident page, in the sections' frame (as the
+ * Overview's are): a header with an icon in its tone, the headline, the
+ * panel's name as a pill, and a line beneath; then what the role does, each
+ * part on its own inner panel (`Band`). Teal for a member's own response,
+ * blue for oversight, quiet for a reader.
+ */
 export function Panel({
   id,
   title,
@@ -107,6 +127,7 @@ export function Panel({
   tone,
   aside,
   action,
+  icon,
   children,
 }: {
   id: string;
@@ -115,45 +136,41 @@ export function Panel({
   tone: "teal" | "blue" | "amber" | "quiet";
   aside?: ReactNode;
   action?: ReactNode;
+  /** The header's icon, when the tone's own does not say it. */
+  icon?: LucideIcon;
   children?: ReactNode;
 }) {
   const headingId = useId();
+  const look = PANEL_TONES[tone];
 
   return (
     <section
       id={id}
       aria-labelledby={headingId}
-      className={cx(
-        "flex flex-col overflow-hidden rounded-lg border",
-        tone === "teal" &&
-          "border-status-resolved-line bg-linear-to-b from-status-resolved-subtle to-surface",
-        tone === "blue" &&
-          "border-status-investigating-line bg-linear-to-b from-status-investigating-subtle to-surface",
-        tone === "amber" &&
-          "border-warning-line bg-linear-to-b from-warning-subtle to-surface",
-        tone === "quiet" && "border-line bg-surface",
-      )}
+      className="flex flex-col overflow-hidden rounded-lg border border-section-line bg-section-ground shadow-card"
     >
-      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3 px-5 pt-5 pb-4 sm:px-6">
-        <div className="flex min-w-0 flex-1 basis-80 flex-col gap-1">
-          <h2
-            id={headingId}
-            className={cx(
-              "label-caps",
-              tone === "teal" && "text-status-resolved-text",
-              tone === "blue" && "text-status-investigating-text",
-              tone === "amber" && "text-warning-text",
-              tone === "quiet" && "text-fg-subtle",
-            )}
-          >
-            {title}
-          </h2>
-          <p className="text-lg font-semibold text-fg sm:text-xl">{headline}</p>
-          {aside && <div className="max-w-2xl text-sm leading-6 text-fg-muted">{aside}</div>}
+      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3 border-b border-section-divider bg-section-head px-5 py-4 sm:px-6">
+        <div className="flex min-w-0 flex-1 basis-80 items-start gap-3">
+          <SectionIcon icon={icon ?? look.icon} family={look.family} />
+          <div className="flex min-w-0 flex-col gap-1">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+              <p className="text-lg leading-6 font-semibold text-fg">{headline}</p>
+              <h2
+                id={headingId}
+                className={cx(
+                  "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium",
+                  look.pill,
+                )}
+              >
+                {title}
+              </h2>
+            </div>
+            {aside && <div className="max-w-2xl text-sm leading-6 text-fg-muted">{aside}</div>}
+          </div>
         </div>
         {action}
       </div>
-      {children}
+      {children && <div className="flex flex-col gap-3 p-4 sm:p-5">{children}</div>}
     </section>
   );
 }
@@ -180,12 +197,16 @@ export function AccessBadge({
   );
 }
 
-/** A panel's lower band: a rule above it, and a darker ground. */
+/**
+ * One part of a panel, on its own inner panel (INSTRUMENT's ground: white in
+ * light, the darkest in dark), so what the role does reads apart from the
+ * section's header.
+ */
 export function Band({ children, className }: { children: ReactNode; className?: string }) {
   return (
     <div
       className={cx(
-        "flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-t border-line-subtle bg-canvas/30 px-5 py-3.5 sm:px-6",
+        "ink-region flex flex-wrap items-center justify-between gap-x-6 gap-y-3 rounded-md border border-ink-line bg-ink px-4 py-3.5 sm:px-5",
         className,
       )}
     >
@@ -565,7 +586,12 @@ function Figure({
   tone?: "warning" | "resolved";
 }) {
   return (
-    <div className="flex flex-col gap-1 px-5 py-3.5 sm:px-6">
+    <div
+      className={cx(
+        "card-wash flex flex-col gap-1 rounded-md border px-4 py-3 shadow-card",
+        tone === "warning" ? "wash-sand" : tone === "resolved" ? "wash-mint" : "wash-steel",
+      )}
+    >
       <dt className="label-caps text-fg-subtle">{label}</dt>
       <dd
         className={cx(
@@ -677,7 +703,7 @@ export function OversightPanel({
     >
       <dl
         aria-label={`${incidentKey(incident.number)} at a glance`}
-        className="grid grid-cols-2 divide-line-subtle border-t border-line-subtle bg-canvas/30 sm:grid-cols-4 sm:divide-x"
+        className="grid grid-cols-2 gap-2.5 sm:grid-cols-4"
       >
         <Figure
           label="First response"
@@ -698,7 +724,7 @@ export function OversightPanel({
         <UpdateComposer
           incident={incident}
           placeholder="Context for the team, a decision, a customer note…"
-          className="border-t border-line-subtle bg-canvas/20 px-5 py-4 sm:px-6"
+          className="ink-region rounded-md border border-ink-line bg-ink px-4 py-4 sm:px-5"
         />
       )}
     </Panel>
