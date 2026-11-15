@@ -5,6 +5,7 @@ import { DatabaseModule } from '../database/database.module.js';
 import { TenancyModule } from '../tenancy/tenancy.module.js';
 import { DevAccountService } from './dev-account.service.js';
 import { DemoHistoryService } from './demo-history/demo-history.service.js';
+import { DemoAvailabilityController } from './demo-workspace/demo-availability.controller.js';
 import { DemoWorkspaceController } from './demo-workspace/demo-workspace.controller.js';
 import { DemoWorkspaceService } from './demo-workspace/demo-workspace.service.js';
 
@@ -18,7 +19,7 @@ import { DemoWorkspaceService } from './demo-workspace/demo-workspace.service.js
  */
 @Module({
   imports: [DatabaseModule, TenancyModule],
-  controllers: [DemoWorkspaceController],
+  controllers: [DemoAvailabilityController, DemoWorkspaceController],
   providers: [
     DevAccountService,
     DemoHistoryService,

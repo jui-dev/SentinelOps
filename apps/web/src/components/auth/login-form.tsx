@@ -25,7 +25,7 @@ import { env } from "@/lib/config/env";
 import {
   DEV_PASSWORD,
   DEV_PERSONAS,
-  showDevAccount,
+  useDemoAvailable,
 } from "@/lib/dev/dev-account";
 
 import { AuthHeading } from "./auth-heading";
@@ -196,10 +196,10 @@ export function LoginForm() {
   const [error, setError] = useState<unknown>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  const demo = useDemoAvailable();
+
   if (status === "unavailable") return <SessionUnavailable />;
   if (status !== "unauthenticated") return <PageSpinner size="panel" />;
-
-  const demo = showDevAccount();
 
   const signIn = async (email: string, password: string) => {
     setSubmitting(true);

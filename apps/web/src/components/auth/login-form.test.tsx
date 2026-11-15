@@ -27,9 +27,14 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(navigation.search),
 }));
 
-const withLogin = (login: (request: SentRequest) => Response) =>
+const withLogin = (
+  login: (request: SentRequest) => Response,
+  demoAvailable = true,
+) =>
   mockApi((request) => {
     switch (route(request)) {
+      case "GET /demo":
+        return jsonResponse(200, { available: demoAvailable });
       case "POST /auth/refresh":
         return apiError(401, "INVALID_REFRESH_TOKEN");
       case "POST /auth/login":
@@ -92,6 +97,26 @@ describe("LoginForm", () => {
       ).toBe("/register");
     } finally {
       vi.mocked(env).registrationEnabled = false;
+    }
+  });
+
+  it("offers no demo accounts in development while there is no demo organization", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    const { requests } = withLogin(() => apiError(401, "INVALID_CREDENTIALS"), false);
+
+    try {
+      renderWithSession(<LoginForm />);
+
+      await screen.findByLabelText("Email");
+      await waitFor(() =>
+        expect(requests.some((request) => route(request) === "GET /demo")).toBe(true),
+      );
+
+      expect(
+        screen.queryByRole("region", { name: "Try a demo account" }),
+      ).toBeNull();
+    } finally {
+      vi.unstubAllEnvs();
     }
   });
 

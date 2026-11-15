@@ -8,6 +8,7 @@ import { PrismaService } from './../src/database/prisma.service.js';
 import { DEV_ORGANIZATION, DEV_PERSONAS } from './../src/dev/dev-account.js';
 import { DevAccountService } from './../src/dev/dev-account.service.js';
 import { DemoHistoryService } from './../src/dev/demo-history/demo-history.service.js';
+import { DemoAvailabilityController } from './../src/dev/demo-workspace/demo-availability.controller.js';
 import type { DemoWorkspaceResponse } from './../src/dev/demo-workspace/demo-workspace.contract.js';
 import { DemoWorkspaceService } from './../src/dev/demo-workspace/demo-workspace.service.js';
 import { resolveTestDatabaseUrl } from './test-database.js';
@@ -315,6 +316,29 @@ describe('demo workspace (integration)', () => {
     });
 
     await expect(demo.status(organizationId)).rejects.toMatchObject({
+      errorCode: 'DEMO_NOT_FOUND',
+    });
+  });
+
+  it('should tell the login page whether there is a demo to offer', async () => {
+    const availability = app.get(DemoAvailabilityController);
+
+    expect(await availability.availability()).toEqual({ available: true });
+
+    await prisma.organization.update({
+      where: { id: organizationId },
+      data: { isDemo: false },
+    });
+
+    expect(await availability.availability()).toEqual({ available: false });
+
+    // Outside development there is no such route.
+    const outside = new DemoAvailabilityController(prisma, {
+      ...appConfig(),
+      environment: 'production',
+    } as ConfigType<typeof appConfig>);
+
+    await expect(outside.availability()).rejects.toMatchObject({
       errorCode: 'DEMO_NOT_FOUND',
     });
   });

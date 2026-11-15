@@ -727,6 +727,9 @@ const signedOut = () =>
     switch (route(request)) {
       case "POST /auth/refresh":
         return apiError(401);
+      // The development login page offers the demo while there is one.
+      case "GET /demo":
+        return jsonResponse(200, { available: true });
       case "POST /invitations/lookup":
         return jsonResponse(200, {
           organization: {

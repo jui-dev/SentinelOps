@@ -78,6 +78,11 @@ import type {
  * may call it.
  */
 
+// Public, development only: whether this machine has a demo to offer.
+
+export const getDemoAvailability = () =>
+  publicRequest<{ available: boolean }>("/demo");
+
 // Session endpoints: cookie in, cookie out, no bearer, no refresh on 401.
 
 export const register = (body: RegisterRequest) =>

@@ -1,3 +1,7 @@
+import { useQuery } from "@tanstack/react-query";
+
+import { getDemoAvailability } from "@/lib/api/endpoints";
+
 /**
  * TEMPORARY — the development personas the API ensures when it runs with
  * NODE_ENV=development (apps/api/src/dev/). Shown on the login page in
@@ -59,5 +63,22 @@ export const DEV_PERSONAS = [
  * Whether to show them. Next inlines NODE_ENV at build time, so in a
  * production build this is constant false and the panel is compiled away.
  */
+/**
+ * Whether the login page offers the demo accounts: in development, and only
+ * while the API says this machine has a demo organization — so a database
+ * without one, or a removed one, offers no accounts that lead nowhere.
+ */
+export const useDemoAvailable = (): boolean => {
+  const offered = showDevAccount();
+  const availability = useQuery({
+    queryKey: ["demo-availability"],
+    queryFn: getDemoAvailability,
+    enabled: offered,
+    retry: false,
+  });
+
+  return offered && availability.data?.available === true;
+};
+
 export const showDevAccount = (): boolean =>
   process.env.NODE_ENV === "development";
