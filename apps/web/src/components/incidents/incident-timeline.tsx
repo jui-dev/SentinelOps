@@ -15,6 +15,7 @@ import { ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { roleMeta } from "@/components/roles/role-meta";
 import { cx } from "@/components/ui/cx";
+import { NoMatches } from "@/components/ui/empty-state";
 import { FilterGroup, FilterOption } from "@/components/ui/filter-bar";
 import { TextArea } from "@/components/ui/field";
 import { SubmitHint, useRequiredFields } from "@/components/ui/required";
@@ -632,11 +633,13 @@ export function IncidentTimeline({
     content = <Spinner label="Loading timeline…" />;
   } else if (shown.length === 0) {
     content = (
-      <p className="py-6 text-center text-sm text-fg-muted">
-        {show === "updates" && all.length > 0
-          ? "No updates posted yet."
-          : "No activity recorded yet."}
-      </p>
+      <div className="px-4 py-3">
+        <NoMatches title={show === "updates" && all.length > 0 ? "No updates posted yet" : "No activity recorded yet"}>
+          {show === "updates" && all.length > 0
+            ? "Updates people post appear here; Everything shows the rest of the story."
+            : "What happens on this incident appears here as it happens."}
+        </NoMatches>
+      </div>
     );
   } else {
     const days = byDay(shown);

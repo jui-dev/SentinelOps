@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/filter-bar";
 import { DialogActions, FormDialog } from "@/components/ui/dialog";
 import { FormExample } from "@/components/ui/form-example";
-import { EmptyState } from "@/components/ui/empty-state";
+import { EmptyState, NoMatches } from "@/components/ui/empty-state";
 import { Field } from "@/components/ui/field";
 import { PageBody, PageHeader } from "@/components/ui/page";
 import { Select } from "@/components/ui/select";
@@ -507,23 +507,31 @@ function ServiceList({
         <TBody>
           {shown.length === 0 ? (
             <TR>
-              <TD
-                colSpan={withStatus ? 5 : 4}
-                className="py-6 text-center text-sm text-fg-muted"
-              >
-                {filter === "archived" && q === ""
-                  ? "No service is archived."
-                  : "No services match."}{" "}
-                <Button icon={X}
-                  variant="quiet"
-                  size="sm"
-                  onClick={() => {
-                    setQuery("");
-                    setFilter("all");
-                  }}
+              <TD colSpan={withStatus ? 5 : 4}>
+                <NoMatches
+                  title={
+                    filter === "archived" && q === ""
+                      ? "No service is archived"
+                      : "No services match"
+                  }
+                  action={
+                    <Button
+                      icon={X}
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => {
+                        setQuery("");
+                        setFilter("all");
+                      }}
+                    >
+                      Show every service
+                    </Button>
+                  }
                 >
-                  Show every service
-                </Button>
+                  {filter === "archived" && q === ""
+                    ? "Archived services keep their incidents, and appear here."
+                    : "No service fits this search and filter together."}
+                </NoMatches>
               </TD>
             </TR>
           ) : (

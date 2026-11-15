@@ -16,6 +16,7 @@ import { ROLE_META, ROLE_ORDER } from "@/components/roles/role-meta";
 import { ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { cx } from "@/components/ui/cx";
+import { NoMatches } from "@/components/ui/empty-state";
 import {
   FilterBar,
   FilterDivider,
@@ -522,18 +523,25 @@ export function MembershipList() {
         <TBody>
           {shown.length === 0 ? (
             <TR>
-              <TD colSpan={columns} className="py-6 text-center text-sm text-fg-muted">
-                No members match.{" "}
-                <Button icon={X}
-                  variant="quiet"
-                  size="sm"
-                  onClick={() => {
-                    setQuery("");
-                    setFilter("all");
-                  }}
+              <TD colSpan={columns}>
+                <NoMatches
+                  title="No members match"
+                  action={
+                    <Button
+                      icon={X}
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => {
+                        setQuery("");
+                        setFilter("all");
+                      }}
+                    >
+                      Show everyone
+                    </Button>
+                  }
                 >
-                  Show everyone
-                </Button>
+                  Nobody fits this search and filter together.
+                </NoMatches>
               </TD>
             </TR>
           ) : showingRemoved ? (

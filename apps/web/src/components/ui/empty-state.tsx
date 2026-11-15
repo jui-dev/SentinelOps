@@ -79,3 +79,30 @@ export function EmptyNote({
     </div>
   );
 }
+
+/**
+ * A filtered list that matched nothing, inside the list's own frame (a
+ * table's one cell, a timeline's body): a title, what it means in a line,
+ * and the way back to everything. Laid out as `EmptyNote` is, without a
+ * frame of its own, since the list already draws one.
+ */
+export function NoMatches({
+  title,
+  children,
+  action,
+}: {
+  title: ReactNode;
+  children?: ReactNode;
+  /** The way back: Show everyone, Show every service. */
+  action?: ReactNode;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-6 gap-y-3 py-2 text-left">
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <p className="text-sm font-medium text-fg">{title}</p>
+        {children && <p className="text-sm text-fg-subtle">{children}</p>}
+      </div>
+      {action}
+    </div>
+  );
+}

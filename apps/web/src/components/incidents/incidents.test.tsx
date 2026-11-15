@@ -1549,7 +1549,7 @@ describe("incidents", () => {
         inOrganization(<IncidentDetail />);
 
         const composer = await screen.findByLabelText("Post an update");
-        expect(await screen.findByText("No activity recorded yet.")).toBeDefined();
+        expect(await screen.findByText("No activity recorded yet")).toBeDefined();
         expect(
           (screen.getByRole("button", { name: "Post update" }) as HTMLButtonElement).disabled,
         ).toBe(true);
@@ -1994,7 +1994,7 @@ describe("incidents", () => {
 
         inOrganization(<IncidentDetail />);
 
-        expect(await screen.findByText("No activity recorded yet.")).toBeDefined();
+        expect(await screen.findByText("No activity recorded yet")).toBeDefined();
         await user.click(await screen.findByRole("button", { name: "Start investigating" }));
 
         const pill = await screen.findByRole("button", { name: "1 new update" });
