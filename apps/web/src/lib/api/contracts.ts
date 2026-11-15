@@ -1395,3 +1395,35 @@ export interface ValidationErrorDetail {
   field: string;
   message: string;
 }
+
+// ── Demo workspace (development only) ──────────────────────────────────────
+
+/** A part of a demo organization (apps/api/src/dev/demo-workspace). */
+export type DemoPart =
+  | "accounts"
+  | "teams"
+  | "services"
+  | "knownIssues"
+  | "history"
+  | "live"
+  | "analyses"
+  | "activity";
+
+export interface DemoPartResponse {
+  id: DemoPart;
+  /** Needed for SentinelOps to work; removed only with all demo data. */
+  required: boolean;
+  needs: DemoPart[];
+  count: number;
+  loaded: boolean;
+  generatable: boolean;
+}
+
+/** `GET /organizations/:id/demo`: a demo organization's parts. */
+export interface DemoWorkspaceResponse {
+  parts: DemoPartResponse[];
+  complete: boolean;
+  lastResetAt: string | null;
+  lastResetBy: { id: string; name: string } | null;
+  historyEndsAt: string | null;
+}

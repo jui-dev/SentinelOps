@@ -109,6 +109,9 @@ export const queryKeys = {
   activityEntry: (organizationId: string, entryId: string) =>
     ["organization", organizationId, "activity", "entry", entryId] as const,
   /** Every known issue in the organization; each service's list sits under it. */
+  /** A demo organization's parts: development only. */
+  demoWorkspace: (organizationId: string) =>
+    ["organization", organizationId, "demo"] as const,
   knownIssues: (organizationId: string) =>
     ["organization", organizationId, "known-issues"] as const,
   incidents: (organizationId: string) =>

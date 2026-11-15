@@ -6,6 +6,8 @@ import {
 } from "./client";
 import type {
   ActivityEntryDetailResponse,
+  DemoPart,
+  DemoWorkspaceResponse,
   ActivityFilters,
   ActivityPageResponse,
   AuthenticatedResponse,
@@ -718,4 +720,38 @@ export const lookupInvitation = (token: string, signal?: AbortSignal) =>
     method: "POST",
     body: { token },
     signal,
+  });
+
+// ── Demo workspace (development only) ──────────────────────────────────────
+
+const demoPath = (organizationId: string) =>
+  `${organizationPath(organizationId)}/demo`;
+
+export const getDemoWorkspace = (organizationId: string) =>
+  authenticatedRequest<DemoWorkspaceResponse>(demoPath(organizationId));
+
+/** Generates a part, and first whatever it needs. */
+export const generateDemoPart = (organizationId: string, part: DemoPart) =>
+  authenticatedRequest<DemoWorkspaceResponse>(
+    `${demoPath(organizationId)}/parts/${part}`,
+    { method: "POST" },
+  );
+
+/** Removes a part, and before it whatever needs it. */
+export const removeDemoPart = (organizationId: string, part: DemoPart) =>
+  authenticatedRequest<DemoWorkspaceResponse>(
+    `${demoPath(organizationId)}/parts/${part}`,
+    { method: "DELETE" },
+  );
+
+/** Back to the full demo, its history ending today. */
+export const resetDemo = (organizationId: string) =>
+  authenticatedRequest<DemoWorkspaceResponse>(`${demoPath(organizationId)}/reset`, {
+    method: "POST",
+  });
+
+/** Every part but the organization and its demo accounts. */
+export const removeDemoData = (organizationId: string) =>
+  authenticatedRequest<DemoWorkspaceResponse>(demoPath(organizationId), {
+    method: "DELETE",
   });
