@@ -97,15 +97,26 @@
   --color-sunken: light-dark(#f1f4f7, #0d1018);
   --color-field: light-dark(#ffffff, #0d1018);
   /*
-   * A section of a page (OverviewPanel, DetailCard): its body, its header
-   * band, and its edge. In light a pale sea glass, so a section reads as a
-   * coloured place on the page and what sits inside it — a table, a chart,
-   * a list — stays white on it. In dark each is the role it always was:
-   * surface, thead, line.
+   * A section of a page (OverviewPanel, DetailCard, the Response flow).
+   *
+   * In light a ground of sea glass that falls from deeper at the header to
+   * pale at the foot (`section-top` → `section` → `section-bottom`, drawn by
+   * the `bg-section-ground` utility). The header is part of that ground —
+   * no band of its own — parted from the body by a faint hairline
+   * (`section-divider`), and the section has no edge at all: a soft shadow
+   * (`shadow-card`) lifts it off the page. What sits inside it — a table, a
+   * chart, a list — stays white on it.
+   *
+   * In dark each is the role it always was: a flat surface, a thead band,
+   * and line edges.
    */
+  --color-section-top: light-dark(#dcebeb, #191d27);
   --color-section: light-dark(#e9f2f2, #191d27);
-  --color-section-head: light-dark(#dbeaea, #1e242e);
-  --color-section-line: light-dark(#c5d9da, #303540);
+  --color-section-bottom: light-dark(#f1f7f7, #191d27);
+  --color-section-head: light-dark(transparent, #1e242e);
+  --color-section-line: light-dark(transparent, #303540);
+  --color-section-line-strong: light-dark(transparent, #3a4252);
+  --color-section-divider: light-dark(rgb(21 97 109 / 0.1), #303540);
   --color-hover: light-dark(#eff3f7, #212631);
 
   /* Text */
@@ -163,7 +174,7 @@
   --color-success-subtle: light-dark(#edf8f2, #0e2419);
   --color-success-line: light-dark(#b5dec8, #1e4d35);
   --color-success-solid: light-dark(#1a8a55, #3fb57c);
-  --color-info-text: light-dark(#11769a, #5cc8e0);
+  --color-info-text: light-dark(#0c6aa3, #5cc8e0);
   --color-info-subtle: light-dark(#eaf6f9, #0b2229);
   --color-info-line: light-dark(#b5dde7, #1b4a56);
   --color-info-solid: light-dark(#0e7f9c, #3fb0cb);
@@ -472,8 +483,8 @@
     0 0 0 1px light-dark(rgb(14 18 25 / 0.06), rgb(255 255 255 / 0.04));
   --shadow-control: inset 0 -1px 0 light-dark(rgb(14 18 25 / 0.07), rgb(0 0 0 / 0.35));
   --shadow-card:
-    0 1px 2px light-dark(rgb(15 29 51 / 0.04), transparent),
-    0 4px 12px -4px light-dark(rgb(15 29 51 / 0.07), transparent);
+    0 1px 2px light-dark(rgb(15 29 51 / 0.05), transparent),
+    0 6px 18px -6px light-dark(rgb(15 29 51 / 0.12), transparent);
 
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
   --duration-fast: 120ms;
@@ -574,6 +585,21 @@
   --color-trend-line: var(--color-ink-trend-line);
   --color-pressure-bar: var(--color-ink-pressure-bar);
   --color-pressure-track: var(--color-ink-pressure-track);
+}
+
+/*
+ * A section's ground (see the section tokens): a fall from deeper at the
+ * header to pale at the foot in light; in dark all three stops are the
+ * surface, so it is flat, as it always was.
+ */
+@utility bg-section-ground {
+  background-color: var(--color-section);
+  background-image: linear-gradient(
+    180deg,
+    var(--color-section-top) 0%,
+    var(--color-section) 45%,
+    var(--color-section-bottom) 100%
+  );
 }
 
 /*

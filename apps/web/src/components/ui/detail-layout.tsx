@@ -186,11 +186,11 @@ export function DetailCard({
       id={id}
       aria-labelledby={`${id}-title`}
       className={cx(
-        "flex min-w-0 flex-col overflow-hidden rounded-lg border border-section-line bg-section shadow-card",
+        "flex min-w-0 flex-col overflow-hidden rounded-lg border border-section-line bg-section-ground shadow-card",
         className,
       )}
     >
-      <div className="flex min-h-13 flex-wrap items-center gap-x-4 gap-y-1 border-b border-section-line bg-section-head px-4 py-2 sm:px-5">
+      <div className="flex min-h-13 flex-wrap items-center gap-x-4 gap-y-1 border-b border-section-divider bg-section-head px-4 py-2 sm:px-5">
         <h2 id={`${id}-title`} className="text-base font-semibold text-fg">
           {title}
           {meta !== undefined && (

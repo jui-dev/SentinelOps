@@ -72,10 +72,13 @@ const WORKSPACE = [
 ];
 
 each(["fg", "fg-muted", "fg-subtle"], WORKSPACE, TEXT);
-// A section's body and header band. The band holds the section's name, its
-// description and its own tinted label; the body holds everything once
-// drawn on the surface inside a section — tone words and marks included.
-const SECTION = ["section", "section-head"];
+// A section's ground, at every stop of its fall (`bg-section-ground`): its
+// header — name, description, tinted label — sits on the top of it, and the
+// body holds everything once drawn on the surface inside a section, tone
+// words and marks included. In light the header has no band of its own, so
+// the ground is what it reads on; in dark its band is the thead, checked
+// with the workspace.
+const SECTION = ["section-top", "section", "section-bottom"];
 each(["fg", "fg-muted", "fg-subtle", "accent-text"], SECTION, TEXT);
 each(
   [
@@ -87,12 +90,12 @@ each(
     "status-investigating-text",
     "status-resolved-text",
   ],
-  ["section"],
+  SECTION,
   TEXT,
 );
 each(
   ["signal-critical", "signal-high", "signal-caution", "signal-advisory", "signal-nominal"],
-  ["section"],
+  SECTION,
   UI,
 );
 // A summary band's ground, and the bars docked over the page.
@@ -565,7 +568,9 @@ describe.each<Theme>(["light", "dark"])("the section icons in %s", (theme) => {
   );
 
   it.each(SECTION_FAMILIES)("keeps a %s icon legible on its tile", (family) => {
-    const head = colour("section-head", theme);
+    // The header's ground: the top of the section's fall in light, where the
+    // header has no band; its thead band in dark.
+    const head = colour(theme === "light" ? "section-top" : "thead", theme);
     const tile =
       theme === "light"
         ? mix("#ffffff", 0.8, head)

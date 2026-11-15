@@ -912,11 +912,11 @@ export function IncidentFlow({
     <section
       aria-labelledby="incident-flow-title"
       className={cx(
-        "flex min-w-0 flex-col overflow-hidden rounded-lg border border-section-line bg-section shadow-card",
+        "flex min-w-0 flex-col overflow-hidden rounded-lg border border-section-line bg-section-ground shadow-card",
         scope === "teams" ? "flow-teams" : "flow-organization",
       )}
     >
-      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-b border-section-line bg-section-head px-4 py-3 sm:px-5">
+      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-b border-section-divider bg-section-head px-4 py-3 sm:px-5">
         <div className="flex min-w-0 items-start gap-3">
           <SectionIcon icon={ChartNoAxesGantt} family="flow" />
           <div className="flex min-w-0 flex-col gap-0.5">

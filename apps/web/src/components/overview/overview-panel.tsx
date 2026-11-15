@@ -68,9 +68,9 @@ export function SectionIcon({
 export type OverviewPanelTone = "default" | "primary" | "action";
 
 const FRAMES: Record<OverviewPanelTone, { section: string; header: string }> = {
-  default: { section: "border-section-line", header: "border-section-line bg-section-head" },
-  primary: { section: "border-line-strong", header: "border-section-line bg-section-head" },
-  action: { section: "border-section-line", header: "border-section-line bg-section-head" },
+  default: { section: "border-section-line", header: "border-section-divider bg-section-head" },
+  primary: { section: "border-section-line-strong", header: "border-section-divider bg-section-head" },
+  action: { section: "border-section-line", header: "border-section-divider bg-section-head" },
 };
 
 /**
@@ -111,7 +111,7 @@ export function OverviewPanel({
       aria-labelledby={`${id}-title`}
       data-tone={tone}
       className={cx(
-        "overflow-hidden rounded-lg border bg-section shadow-card",
+        "overflow-hidden rounded-lg border bg-section-ground shadow-card",
         frame.section,
       )}
     >
