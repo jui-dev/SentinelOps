@@ -211,7 +211,7 @@ export function RolePage() {
               <span
                 aria-hidden="true"
                 className={cx(
-                  "absolute top-0 left-0 size-3.5 rounded-full border-2 ring-4 ring-rail-top",
+                  "absolute top-0 left-0 size-3.5 rounded-full border-2 ring-4 ring-band-top",
                   meta.tone.line,
                   meta.tone.subtle,
                 )}

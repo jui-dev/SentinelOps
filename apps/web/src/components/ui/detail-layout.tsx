@@ -5,7 +5,7 @@ import { cx } from "./cx";
 
 /**
  * The pieces a detail page — a team's, a member's — is built from: a glance
- * band of tiles on the rail's own ground, and cards that sit level in rows.
+ * band of tiles on the band's ground, and cards that sit level in rows.
  * Shared, so every detail page reads alike.
  */
 
@@ -44,6 +44,21 @@ const NOTE_TONES: Record<GlanceTone, string> = {
   danger: "text-danger-text",
 };
 
+/**
+ * The tile's wash in light (`tint-wash`): the family of its tone. Dark keeps
+ * the tile's own edge, so it is as it was. Whole class strings, so the
+ * stylesheet finds every one of them.
+ */
+const WASHES: Record<GlanceTone, string> = {
+  neutral: "[--family:var(--color-fg-muted)]",
+  accent: "[--family:var(--color-accent)]",
+  info: "[--family:var(--color-info-text)]",
+  warning: "[--family:var(--color-warning-text)]",
+  investigating: "[--family:var(--color-status-investigating-text)]",
+  resolved: "[--family:var(--color-status-resolved-text)]",
+  danger: "[--family:var(--color-wash-active)]",
+};
+
 export function GlanceTile({
   label,
   value,
@@ -63,7 +78,12 @@ export function GlanceTile({
   return (
     // The term and its value are the group's own children, as a <dl> asks;
     // the icon sits in the term, placed at the tile's leading edge.
-    <div className="relative flex min-w-0 flex-col justify-center gap-0.5 rounded-lg border border-line bg-surface py-3.5 pr-4 pl-17">
+    <div
+      className={cx(
+        "tint-wash relative flex min-w-0 flex-col justify-center gap-0.5 rounded-lg border bg-surface py-3.5 pr-4 pl-17 shadow-[0_1px_2px_light-dark(rgb(15_29_51/0.06),transparent)] [--wash-line:var(--color-line)]",
+        WASHES[tone],
+      )}
+    >
       <dt className="text-sm text-fg-muted">
         <span
           aria-hidden="true"
@@ -99,10 +119,11 @@ export function GlanceTile({
  * The band that holds a page's tiles, two or four across.
  *
  * The one rule for a band's ground: what SUMMARISES — a page's figures, an
- * incident's or an analysis's facts — sits on the rail's dark gradient, as
- * this does; what CONTROLS a list — search, filters, a period — sits on the
- * plain surface (ui/filter-bar.tsx). So a reader can tell at a glance which
- * bands are read and which are used.
+ * incident's or an analysis's facts — sits on the band gradient (`band-top`
+ * → `band-bottom`: the rail's own dark ground in dark, a soft mist in light,
+ * where the rail is navy), as this does; what CONTROLS a list — search,
+ * filters, a period — sits on the plain surface (ui/filter-bar.tsx). So a
+ * reader can tell at a glance which bands are read and which are used.
  */
 export function Glance({
   label,
@@ -118,7 +139,7 @@ export function Glance({
     <dl
       aria-label={label}
       className={cx(
-        "grid gap-3 rounded-lg border border-line-subtle bg-linear-to-b from-rail-top to-rail-mid p-3.5",
+        "grid gap-3 rounded-lg border border-line-subtle bg-linear-to-b from-band-top to-band-bottom p-3.5",
         columns === 5
           ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5"
           : columns === 4

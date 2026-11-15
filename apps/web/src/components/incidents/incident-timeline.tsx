@@ -322,7 +322,7 @@ function TimelineEntry({
       <span aria-hidden="true" className="flex justify-center pt-0.5">
         <span
           className={cx(
-            "grid size-5.5 place-items-center rounded-full border border-line bg-rail-mid",
+            "grid size-5.5 place-items-center rounded-full border border-line bg-band-bottom",
             marker?.colour,
           )}
         >
@@ -689,7 +689,7 @@ export function IncidentTimeline({
     <section
       id="timeline"
       aria-labelledby="timeline-title"
-      className="overflow-hidden rounded-lg border border-line-subtle bg-linear-to-b from-rail-top to-rail-mid shadow-[0_16px_40px_rgb(0_0_0/0.28),inset_0_1px_0_rgb(255_255_255/0.03)]"
+      className="overflow-hidden rounded-lg border border-line-subtle bg-linear-to-b from-band-top to-band-bottom shadow-[0_16px_40px_rgb(0_0_0/0.28),inset_0_1px_0_rgb(255_255_255/0.03)]"
     >
       <div
         className={cx(

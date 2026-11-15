@@ -386,7 +386,7 @@ export function YourResponse({
       >
         {active &&
           (pinned ? (
-            <div className="fixed inset-x-0 bottom-0 z-30 border-t border-status-resolved-line bg-rail-top/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgb(0_0_0/0.3)] backdrop-blur">
+            <div className="fixed inset-x-0 bottom-0 z-30 border-t border-status-resolved-line bg-band-top/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgb(0_0_0/0.3)] backdrop-blur">
               <UpdateComposer
                 incident={incident}
                 placeholder="What did you find or change?"

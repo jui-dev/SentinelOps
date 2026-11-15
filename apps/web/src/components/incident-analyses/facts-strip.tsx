@@ -106,7 +106,7 @@ export function FactsStrip({
   return (
     <section
       aria-labelledby={headingId}
-      className="flex flex-col gap-3 rounded-lg border border-line-subtle bg-linear-to-b from-rail-top to-rail-mid p-3 sm:p-3.5"
+      className="flex flex-col gap-3 rounded-lg border border-line-subtle bg-linear-to-b from-band-top to-band-bottom p-3 sm:p-3.5"
     >
       <h2 id={headingId} className="label-caps px-1 pt-1 text-fg-subtle">
         What the record says

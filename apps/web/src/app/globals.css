@@ -77,6 +77,16 @@
   /* A count beside an item: a quiet fill on the rail. */
   --color-rail-badge: light-dark(#9cc2ea, #121f2e);
   --color-rail-badge-fg: light-dark(#0f1d33, #9cc2ea);
+  /*
+   * A band that summarises — a page's tiles, an incident's facts — and the
+   * bars docked over the page. In dark, the rail's own ground (rail-top →
+   * rail-mid), as it always was; in light a soft mist, since the rail there
+   * is navy and a band of figures should stay calm.
+   */
+  --color-band-top: light-dark(#e6ecf5, #04060d);
+  --color-band-bottom: light-dark(#edf1f7, #090d17);
+  /* Active incidents' wash, in light: rose, calmer than the severity's own. */
+  --color-wash-active: light-dark(#a8364f, #a8364f);
   /* An accent-tinted control's hover, in the workspace. */
   --color-selected: light-dark(#ccddee, #1d3557);
 
@@ -548,15 +558,52 @@
  * are the whole of it, and the contrast test mixes them exactly as the
  * browser does, in OKLab, to hold the card's text to 4.5:1 and its icon to
  * 3:1.
+ *
+ * In light every summary tile also takes a wash of its family (`tint-wash`,
+ * below), so a band of them has colour without being loud, and the icon's
+ * tile is white on it. A card may wash in another family than its icon's
+ * (`--wash-family`): active incidents wash in rose whatever their severity,
+ * so the card is calm while its icon still says how bad things are.
  */
 @utility tint-family {
+  --wash-line: color-mix(in oklab, var(--family) 14%, var(--color-line-subtle));
   background-color: color-mix(in oklab, var(--family) 3%, var(--color-surface));
-  border-color: color-mix(in oklab, var(--family) 14%, var(--color-line-subtle));
+  border-color: light-dark(
+    color-mix(in oklab, var(--wash-family, var(--family)) 22%, var(--color-line-subtle)),
+    var(--wash-line)
+  );
 }
 
 @utility tint-family-tile {
-  background-color: color-mix(in oklab, var(--family) 12%, transparent);
+  background-color: light-dark(
+    rgb(255 255 255 / 0.8),
+    color-mix(in oklab, var(--family) 12%, transparent)
+  );
   color: var(--family);
+}
+
+/*
+ * A summary tile's wash, in light only: a soft diagonal of its family over
+ * white, edged a little stronger. In dark the gradient is transparent and
+ * the edge is the tile's own (`--wash-line`, else line-subtle), so dark is
+ * as it was.
+ */
+@utility tint-wash {
+  background-image: linear-gradient(
+    in oklab 135deg,
+    light-dark(
+      color-mix(in oklab, var(--wash-family, var(--family)) 4%, #ffffff),
+      transparent
+    ),
+    light-dark(
+      color-mix(in oklab, var(--wash-family, var(--family)) 12%, #ffffff),
+      transparent
+    )
+  );
+  border-color: light-dark(
+    color-mix(in oklab, var(--wash-family, var(--family)) 22%, var(--color-line-subtle)),
+    var(--wash-line, var(--color-line-subtle))
+  );
 }
 
 /*

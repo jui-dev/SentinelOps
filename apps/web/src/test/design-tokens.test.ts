@@ -72,6 +72,8 @@ const WORKSPACE = [
 ];
 
 each(["fg", "fg-muted", "fg-subtle"], WORKSPACE, TEXT);
+// A summary band's ground, and the bars docked over the page.
+each(["fg", "fg-muted", "fg-subtle"], ["band-top", "band-bottom"], TEXT);
 // The rail's own text (the `rail-region` utility binds the workspace roles to
 // it there), on every stop of its gradient and on the drawer's chrome.
 each(["rail-fg", "rail-fg-muted", "rail-fg-subtle"], [...RAIL, "chrome"], TEXT);
@@ -465,6 +467,52 @@ describe.each<Theme>(["light", "dark"])("the metric cards in %s", (theme) => {
     }
     expect(
       contrast(colour(family, theme), disc_),
+      `the ${family} icon on its tile`,
+    ).toBeGreaterThanOrEqual(UI);
+  });
+});
+
+/**
+ * The summary tiles' wash in light (`tint-wash`): a diagonal of the family
+ * over white, from a little to more. Its stronger end is what text must
+ * hold on, and the icon sits on a near-white tile on it.
+ */
+describe("the summary tiles' wash in light", () => {
+  const WASHED = [
+    "wash-active",
+    "signal-critical",
+    "signal-high",
+    "signal-caution",
+    "signal-advisory",
+    "signal-nominal",
+    "fg-muted",
+    "accent",
+    "info-text",
+    "warning-text",
+    "status-investigating-text",
+    "status-resolved-text",
+    "service-mark",
+  ];
+  const strongest = css.match(
+    /@utility tint-wash \{[\s\S]*?var\(--family\)\) (\d+)%, #ffffff\),\s*transparent\s*\)\s*\)/,
+  );
+
+  it("mixes as the stylesheet says", () => {
+    expect(strongest?.[1]).toBeDefined();
+  });
+
+  it.each(WASHED)("keeps a %s tile's text and icon legible", (family) => {
+    const ground = mix(colour(family, "light"), Number(strongest![1]) / 100, "#ffffff");
+    const tile = mix("#ffffff", 0.8, ground);
+
+    for (const text of ["fg", "fg-muted", "fg-subtle"]) {
+      expect(
+        contrast(colour(text, "light"), ground),
+        `${text} on a ${family} wash`,
+      ).toBeGreaterThanOrEqual(TEXT);
+    }
+    expect(
+      contrast(colour(family, "light"), tile),
       `the ${family} icon on its tile`,
     ).toBeGreaterThanOrEqual(UI);
   });

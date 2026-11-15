@@ -39,7 +39,7 @@ export const peopleCount = (count: number) =>
  * — cards, the map's cells — stands out from the page around it.
  */
 export const PANEL =
-  "flex flex-col rounded-lg border border-line-subtle bg-linear-to-b from-rail-top to-rail-mid p-5 sm:p-6";
+  "flex flex-col rounded-lg border border-line-subtle bg-linear-to-b from-band-top to-band-bottom p-5 sm:p-6";
 
 /** A section's heading, ruled beneath, with a quieter note at its end. */
 export function SectionHeading({
@@ -160,7 +160,7 @@ function StepLine() {
               <span
                 aria-hidden="true"
                 className={cx(
-                  "absolute top-0 left-0 size-3 rounded-full ring-4 ring-rail-top",
+                  "absolute top-0 left-0 size-3 rounded-full ring-4 ring-band-top",
                   ROLE_META[role].tone.subtle,
                   "border-2",
                   ROLE_META[role].tone.line,

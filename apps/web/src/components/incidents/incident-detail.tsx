@@ -330,7 +330,7 @@ function IncidentFacts({ incident }: { incident: IncidentDetailResponse }) {
   return (
     <dl
       aria-label="Incident details"
-      className="grid gap-2 rounded-lg border border-line-subtle bg-linear-to-b from-rail-top to-rail-mid p-2.5 sm:grid-cols-3 sm:gap-3 sm:p-3.5"
+      className="grid gap-2 rounded-lg border border-line-subtle bg-linear-to-b from-band-top to-band-bottom p-2.5 sm:grid-cols-3 sm:gap-3 sm:p-3.5"
     >
       <FactCard
         icon={Server}

@@ -35,10 +35,11 @@ import { SUMMARY_DAYS } from "./use-current-operations";
  *   responders active  the lifecycle's investigating blue
  *   resolved           the lifecycle's resolved teal
  *
- * The colour lives in the icon's tile; the cards themselves are neutral, so
- * the row reads as one calm summary. Only the incidents card, while
- * anything is active, carries a faint trace of its severity in its frame —
- * the one card that counts something wrong.
+ * The colour lives in the icon's tile; in dark the cards themselves are
+ * neutral, so the row reads as one calm summary, and in light each takes a
+ * soft wash of its family. Only the incidents card, while anything is
+ * active, carries its trace in its frame — the one card that counts
+ * something wrong: its severity in dark, rose in light.
  *
  * A figure of nought takes no colour: there is nothing for it to signal.
  * The one exception is nothing active, which is itself a state — all clear,
@@ -99,12 +100,21 @@ function SeverityMix({
   );
 }
 
-/** The card's frame: neutral, with room for the icon's tile. */
+/**
+ * The card's frame, with room for the icon's tile. In light it takes a wash
+ * of its family (`tint-wash`); its edge comes from there, in both themes.
+ */
 const CARD =
-  "relative flex min-h-[5.75rem] flex-col justify-center gap-0.5 rounded-lg border py-3.5 pr-4 pl-16";
+  "tint-wash relative flex min-h-[5.75rem] flex-col justify-center gap-0.5 rounded-lg border py-3.5 pr-4 pl-16 shadow-[0_1px_2px_light-dark(rgb(15_29_51/0.06),transparent)]";
 
-/** The frame of a card that carries no trace of its family. */
-const NEUTRAL_FRAME = "border-line-subtle bg-surface";
+/** The ground of a card that carries no trace of its family. */
+const NEUTRAL_FRAME = "bg-surface";
+
+/**
+ * The card counting something wrong: a trace of its severity in dark; in
+ * light, a rose wash, whatever the severity — its icon still says that.
+ */
+const TRACE_FRAME = "tint-family [--wash-family:var(--color-wash-active)]";
 
 /** The icon's tile: a compact square marker in the card's family. */
 const TILE =
@@ -144,7 +154,7 @@ function Figure({
       data-trace={trace || undefined}
       className={cx(
         CARD,
-        trace ? "tint-family" : NEUTRAL_FRAME,
+        trace ? TRACE_FRAME : NEUTRAL_FRAME,
         FAMILIES[family],
       )}
     >
@@ -178,7 +188,7 @@ const LOADING: ReadonlyArray<{ label: string; Icon: LucideIcon }> = [
  * pages hold theirs, so the row reads as one summary.
  */
 const ROW =
-  "grid gap-3 rounded-lg border border-line-subtle bg-linear-to-b from-rail-top to-rail-mid p-3 sm:grid-cols-2 sm:p-3.5 xl:grid-cols-4";
+  "grid gap-3 rounded-lg border border-line-subtle bg-linear-to-b from-band-top to-band-bottom p-3 sm:grid-cols-2 sm:p-3.5 xl:grid-cols-4";
 
 /**
  * The row, once the summary has arrived.

@@ -153,7 +153,7 @@ function PartTabs({
     <div
       role="group"
       aria-label="Your part"
-      className="scrollbar-thin flex gap-2 overflow-x-auto rounded-lg border border-line-subtle bg-linear-to-b from-rail-top to-rail-mid p-2.5 sm:flex-wrap sm:gap-3 sm:overflow-visible sm:p-4"
+      className="scrollbar-thin flex gap-2 overflow-x-auto rounded-lg border border-line-subtle bg-linear-to-b from-band-top to-band-bottom p-2.5 sm:flex-wrap sm:gap-3 sm:overflow-visible sm:p-4"
     >
       {VIEWS.map((each) => {
         const pressed = view === each.value;

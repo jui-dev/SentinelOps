@@ -1358,11 +1358,15 @@ describe("the operations overview", () => {
       // are neutral cards, their colour in the icon's tile alone.
       expect(card?.getAttribute("data-trace")).toBe("true");
       expect(card?.className).toMatch(/(?:^|\s)tint-family(?:\s|$)/);
+      // In light it washes in rose, whatever the severity.
+      expect(card?.className).toContain("[--wash-family:var(--color-wash-active)]");
       const traced = row.querySelectorAll("[data-trace]");
       expect(traced).toHaveLength(1);
       for (const other of row.querySelectorAll("[data-family]:not([data-trace])")) {
         expect(other.className).not.toMatch(/(?:^|\s)tint-family(?:\s|$)/);
-        expect(other.className).toContain("border-line-subtle");
+        // A wash of its own family in light; its plain edge in dark.
+        expect(other.className).toMatch(/(?:^|\s)tint-wash(?:\s|$)/);
+        expect(other.className).toContain("bg-surface");
       }
     });
 
