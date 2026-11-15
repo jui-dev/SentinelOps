@@ -623,6 +623,26 @@ describe.each<Theme>(["light", "dark"])("the section icons in %s", (theme) => {
  * The incident's header, washed in its status (incident-detail.tsx): the
  * status's own colour for its key line, on the deeper end of that wash.
  */
+/**
+ * The demo workspace's group bands (demo-workspace.tsx): their light ink on
+ * either end of each band, in both themes.
+ */
+describe("the demo workspace's group bands", () => {
+  const BANDS = [
+    "group-required-from",
+    "group-required-to",
+    "group-optional-from",
+    "group-optional-to",
+  ];
+
+  it.each(BANDS)("keeps the band's text legible on %s", (band) => {
+    for (const theme of ["light", "dark"] as const) {
+      expect(contrast(colour("group-fg", theme), colour(band, theme))).toBeGreaterThanOrEqual(TEXT);
+      expect(contrast(colour("group-fg-muted", theme), colour(band, theme))).toBeGreaterThanOrEqual(TEXT);
+    }
+  });
+});
+
 describe("the incident header's status washes", () => {
   const PAIRS: Array<[status: string, wash: string]> = [
     ["status-declared-text", "rose"],

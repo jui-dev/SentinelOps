@@ -278,19 +278,20 @@ function PartGroup({
 }) {
   return (
     <section aria-label={title} className={cx(INSTRUMENT, "overflow-hidden")}>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line-subtle px-4 py-3">
-        <span
-          className={cx(
-            "rounded-full px-2 py-0.5 text-2xs font-bold tracking-[0.05em] uppercase",
-            tag === "Required"
-              ? "bg-status-resolved-subtle text-status-resolved-text"
-              : "border border-line text-fg-muted",
-          )}
-        >
+      {/* A band in its own colour, so each group's head stands out. */}
+      <div
+        className={cx(
+          "flex flex-wrap items-center gap-x-3 gap-y-1 bg-linear-to-r px-4 py-3",
+          tag === "Required"
+            ? "from-group-required-from to-group-required-to"
+            : "from-group-optional-from to-group-optional-to",
+        )}
+      >
+        <span className="rounded-full border border-group-fg/40 bg-group-fg/15 px-2 py-0.5 text-2xs font-bold tracking-[0.05em] text-group-fg uppercase">
           {tag}
         </span>
-        <h3 className="text-sm font-semibold text-fg">{title}</h3>
-        <p className="text-sm text-fg-muted">{text}</p>
+        <h3 className="text-sm font-semibold text-group-fg">{title}</h3>
+        <p className="text-sm text-group-fg-muted">{text}</p>
       </div>
       <ul className="divide-y divide-line-subtle">
         {parts.map((part) => (
@@ -577,7 +578,11 @@ export function DemoWorkspace() {
                 </p>
               </div>
             )}
-            <dl aria-label="The demo at a glance" className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
+            {/* On an inner panel of their own: white in light, the darkest ground in dark. */}
+            <dl
+              aria-label="The demo at a glance"
+              className={cx(INSTRUMENT, "grid gap-2.5 p-3 sm:grid-cols-2 xl:grid-cols-4")}
+            >
               <Tile
                 label="Status"
                 value={state!.title}

@@ -165,6 +165,17 @@
    * its rows' hover, in light only — in dark those rows have never had one.
    */
   --color-list-head: light-dark(#1d3557, #0d1018);
+  /*
+   * The demo workspace's two groups of parts, each headed by a band of its
+   * own: the required parts in deep teal, the optional ones in the tables'
+   * navy. Their text is the band's own light ink, in both themes.
+   */
+  --color-group-required-from: light-dark(#0f5560, #12383e);
+  --color-group-required-to: light-dark(#146672, #194a50);
+  --color-group-optional-from: light-dark(#1d3557, #182339);
+  --color-group-optional-to: light-dark(#30507d, #22304a);
+  --color-group-fg: light-dark(#f4f8fb, #eef2f6);
+  --color-group-fg-muted: light-dark(#d3e1ec, #c2cbd6);
   --color-list-head-fg: light-dark(#f1f5fa, #e6e8ec);
   --color-list-head-muted: light-dark(#b9c7da, #a6acb6);
   --color-list-hover: light-dark(#edf2f9, transparent);
