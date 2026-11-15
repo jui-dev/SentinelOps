@@ -1,12 +1,14 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Check, ChevronRight, IdCard, Network } from "lucide-react";
+import { Check, ChevronRight, Grid3x3, IdCard, Network, Split, Users } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { initialsOf } from "@/components/app/shell-utilities";
 import { useMemberships } from "@/components/organizations/membership-list";
+import { INSTRUMENT } from "@/components/overview/analytical-view-header";
+import { OverviewPanel } from "@/components/overview/overview-panel";
 import { useOrganization } from "@/components/organizations/organization-scope";
 import { ErrorAlert } from "@/components/ui/alert";
 import { cx } from "@/components/ui/cx";
@@ -38,6 +40,10 @@ export const peopleCount = (count: number) =>
  * A section set on the deepest ground, as the rail is: what is drawn on it
  * — cards, the map's cells — stands out from the page around it.
  */
+/** A section's label pill, as each Overview section's label is. */
+const LABEL =
+  "numeric inline-flex items-center rounded-full border border-line bg-sunken px-2 py-0.5 text-xs font-medium text-fg-muted";
+
 export const PANEL =
   "flex flex-col rounded-lg border border-line-subtle bg-linear-to-b from-band-top to-band-bottom p-5 sm:p-6";
 
@@ -452,121 +458,136 @@ export function RolesView() {
 
         {roles.isError && <ErrorAlert error={roles.error} />}
 
-        <section aria-labelledby="roles-h" className={cx(PANEL, "gap-5")}>
-          <SectionHeading
-            id="roles-h"
-            title="The four roles"
-            aside={
-              total === undefined
-                ? "In the order an incident needs them"
-                : `In the order an incident needs them · ${peopleCount(total)}`
-            }
-          />
-          <StepLine />
-          {!roles.data && !roles.isError ? (
-            <Spinner label="Loading roles…" />
-          ) : (
-            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-              {FLOW_ORDER.map((role) => (
-                  <RoleCard
-                    key={role}
-                    role={role}
-                    count={counts.get(role)?.memberCount ?? 0}
-                    people={
-                      memberships.data?.filter((member) => member.role === role) ??
-                      []
-                    }
-                    you={role === yours}
-                  />
-                ))}
+        {/*
+         * Three sections in the Overview's frame (OverviewPanel): a header
+         * with its icon, label and description, the content on its own
+         * panel — the darkest ground in dark, white in light (INSTRUMENT) —
+         * and a note beneath, as Operational activity is.
+         */}
+        <OverviewPanel
+          id="roles"
+          title="The four roles"
+          icon={Users}
+          family="decision"
+          label={total !== undefined && <span className={LABEL}>{peopleCount(total)}</span>}
+          description="In the order an incident needs them."
+        >
+          <div className="flex flex-col gap-3">
+            <div className={cx(INSTRUMENT, "flex flex-col gap-5 p-4 sm:p-5")}>
+              <StepLine />
+              {!roles.data && !roles.isError ? (
+                <Spinner label="Loading roles…" />
+              ) : (
+                <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+                  {FLOW_ORDER.map((role) => (
+                    <RoleCard
+                      key={role}
+                      role={role}
+                      count={counts.get(role)?.memberCount ?? 0}
+                      people={
+                        memberships.data?.filter((member) => member.role === role) ?? []
+                      }
+                      you={role === yours}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
-          )}
-        </section>
-
-        <section aria-labelledby="map-h" className={cx(PANEL, "gap-4")}>
-          <SectionHeading
-            id="map-h"
-            title="Who does what at each step"
-            aside="Read across for a role, down for a step"
-          />
-          <ResponsibilityMap yours={yours} />
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-fg-muted">
-            <span className="inline-flex items-center gap-2">
-              <span aria-hidden="true" className="size-2.5 rounded-full bg-accent-mark" />
-              Leads this step
-            </span>
-            <span className="inline-flex items-center gap-2">
-              <span aria-hidden="true" className="size-2.5 rounded-full border-2 border-fg-subtle" />
-              Can help
-            </span>
-            <span className="inline-flex items-center gap-2">
-              <span aria-hidden="true" className="h-2.5 w-4 rounded-sm border border-dashed border-line-strong" />
-              Not their job
-            </span>
-            <span className="ml-auto text-fg-subtle">
-              Every job in detail is on each role&apos;s page.
-            </span>
+            <p className="text-sm text-fg-muted">Each role&apos;s page lists everything it can do.</p>
           </div>
-        </section>
+        </OverviewPanel>
 
-        <section aria-labelledby="teams-h" className="flex flex-col gap-5">
-          <SectionHeading
-            id="teams-h"
-            title="Roles and teams answer different questions"
-          />
-          <div className="grid gap-5 md:grid-cols-2">
-            <div className="flex flex-col gap-2.5 rounded-lg border border-line-subtle bg-surface p-6">
-              <span className="flex items-center gap-2 text-2xs font-bold tracking-[0.08em] text-accent-text uppercase">
-                <IdCard aria-hidden="true" className="size-3.5" />
-                Your role
-              </span>
-              <span className="text-lg font-semibold text-fg">What can I do?</span>
-              <p className="text-sm leading-relaxed text-fg-muted">
-                You&apos;re {/^[AEIOU]/.test(yourMeta.label) ? "an" : "a"}{" "}
-                <strong className={cx("font-semibold", yourMeta.tone.text)}>
-                  {yourMeta.label}
-                </strong>
-                , so you can {ROLE_CONTENT[yours]?.youCan ?? ROLE_CONTENT.RESPONDER.youCan}.
-              </p>
+        <OverviewPanel
+          id="map"
+          title="Who does what at each step"
+          icon={Grid3x3}
+          family="flow"
+          label={<span className={LABEL}>5 steps</span>}
+          description="Read across for a role, down for a step."
+        >
+          <div className="flex flex-col gap-3">
+            <div className={cx(INSTRUMENT, "flex flex-col gap-4 p-4 sm:p-5")}>
+              <ResponsibilityMap yours={yours} />
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-fg-muted">
+                <span className="inline-flex items-center gap-2">
+                  <span aria-hidden="true" className="size-2.5 rounded-full bg-accent-mark" />
+                  Leads this step
+                </span>
+                <span className="inline-flex items-center gap-2">
+                  <span aria-hidden="true" className="size-2.5 rounded-full border-2 border-fg-subtle" />
+                  Can help
+                </span>
+                <span className="inline-flex items-center gap-2">
+                  <span aria-hidden="true" className="h-2.5 w-4 rounded-sm border border-dashed border-line-strong" />
+                  Not their job
+                </span>
+              </div>
             </div>
-            <div className="flex flex-col gap-2.5 rounded-lg border border-line-subtle bg-surface p-6">
-              <span className="flex items-center gap-2 text-2xs font-bold tracking-[0.08em] text-accent-text uppercase">
-                <Network aria-hidden="true" className="size-3.5" />
-                Your teams
-              </span>
-              <span className="text-lg font-semibold text-fg">
-                Which incidents?
-              </span>
-              <p className="text-sm leading-relaxed text-fg-muted">
-                {teamNames.length > 0 ? (
-                  <>
-                    You&apos;re on{" "}
-                    <strong className="font-semibold text-fg">
-                      {teamNames.join(", ")}
-                    </strong>
-                    , so you see the incidents on the services{" "}
-                    {teamNames.length === 1 ? "it owns" : "they own"}, plus any
-                    you&apos;re assigned to.
-                  </>
-                ) : yours === "ADMIN" || yours === "INCIDENT_MANAGER" ? (
-                  "You see every incident, whatever team it's on."
-                ) : yours === "REPORTER" ? (
-                  "You see the incidents you declared, whatever team they're on."
-                ) : (
-                  "You're on no team yet, so you see only the incidents you're assigned to."
-                )}
-              </p>
-            </div>
+            <p className="text-sm text-fg-muted">Every job in detail is on each role&apos;s page.</p>
           </div>
-          <p className="text-sm text-fg-subtle">
-            Everyone has exactly one role.{" "}
-            {yours === "ADMIN"
-              ? "Change someone's role from Members."
-              : admins && admins.length > 0
-                ? `To change yours, ask ${admins.join(" or ")} (Admin).`
-                : "To change yours, ask an Admin."}
-          </p>
-        </section>
+        </OverviewPanel>
+
+        <OverviewPanel
+          id="teams"
+          title="Roles and teams answer different questions"
+          icon={Split}
+          family="trend"
+          label={<span className={LABEL}>You</span>}
+          description="Your role decides what you can do; your teams decide which incidents."
+        >
+          <div className="flex flex-col gap-3">
+            <div className={cx(INSTRUMENT, "grid gap-4 p-4 sm:p-5 md:grid-cols-2")}>
+              <div className="flex flex-col gap-2.5 rounded-lg border border-line-subtle bg-surface p-6">
+                <span className="flex items-center gap-2 text-2xs font-bold tracking-[0.08em] text-accent-text uppercase">
+                  <IdCard aria-hidden="true" className="size-3.5" />
+                  Your role
+                </span>
+                <span className="text-lg font-semibold text-fg">What can I do?</span>
+                <p className="text-sm leading-relaxed text-fg-muted">
+                  You&apos;re {/^[AEIOU]/.test(yourMeta.label) ? "an" : "a"}{" "}
+                  <strong className={cx("font-semibold", yourMeta.tone.text)}>
+                    {yourMeta.label}
+                  </strong>
+                  , so you can {ROLE_CONTENT[yours]?.youCan ?? ROLE_CONTENT.RESPONDER.youCan}.
+                </p>
+              </div>
+              <div className="flex flex-col gap-2.5 rounded-lg border border-line-subtle bg-surface p-6">
+                <span className="flex items-center gap-2 text-2xs font-bold tracking-[0.08em] text-accent-text uppercase">
+                  <Network aria-hidden="true" className="size-3.5" />
+                  Your teams
+                </span>
+                <span className="text-lg font-semibold text-fg">Which incidents?</span>
+                <p className="text-sm leading-relaxed text-fg-muted">
+                  {teamNames.length > 0 ? (
+                    <>
+                      You&apos;re on{" "}
+                      <strong className="font-semibold text-fg">
+                        {teamNames.join(", ")}
+                      </strong>
+                      , so you see the incidents on the services{" "}
+                      {teamNames.length === 1 ? "it owns" : "they own"}, plus any
+                      you&apos;re assigned to.
+                    </>
+                  ) : yours === "ADMIN" || yours === "INCIDENT_MANAGER" ? (
+                    "You see every incident, whatever team it's on."
+                  ) : yours === "REPORTER" ? (
+                    "You see the incidents you declared, whatever team they're on."
+                  ) : (
+                    "You're on no team yet, so you see only the incidents you're assigned to."
+                  )}
+                </p>
+              </div>
+            </div>
+            <p className="text-sm text-fg-muted">
+              Everyone has exactly one role.{" "}
+              {yours === "ADMIN"
+                ? "Change someone's role from Members."
+                : admins && admins.length > 0
+                  ? `To change yours, ask ${admins.join(" or ")} (Admin).`
+                  : "To change yours, ask an Admin."}
+            </p>
+          </div>
+        </OverviewPanel>
       </PageBody>
     </>
   );
