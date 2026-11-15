@@ -277,7 +277,7 @@ export function PeriodHistory({
   } else {
     body = (
       <div className="flex flex-col gap-3">
-        <Table label="Incidents in this period" variant="operational"
+        <Table label="Incidents in this period" count={total} variant="operational"
           columns={["time", "severity", "main", { kind: "wide", from: "md" }, { kind: "status", from: "sm" }, "duration", "actions"]}
         >
           <THead>
@@ -338,25 +338,15 @@ export function PeriodHistory({
   }
 
   return (
+    // Named by its table's caption, which says what it lists and how many.
     <section
-      aria-labelledby="incidents-in-period"
+      aria-label="Incidents in this period"
       aria-busy={history.isPlaceholderData}
       className={cx(
         "flex flex-col gap-3 transition-opacity duration-(--duration-fast)",
         history.isPlaceholderData && "opacity-60",
       )}
     >
-      <h2
-        id="incidents-in-period"
-        className="text-base font-semibold text-fg"
-      >
-        Incidents in this period
-        {total !== undefined && (
-          <span className="numeric ml-1.5 font-normal text-fg-subtle">
-            {total}
-          </span>
-        )}
-      </h2>
       {body}
     </section>
   );

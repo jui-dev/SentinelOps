@@ -9,7 +9,6 @@ import { useState } from "react";
 import { Alert, ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { EmptyNote } from "@/components/ui/empty-state";
-import { Section } from "@/components/ui/page";
 import { ListLoading } from "@/components/ui/spinner";
 import { Status } from "@/components/ui/status";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
@@ -181,8 +180,9 @@ export function OpenInvitationList() {
   if (!canRead) return null;
 
   return (
-    <Section title="Open invitations" level={3}>
+    // Named by its table's caption, which says what it lists and how many.
+    <section aria-label="Open invitations">
       <OpenInvitations canManage={canManage} />
-    </Section>
+    </section>
   );
 }
