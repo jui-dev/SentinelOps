@@ -1,8 +1,6 @@
 "use client";
 
-import {
-  Save,
-} from "lucide-react";
+import { Building2, Save } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import type { FormEvent } from "react";
@@ -85,6 +83,7 @@ export function RenameOrganizationForm() {
   return (
     <SettingRow
       title="Organization name"
+      icon={Building2}
       description={
         <p>
           Shown to members across SentinelOps. The URL name,{" "}

@@ -3,6 +3,7 @@
 import { FormerMember } from "@/components/organizations/former-member";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { FilePenLine } from "lucide-react";
 import { useState } from "react";
 
 import {
@@ -18,10 +19,12 @@ import {
 } from "@/components/incidents/incident-queries";
 import { incidentKey } from "@/components/incidents/severity";
 import { useOrganization } from "@/components/organizations/organization-scope";
+import { INSTRUMENT } from "@/components/overview/analytical-view-header";
 import { serviceHref } from "@/components/services/service-scope";
 import { teamHref } from "@/components/teams/team-scope";
 import { ErrorAlert } from "@/components/ui/alert";
 import { cx } from "@/components/ui/cx";
+import { DetailCard } from "@/components/ui/detail-layout";
 import { EmptyState } from "@/components/ui/empty-state";
 import { linkClasses, quietLinkClasses } from "@/components/ui/link";
 import { PageBody, PageHeader } from "@/components/ui/page";
@@ -37,6 +40,7 @@ import { isApiError } from "@/lib/api/errors";
 
 import { AnalysisDocument, sectionsInSentence, SECTION_TITLES } from "./analysis-document";
 import { AnalysisEditor } from "./analysis-editor";
+import { SectionChecklist } from "./analysis-entry";
 import { useAnalysisAccess, useIncidentAnalysis } from "./analysis-queries";
 import { savedProgress } from "./draft-state";
 import type { SectionProgress } from "./draft-state";
@@ -370,16 +374,25 @@ function AnalysisBody({ incident }: { incident: IncidentDetailResponse }) {
         ) : analysis.data === undefined ? (
           <Spinner label="Loading analysis…" />
         ) : analysis.data === null ? (
-          <EmptyState
+          // In the sections' frame, as on the incident's page: what is
+          // missing, the one button that starts it, and the four sections
+          // it will hold.
+          <DetailCard
+            id="no-analysis"
             title="No analysis yet"
+            icon={FilePenLine}
+            family="decision"
+            description={
+              canStart
+                ? `Write up what happened in ${key}, its impact, cause, and lessons — SentinelOps brings the incident's facts and key moments.`
+                : "No analysis has been started for this incident."
+            }
             action={canStart && <StartAnalysis incident={incident} />}
           >
-            <p>
-              {canStart
-                ? `Write up what happened in ${key}, its impact, cause, and lessons — SentinelOps brings the incident's facts and key moments.`
-                : "No analysis has been started for this incident."}
-            </p>
-          </EmptyState>
+            <div className={cx(INSTRUMENT, "overflow-hidden")}>
+              <SectionChecklist analysis={null} writing={canStart} />
+            </div>
+          </DetailCard>
         ) : (
           // Keyed by the analysis: nothing of one analysis's page state
           // carries into another's.

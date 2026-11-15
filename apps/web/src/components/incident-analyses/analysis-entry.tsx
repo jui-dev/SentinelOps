@@ -59,7 +59,7 @@ function Progress({ done }: { done: number }) {
  * to be published, so it says so — and, for whoever is writing, that it comes
  * first while it is missing.
  */
-function SectionChecklist({
+export function SectionChecklist({
   analysis,
   writing,
 }: {

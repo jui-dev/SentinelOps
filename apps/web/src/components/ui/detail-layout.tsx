@@ -144,7 +144,8 @@ export function Glance({
       className={cx(
         "grid gap-3 rounded-lg border border-line-subtle bg-linear-to-b from-band-top to-band-bottom p-3.5",
         columns === 5
-          ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5"
+          ? // Three over two, each row filling the width, until all five fit.
+            "grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 lg:*:col-span-2 lg:[&>*:nth-child(n+4)]:col-span-3 2xl:grid-cols-5 2xl:*:col-span-1 2xl:[&>*:nth-child(n+4)]:col-span-1"
           : columns === 4
             ? "grid-cols-1 sm:grid-cols-2 xl:grid-cols-4"
             : columns === 3
