@@ -442,22 +442,24 @@ function ActiveOperations({
 
   return (
     <div className="flex flex-col gap-3">
-      {/* The table's own frame, inside the section. */}
-      <div className="overflow-hidden rounded-md border border-line-subtle bg-surface">
-        <ColumnHeader />
-        <ul
-          aria-label="Active incidents"
-          className="divide-y divide-line-subtle"
-        >
-          {incidents.map((incident) => (
-            <OperationRow
-              key={incident.id}
-              incident={incident}
-              affected={affected.get(incident.service.id)}
-              typical={current.typicalResolution}
-            />
-          ))}
-        </ul>
+      {/* The table's own frame, inside the section, on the tables' tray. */}
+      <div className="rounded-lg bg-table-tray p-2">
+        <div className="overflow-hidden rounded-md border border-line-subtle bg-surface shadow-[0_1px_2px_light-dark(rgb(15_29_51/0.08),transparent)]">
+          <ColumnHeader />
+          <ul
+            aria-label="Active incidents"
+            className="divide-y divide-line-subtle"
+          >
+            {incidents.map((incident) => (
+              <OperationRow
+                key={incident.id}
+                incident={incident}
+                affected={affected.get(incident.service.id)}
+                typical={current.typicalResolution}
+              />
+            ))}
+          </ul>
+        </div>
       </div>
 
       {(truncated || elsewhere.length > 0) && (

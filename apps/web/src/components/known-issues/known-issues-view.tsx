@@ -202,36 +202,39 @@ function KnownIssuesList() {
               <section
                 key={issues[0].service.id}
                 aria-labelledby={`known-${issues[0].service.id}`}
-                className="overflow-hidden rounded-lg border border-line bg-surface"
+                // On the tables' tray: the group is drawn as a table is.
+                className="rounded-lg bg-table-tray p-2"
               >
-                <h2
-                  id={`known-${issues[0].service.id}`}
-                  className="border-b border-table-head-line-subtle bg-list-head px-4 py-2.5 text-sm font-semibold text-list-head-fg"
-                >
-                  {issues[0].service.name}
-                  <span className="font-normal text-list-head-muted">
-                    {" "}
-                    · {issues[0].service.team.name} · {issues.length}{" "}
-                    {issues.length === 1 ? "known issue" : "known issues"}
-                  </span>
-                </h2>
-                <ul className="divide-y divide-line-subtle">
-                  {issues.map((issue) => (
-                    <KnownIssueRow
-                      key={issue.id}
-                      issue={issue}
-                      duplicateOf={issue.pendingReview ? likelyDuplicateOf(issue, all) : undefined}
-                      busy={update.isPending}
-                      onEdit={() => setDialog({ kind: "edit", issue })}
-                      onMerge={() => setDialog({ kind: "merge", issue })}
-                      onKeep={() => update.mutate({ id: issue.id, reviewed: true })}
-                      onArchive={(archived) => update.mutate({ id: issue.id, archived })}
-                      canMerge={inUse.some(
-                        (other) => other.id !== issue.id && other.service.id === issue.service.id,
-                      )}
-                    />
-                  ))}
-                </ul>
+                <div className="overflow-hidden rounded-md border border-line bg-surface shadow-[0_1px_2px_light-dark(rgb(15_29_51/0.08),transparent)]">
+                  <h2
+                    id={`known-${issues[0].service.id}`}
+                    className="border-b border-table-head-line-subtle bg-list-head px-4 py-2.5 text-sm font-semibold text-list-head-fg"
+                  >
+                    {issues[0].service.name}
+                    <span className="font-normal text-list-head-muted">
+                      {" "}
+                      · {issues[0].service.team.name} · {issues.length}{" "}
+                      {issues.length === 1 ? "known issue" : "known issues"}
+                    </span>
+                  </h2>
+                  <ul className="divide-y divide-line-subtle">
+                    {issues.map((issue) => (
+                      <KnownIssueRow
+                        key={issue.id}
+                        issue={issue}
+                        duplicateOf={issue.pendingReview ? likelyDuplicateOf(issue, all) : undefined}
+                        busy={update.isPending}
+                        onEdit={() => setDialog({ kind: "edit", issue })}
+                        onMerge={() => setDialog({ kind: "merge", issue })}
+                        onKeep={() => update.mutate({ id: issue.id, reviewed: true })}
+                        onArchive={(archived) => update.mutate({ id: issue.id, archived })}
+                        canMerge={inUse.some(
+                          (other) => other.id !== issue.id && other.service.id === issue.service.id,
+                        )}
+                      />
+                    ))}
+                  </ul>
+                </div>
               </section>
             ))
           )}

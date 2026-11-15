@@ -180,53 +180,58 @@ export function Table({
   return (
     <VariantContext.Provider value={variant}>
       {/*
-       * A table wider than the screen scrolls sideways. Only then is its
-       * container a focusable, named region, so a keyboard user can scroll
-       * it without the page gaining a pointless tab stop otherwise.
+       * The tray the table sits in: a section of its own around the sheet —
+       * sea glass in light, a mist well in dark (`bg-table-tray`).
        */}
-      <div
-        ref={ref}
-        className={cx(
-          "rounded-md border border-line-subtle bg-surface",
-          stickyHeader && !overflowing
-            ? "overflow-x-visible"
-            : "overflow-x-auto",
-          className,
-        )}
-        {...(overflowing
-          ? { role: "region", "aria-label": label, tabIndex: 0 }
-          : {})}
-      >
+      <div className={cx("rounded-lg bg-table-tray p-2", className)}>
         {/*
-         * Separate borders, drawn on the cells: a collapsed border belongs
-         * to the table and stays behind when a sticky header moves.
+         * A table wider than the screen scrolls sideways. Only then is its
+         * container a focusable, named region, so a keyboard user can scroll
+         * it without the page gaining a pointless tab stop otherwise.
          */}
-        <table
-          aria-label={label}
-          data-sticky-header={stickyHeader || undefined}
-          style={minWidths(columns)}
-          className="group/table w-full min-w-(--table-min) table-fixed border-separate border-spacing-0 text-sm sm:min-w-(--table-min-sm) md:min-w-(--table-min-md) lg:min-w-(--table-min-lg) xl:min-w-(--table-min-xl) 2xl:min-w-(--table-min-2xl)"
+        <div
+          ref={ref}
+          className={cx(
+            "rounded-md border border-line-subtle bg-surface shadow-[0_1px_2px_light-dark(rgb(15_29_51/0.08),transparent)]",
+            stickyHeader && !overflowing
+              ? "overflow-x-visible"
+              : "overflow-x-auto",
+          )}
+          {...(overflowing
+            ? { role: "region", "aria-label": label, tabIndex: 0 }
+            : {})}
         >
-          <colgroup>
-            {columns.map((column, index) => {
-              const { kind, from } =
-                typeof column === "string"
-                  ? { kind: column, from: undefined }
-                  : column;
+          {/*
+           * Separate borders, drawn on the cells: a collapsed border belongs
+           * to the table and stays behind when a sticky header moves.
+           */}
+          <table
+            aria-label={label}
+            data-sticky-header={stickyHeader || undefined}
+            style={minWidths(columns)}
+            className="group/table w-full min-w-(--table-min) table-fixed border-separate border-spacing-0 text-sm sm:min-w-(--table-min-sm) md:min-w-(--table-min-md) lg:min-w-(--table-min-lg) xl:min-w-(--table-min-xl) 2xl:min-w-(--table-min-2xl)"
+          >
+            <colgroup>
+              {columns.map((column, index) => {
+                const { kind, from } =
+                  typeof column === "string"
+                    ? { kind: column, from: undefined }
+                    : column;
 
-              return (
-                <col
-                  key={index}
-                  data-kind={kind}
-                  className={
-                    cx(COLUMN_WIDTHS[kind], from && SHOWN_FROM[from]) || undefined
-                  }
-                />
-              );
-            })}
-          </colgroup>
-          {children}
-        </table>
+                return (
+                  <col
+                    key={index}
+                    data-kind={kind}
+                    className={
+                      cx(COLUMN_WIDTHS[kind], from && SHOWN_FROM[from]) || undefined
+                    }
+                  />
+                );
+              })}
+            </colgroup>
+            {children}
+          </table>
+        </div>
       </div>
     </VariantContext.Provider>
   );
