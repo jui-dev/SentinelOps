@@ -72,6 +72,29 @@ const WORKSPACE = [
 ];
 
 each(["fg", "fg-muted", "fg-subtle"], WORKSPACE, TEXT);
+// A section's body and header band. The band holds the section's name, its
+// description and its own tinted label; the body holds everything once
+// drawn on the surface inside a section — tone words and marks included.
+const SECTION = ["section", "section-head"];
+each(["fg", "fg-muted", "fg-subtle", "accent-text"], SECTION, TEXT);
+each(
+  [
+    "danger-text",
+    "warning-text",
+    "success-text",
+    "info-text",
+    "status-declared-text",
+    "status-investigating-text",
+    "status-resolved-text",
+  ],
+  ["section"],
+  TEXT,
+);
+each(
+  ["signal-critical", "signal-high", "signal-caution", "signal-advisory", "signal-nominal"],
+  ["section"],
+  UI,
+);
 // A summary band's ground, and the bars docked over the page.
 each(["fg", "fg-muted", "fg-subtle"], ["band-top", "band-bottom"], TEXT);
 // The rail's own text (the `rail-region` utility binds the workspace roles to

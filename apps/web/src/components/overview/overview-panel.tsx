@@ -18,9 +18,9 @@ import { cx } from "@/components/ui/cx";
 export type OverviewPanelTone = "default" | "primary" | "action";
 
 const FRAMES: Record<OverviewPanelTone, { section: string; header: string }> = {
-  default: { section: "border-line", header: "border-line bg-thead" },
-  primary: { section: "border-line-strong", header: "border-line bg-thead" },
-  action: { section: "border-line", header: "border-line bg-thead" },
+  default: { section: "border-section-line", header: "border-section-line bg-section-head" },
+  primary: { section: "border-line-strong", header: "border-section-line bg-section-head" },
+  action: { section: "border-section-line", header: "border-section-line bg-section-head" },
 };
 
 /**
@@ -56,7 +56,7 @@ export function OverviewPanel({
       aria-labelledby={`${id}-title`}
       data-tone={tone}
       className={cx(
-        "overflow-hidden rounded-lg border bg-surface",
+        "overflow-hidden rounded-lg border bg-section shadow-card",
         frame.section,
       )}
     >

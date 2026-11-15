@@ -96,6 +96,16 @@
   --color-thead: light-dark(#f2f5f8, #1e242e);
   --color-sunken: light-dark(#f1f4f7, #0d1018);
   --color-field: light-dark(#ffffff, #0d1018);
+  /*
+   * A section of a page (OverviewPanel, DetailCard): its body, its header
+   * band, and its edge. In light a pale sea glass, so a section reads as a
+   * coloured place on the page and what sits inside it — a table, a chart,
+   * a list — stays white on it. In dark each is the role it always was:
+   * surface, thead, line.
+   */
+  --color-section: light-dark(#f1f7f7, #191d27);
+  --color-section-head: light-dark(#e3efef, #1e242e);
+  --color-section-line: light-dark(#cfe1e2, #303540);
   --color-hover: light-dark(#eff3f7, #212631);
 
   /* Text */
@@ -435,13 +445,18 @@
 
   /*
    * Surfaces separate layers; rules are for dense repeated data and for
-   * controls that must be findable. Shadows are for overlays only.
+   * controls that must be findable. Shadows are for overlays — and, in light
+   * only, a section's soft lift (`card`) off the pale page: transparent in
+   * dark, where the layers separate by lightness alone.
    */
   --shadow-*: initial;
   --shadow-overlay:
     0 16px 40px -12px light-dark(rgb(14 18 25 / 0.28), rgb(0 0 0 / 0.6)),
     0 0 0 1px light-dark(rgb(14 18 25 / 0.06), rgb(255 255 255 / 0.04));
   --shadow-control: inset 0 -1px 0 light-dark(rgb(14 18 25 / 0.07), rgb(0 0 0 / 0.35));
+  --shadow-card:
+    0 1px 2px light-dark(rgb(15 29 51 / 0.04), transparent),
+    0 4px 12px -4px light-dark(rgb(15 29 51 / 0.07), transparent);
 
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
   --duration-fast: 120ms;
