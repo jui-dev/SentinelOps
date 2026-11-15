@@ -116,6 +116,21 @@ const renderMembers = () =>
     </OrganizationScope>,
   );
 
+/** Opens a person's Manage dialog and finds one of its choices. */
+const manageChoice = async (
+  user: ReturnType<typeof userEvent.setup>,
+  name: string,
+  choice: RegExp,
+) => {
+  await user.click(
+    await screen.findByRole("button", { name: `Manage ${name}` }),
+  );
+
+  return within(
+    screen.getByRole("dialog", { name: `Manage ${name}` }),
+  ).getByRole("button", { name: choice }) as HTMLButtonElement;
+};
+
 /** The Members page with the Add member dialog opened from its header. */
 const renderAddMember = async () => {
   renderMembers();
@@ -228,13 +243,13 @@ describe("the members overview", () => {
     ).toBeDefined();
     expect(within(linusRow).queryByText(/sees no incidents/)).toBeNull();
 
-    // The name is text; the row's way in is View.
-    expect(screen.getByText("Linus Torvalds").closest("a")).toBeNull();
+    // The name is the way to their page; there is no separate View.
     expect(
       within(linusRow)
-        .getByRole("link", { name: "View Linus Torvalds" })
+        .getByRole("link", { name: "Linus Torvalds" })
         .getAttribute("href"),
     ).toBe(`/orgs/acme-ops/members/${linus.id}`);
+    expect(within(linusRow).queryByRole("link", { name: /^View/ })).toBeNull();
   });
 
   it("points a member to their teams, and asks for no one", async () => {
@@ -295,14 +310,14 @@ describe("the members overview", () => {
     expect(names()).toHaveLength(3);
   });
 
-  it("offers only View without teams:manage", async () => {
+  it("offers nothing to change, and no Action column, to someone who only reads", async () => {
     api(READ_ONLY, [ada, linus]);
 
     renderMembers();
 
-    await screen.findByRole("link", { name: "View Linus Torvalds" });
-    expect(screen.queryByRole("button", { name: /to a team/ })).toBeNull();
-    expect(screen.queryByRole("button", { name: /from a team/ })).toBeNull();
+    await screen.findByRole("link", { name: "Linus Torvalds" });
+    expect(screen.queryByRole("button", { name: /^Manage/ })).toBeNull();
+    expect(screen.queryByRole("columnheader", { name: "Action" })).toBeNull();
   });
 });
 
@@ -338,24 +353,60 @@ describe("placing members on teams, from the list", () => {
     clearAccessToken();
   });
 
-  it("offers Add to team and Remove beside View, Remove only for someone on a team", async () => {
+  it("opens Manage as a dialog of tinted sections, and hands a choice to its own dialog", async () => {
+    const user = userEvent.setup();
     api(PLACE, [ada, sam], withServices());
 
     renderMembers();
 
-    const add = await screen.findByRole("button", { name: "Add Sam Okafor to a team" });
-    const remove = screen.getByRole("button", { name: "Remove Sam Okafor from a team" });
+    await user.click(
+      await screen.findByRole("button", { name: "Manage Sam Okafor" }),
+    );
 
-    expect(add.className).toContain("bg-info-subtle");
-    expect(remove.className).toContain("bg-danger-subtle");
-    expect((remove as HTMLButtonElement).disabled).toBe(false);
+    const dialog = screen.getByRole("dialog", { name: "Manage Sam Okafor" });
+    const section = (name: string) =>
+      within(dialog).getByRole("region", { name });
+
+    // Each kind of change in its own tint.
+    expect(section("Teams").className).toContain("bg-info-subtle");
+    expect(section("Role").className).toContain("bg-warning-subtle");
+    expect(section("Account").className).toContain("bg-sunken");
+    expect(section("Leaving").className).toContain("bg-danger-subtle");
+
+    await user.click(
+      within(section("Teams")).getByRole("button", { name: /^Add to a team/ }),
+    );
+
+    // One dialog at a time: Manage gives way to the change chosen.
+    expect(screen.queryByRole("dialog", { name: "Manage Sam Okafor" })).toBeNull();
     expect(
-      (
-        screen.getByRole("button", {
-          name: "Remove Ada Lovelace from a team",
-        }) as HTMLButtonElement
-      ).disabled,
-    ).toBe(true);
+      screen.getByRole("dialog", { name: "Add Sam Okafor to a team" }),
+    ).toBeDefined();
+  });
+
+  it("offers the teams under Manage, saying which are left and which they are on", async () => {
+    const user = userEvent.setup();
+    api(PLACE, [ada, sam], withServices());
+
+    renderMembers();
+
+    const add = await manageChoice(user, "Sam Okafor", /^Add to a team/);
+    const off = within(
+      screen.getByRole("dialog", { name: "Manage Sam Okafor" }),
+    ).getByRole("button", { name: /^Take off a team/ });
+
+    expect(add.disabled).toBe(false);
+    await waitFor(() =>
+      expect(add.textContent).toContain("1 team left: Infrastructure"),
+    );
+    expect(off.textContent).toContain("On Payments and Platform");
+
+    await user.keyboard("{Escape}");
+
+    const adaOff = await manageChoice(user, "Ada Lovelace", /^Take off a team/);
+
+    expect(adaOff.disabled).toBe(true);
+    expect(adaOff.textContent).toContain("Not on any team");
   });
 
   it("adds to a team they are not on yet, saying what each team owns", async () => {
@@ -376,9 +427,7 @@ describe("placing members on teams, from the list", () => {
 
     renderMembers();
 
-    await user.click(
-      await screen.findByRole("button", { name: "Add Sam Okafor to a team" }),
-    );
+    await user.click(await manageChoice(user, "Sam Okafor", /^Add to a team/));
 
     const dialog = screen.getByRole("dialog", { name: "Add Sam Okafor to a team" });
     const choices = within(dialog).getAllByRole("radio");
@@ -420,9 +469,7 @@ describe("placing members on teams, from the list", () => {
 
     renderMembers();
 
-    await user.click(
-      await screen.findByRole("button", { name: "Remove Sam Okafor from a team" }),
-    );
+    await user.click(await manageChoice(user, "Sam Okafor", /^Take off a team/));
 
     const dialog = screen.getByRole("dialog", {
       name: "Remove Sam Okafor from a team",
@@ -462,9 +509,7 @@ describe("placing members on teams, from the list", () => {
 
     renderMembers();
 
-    await user.click(
-      await screen.findByRole("button", { name: "Remove Sam Okafor from a team" }),
-    );
+    await user.click(await manageChoice(user, "Sam Okafor", /^Take off a team/));
 
     const dialog = screen.getByRole("dialog", {
       name: "Remove Sam Okafor from a team",
@@ -561,19 +606,18 @@ describe("a member's row, opened", () => {
 
     renderMembers();
 
-    await user.click(await screen.findByText("Sam Okafor"));
+    // Anywhere on the row but its links and buttons: here, the email.
+    await user.click(await screen.findByText(sam.user.email));
     expect(
       screen.getByRole("region", { name: "Teams of Sam Okafor" }),
     ).toBeDefined();
 
-    await user.click(screen.getByText("Sam Okafor"));
+    await user.click(screen.getByText(sam.user.email));
     expect(
       screen.queryByRole("region", { name: "Teams of Sam Okafor" }),
     ).toBeNull();
 
-    await user.click(
-      screen.getByRole("button", { name: "Add Sam Okafor to a team" }),
-    );
+    await user.click(await manageChoice(user, "Sam Okafor", /^Add to a team/));
     await screen.findByRole("dialog", { name: "Add Sam Okafor to a team" });
     expect(
       screen.queryByRole("region", { name: "Teams of Sam Okafor" }),
@@ -636,20 +680,21 @@ describe("changing a role", () => {
   };
 
   it("offers Change role to whoever manages members, never to the only Admin", async () => {
+    const user = userEvent.setup();
     api(MANAGE, [ada, linus]);
 
     renderMembers();
 
-    const linusRole = await screen.findByRole("button", {
-      name: "Change the role of Linus Torvalds",
-    });
-    const adaRole = screen.getByRole("button", {
-      name: "Change the role of Ada Lovelace",
-    });
+    const linusRole = await manageChoice(user, "Linus Torvalds", /^Change role/);
 
-    expect((linusRole as HTMLButtonElement).disabled).toBe(false);
-    expect((adaRole as HTMLButtonElement).disabled).toBe(true);
-    expect(adaRole.getAttribute("title")).toBe("The only Admin keeps their role");
+    expect(linusRole.disabled).toBe(false);
+
+    await user.keyboard("{Escape}");
+
+    const adaRole = await manageChoice(user, "Ada Lovelace", /^Change role/);
+
+    expect(adaRole.disabled).toBe(true);
+    expect(adaRole.textContent).toContain("The only Admin keeps their role");
   });
 
   it("offers no Change role to someone who only reads the directory", async () => {
@@ -657,8 +702,8 @@ describe("changing a role", () => {
 
     renderMembers();
 
-    await screen.findByRole("link", { name: "View Linus Torvalds" });
-    expect(screen.queryByRole("button", { name: /Change the role/ })).toBeNull();
+    await screen.findByRole("link", { name: "Linus Torvalds" });
+    expect(screen.queryByRole("button", { name: /^Manage/ })).toBeNull();
   });
 
   it("says what the new role gives and takes away, then sends it", async () => {
@@ -670,11 +715,7 @@ describe("changing a role", () => {
     );
 
     renderMembers();
-    await user.click(
-      await screen.findByRole("button", {
-        name: "Change the role of Linus Torvalds",
-      }),
-    );
+    await user.click(await manageChoice(user, "Linus Torvalds", /^Change role/));
 
     const dialog = screen.getByRole("dialog", {
       name: "Change Linus Torvalds's role",
@@ -728,11 +769,7 @@ describe("changing a role", () => {
     );
 
     renderMembers();
-    await user.click(
-      await screen.findByRole("button", {
-        name: "Change the role of Alan Turing",
-      }),
-    );
+    await user.click(await manageChoice(user, "Alan Turing", /^Change role/));
     const dialog = screen.getByRole("dialog", {
       name: "Change Alan Turing's role",
     });
@@ -745,19 +782,9 @@ describe("changing a role", () => {
   });
 });
 
-/** Opens a row's More menu and finds its Reset password item. */
-const resetItemOf = async (
-  user: ReturnType<typeof userEvent.setup>,
-  name: string,
-) => {
-  await user.click(
-    await screen.findByRole("button", { name: `More actions for ${name}` }),
-  );
-
-  return within(
-    screen.getByRole("menu", { name: `More actions for ${name}` }),
-  ).getByRole("menuitem", { name: /Reset password/ });
-};
+/** Opens a person's Manage menu and finds its Reset password choice. */
+const resetItemOf = (user: ReturnType<typeof userEvent.setup>, name: string) =>
+  manageChoice(user, name, /^Reset password/);
 
 describe("resetting a password", () => {
   beforeEach(() => {
@@ -784,13 +811,13 @@ describe("resetting a password", () => {
 
     const theirs = await resetItemOf(user, "Linus Torvalds");
 
-    expect(theirs.getAttribute("aria-disabled")).toBeNull();
+    expect(theirs.disabled).toBe(false);
 
     await user.keyboard("{Escape}");
 
     const own = await resetItemOf(user, "Ada Lovelace");
 
-    expect(own.getAttribute("aria-disabled")).toBe("true");
+    expect(own.disabled).toBe(true);
     expect(own.textContent).toContain("Change your own from your account");
   });
 
@@ -799,8 +826,8 @@ describe("resetting a password", () => {
 
     renderMembers();
 
-    await screen.findByRole("link", { name: "View Linus Torvalds" });
-    expect(screen.queryByRole("button", { name: /More actions for/ })).toBeNull();
+    await screen.findByRole("link", { name: "Linus Torvalds" });
+    expect(screen.queryByRole("button", { name: /^Manage/ })).toBeNull();
   });
 
   it("says what happens, sends the new password, and shows the sign-in details once", async () => {
@@ -1281,18 +1308,11 @@ describe("removing someone from the organization", () => {
     openWork: [],
   };
 
-  const removeItemOf = async (
+  const removeItemOf = (
     user: ReturnType<typeof userEvent.setup>,
     name: string,
-  ) => {
-    await user.click(
-      await screen.findByRole("button", { name: `More actions for ${name}` }),
-    );
-
-    return within(
-      screen.getByRole("menu", { name: `More actions for ${name}` }),
-    ).getByRole("menuitem", { name: /Remove from organization/ });
-  };
+    choice: RegExp = /Remove from organization/,
+  ) => manageChoice(user, name, choice);
 
   it("says what ends and what stays, then removes them", async () => {
     const user = userEvent.setup();
@@ -1347,34 +1367,31 @@ describe("removing someone from the organization", () => {
 
     renderMembers();
 
-    const item = await removeItemOf(user, "Linus Torvalds");
-    const menu = screen.getByRole("menu", {
-      name: "More actions for Linus Torvalds",
-    });
+    const item = await removeItemOf(user, "Linus Torvalds", /Can't remove Linus yet/);
+    const menu = screen.getByRole("dialog", { name: "Manage Linus Torvalds" });
 
-    expect(item.getAttribute("aria-disabled")).toBe("true");
+    expect(item.disabled).toBe(true);
     expect(
-      within(menu).getByRole("menuitem", { name: /Still investigating INC-151/ }),
-    ).toBeDefined();
+      within(menu).queryByRole("button", { name: /^Remove from organization/ }),
+    ).toBeNull();
+    expect(menu.textContent).toContain("Still investigating INC-151");
+    expect(menu.textContent).toContain("unpublished analysis of INC-139");
+    // Each piece of open work links to where it is handed over.
     expect(
-      within(menu).getByRole("menuitem", {
-        name: /unpublished analysis of INC-139/,
-      }),
-    ).toBeDefined();
-
-    // Picking it does nothing.
-    await user.click(item);
-    expect(screen.queryByRole("dialog")).toBeNull();
+      within(menu).getByRole("link", { name: "Open INC-151" }).getAttribute("href"),
+    ).toBe("/orgs/acme-ops/incidents/151");
+    expect(
+      within(menu).getByRole("link", { name: "Open INC-139" }).getAttribute("href"),
+    ).toBe("/orgs/acme-ops/incidents/139/analysis");
 
     await user.keyboard("{Escape}");
 
-    const own = await removeItemOf(user, "Ada Lovelace");
+    const own = await removeItemOf(user, "Ada Lovelace", /You can't remove yourself/);
 
-    expect(own.getAttribute("aria-disabled")).toBe("true");
+    expect(own.disabled).toBe(true);
     expect(
-      screen.getByRole("menu", { name: "More actions for Ada Lovelace" })
-        .textContent,
-    ).toContain("You can't remove yourself.");
+      screen.getByRole("dialog", { name: "Manage Ada Lovelace" }).textContent,
+    ).toContain("The organization's only Admin can't be removed.");
   });
 
   it("shows removed people only under Removed, and restores them in the role chosen", async () => {

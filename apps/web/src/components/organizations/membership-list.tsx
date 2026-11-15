@@ -1,27 +1,15 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import {
-  ChevronRight,
-  Ellipsis,
-  IdCard,
-  KeyRound,
-  Plus,
-  RotateCcw,
-  Search,
-  UserMinus,
-} from "lucide-react";
+import { ChevronRight, RotateCcw, Search, UserMinus } from "lucide-react";
 import Link from "next/link";
 import { Fragment, useId, useState } from "react";
 
 import { initialsOf } from "@/components/app/shell-utilities";
 import { ROLE_META, ROLE_ORDER } from "@/components/roles/role-meta";
-import { incidentAnalysisHref } from "@/components/incident-analyses/analysis-queries";
-import { incidentHref } from "@/components/incidents/incident-queries";
 import { ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { cx } from "@/components/ui/cx";
-import { Menu, MenuHeading, MenuItem, MenuSeparator } from "@/components/ui/menu";
 import { rowActionClasses } from "@/components/ui/row-action";
 import { Spinner } from "@/components/ui/spinner";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
@@ -31,17 +19,16 @@ import type { OrganizationMembershipResponse, Role } from "@/lib/api/contracts";
 import { listMemberships } from "@/lib/api/endpoints";
 import { queryKeys } from "@/lib/api/query-keys";
 import { useCurrentUser } from "@/lib/auth/session-provider";
-import { useRouter } from "next/navigation";
 
 import { ChangeRoleDialog } from "./change-role-dialog";
 import { ResetPasswordDialog } from "./reset-password-dialog";
+import { ManageMemberDialog } from "./manage-member-dialog";
+import type { ManageAction } from "./manage-member-dialog";
 import { MemberPeek } from "./member-peek";
 import {
   RemoveMemberDialog,
   RestoreMemberDialog,
-  blockerText,
   isRemoved,
-  removalBlockers,
 } from "./member-removal";
 import { AddToTeamDialog, RemoveFromTeamDialog } from "./member-placement";
 import { memberHref } from "./member-paths";
@@ -345,111 +332,6 @@ function MemberStatus({ member }: { member: Member }) {
   );
 }
 
-/**
- * The row's less frequent account actions, behind ⋯: resetting a password,
- * and — set apart below a separator — removing them from the organization.
- * When removal is not possible now, it stays in the menu, greyed, with each
- * reason; a piece of open work is a link to where it is handed over.
- */
-function MoreActions({
-  member,
-  admins,
-  onResetPassword,
-  onRemove,
-}: {
-  member: Member;
-  admins: number;
-  onResetPassword: () => void;
-  onRemove: () => void;
-}) {
-  const organization = useOrganization();
-  const me = useCurrentUser();
-  const router = useRouter();
-  const reasonsId = useId();
-  const own = member.user.id === me.data?.id;
-  const blockers = removalBlockers(member, { meId: me.data?.id, admins });
-
-  return (
-    <Menu
-      label={`More actions for ${member.user.name}`}
-      className="w-80"
-      trigger={(props) => (
-        <button
-          type="button"
-          aria-label={`More actions for ${member.user.name}`}
-          className={cx(
-            rowActionClasses("accent"),
-            "border-line bg-surface px-1.5 text-fg-muted aria-expanded:border-accent-rim aria-expanded:text-fg",
-          )}
-          {...props}
-        >
-          <Ellipsis aria-hidden="true" strokeWidth={2} className="size-4" />
-        </button>
-      )}
-    >
-      <MenuHeading>Account</MenuHeading>
-      <MenuItem
-        icon={KeyRound}
-        disabled={own}
-        description={own ? "Change your own from your account" : undefined}
-        onSelect={onResetPassword}
-      >
-        Reset password
-      </MenuItem>
-      <MenuSeparator />
-      <MenuItem
-        icon={UserMinus}
-        tone="danger"
-        disabled={blockers.length > 0}
-        describedBy={blockers.length > 0 ? reasonsId : undefined}
-        description={
-          blockers.length > 0
-            ? "Not yet — see why below"
-            : "Ends their access. Their history stays."
-        }
-        onSelect={onRemove}
-      >
-        Remove from organization
-      </MenuItem>
-      {blockers.length > 0 && (
-        <div id={reasonsId} className="flex flex-col pb-1">
-          {blockers.map((blocker) =>
-            blocker.kind === "WORK" ? (
-              // A way to the fix, so it is an item: reachable by the keys.
-              <MenuItem
-                key={`${blocker.work.kind}-${blocker.work.incident.number}`}
-                onSelect={() =>
-                  router.push(
-                    blocker.work.kind === "INVESTIGATING"
-                      ? incidentHref(organization.slug, blocker.work.incident.number)
-                      : incidentAnalysisHref(
-                          organization.slug,
-                          blocker.work.incident.number,
-                        ),
-                  )
-                }
-              >
-                <span className="flex items-start gap-2 py-1 text-xs whitespace-normal">
-                  <span aria-hidden="true" className="mt-1 size-1.5 shrink-0 rounded-full bg-warning-solid" />
-                  <span>{blockerText(blocker)}</span>
-                </span>
-              </MenuItem>
-            ) : (
-              <p
-                key={blocker.kind}
-                className="flex items-start gap-2 px-3 py-1.5 text-xs text-fg-muted"
-              >
-                <span aria-hidden="true" className="mt-1 size-1.5 shrink-0 rounded-full bg-fg-subtle" />
-                {blockerText(blocker)}
-              </p>
-            ),
-          )}
-        </div>
-      )}
-    </Menu>
-  );
-}
-
 /** The heading over the people removed from the organization. */
 function RemovedGroupRow({ count, columns }: { count: number; columns: number }) {
   return (
@@ -498,9 +380,12 @@ function RemovedRow({
             {initialsOf(member.user.name)}
           </span>
           <span className="flex min-w-0 flex-col">
-            <span className="truncate font-medium text-fg-muted">
+            <Link
+              href={memberHref(organization.slug, member.id)}
+              className="truncate rounded-sm font-medium text-fg-muted hover:text-fg hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+            >
               {member.user.name}
-            </span>
+            </Link>
             <span className="truncate text-xs text-fg-subtle">
               {member.user.email}
             </span>
@@ -537,14 +422,6 @@ function RemovedRow({
       </TD>
       <TD kind="actions">
         <div className="flex items-center justify-end gap-2">
-          <Link
-            href={memberHref(organization.slug, member.id)}
-            aria-label={`View ${member.user.name}`}
-            className={rowActionClasses("accent")}
-          >
-            View
-            <ChevronRight aria-hidden="true" strokeWidth={2} className="size-3.5" />
-          </Link>
           <button
             type="button"
             aria-label={`Restore ${member.user.name}`}
@@ -562,8 +439,23 @@ function RemovedRow({
 
 // ── The list ───────────────────────────────────────────────────────────────
 
+const DIALOG_FOR = {
+  addToTeam: "add",
+  takeOffTeam: "remove",
+  changeRole: "role",
+  resetPassword: "password",
+  remove: "removeOrg",
+} as const satisfies Record<ManageAction, string>;
+
 type Dialog = {
-  kind: "add" | "remove" | "role" | "password" | "removeOrg" | "restore";
+  kind:
+    | "manage"
+    | "add"
+    | "remove"
+    | "role"
+    | "password"
+    | "removeOrg"
+    | "restore";
   memberId: string;
 } | null;
 
@@ -584,7 +476,9 @@ export function MembershipList() {
   // sets accounts up. A member reading the directory sees their colleagues,
   // and the API sends them no setup to show.
   const canManage = useCan(Permission.MEMBERS_MANAGE);
-  const columns = canManage ? 5 : 4;
+  // Nothing to change about anyone: no Action column at all.
+  const hasActions = canPlace || canManage;
+  const columns = 3 + (canManage ? 1 : 0) + (hasActions ? 1 : 0);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<FilterId>("all");
   const [dialog, setDialog] = useState<Dialog>(null);
@@ -636,7 +530,7 @@ export function MembershipList() {
             <TH className="hidden lg:table-cell">
               {showingRemoved ? "Removed" : "Joined"}
             </TH>
-            <TH align="end">Action</TH>
+            {hasActions && <TH align="end">Action</TH>}
           </TR>
         </THead>
         <TBody>
@@ -724,9 +618,13 @@ export function MembershipList() {
                     </span>
                     <span className="flex min-w-0 flex-col">
                       <span className="flex items-center gap-1.5">
-                        <span className="truncate font-medium text-fg">
+                        {/* Their page: the name is the way there. */}
+                        <Link
+                          href={memberHref(organization.slug, member.id)}
+                          className="truncate rounded-sm font-medium text-fg hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                        >
                           {member.user.name}
-                        </span>
+                        </Link>
                         {member.user.id === me.data?.id && (
                           <span className="rounded-sm border border-accent-line px-1 text-2xs text-accent-text">
                             You
@@ -756,92 +654,28 @@ export function MembershipList() {
                 <TD kind="data" className="hidden lg:table-cell">
                   <IsoDate value={member.createdAt} />
                 </TD>
-                <TD kind="actions">
-                  <div className="flex items-center justify-end gap-2">
-                    <Link
-                      href={memberHref(organization.slug, member.id)}
-                      aria-label={`View ${member.user.name}`}
-                      className={rowActionClasses("accent")}
-                    >
-                      View
-                      <ChevronRight
-                        aria-hidden="true"
-                        strokeWidth={2}
-                        className="size-3.5"
-                      />
-                    </Link>
-                    {canPlace && (
-                      <>
-                        <button
-                          type="button"
-                          aria-label={`Add ${member.user.name} to a team`}
-                          onClick={() =>
-                            setDialog({ kind: "add", memberId: member.id })
-                          }
-                          className={rowActionClasses("info")}
-                        >
-                          <Plus
-                            aria-hidden="true"
-                            strokeWidth={2.25}
-                            className="size-3.5"
-                          />
-                          Add to team
-                        </button>
-                        <button
-                          type="button"
-                          aria-label={`Remove ${member.user.name} from a team`}
-                          title={
-                            member.teams.length === 0
-                              ? "Not on any team"
-                              : undefined
-                          }
-                          disabled={member.teams.length === 0}
-                          onClick={() =>
-                            setDialog({ kind: "remove", memberId: member.id })
-                          }
-                          className={rowActionClasses("danger")}
-                        >
-                          Remove
-                        </button>
-                      </>
-                    )}
-                    {canManage && (
+                {hasActions && (
+                  <TD kind="actions">
+                    <div className="flex justify-end">
                       <button
                         type="button"
-                        aria-label={`Change the role of ${member.user.name}`}
-                        title={
-                          member.role === "ADMIN" && admins <= 1
-                            ? "The only Admin keeps their role"
-                            : undefined
-                        }
-                        disabled={member.role === "ADMIN" && admins <= 1}
+                        aria-label={`Manage ${member.user.name}`}
+                        aria-haspopup="dialog"
                         onClick={() =>
-                          setDialog({ kind: "role", memberId: member.id })
+                          setDialog({ kind: "manage", memberId: member.id })
                         }
-                        className={rowActionClasses("warning")}
+                        className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line-strong bg-surface pr-2 pl-3 text-sm font-medium text-fg shadow-control transition-colors duration-(--duration-fast) hover:border-line-control hover:bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
                       >
-                        <IdCard
+                        Manage
+                        <ChevronRight
                           aria-hidden="true"
                           strokeWidth={2}
-                          className="size-3.5"
+                          className="size-4 text-fg-subtle"
                         />
-                        Change role
                       </button>
-                    )}
-                    {canManage && (
-                      <MoreActions
-                        member={member}
-                        admins={admins}
-                        onResetPassword={() =>
-                          setDialog({ kind: "password", memberId: member.id })
-                        }
-                        onRemove={() =>
-                          setDialog({ kind: "removeOrg", memberId: member.id })
-                        }
-                      />
-                    )}
-                  </div>
-                </TD>
+                    </div>
+                  </TD>
+                )}
               </TR>
               {open && (
                 // A plain row, outside the table's hover: the row above, opened.
@@ -863,6 +697,20 @@ export function MembershipList() {
           )}
         </TBody>
       </Table>
+      {hasActions && target && dialog.kind === "manage" && (
+        <ManageMemberDialog
+          key={target.id}
+          member={target}
+          admins={admins}
+          canPlace={canPlace}
+          canManage={canManage}
+          onClose={close}
+          // One dialog at a time: the choice replaces this one.
+          onAction={(action) =>
+            setDialog({ kind: DIALOG_FOR[action], memberId: target.id })
+          }
+        />
+      )}
       {canPlace && target && dialog.kind === "add" && (
         <AddToTeamDialog key={target.id} member={target} onClose={close} />
       )}
