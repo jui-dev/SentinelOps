@@ -60,8 +60,9 @@ export function ViewHeader({
 }
 
 /**
- * The ink panel a view's content is drawn on: the same darkest ground the
- * activity calendar sits on, bounded by its own line. The `ink-region`
+ * The ink panel a view's content is drawn on: the same ground the activity
+ * calendar sits on — the darkest in dark, white in light — bounded by its
+ * own line. The `ink-region`
  * rebinds text, lines and the analytical marks to their ink values, so
  * what is drawn inside keeps the classes that say what it is.
  */

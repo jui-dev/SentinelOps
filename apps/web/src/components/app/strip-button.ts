@@ -4,4 +4,4 @@
  * while what it opens is open.
  */
 export const stripIconButtonClasses =
-  "grid size-7 shrink-0 place-items-center rounded-md text-ink-muted transition-colors duration-(--duration-fast) hover:bg-ink-hover hover:text-ink-fg focus-visible:outline-ink-focus aria-expanded:bg-ink-hover aria-expanded:text-ink-fg";
+  "grid size-7 shrink-0 place-items-center rounded-md text-strip-muted transition-colors duration-(--duration-fast) hover:bg-strip-hover hover:text-strip-fg focus-visible:outline-strip-focus aria-expanded:bg-strip-hover aria-expanded:text-strip-fg";

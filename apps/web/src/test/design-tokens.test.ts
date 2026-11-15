@@ -141,7 +141,12 @@ each(
   ["canvas", "surface", "hover"],
   TEXT,
 );
-// The situation strip.
+// The situation strip, and the severity marks on its notifications bell.
+each(["strip-fg", "strip-muted"], ["strip", "strip-raised", "strip-hover"], TEXT);
+each(["strip-accent", "strip-focus"], ["strip", "strip-raised"], UI);
+each(["strip-signal-critical", "strip-signal-caution"], ["strip"], UI);
+// An ink panel's own text — a chart's scale, the calendar's months — and
+// its marks, on the panel and its raised header.
 each(["ink-fg", "ink-muted"], ["ink", "ink-raised", "ink-hover"], TEXT);
 each(["ink-accent"], ["ink", "ink-raised"], UI);
 // The chosen day's inset (activity-panes.tsx, tone="navy"), and the
@@ -637,13 +642,14 @@ describe("design tokens", () => {
         });
       });
 
-      // The ink panel is dark in both themes, so this ramp lightens in
-      // both — the one place the rule above does not hold.
-      it("lightens in both themes, one step at a time", () => {
+      // The ink panel is dark in dark and white in light, so this ramp
+      // lightens in one and darkens in the other: what holds in both is
+      // that each step stands further off the panel than the one below.
+      it("moves off the panel one step at a time", () => {
         const ramped = [
           colour("activity-ink-empty", theme),
           ...[1, 2, 3, 4].map(step),
-        ].map(luminance);
+        ].map((value) => contrast(value, colour("ink", theme)));
 
         for (let index = 1; index < ramped.length; index += 1) {
           expect(

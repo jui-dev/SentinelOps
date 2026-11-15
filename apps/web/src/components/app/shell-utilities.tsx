@@ -84,14 +84,14 @@ export function ShellClock() {
       title={`Local time: ${LOCAL_DATE_TIME.format(now)} (${formatUtcOffset(now)})`}
       className="hidden flex-col items-end sm:flex"
     >
-      <span className="text-2xs leading-4 text-ink-muted">
+      <span className="text-2xs leading-4 text-strip-muted">
         {UTC_DATE.format(now)}
       </span>
       <span className="numeric text-xs leading-4 whitespace-nowrap">
-        <span className="font-medium text-ink-fg">
+        <span className="font-medium text-strip-fg">
           {pad(now.getUTCHours())}:{pad(now.getUTCMinutes())}
         </span>
-        <span className="text-ink-muted"> · UTC</span>
+        <span className="text-strip-muted"> · UTC</span>
       </span>
     </time>
   );
@@ -173,12 +173,12 @@ export function AccountMenu() {
       trigger={(props) => (
         <button
           type="button"
-          className="flex h-7 shrink-0 items-center gap-1.5 rounded-md pr-1.5 pl-0.5 text-ink-muted transition-colors duration-(--duration-fast) hover:bg-ink-hover hover:text-ink-fg focus-visible:outline-ink-focus aria-expanded:bg-ink-hover aria-expanded:text-ink-fg"
+          className="flex h-7 shrink-0 items-center gap-1.5 rounded-md pr-1.5 pl-0.5 text-strip-muted transition-colors duration-(--duration-fast) hover:bg-strip-hover hover:text-strip-fg focus-visible:outline-strip-focus aria-expanded:bg-strip-hover aria-expanded:text-strip-fg"
           {...props}
         >
           <span
             aria-hidden="true"
-            className="grid size-6 shrink-0 place-items-center rounded-sm bg-ink-raised text-2xs font-semibold text-ink-accent"
+            className="grid size-6 shrink-0 place-items-center rounded-sm bg-strip-raised text-2xs font-semibold text-strip-accent"
           >
             {user ? (
               initialsOf(user.name)
@@ -189,7 +189,7 @@ export function AccountMenu() {
           {user && (
             <span
               aria-hidden="true"
-              className="hidden max-w-32 truncate text-sm font-medium text-ink-fg lg:inline"
+              className="hidden max-w-32 truncate text-sm font-medium text-strip-fg lg:inline"
             >
               {user.name.trim().split(/\s+/)[0]}
             </span>
@@ -246,7 +246,7 @@ export function ShellUtilities() {
   return (
     <div className="flex items-center gap-3">
       <ShellClock />
-      <span aria-hidden="true" className="hidden h-5 w-px bg-ink-line sm:block" />
+      <span aria-hidden="true" className="hidden h-5 w-px bg-strip-line sm:block" />
       <div className="flex items-center gap-0.5">
         <AppearanceMenu />
         <NotificationsBell />

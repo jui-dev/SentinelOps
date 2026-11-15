@@ -265,10 +265,11 @@
    *              rather than white — under a steel-blue average (#457b9d)
    *   pressure   denim share bars (#669bbc) on a deep blue track
    *
-   * Both are drawn on an ink panel, as the activity calendar is, so what
-   * each view shows sits on the darkest ground in both themes. The `ink-`
-   * values below are what they are drawn in there, fixed in both themes;
-   * the `ink-region` utility rebinds these roles to them. The workspace
+   * Both are drawn on an ink panel, as the activity calendar is: the
+   * darkest ground in dark, a white panel in light. The `ink-` values below
+   * are what they are drawn in there — the pale marks above in dark, deeper
+   * teal and steel-blue in light; the `ink-region` utility rebinds these
+   * roles to them. The workspace
    * values here are for what stays on the section's own surface — the
    * chart's key, and each view's header tile — darkened in light, where
    * the ink values would not show on white.
@@ -282,10 +283,10 @@
   --color-trend-line: light-dark(#1d3557, #457b9d);
   --color-pressure-bar: light-dark(#41759a, #669bbc);
   --color-pressure-track: light-dark(#dfeeef, #1b263b);
-  --color-ink-trend-bar: light-dark(#d0f1f2, #d0f1f2);
-  --color-ink-trend-line: light-dark(#457b9d, #457b9d);
-  --color-ink-pressure-bar: light-dark(#669bbc, #669bbc);
-  --color-ink-pressure-track: light-dark(#1b263b, #1b263b);
+  --color-ink-trend-bar: light-dark(#3a989f, #d0f1f2);
+  --color-ink-trend-line: light-dark(#2c5b8a, #457b9d);
+  --color-ink-pressure-bar: light-dark(#3f77a3, #669bbc);
+  --color-ink-pressure-track: light-dark(#e1eaf2, #1b263b);
   --color-service-mark: light-dark(#1b4965, #88b8da);
 
   /*
@@ -351,70 +352,86 @@
 
   /*
    * The same two ramps, as drawn on the ink calendar (activity-panes.tsx,
-   * tone="ink"). That panel is ink in both themes, so its steps do not
-   * change with the theme — the dark ramp, fixed, because the light one is
-   * pale blues that would glow on it. Only `empty` tracks the theme, since
-   * `ink` itself does.
+   * tone="ink"). In dark that panel is the darkest ground, so the ramp is
+   * the dark one, lightening off it; in light the panel is white, so the
+   * ramp darkens off it, a soft blue scale. Either way each step stands
+   * further off the panel than the one below.
    */
-  --color-activity-ink-empty: light-dark(#2a3040, #212633);
-  --color-activity-ink-operational-1: light-dark(#1e3d5c, #1e3d5c);
-  --color-activity-ink-operational-2: light-dark(#2d608c, #2d608c);
-  --color-activity-ink-operational-3: light-dark(#3f89c0, #3f89c0);
-  --color-activity-ink-operational-4: light-dark(#63ade0, #63ade0);
-  --color-activity-ink-personal-1: light-dark(#283c3d, #283c3d);
-  --color-activity-ink-personal-2: light-dark(#4e5e5f, #4e5e5f);
-  --color-activity-ink-personal-3: light-dark(#819798, #819798);
-  --color-activity-ink-personal-4: light-dark(#b9d0d1, #b9d0d1);
+  --color-activity-ink-empty: light-dark(#dde5ed, #212633);
+  --color-activity-ink-operational-1: light-dark(#cfe2f3, #1e3d5c);
+  --color-activity-ink-operational-2: light-dark(#91bce4, #2d608c);
+  --color-activity-ink-operational-3: light-dark(#5797cf, #3f89c0);
+  --color-activity-ink-operational-4: light-dark(#2b67a3, #63ade0);
+  --color-activity-ink-personal-1: light-dark(#d4e2e2, #283c3d);
+  --color-activity-ink-personal-2: light-dark(#a8bdbe, #4e5e5f);
+  --color-activity-ink-personal-3: light-dark(#6e8889, #819798);
+  --color-activity-ink-personal-4: light-dark(#3a5354, #b9d0d1);
 
   /*
-   * Ink: a band of the darkest layer, in both themes — the brand navy in
-   * light, so the strip and the rail are one frame. Two places wear it —
-   * the situation strip, whose colours come from its level (see
-   * situation.tsx; only `neutral` exists), and the activity calendar's
-   * instrument panel (activity-panes.tsx), which draws the ink ramps above
-   * on it.
+   * The situation strip (situation.tsx, the strip's buttons and menus): the
+   * darkest layer, in both themes — the brand navy in light, so the strip
+   * and the rail are one frame around the workspace. Its severity marks are
+   * the signal family's dark values, fixed, since the strip is dark in both.
    */
-  --color-ink: light-dark(#0f1d33, #0a0c11);
-  --color-ink-line: light-dark(#1c2d47, #1a202b);
-  --color-ink-raised: light-dark(#1a2c47, #13161d);
-  --color-ink-hover: light-dark(#263b5c, #22262e);
-  --color-ink-fg: light-dark(#eef3f9, #e1e5ec);
-  --color-ink-muted: light-dark(#a3b3c8, #8a93a4);
-  --color-ink-accent: light-dark(#9cc2ea, #9cc2ea);
+  --color-strip: light-dark(#0f1d33, #0a0c11);
+  --color-strip-line: light-dark(#1c2d47, #1a202b);
+  --color-strip-raised: light-dark(#1a2c47, #13161d);
+  --color-strip-hover: light-dark(#263b5c, #22262e);
+  --color-strip-fg: light-dark(#eef3f9, #e1e5ec);
+  --color-strip-muted: light-dark(#a3b3c8, #8a93a4);
+  --color-strip-accent: light-dark(#9cc2ea, #9cc2ea);
+  --color-strip-focus: light-dark(#9cc2ea, #9cc2ea);
+  --color-strip-signal-critical: light-dark(#f0564b, #f0564b);
+  --color-strip-signal-caution: light-dark(#e8b04a, #e8b04a);
+
+  /*
+   * Ink: the instrument panel a chart, a timeline or the activity calendar
+   * is drawn on (INSTRUMENT, activity-panes.tsx, the Response flow's
+   * timeline, History's chart). In dark the darkest layer, so what each
+   * view shows sits on the deepest ground; in light a clean white panel
+   * with a cool hairline, so the charts sit light within their sections
+   * rather than as dark blocks on a light page.
+   */
+  --color-ink: light-dark(#ffffff, #0a0c11);
+  --color-ink-line: light-dark(#dfe7ec, #1a202b);
+  --color-ink-raised: light-dark(#f3f6f9, #13161d);
+  --color-ink-hover: light-dark(#e7edf2, #22262e);
+  --color-ink-fg: light-dark(#132036, #e1e5ec);
+  --color-ink-muted: light-dark(#566377, #8a93a4);
+  --color-ink-accent: light-dark(#1d3557, #9cc2ea);
 
   /*
    * Ink inset: the chosen day's surface, beside the calendar's ink one
-   * (activity-panes.tsx). A step up from ink, and a deep petrol blue (from #003049)
-   * rather than the calendar's neutral black, so what you picked out of the
-   * calendar reads as raised from it. Kept dark and low in chroma: a
-   * surface, never a colour that competes with the ramp.
+   * (activity-panes.tsx). A step off the ink — in dark a deep petrol blue
+   * (from #003049) raised from the calendar's black, in light a pale steel
+   * set down from its white — so what you picked out of the calendar reads
+   * as its own place. Low in chroma: a surface, never a colour that
+   * competes with the ramp.
    *
    * Prose is read here, where the calendar's panel holds only marks, so it
-   * carries a whole set: its own secondary text (brighter than `ink-muted`,
-   * which is tuned for the darker ink), its own rule, its own row hover,
-   * and its own focus ring. The workspace's own roles are rebound to these
-   * for anything drawn inside it — see the `ink-region` utility below.
+   * carries a whole set: its own secondary text, its own rule, its own row
+   * hover, and its own focus ring. The workspace's own roles are rebound to
+   * these for anything drawn inside an ink panel — see `ink-region` below.
    */
-  --color-ink-inset: light-dark(#053650, #03273c);
-  --color-ink-inset-line: light-dark(#2a5170, #203e52);
-  --color-ink-inset-hover: light-dark(#0c3f5d, #0d3046);
-  --color-ink-inset-muted: light-dark(#9fb0c3, #9fb0c3);
+  --color-ink-inset: light-dark(#e1ebf0, #03273c);
+  --color-ink-inset-line: light-dark(#bccdd6, #203e52);
+  --color-ink-inset-hover: light-dark(#d1dfe7, #0d3046);
+  --color-ink-inset-muted: light-dark(#4f5d72, #9fb0c3);
   /* A link's colour on ink, at 4.5:1. */
-  --color-ink-accent-text: light-dark(#9cc2ea, #9cc2ea);
-  --color-ink-focus: light-dark(#9cc2ea, #9cc2ea);
+  --color-ink-accent-text: light-dark(#1d3557, #9cc2ea);
+  --color-ink-focus: light-dark(#1d3557, #9cc2ea);
 
   /*
-   * Severity on ink. The signal family is tuned for the workspace's light
-   * surfaces, where it is dark ink on near-white; on an ink panel those
-   * same colours all but disappear. These are the family's dark-theme
-   * values, fixed in both themes, exactly as the ink activity ramps are.
+   * Severity on ink. In dark the signal family's dark values, since its
+   * light ones all but disappear on the black panel; in light the family's
+   * own light values, on the white panel.
    */
-  --color-ink-signal-critical: light-dark(#f0564b, #f0564b);
-  --color-ink-signal-high: light-dark(#f28a3c, #f28a3c);
-  --color-ink-signal-caution: light-dark(#e8b04a, #e8b04a);
-  --color-ink-signal-nominal: light-dark(#2a96a2, #2a96a2);
-  --color-ink-signal-advisory: light-dark(#4cc0da, #4cc0da);
-  --color-ink-signal-inactive: light-dark(#7d8799, #7d8799);
+  --color-ink-signal-critical: light-dark(#c8322a, #f0564b);
+  --color-ink-signal-high: light-dark(#c2560c, #f28a3c);
+  --color-ink-signal-caution: light-dark(#a86a00, #e8b04a);
+  --color-ink-signal-nominal: light-dark(#15616d, #2a96a2);
+  --color-ink-signal-advisory: light-dark(#0e7f9c, #4cc0da);
+  --color-ink-signal-inactive: light-dark(#6b7485, #7d8799);
 
   /* Behind a modal drawer. */
   --color-scrim: light-dark(rgb(14 18 25 / 0.45), rgb(0 0 0 / 0.6));

@@ -12,9 +12,10 @@ import { cx } from "@/components/ui/cx";
  * it today; one member's response activity will use it next, with its own
  * calendar and its own detail inside the same geometry.
  *
- * Both are the same ink, in both themes, so the calendar and the day you
- * pick out of it read as one instrument. What the day says is held on
- * insets within its pane — a deep navy, a step up from the ink — so its
+ * Both are the same ink — the darkest ground in dark, a white panel in
+ * light — so the calendar and the day you pick out of it read as one
+ * instrument. What the day says is held on insets within its pane — a step
+ * off the ink, a deep navy in dark and a pale steel in light — so its
  * parts are told apart by their surfaces, never by a rule. The day's pane
  * rebinds the workspace's text, line and signal roles to their ink values,
  * so what is drawn there needs no ink classes of its own (`ink-region`,
@@ -38,8 +39,8 @@ const TONES: Record<ActivityTone, string> = {
   // A layer within the section, not another card: one subtle edge, the
   // workspace's own radius, no shadow.
   surface: "border-line-subtle bg-surface",
-  // The instrument panel: ink in both themes, the darkest layer the
-  // workspace has, bounded by its own line rather than the workspace's.
+  // The instrument panel: ink — the darkest layer in dark, a white panel
+  // in light — bounded by its own line rather than the workspace's.
   ink: "border-ink-line bg-ink",
   // The chosen day: the same ink as the calendar, with the rebind, so
   // everything inside reads on it — and on the insets it holds.

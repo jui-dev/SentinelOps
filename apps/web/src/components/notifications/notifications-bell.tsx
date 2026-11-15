@@ -108,7 +108,7 @@ export function NotificationsBell() {
             <BellDot
               aria-hidden="true"
               strokeWidth={1.75}
-              className="size-4 text-ink-signal-caution [&>circle]:fill-ink-signal-critical [&>circle]:stroke-ink-signal-critical"
+              className="size-4 text-strip-signal-caution [&>circle]:fill-strip-signal-critical [&>circle]:stroke-strip-signal-critical"
             />
           ) : (
             <Bell aria-hidden="true" strokeWidth={1.75} className="size-4" />

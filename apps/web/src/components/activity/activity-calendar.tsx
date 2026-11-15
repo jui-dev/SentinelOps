@@ -64,8 +64,8 @@ const QUIET: Record<CalendarTone, string> = {
  * changes size — a busier day is a stronger blue and never a bigger mark.
  *
  * Two ramps per variant because the panel has two materials. The workspace
- * ramp darkens in light and lightens in dark; the ink one lightens in both,
- * because the ink panel is dark in both.
+ * ramp darkens in light and lightens in dark; the ink one moves off its
+ * panel — lightening off the dark one, darkening off the white one.
  */
 const FILLS: Record<CalendarTone, Record<ActivityVariant, readonly string[]>> =
   {

@@ -25,7 +25,7 @@ export function Mark({ className = "size-4" }: { className?: string }) {
         width="4.5"
         height="4.5"
         rx="1"
-        className="fill-ink-accent"
+        className="fill-strip-accent"
       />
     </svg>
   );
@@ -35,11 +35,11 @@ export function Wordmark() {
   return (
     <Link
       href="/"
-      className="flex items-center gap-2 rounded-sm text-ink-fg outline-offset-4"
+      className="flex items-center gap-2 rounded-sm text-strip-fg outline-offset-4"
     >
       <Mark />
       <span className="text-[0.9375rem] leading-none font-semibold tracking-[-0.015em]">
-        Sentinel<span className="font-normal text-ink-muted">Ops</span>
+        Sentinel<span className="font-normal text-strip-muted">Ops</span>
       </span>
     </Link>
   );

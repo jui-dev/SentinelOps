@@ -33,7 +33,7 @@ export const useSituation = (): Situation => useContext(SituationContext);
 
 /** Colours per level. Each future level adds its band here. */
 const LEVEL_STYLES: Record<SituationLevel, string> = {
-  neutral: "bg-ink text-ink-fg",
+  neutral: "bg-strip text-strip-fg",
 };
 
 /** The strip's frame, shared by the workspace and the sign-in pages. */
@@ -97,7 +97,7 @@ export function SituationStrip({
           type="button"
           onClick={onOpenNavigation}
           aria-haspopup="dialog"
-          className="-ml-1 grid size-7 place-items-center rounded-md text-ink-muted hover:bg-ink-hover hover:text-ink-fg lg:hidden"
+          className="-ml-1 grid size-7 place-items-center rounded-md text-strip-muted hover:bg-strip-hover hover:text-strip-fg lg:hidden"
         >
           <Menu aria-hidden="true" className="size-4" />
           <span className="sr-only">Open navigation</span>
@@ -107,13 +107,13 @@ export function SituationStrip({
     >
       {membership && (
         <p className="flex min-w-0 items-baseline gap-2">
-          <span className="truncate text-sm font-medium text-ink-fg">
+          <span className="truncate text-sm font-medium text-strip-fg">
             {membership.organization.name}
           </span>
-          <span aria-hidden="true" className="hidden text-ink-muted md:inline">
+          <span aria-hidden="true" className="hidden text-strip-muted md:inline">
             /
           </span>
-          <span className="data hidden truncate text-ink-muted md:inline">
+          <span className="data hidden truncate text-strip-muted md:inline">
             {membership.organization.slug}
           </span>
         </p>
