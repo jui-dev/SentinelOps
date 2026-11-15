@@ -130,7 +130,7 @@ function OpenInvitations({ canManage }: { canManage: boolean }) {
           New invitations are listed here until they are accepted or revoked.
         </EmptyNote>
       ) : (
-        <Table label="Open invitations"
+        <Table label="Open invitations" count={invitations.data.length}
           columns={[
             "main",
             "label",

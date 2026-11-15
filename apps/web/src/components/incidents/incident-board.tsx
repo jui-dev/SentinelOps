@@ -452,7 +452,7 @@ export function IncidentBoard({
   const columns = (showStatus ? 7 : 6) + (active ? 1 : 0);
 
   return (
-    <Table label={label} variant="operational" stickyHeader
+    <Table label={label} count={incidents.length} variant="operational" stickyHeader
           columns={[
             "severity",
             "main",

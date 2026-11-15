@@ -254,7 +254,7 @@ function ChangesLog({ initialSince }: { initialSince: string | undefined }) {
       {log.isPending ? (
         <Spinner label="Loading the activity log" />
       ) : (
-        <Table label="Changes" variant="operational"
+        <Table label="Changes" count={entries.length} variant="operational"
           columns={["time", "person", "main", "label", "actions"]}
         >
           <THead>

@@ -154,11 +154,17 @@ export function Table({
   variant = "reference",
   columns,
   stickyHeader = false,
+  caption,
+  count,
   children,
   className,
 }: {
   /** The table's accessible name, and the scroll region's. */
   label: string;
+  /** The tray's caption, when it should differ from `label`. */
+  caption?: string;
+  /** How many rows the table lists, shown beside the caption. */
+  count?: number;
   variant?: TableVariant;
   /**
    * Its columns, in order, each by kind: the widths come from the shared
@@ -184,6 +190,22 @@ export function Table({
        * sea glass in light, a mist well in dark (`bg-table-tray`).
        */}
       <div className={cx("rounded-lg bg-table-tray p-2", className)}>
+        {/*
+         * Its caption: the table's name, so the tray reads as a section of
+         * its own. Hidden from assistive technology, which hears the same
+         * name from the table itself.
+         */}
+        <div aria-hidden="true" className="flex items-center gap-2 px-2 pt-1 pb-2.5">
+          <span className="size-2 shrink-0 rounded-full bg-table-caption" />
+          <span className="truncate text-sm font-semibold text-table-caption">
+            {caption ?? label}
+          </span>
+          {count !== undefined && (
+            <span className="numeric min-w-5 shrink-0 rounded-full bg-table-caption-count px-1.5 text-center text-xs leading-5 font-semibold text-table-caption-count-fg">
+              {count}
+            </span>
+          )}
+        </div>
         {/*
          * A table wider than the screen scrolls sideways. Only then is its
          * container a focusable, named region, so a keyboard user can scroll

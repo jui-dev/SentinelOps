@@ -228,7 +228,7 @@ function WorkCard({
           <EmptyNote title={empty.title}>{empty.body}</EmptyNote>
         </div>
       ) : (
-        <Table label={title} variant="operational"
+        <Table label={title} count={incidents.length} variant="operational"
           columns={["severity", "main", "datetime", "actions"]}
         >
           <THead>

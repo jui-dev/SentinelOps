@@ -85,7 +85,7 @@ function TeamList({
   }
 
   return (
-    <Table label="Teams"
+    <Table label="Teams" count={teams.data.length}
           columns={["main", "count", "count", onEdit ? "actions2" : "actions"]}
         >
       <THead>

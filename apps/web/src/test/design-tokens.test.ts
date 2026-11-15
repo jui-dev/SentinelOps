@@ -76,6 +76,9 @@ each(["fg", "fg-muted", "fg-subtle"], WORKSPACE, TEXT);
 // band likewise: its name and its secondary words. (Its rows' light-only
 // hover is the same tint as `row-hover`, held below.)
 each(["table-head-fg"], ["table-head"], TEXT);
+// A table's tray caption: its name on both ends of the tray, and its count.
+each(["table-caption"], ["table-tray-top", "table-tray-bottom"], TEXT);
+each(["table-caption-count-fg"], ["table-caption-count"], TEXT);
 each(["list-head-fg", "list-head-muted"], ["list-head"], TEXT);
 // A hovered row: everything a row holds, on the hover's tint. Not the
 // resolved teal's words: on dark's hover (#212631, the workspace hover it has

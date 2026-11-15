@@ -444,6 +444,14 @@ function ActiveOperations({
     <div className="flex flex-col gap-3">
       {/* The table's own frame, inside the section, on the tables' tray. */}
       <div className="rounded-lg bg-table-tray p-2">
+        {/* The tray's caption, as every table's (ui/table.tsx). */}
+        <div aria-hidden="true" className="flex items-center gap-2 px-2 pt-1 pb-2.5">
+          <span className="size-2 shrink-0 rounded-full bg-table-caption" />
+          <span className="text-sm font-semibold text-table-caption">Active incidents</span>
+          <span className="numeric min-w-5 shrink-0 rounded-full bg-table-caption-count px-1.5 text-center text-xs leading-5 font-semibold text-table-caption-count-fg">
+            {incidents.length}
+          </span>
+        </div>
         <div className="overflow-hidden rounded-md border border-line-subtle bg-surface shadow-[0_1px_2px_light-dark(rgb(15_29_51/0.08),transparent)]">
           <ColumnHeader />
           <ul

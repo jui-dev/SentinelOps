@@ -141,6 +141,10 @@
   --color-table-tray-top: light-dark(#dcebeb, #0e121a);
   --color-table-tray-bottom: light-dark(#e9f2f2, #0e121a);
   --color-table-tray-line: light-dark(transparent, #222833);
+  /* The tray's caption: the table's name, and how many rows it lists. */
+  --color-table-caption: light-dark(#15616d, #c9d0db);
+  --color-table-caption-count: light-dark(#15616d, #2b3240);
+  --color-table-caption-count-fg: light-dark(#ffffff, #e6e8ec);
   /*
    * A grouped list's heading band (a service's known issues), which heads
    * its rows as a table's header does: the same navy in light, its name
