@@ -224,7 +224,7 @@ function Figures({ figures }: { figures: IncidentFlowFiguresResponse }) {
   return (
     <dl
       aria-label="Response flow figures"
-      className="flex flex-wrap gap-2.5 px-4 py-3.5 sm:px-5"
+      className="flex flex-wrap gap-2.5"
     >
       <Figure
         label="Typical wait"
@@ -908,6 +908,39 @@ export function IncidentFlow({
     (shownTeam && data?.teams.find(({ id }) => id === shownTeam)?.figures) ||
     data?.figures;
 
+  // Which team, and how far back: on the figures' row, at its right.
+  const controls = (
+    <div className="ml-auto flex flex-wrap items-center gap-3">
+      {data && data.teams.length > 1 && (
+        <FilterGroup label="Team" showLabel={false}>
+          {[
+            { id: undefined, name: scope === "teams" ? "All your teams" : "All teams" },
+            ...data.teams,
+          ].map((each) => (
+            <FilterOption
+              key={each.id ?? "all"}
+              pressed={shownTeam === each.id}
+              onClick={() => setTeam(each.id)}
+            >
+              {each.name}
+            </FilterOption>
+          ))}
+        </FilterGroup>
+      )}
+      <FilterGroup label="Range" showLabel={false}>
+        {RANGES.map((range) => (
+          <FilterOption
+            key={range}
+            pressed={days === range}
+            onClick={() => setDays(range)}
+          >
+            {range} days
+          </FilterOption>
+        ))}
+      </FilterGroup>
+    </div>
+  );
+
   return (
     <section
       aria-labelledby="incident-flow-title"
@@ -939,35 +972,6 @@ export function IncidentFlow({
             </p>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
-          {data && data.teams.length > 1 && (
-            <FilterGroup label="Team" showLabel={false}>
-              {[
-                { id: undefined, name: scope === "teams" ? "All your teams" : "All teams" },
-                ...data.teams,
-              ].map((each) => (
-                <FilterOption
-                  key={each.id ?? "all"}
-                  pressed={shownTeam === each.id}
-                  onClick={() => setTeam(each.id)}
-                >
-                  {each.name}
-                </FilterOption>
-              ))}
-            </FilterGroup>
-          )}
-          <FilterGroup label="Range" showLabel={false}>
-            {RANGES.map((range) => (
-              <FilterOption
-                key={range}
-                pressed={days === range}
-                onClick={() => setDays(range)}
-              >
-                {range} days
-              </FilterOption>
-            ))}
-          </FilterGroup>
-        </div>
       </div>
       {flow.isError && !data ? (
         <div className="p-4 sm:p-5">
@@ -985,7 +989,11 @@ export function IncidentFlow({
             flow.isPlaceholderData && "opacity-60",
           )}
         >
-          <Figures figures={figures} />
+          {/* The figures, and the controls level with them at the right. */}
+          <div className="flex flex-wrap items-center gap-3 px-4 py-3.5 sm:px-5">
+            <Figures figures={figures} />
+            {controls}
+          </div>
           {/* The timeline on the ink the Overview's other graphs use. */}
           <div className="px-4 pb-4 sm:px-5 sm:pb-5">
             <div className={cx(INSTRUMENT, "flow-ink overflow-hidden")}>
