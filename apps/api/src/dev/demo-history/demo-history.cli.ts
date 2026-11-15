@@ -71,6 +71,7 @@ try {
       `  activities:  ${result.activities}`,
       `  known issues: ${result.knownIssues}`,
       `  activity log: ${result.activityEntries}`,
+      `  analyses:    ${result.analyses}`,
     ].join('\n'),
   );
 } catch (error) {

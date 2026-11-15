@@ -7,7 +7,12 @@ import { PrismaService } from '../../database/prisma.service.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { DEV_PERSONAS, DEV_SERVICES, DEV_TEAMS } from '../dev-account.js';
 import { DevAccountService } from '../dev-account.service.js';
-import { DemoHistoryService } from '../demo-history/demo-history.service.js';
+import {
+  DemoHistoryService,
+  DemoNumbersTaken,
+  DemoOrganizationMismatch,
+} from '../demo-history/demo-history.service.js';
+import type { DemoHistoryPart } from '../demo-history/demo-history.service.js';
 import { resolveAnchor } from '../demo-history/demo-history.guard.js';
 import { FORMER_MEMBER } from '../demo-history/demo-story.js';
 import {
@@ -20,18 +25,24 @@ import type { DemoPart } from './demo-parts.js';
 import type { DemoWorkspaceResponse } from './demo-workspace.contract.js';
 import {
   demoNotFound,
-  demoPartNotGeneratedAlone,
+  demoNumbersTaken,
   demoPartRequired,
+  demoStructureChanged,
 } from './demo-workspace.errors.js';
 
 type Tx = Prisma.TransactionClient;
 
-/** The parts with a generator of their own; the rest come with a reset. */
-const GENERATED_ALONE: ReadonlySet<DemoPart> = new Set([
-  'accounts',
-  'teams',
-  'services',
+/** Written by the history service; the rest are made here. */
+const HISTORY_PARTS: ReadonlySet<DemoPart> = new Set<DemoPart>([
+  'knownIssues',
+  'history',
+  'live',
+  'analyses',
+  'activity',
 ]);
+
+const isHistoryPart = (part: DemoPart): part is DemoHistoryPart =>
+  HISTORY_PARTS.has(part);
 
 const PERSONA_EMAILS = DEV_PERSONAS.map((persona) => persona.email);
 
@@ -77,7 +88,7 @@ export class DemoWorkspaceService {
       needs: [...DEMO_PART_RULES[id].needs],
       count: counts[id],
       loaded: counts[id] > 0,
-      generatable: GENERATED_ALONE.has(id),
+      generatable: true,
     }));
 
     return {
@@ -91,35 +102,84 @@ export class DemoWorkspaceService {
 
   /**
    * Generates `part`, and first whatever it needs that is missing. Making
-   * one that is there again restores it as the demo has it, and changes
-   * nothing else.
+   * one that is there again rewrites it as the demo has it — and with it
+   * any part loaded that needs it, which rewriting would take away. The
+   * story ends where the demo's history does; on a demo never reset, today.
    */
   async generate(
     organizationId: string,
     part: DemoPart,
+    now = new Date(),
   ): Promise<DemoWorkspaceResponse> {
     await this.assertDemo(organizationId);
 
-    if (!GENERATED_ALONE.has(part)) {
-      throw demoPartNotGeneratedAlone();
-    }
+    const before = await this.counts(organizationId);
+    const missing = prerequisitesOf(part).filter((need) => before[need] === 0);
+    // Rewriting the history takes its analyses with it: they come back too.
+    // Only a rewritten part takes anything with it: making the teams or
+    // services again changes none of their rows.
+    const carried =
+      isHistoryPart(part) && before[part] > 0
+        ? dependentsOf(part).filter((dependent) => before[dependent] > 0)
+        : [];
+    const parts = [...missing, part, ...carried];
 
-    if (part === 'accounts' || prerequisitesOf(part).includes('accounts')) {
-      await this.accounts.ensure();
-    }
+    // Every account can sign in, whatever happened to it.
+    await this.accounts.ensure();
 
     await this.prisma.$transaction(async (tx) => {
       await this.lock(tx, organizationId);
 
-      for (const each of [...prerequisitesOf(part), part]) {
-        if (each === 'teams') await this.ensureTeams(tx, organizationId);
-        if (each === 'services') await this.ensureServices(tx, organizationId);
+      if (parts.includes('teams')) await this.ensureTeams(tx, organizationId);
+      if (parts.includes('services')) {
+        await this.ensureServices(tx, organizationId);
       }
     });
 
-    this.logger.log('Demo part generated', { organizationId, part });
+    const written = parts.filter(isHistoryPart);
+
+    if (written.length > 0) {
+      const anchor = await this.historyEnd(organizationId, now);
+
+      try {
+        await this.history.write(anchor, new Set(written));
+      } catch (error) {
+        if (error instanceof DemoNumbersTaken) throw demoNumbersTaken();
+        if (error instanceof DemoOrganizationMismatch) {
+          throw demoStructureChanged(error.problems);
+        }
+        throw error;
+      }
+    }
+
+    this.logger.log('Demo part generated', { organizationId, parts });
 
     return this.status(organizationId);
+  }
+
+  /**
+   * The day the demo's story ends: where its history was last written to,
+   * so a part made now matches the rest; on a demo never reset, today —
+   * remembered from then on.
+   */
+  private async historyEnd(organizationId: string, now: Date): Promise<Date> {
+    const record = await this.prisma.demoWorkspace.findUnique({
+      where: { organizationId },
+      select: { historyEndsAt: true },
+    });
+
+    if (record?.historyEndsAt) return record.historyEndsAt;
+
+    const anchor = resolveAnchor([], now);
+
+    await this.prisma.demoWorkspace.upsert({
+      where: { organizationId },
+      create: { organizationId, historyEndsAt: anchor },
+      update: { historyEndsAt: anchor },
+      select: { organizationId: true },
+    });
+
+    return anchor;
   }
 
   /** Removes `part`, and before it every part that needs it. */

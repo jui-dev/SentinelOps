@@ -50,7 +50,8 @@ export const DEMO_PART_RULES: Record<DemoPart, DemoPartRule> = {
   },
   live: { required: false, needs: ['teams', 'services'], uses: [] },
   analyses: { required: false, needs: ['history'], uses: [] },
-  activity: { required: false, needs: ['accounts'], uses: [] },
+  // Its entries name the teams and services changed.
+  activity: { required: false, needs: ['services'], uses: [] },
 };
 
 /** Every part `part` needs, directly or not, first things first. */

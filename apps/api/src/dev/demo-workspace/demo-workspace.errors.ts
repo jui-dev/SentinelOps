@@ -7,7 +7,8 @@ export const DemoWorkspaceErrorCode = {
   DEMO_NOT_FOUND: 'DEMO_NOT_FOUND',
   DEMO_PART_NOT_FOUND: 'DEMO_PART_NOT_FOUND',
   DEMO_PART_REQUIRED: 'DEMO_PART_REQUIRED',
-  DEMO_PART_NOT_GENERATED_ALONE: 'DEMO_PART_NOT_GENERATED_ALONE',
+  DEMO_NUMBERS_TAKEN: 'DEMO_NUMBERS_TAKEN',
+  DEMO_STRUCTURE_CHANGED: 'DEMO_STRUCTURE_CHANGED',
 } as const;
 
 /**
@@ -32,11 +33,21 @@ export const demoPartRequired = (): ConflictException =>
   );
 
 /**
- * A part still written with the rest of the history: reset the demo to
- * generate it. Goes once each part has a generator of its own.
+ * The story's incidents keep their numbers, and someone has declared one
+ * with a number the part would use since its demo data was removed.
  */
-export const demoPartNotGeneratedAlone = (): ConflictException =>
+export const demoNumbersTaken = (): ConflictException =>
   new ConflictException(
-    'This part is generated with the full demo; reset the demo to generate it',
-    { errorCode: DemoWorkspaceErrorCode.DEMO_PART_NOT_GENERATED_ALONE },
+    'Incidents declared since use the numbers this part needs; reset the demo to generate it',
+    { errorCode: DemoWorkspaceErrorCode.DEMO_NUMBERS_TAKEN },
+  );
+
+/**
+ * A demo account's role or teams, or a team or service, was changed in the
+ * app: the story no longer fits it. A reset puts them back.
+ */
+export const demoStructureChanged = (problems: string[]): ConflictException =>
+  new ConflictException(
+    `The demo's people, teams or services were changed (${problems.join('; ')}); reset the demo to generate this part`,
+    { errorCode: DemoWorkspaceErrorCode.DEMO_STRUCTURE_CHANGED },
   );

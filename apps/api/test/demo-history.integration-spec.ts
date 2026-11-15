@@ -7,6 +7,7 @@ import { PrismaService } from './../src/database/prisma.service.js';
 import { DEV_ORGANIZATION, DEV_PERSONAS } from './../src/dev/dev-account.js';
 import { DevAccountService } from './../src/dev/dev-account.service.js';
 import { buildDemoActivity } from './../src/dev/demo-history/demo-activity.js';
+import { DEMO_ANALYSES } from './../src/dev/demo-history/demo-analyses.js';
 import { buildDemoKnownIssues } from './../src/dev/demo-history/demo-known-issues.js';
 import { FORMER_MEMBER } from './../src/dev/demo-history/demo-story.js';
 import { buildDemoHistory } from './../src/dev/demo-history/build-demo-history.js';
@@ -116,6 +117,58 @@ describe('demo history (integration)', () => {
     await prisma.$disconnect();
   });
 
+  it('should write the analyses as the application would have: started and published by the Incident Manager, written by a Responder on the incident', async () => {
+    await demo.replace(anchor);
+
+    const analyses = await prisma.incidentAnalysis.findMany({
+      where: { organizationId },
+      select: {
+        status: true,
+        summary: true,
+        doneSections: true,
+        publishedAt: true,
+        createdAt: true,
+        createdBy: { select: { email: true } },
+        publishedBy: { select: { email: true } },
+        owner: { select: { id: true, role: true } },
+        incident: {
+          select: {
+            status: true,
+            resolvedAt: true,
+            responders: { select: { membershipId: true } },
+          },
+        },
+      },
+    });
+
+    expect(analyses.map(({ status }) => status).sort()).toEqual([
+      'DRAFT',
+      'DRAFT',
+      ...Array(6).fill('PUBLISHED'),
+    ]);
+
+    for (const analysis of analyses) {
+      expect(analysis.incident.status).toBe('RESOLVED');
+      expect(analysis.createdAt.getTime()).toBeGreaterThan(
+        analysis.incident.resolvedAt!.getTime(),
+      );
+      expect(analysis.createdBy.email).toBe('ava@example.com');
+      expect(analysis.owner.role).toBe('RESPONDER');
+      expect(analysis.incident.responders.map((r) => r.membershipId)).toContain(
+        analysis.owner.id,
+      );
+
+      if (analysis.status === 'PUBLISHED') {
+        // Publishing needs a summary marked done.
+        expect(analysis.doneSections).toContain('summary');
+        expect(analysis.publishedBy?.email).toBe('ava@example.com');
+        expect(analysis.publishedAt!.getTime()).toBeLessThan(anchor.getTime());
+      } else {
+        expect(analysis.publishedAt).toBeNull();
+      }
+    }
+  });
+
   it('should write every incident as built, as the application reads it', async () => {
     const result = await demo.replace(anchor);
 
@@ -129,6 +182,7 @@ describe('demo history (integration)', () => {
       knownIssues: buildDemoKnownIssues(history).length,
       // And the former member's removal, months before the week.
       activityEntries: buildDemoActivity(anchor).length + 1,
+      analyses: DEMO_ANALYSES.length,
     });
 
     // Read as the dev Admin, who oversees every incident.

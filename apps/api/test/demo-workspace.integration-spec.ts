@@ -98,8 +98,10 @@ describe('demo workspace (integration)', () => {
       'knownIssues',
       'history',
       'live',
+      'analyses',
       'activity',
     ]);
+    expect(status.complete).toBe(true);
     expect(part(status, 'live').count).toBe(5);
     expect(status.lastResetAt).toBe(now.toISOString());
     expect(status.lastResetBy).toEqual({ id: adminId, name: 'Dev Admin' });
@@ -216,12 +218,94 @@ describe('demo workspace (integration)', () => {
     });
   });
 
-  it('should refuse a part still generated only with the full demo', async () => {
-    await expect(
-      demo.generate(organizationId, 'history'),
-    ).rejects.toMatchObject({
-      errorCode: 'DEMO_PART_NOT_GENERATED_ALONE',
+  it('should generate an optional part on its own, what it needs first, its story ending today', async () => {
+    // Analyses need the history: asking for them writes both.
+    const status = await demo.generate(organizationId, 'analyses', now);
+
+    expect(loaded(status)).toEqual([
+      'accounts',
+      'teams',
+      'services',
+      'history',
+      'analyses',
+    ]);
+    expect(part(status, 'analyses').count).toBe(8);
+    expect(status.historyEndsAt).toBe('2026-11-15T00:00:00.000Z');
+  });
+
+  it('should build the same demo part by part as a reset does', async () => {
+    const reset = await demo.reset(organizationId, adminId, now);
+
+    await demo.removeAll(organizationId);
+
+    for (const each of [
+      'knownIssues',
+      'history',
+      'live',
+      'analyses',
+      'activity',
+    ]) {
+      await demo.generate(organizationId, each as never, now);
+    }
+
+    const byParts = await demo.status(organizationId);
+
+    expect(byParts.parts.map(({ id, count }) => [id, count])).toEqual(
+      reset.parts.map(({ id, count }) => [id, count]),
+    );
+    // Known issues written after the incidents still name them.
+    expect(
+      await prisma.incident.count({
+        where: { organizationId, knownIssueId: { not: null } },
+      }),
+    ).toBeGreaterThan(0);
+  });
+
+  it('should bring the analyses back when the history they are on is generated again', async () => {
+    await demo.reset(organizationId, adminId, now);
+
+    const status = await demo.generate(organizationId, 'history', now);
+
+    expect(part(status, 'analyses').count).toBe(8);
+  });
+
+  it('should refuse a part whose incident numbers someone has used since', async () => {
+    await demo.removeAll(organizationId);
+    await demo.generate(organizationId, 'services', now);
+    const service = await prisma.service.findFirstOrThrow({
+      where: { organizationId },
+      select: { id: true, ownerTeamId: true },
     });
+
+    // Someone declares INC-1 in the empty demo.
+    await prisma.incident.create({
+      data: {
+        organizationId,
+        number: 1,
+        title: 'Declared by hand',
+        serviceId: service.id,
+        teamId: service.ownerTeamId,
+        severity: 'SEV3',
+        createdById: adminId,
+      },
+    });
+
+    await expect(
+      demo.generate(organizationId, 'history', now),
+    ).rejects.toMatchObject({ errorCode: 'DEMO_NUMBERS_TAKEN' });
+    // Nothing was written.
+    expect(await prisma.incident.count({ where: { organizationId } })).toBe(1);
+  });
+
+  it('should refuse a part once the demo people have been changed, until a reset', async () => {
+    await prisma.membership.updateMany({
+      where: { organizationId, user: { email: 'ava@example.com' } },
+      data: { role: 'RESPONDER' },
+    });
+
+    await expect(
+      demo.generate(organizationId, 'live', now),
+    ).rejects.toMatchObject({ errorCode: 'DEMO_STRUCTURE_CHANGED' });
   });
 
   it('should answer as if there were no demo for an organization that is not one', async () => {
