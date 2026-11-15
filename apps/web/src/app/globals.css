@@ -605,6 +605,22 @@
 }
 
 /*
+ * The timeline's own panel inside the Response flow: the ink the Overview's
+ * analytical views are drawn on (`INSTRUMENT`), with the flow's surfaces
+ * and rules restated in ink so its sticky header, names and legend sit on
+ * the same dark ground. Used together with `ink-region`.
+ */
+@utility flow-ink {
+  --flow-top: var(--color-ink);
+  --flow-bottom: var(--color-ink);
+  --flow-head: var(--color-ink-raised);
+  --flow-strip: var(--color-ink-raised);
+  --flow-rule: var(--color-ink-hover);
+  --flow-line: var(--color-ink-hover);
+  --flow-rim: var(--color-ink-hover);
+}
+
+/*
  * The navigation rail's surface: a tonal ramp from navy-black to a dark,
  * desaturated navy — always darker than the workspace, so it reads as the
  * deeper layer of the same material rather than a coloured panel.

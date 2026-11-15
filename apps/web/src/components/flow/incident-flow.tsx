@@ -15,6 +15,7 @@ import { useOrganization } from "@/components/organizations/organization-scope";
 import { ErrorAlert } from "@/components/ui/alert";
 import { cx } from "@/components/ui/cx";
 import { Spinner } from "@/components/ui/spinner";
+import { INSTRUMENT } from "@/components/overview/analytical-view-header";
 import { formatDuration } from "@/components/ui/timestamp";
 import type {
   IncidentFlowFiguresResponse,
@@ -220,7 +221,7 @@ function Figures({ figures }: { figures: IncidentFlowFiguresResponse }) {
   return (
     <dl
       aria-label="Response flow figures"
-      className="flex flex-wrap gap-2.5 border-b border-(--flow-rule) px-4 py-3.5 sm:px-5"
+      className="flex flex-wrap gap-2.5 px-4 py-3.5 sm:px-5"
     >
       <Figure
         label="Typical wait"
@@ -984,7 +985,12 @@ export function IncidentFlow({
           )}
         >
           <Figures figures={figures} />
-          <FlowFrame flow={data} team={shownTeam} />
+          {/* The timeline on the ink the Overview's other graphs use. */}
+          <div className="px-4 pb-4 sm:px-5 sm:pb-5">
+            <div className={cx(INSTRUMENT, "flow-ink overflow-hidden")}>
+              <FlowFrame flow={data} team={shownTeam} />
+            </div>
+          </div>
         </div>
       )}
     </section>
