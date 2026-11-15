@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Check, ChevronRight, ListChecks, Route } from "lucide-react";
+import { Check, ChevronRight, ListChecks, Route } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 
@@ -34,7 +34,7 @@ function RoleTabs({ shown }: { shown: Role }) {
   return (
     <nav
       aria-label="Roles"
-      className="flex flex-wrap gap-0.5 rounded-lg border border-line-subtle bg-sunken p-0.75"
+      className="flex flex-wrap gap-0.5 self-start rounded-lg border border-line-subtle bg-sunken p-0.75"
     >
       {FLOW_ORDER.map((role) => {
         const meta = ROLE_META[role];
@@ -184,19 +184,7 @@ export function RolePage() {
   return (
     <PageBody width="full" className="pt-8">
       <div className="flex flex-col gap-5">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
-          <nav aria-label="Breadcrumb" className="text-sm text-fg-subtle">
-            <Link
-              href={rolesHref(organization.slug)}
-              className="inline-flex items-center gap-1 rounded-sm hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-            >
-              <ArrowLeft aria-hidden="true" className="size-3.5" />
-              Roles
-            </Link>
-          </nav>
-          <span aria-hidden="true" className="h-5 w-px bg-line" />
-          <RoleTabs shown={role} />
-        </div>
+        <RoleTabs shown={role} />
         <header
           className={cx(
             "flex flex-wrap items-start justify-between gap-x-10 gap-y-6 rounded-lg border p-7 shadow-card",
@@ -399,13 +387,6 @@ export function RolePage() {
         </div>
       </OverviewPanel>
 
-      <Link
-        href={rolesHref(organization.slug)}
-        className={cx(linkClasses, "inline-flex items-center gap-1.5 self-start text-sm font-medium")}
-      >
-        <ArrowLeft aria-hidden="true" className="size-3.5" />
-        Compare all roles
-      </Link>
     </PageBody>
   );
 }
