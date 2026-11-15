@@ -13,6 +13,8 @@ import { useId } from "react";
 import type { ReactNode } from "react";
 
 import { useOrganization } from "@/components/organizations/organization-scope";
+import { INSTRUMENT } from "@/components/overview/analytical-view-header";
+import { SectionIcon } from "@/components/overview/overview-panel";
 import { ErrorAlert } from "@/components/ui/alert";
 
 import { cx } from "@/components/ui/cx";
@@ -68,7 +70,7 @@ function SectionChecklist({
   const progress = analysis ? savedProgress(analysis) : null;
 
   return (
-    <ol aria-label="Analysis sections" className="divide-y divide-line-subtle border-t border-line-subtle">
+    <ol aria-label="Analysis sections" className="divide-y divide-line-subtle">
       {ANALYSIS_SECTIONS.map((section, index) => {
         const standing = progress?.[section] ?? "not-started";
         const done = standing === "done";
@@ -79,7 +81,7 @@ function SectionChecklist({
         return (
           <li
             key={section}
-            className="grid grid-cols-[1.75rem_minmax(0,1fr)_auto] items-center gap-x-3.5 px-5 py-3 sm:px-6"
+            className="grid grid-cols-[1.75rem_minmax(0,1fr)_auto] items-center gap-x-3.5 px-4 py-3"
           >
             <span
               aria-hidden="true"
@@ -155,9 +157,9 @@ export function AnalysisEntry({
     return (
       <section
         aria-labelledby={headingId}
-        className="flex flex-col gap-3 rounded-lg border border-line bg-surface px-5 py-4.5 sm:px-6"
+        className="flex flex-col gap-3 rounded-lg border border-section-line bg-section-ground px-5 py-4 shadow-card sm:px-6"
       >
-        <h2 id={headingId} className="label-caps text-fg-subtle">
+        <h2 id={headingId} className="text-lg leading-6 font-semibold text-fg">
           Incident analysis
         </h2>
         {analysis.isError ? (
@@ -240,64 +242,62 @@ export function AnalysisEntry({
   }
 
   const Icon = published ? FileText : FilePenLine;
+  const standing = data === null ? "Not started" : published ? "Published" : "Draft";
 
+  // In the sections' frame, as Happened before and the Timeline beneath it.
   return (
     <section
       aria-labelledby={headingId}
-      className={cx(
-        "overflow-hidden rounded-lg border",
-        published
-          ? "border-status-resolved-line bg-status-resolved-subtle/40"
-          : "border-status-investigating-line bg-surface",
-      )}
+      className="overflow-hidden rounded-lg border border-section-line bg-section-ground shadow-card"
     >
-      <div
-        className={cx(
-          "flex flex-wrap items-center gap-x-5 gap-y-3 px-5 py-4.5 sm:px-6",
-          !published &&
-            "bg-linear-to-r from-status-investigating-subtle to-transparent",
-        )}
-      >
-        <span
-          aria-hidden="true"
-          className={cx(
-            "grid size-11 shrink-0 place-items-center rounded-lg border",
-            published
-              ? "border-status-resolved-line bg-status-resolved-subtle text-status-resolved-text"
-              : "border-status-investigating-line bg-status-investigating-subtle text-status-investigating-text",
-          )}
-        >
-          <Icon strokeWidth={2} className="size-5" />
-        </span>
-        <div className="flex min-w-0 flex-1 basis-72 flex-col gap-1">
-          {/* The card's name stays "Incident analysis"; whose move it is, before it. */}
-          <h2
-            id={headingId}
-            className={cx(
-              "label-caps",
-              published ? "text-status-resolved-text" : "text-status-investigating-text",
-            )}
-          >
-            {yours && (
-              <>
-                Next step <span aria-hidden="true">·</span>
-                <span className="sr-only">:</span>{" "}
-              </>
-            )}
-            Incident analysis
-          </h2>
-          <p className="text-[1.0625rem] font-semibold text-fg">{headline}</p>
-          {meta && <div className="text-xs text-fg-muted">{meta}</div>}
+      <div className="flex flex-wrap items-start justify-between gap-x-5 gap-y-3 border-b border-section-divider bg-section-head px-4 py-3 sm:px-5">
+        <div className="flex min-w-0 flex-1 basis-72 items-start gap-3">
+          <SectionIcon icon={Icon} family={published ? "resolved" : "decision"} />
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+              {/* Read "Next step: Incident analysis"; seen as the name, then its pill. */}
+              <h2
+                id={headingId}
+                className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-lg leading-6 font-semibold tracking-[-0.01em] text-fg"
+              >
+                {yours && (
+                  <>
+                  <span className="order-last inline-flex items-center rounded-full border border-accent-line bg-accent-subtle px-2 py-0.5 text-xs font-semibold tracking-normal text-accent-text">
+                    Next step
+                    <span className="sr-only">:</span>
+                  </span>{" "}
+                  </>
+                )}
+                Incident analysis
+              </h2>
+              <span
+                className={cx(
+                  "numeric inline-flex items-center rounded-full border border-line bg-surface px-2 py-0.5 text-xs font-medium",
+                  published ? "text-status-resolved-text" : "text-fg-muted",
+                )}
+              >
+                {standing}
+                {data && !published && ` · ${done} of ${ANALYSIS_SECTIONS.length}`}
+              </span>
+            </div>
+            <p className="text-sm font-medium text-fg">{headline}</p>
+            {meta && <div className="text-xs text-fg-muted">{meta}</div>}
+          </div>
         </div>
-        {action && <div className="flex items-center">{action}</div>}
+        {action && <div className="flex items-center pt-0.5">{action}</div>}
       </div>
-      {published && data?.summary && (
-        <p className="line-clamp-2 border-t border-status-resolved-line/60 px-5 py-3.5 text-sm leading-6 whitespace-pre-line text-fg-muted sm:px-6">
-          {data.summary}
-        </p>
-      )}
-      {!published && (data !== null || canStart) && (
-        <SectionChecklist analysis={data} writing={yours} />
+      {((published && data?.summary) || (!published && (data !== null || canStart))) && (
+        <div className="p-4 sm:p-5">
+          <div className={cx(INSTRUMENT, "overflow-hidden")}>
+            {published && data?.summary ? (
+              <p className="line-clamp-3 px-4 py-3.5 text-sm leading-6 whitespace-pre-line text-fg-muted">
+                {data.summary}
+              </p>
+            ) : (
+              <SectionChecklist analysis={data} writing={yours} />
+            )}
+          </div>
+        </div>
       )}
     </section>
   );

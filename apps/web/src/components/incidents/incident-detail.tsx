@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Clock, Link2, Server, Users } from "lucide-react";
+import { Check, CircleCheck, Clock, Link2, Server, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -8,6 +8,8 @@ import { useId, useState } from "react";
 import type { ReactNode } from "react";
 
 import { AnalysisEntry } from "@/components/incident-analyses/analysis-entry";
+import { INSTRUMENT } from "@/components/overview/analytical-view-header";
+import { SectionIcon } from "@/components/overview/overview-panel";
 import {
   useCan,
   useOrganization,
@@ -39,6 +41,7 @@ import { isApiError } from "@/lib/api/errors";
 import { PeopleRow, usePeople } from "./incident-people";
 import { incidentsHref, useIncident, useIncidentTimeline } from "./incident-queries";
 import {
+  Figure,
   firstStartOf,
   FollowPanel,
   OversightPanel,
@@ -707,61 +710,75 @@ function Resolution({ incident }: { incident: IncidentDetailResponse }) {
   )?.actor.name;
   const updates = timeline.data?.filter(({ type }) => type === "UPDATE").length;
 
+  const wait = firstStart
+    ? Date.parse(firstStart) - Date.parse(incident.createdAt)
+    : undefined;
+
+  // In the sections' frame, as the analysis, Happened before and the
+  // Timeline beneath it are.
   return (
     <section
       aria-labelledby={headingId}
-      className="overflow-hidden rounded-lg border border-status-resolved-line bg-linear-to-b from-status-resolved-subtle to-surface"
+      className="overflow-hidden rounded-lg border border-section-line bg-section-ground shadow-card"
     >
-      <div className="grid gap-5 px-5 py-5 sm:px-6 md:grid-cols-[minmax(0,1fr)_17rem] md:gap-7">
-        <div className="flex min-w-0 flex-col gap-2.5">
-          <h2 id={headingId} className="label-caps text-status-resolved-text">
-            Resolution
-          </h2>
-          {incident.resolution ? (
-            <p className="text-[0.9375rem] leading-relaxed whitespace-pre-line text-fg">
-              {incident.resolution}
-            </p>
-          ) : (
-            <p className="text-sm text-fg-muted">
-              Resolved before resolution notes were recorded.
-            </p>
-          )}
-          <p className="text-xs text-fg-muted">
-            Resolved {incident.resolvedAt && <LocalDateTime value={incident.resolvedAt} />}
-            {resolvedBy && ` by ${resolvedBy}`} · kept as it is; if it returns,
-            declare a new incident.
+      <div className="flex items-start gap-3 border-b border-section-divider bg-section-head px-4 py-3 sm:px-5">
+        <SectionIcon icon={CircleCheck} family="resolved" />
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+            <h2
+              id={headingId}
+              className="text-lg leading-6 font-semibold tracking-[-0.01em] text-fg"
+            >
+              Resolution
+            </h2>
+            {incident.resolvedAt && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-line bg-surface px-2 py-0.5 text-xs font-medium text-status-resolved-text">
+                Resolved <LocalDateTime value={incident.resolvedAt} />
+              </span>
+            )}
+          </div>
+          <p className="text-sm text-fg-muted">
+            {resolvedBy ? `By ${resolvedBy}` : "Resolved"} · kept as it is; if
+            it returns, declare a new incident.
           </p>
         </div>
-        <dl
-          aria-label={`${incidentKey(incident.number)} at a glance`}
-          className="grid grid-cols-2 gap-x-5 gap-y-3.5 self-start rounded-lg border border-status-resolved-line/70 bg-canvas/40 px-4.5 py-4"
-        >
-          {[
-            [
-              "Lasted",
-              <Duration key="lasted" from={incident.createdAt} to={incident.resolvedAt} />,
-            ],
-            [
-              "First response",
-              firstStart
-                ? formatDuration(Date.parse(firstStart) - Date.parse(incident.createdAt))
-                : "—",
-            ],
-            ["Responders", incident.responders.length],
-            ["Updates", updates ?? "—"],
-          ].map(([label, value]) => (
-            <div key={label as string} className="flex flex-col gap-0.5">
-              <dt className="label-caps text-fg-subtle">{label}</dt>
-              <dd className="numeric text-lg font-semibold text-fg">{value}</dd>
-            </div>
-          ))}
-        </dl>
       </div>
-      {people.length > 0 && (
-        <div className="border-t border-status-resolved-line/60 bg-canvas/20 px-5 py-3.5 sm:px-6">
-          <PeopleRow label={incident.team.name} people={people} />
+      <div className="flex flex-col gap-3 p-4 sm:p-5">
+        <div className={cx(INSTRUMENT, "flex flex-col gap-3.5 px-4 py-4 sm:px-4.5")}>
+          <div className="flex flex-col gap-1.5">
+            <span aria-hidden="true" className="label-caps text-fg-subtle">
+              Resolution note
+            </span>
+            {incident.resolution ? (
+              <p className="text-[0.9375rem] leading-relaxed whitespace-pre-line text-fg">
+                {incident.resolution}
+              </p>
+            ) : (
+              <p className="text-sm text-fg-muted">
+                Resolved before resolution notes were recorded.
+              </p>
+            )}
+          </div>
+          <dl
+            aria-label={`${incidentKey(incident.number)} at a glance`}
+            className="grid grid-cols-2 gap-2.5 sm:grid-cols-4"
+          >
+            <Figure label="Lasted" tone="resolved">
+              <Duration from={incident.createdAt} to={incident.resolvedAt} />
+            </Figure>
+            <Figure label="First response">
+              {wait === undefined ? "—" : formatDuration(wait)}
+            </Figure>
+            <Figure label="Responders">{incident.responders.length}</Figure>
+            <Figure label="Updates">{updates ?? "—"}</Figure>
+          </dl>
         </div>
-      )}
+        {people.length > 0 && (
+          <div className={cx(INSTRUMENT, "px-4 py-3")}>
+            <PeopleRow label={incident.team.name} people={people} />
+          </div>
+        )}
+      </div>
     </section>
   );
 }

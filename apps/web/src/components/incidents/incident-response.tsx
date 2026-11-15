@@ -575,8 +575,8 @@ function ResolveForm({
   );
 }
 
-/** One of oversight's four figures: a small label, then its value. */
-function Figure({
+/** One of a response's four figures: a small label, then its value. */
+export function Figure({
   label,
   children,
   tone,
