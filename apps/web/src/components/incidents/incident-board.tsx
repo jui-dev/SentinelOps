@@ -200,6 +200,7 @@ function CanRespond({ incident }: { incident: IncidentListItemResponse }) {
   return (
     <PeekColumn
       title={resolved ? "Who responded" : "Who can respond"}
+      kind="people"
       count={detail.data ? people.length : undefined}
       label={`Who can respond to ${incidentKey(incident.number)}`}
     >

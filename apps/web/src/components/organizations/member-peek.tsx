@@ -48,6 +48,7 @@ export function MemberPeek({ member }: { member: OrganizationMembershipResponse 
     <div className="grid grid-cols-1 gap-3 py-1 md:grid-cols-2">
       <PeekColumn
         title="Teams"
+        kind="people"
         count={member.teams.length}
         label={`Teams of ${member.user.name}`}
       >

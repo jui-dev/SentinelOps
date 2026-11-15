@@ -100,6 +100,7 @@ function PeekResponders({ service }: { service: ServiceResponse }) {
   return (
     <PeekColumn
       title="Who responds"
+      kind="people"
       count={members.data?.length}
       label={`Who responds to ${service.name}`}
     >

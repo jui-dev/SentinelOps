@@ -1,5 +1,6 @@
 "use client";
 
+import { cx } from "@/components/ui/cx";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
@@ -24,21 +25,36 @@ import { useTeamMembers } from "./team-scope";
 const SCROLL =
   "max-h-60 overflow-y-auto overscroll-contain focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus";
 
+/** A panel head's colour, by what the panel lists (light only). */
+const KINDS = {
+  people:
+    "text-peek-people shadow-[inset_0_-2px_0_var(--color-peek-rule-people)]",
+  work: "text-peek-work shadow-[inset_0_-2px_0_var(--color-peek-rule-work)]",
+} as const;
+
 export function PeekColumn({
   title,
   count,
   label,
+  kind = "work",
   children,
 }: {
   title: string;
   count?: number;
+  /** What the panel lists: people (navy) or work and services (teal). */
+  kind?: keyof typeof KINDS;
   /** Names the scrolling list, for those who reach it by keyboard. */
   label: string;
   children: ReactNode;
 }) {
   return (
     <div className="flex min-w-0 flex-col overflow-hidden rounded-md border border-line-subtle bg-surface">
-      <p className="flex items-baseline gap-1.5 border-b border-line-subtle bg-thead px-3.5 py-2 text-xs font-semibold tracking-[0.04em] text-fg-muted uppercase">
+      <p
+        className={cx(
+          "flex items-baseline gap-1.5 border-b border-line-subtle bg-peek-head px-3.5 py-2 text-xs font-semibold tracking-[0.04em] uppercase",
+          KINDS[kind],
+        )}
+      >
         {title}
         {count !== undefined && (
           <span className="numeric font-normal tracking-normal text-fg-subtle">
@@ -65,6 +81,7 @@ function PeekMembers({ team }: { team: TeamResponse }) {
   return (
     <PeekColumn
       title="Members"
+      kind="people"
       count={members.data?.length}
       label={`Members of ${team.name}`}
     >

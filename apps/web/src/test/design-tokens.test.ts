@@ -80,6 +80,8 @@ each(["table-head-fg"], ["table-head"], TEXT);
 each(["table-caption"], ["table-tray-top", "table-tray-bottom"], TEXT);
 each(["table-caption-count-fg"], ["table-caption-count"], TEXT);
 each(["list-head-fg", "list-head-muted"], ["list-head"], TEXT);
+// An expanded row's panel heads: their names on their own band.
+each(["peek-people", "peek-work"], ["peek-head"], TEXT);
 // A hovered row: everything a row holds, on the hover's tint. Not the
 // resolved teal's words: on dark's hover (#212631, the workspace hover it has
 // always been) they are 4.3:1, a known gap in dark left as it was.

@@ -156,6 +156,17 @@
   --color-list-head-muted: light-dark(#b9c7da, #a6acb6);
   --color-list-hover: light-dark(#edf2f9, transparent);
   /*
+   * An expanded row's panel heads (PeekColumn, teams/team-peek.tsx): in
+   * light white, ruled and named in the colour of what the panel lists —
+   * navy for people, teal for work and services — as Waiting on you's lists
+   * are; in dark the thead band and muted words they always had, no rule.
+   */
+  --color-peek-head: light-dark(#ffffff, #1e242e);
+  --color-peek-people: light-dark(#1d3557, #a6acb6);
+  --color-peek-work: light-dark(#15616d, #a6acb6);
+  --color-peek-rule-people: light-dark(#1d3557, transparent);
+  --color-peek-rule-work: light-dark(#15616d, transparent);
+  /*
    * The lists that wait on the reader (operational-attention.tsx): in light
    * an all-white frame of its own on the section, each list's head white and
    * marked only by a 2px rule of its colour — a decision's navy, resolving's
