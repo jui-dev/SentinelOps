@@ -348,7 +348,9 @@
    * A role page's header (role-page.tsx): washed in the role's own colour,
    * a diagonal from its pastel to near-white in light, from a quiet tint
    * into the surface in dark. No edge in light — a soft shadow lifts it —
-   * and the role's line in dark. Its holders sit on an inset of their own.
+   * and in dark a quiet neutral edge, as every section's, so the role's
+   * colour lives in the wash, its words and its icon rather than a ring
+   * around them. Its holders sit on an inset of their own.
    */
   --color-role-admin-wash-from: light-dark(#e7ebf2, #20252f);
   --color-role-admin-wash-to: light-dark(#f9fafc, #191d27);
@@ -358,10 +360,10 @@
   --color-role-reporter-wash-to: light-dark(#fff8f6, #191d27);
   --color-role-responder-wash-from: light-dark(#d6eee6, #0f2724);
   --color-role-responder-wash-to: light-dark(#f4fbf8, #191d27);
-  --color-role-admin-hero-line: light-dark(transparent, #434b58);
-  --color-role-manager-hero-line: light-dark(transparent, #5c4c22);
-  --color-role-reporter-hero-line: light-dark(transparent, #60342a);
-  --color-role-responder-hero-line: light-dark(transparent, #24564c);
+  --color-role-admin-hero-line: light-dark(transparent, #2b313c);
+  --color-role-manager-hero-line: light-dark(transparent, #2b313c);
+  --color-role-reporter-hero-line: light-dark(transparent, #2b313c);
+  --color-role-responder-hero-line: light-dark(transparent, #2b313c);
   --color-hero-inset: light-dark(rgb(255 255 255 / 0.85), rgb(0 0 0 / 0.18));
 
   /*

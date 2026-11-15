@@ -61,7 +61,8 @@ export function RoleIcon({
         raised
           ? "bg-hero-inset shadow-[0_1px_3px_light-dark(rgb(15_29_51/0.10),transparent)]"
           : "bg-sunken",
-        meta.tone.line,
+        // Raised, its edge is the header's own: none in light, neutral in dark.
+        raised ? meta.tone.heroLine : meta.tone.line,
         meta.tone.text,
         size === "sm" && "size-8 rounded-md",
         size === "md" && "size-11 rounded-lg",
