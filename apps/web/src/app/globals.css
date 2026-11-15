@@ -332,7 +332,7 @@
   --color-status-investigating-text: light-dark(#244b84, #89a1c9);
   --color-status-investigating-subtle: light-dark(#f2f7ff, #131f2e);
   --color-status-investigating-line: light-dark(#c1d6f2, #2b405f);
-  --color-status-resolved-text: light-dark(#15616d, #2a96a2);
+  --color-status-resolved-text: light-dark(#15616d, #2f9eaa);
   --color-status-resolved-subtle: light-dark(#eef9fa, #0d2127);
   --color-status-resolved-line: light-dark(#b3dedf, #15616d);
   /* A count of incidents ready to resolve, as a solid badge. */

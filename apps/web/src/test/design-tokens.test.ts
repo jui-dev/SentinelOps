@@ -619,6 +619,23 @@ describe.each<Theme>(["light", "dark"])("the section icons in %s", (theme) => {
  * facts and figures): every text a card holds, on the deepest end of each
  * tint. Dark only: the tints are never drawn in light.
  */
+/**
+ * The incident's header, washed in its status (incident-detail.tsx): the
+ * status's own colour for its key line, on the deeper end of that wash.
+ */
+describe("the incident header's status washes", () => {
+  const PAIRS: Array<[status: string, wash: string]> = [
+    ["status-declared-text", "rose"],
+    ["status-investigating-text", "steel"],
+    ["status-resolved-text", "mint"],
+  ];
+
+  it.each(PAIRS)("keeps %s legible on the %s wash", (status, wash) => {
+    expect(contrast(colour(status, "light"), colour(`wash-${wash}-from`, "light"))).toBeGreaterThanOrEqual(TEXT);
+    expect(contrast(colour(status, "dark"), colour(`wash-${wash}-dark`, "dark"))).toBeGreaterThanOrEqual(TEXT);
+  });
+});
+
 describe("the cards' washes in dark", () => {
   it.each(["rose", "sky", "steel", "mint", "sand", "mist"])(
     "keeps text legible on the %s tint",

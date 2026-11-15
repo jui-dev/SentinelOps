@@ -18,7 +18,7 @@ import { teamHref, useTeamMembers } from "@/components/teams/team-scope";
 import { ErrorAlert } from "@/components/ui/alert";
 import { cx } from "@/components/ui/cx";
 import { EmptyState } from "@/components/ui/empty-state";
-import { PageBody, PageHeader } from "@/components/ui/page";
+import { PageBody } from "@/components/ui/page";
 import { useMinWidth } from "@/components/ui/use-min-width";
 import { PageSpinner } from "@/components/ui/spinner";
 import {
@@ -199,11 +199,19 @@ function IncidentHeader({
   const resolved = incident.status === "RESOLVED";
   const key = incidentKey(incident.number);
 
+  // The hero takes the colour of where the incident stands.
+  const [wash, keyTone] =
+    incident.status === "RESOLVED"
+      ? ["wash-mint", "text-status-resolved-text"]
+      : incident.status === "DECLARED"
+        ? ["wash-rose", "text-status-declared-text"]
+        : ["wash-steel", "text-status-investigating-text"];
+
   return (
-    <PageHeader
-      width="reading"
-      eyebrow={
-        <nav aria-label="Breadcrumb">
+    <header className="mx-auto flex w-full max-w-[68rem] flex-col gap-3 px-4 pt-8 sm:px-6 lg:px-8 2xl:px-10">
+      {/* Where it sits, and what can be done with it, on one line. */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <nav aria-label="Breadcrumb" className="text-sm text-fg-muted">
           <ol className="flex items-center gap-2">
             <li>
               <Link
@@ -221,18 +229,42 @@ function IncidentHeader({
             </li>
           </ol>
         </nav>
-      }
-      title={
-        <>
-          <span className="data font-medium text-fg-subtle">{key}</span>{" "}
-          {incident.title}
-        </>
-      }
-      wrapTitle
-      description={
-        <div className="flex flex-col gap-3 pt-1.5">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-2 rounded-full border border-line bg-surface px-2.5 py-0.5 text-xs">
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
+          {!resolved && <LiveStatus updatedAt={live.updatedAt} failed={live.failed} />}
+          <CopyLink />
+          {canManage && !resolved && <ManageIncident incident={incident} />}
+        </div>
+      </div>
+
+      {/*
+       * The incident itself: washed in its status's colour, as a role's page
+       * is in the role's, with its severity, status and known issue in an
+       * inset of their own beside it.
+       */}
+      <div
+        className={cx(
+          "card-wash flex flex-wrap items-stretch gap-x-6 gap-y-4 rounded-lg border px-5 py-5 shadow-card sm:px-6",
+          wash,
+        )}
+      >
+        <div className="flex min-w-0 flex-[1_1_28rem] flex-col gap-2">
+          <span aria-hidden="true" className={cx("data text-sm font-semibold", keyTone)}>
+            {key} · {incident.team.name}
+          </span>
+          <h1 className="text-[1.625rem] leading-8 font-semibold tracking-[-0.015em] text-fg">
+            <span className="sr-only">{key}</span>{" "}
+            {incident.title}
+          </h1>
+          {incident.summary && (
+            <p className="max-w-[64ch] text-base whitespace-pre-line text-fg-muted">
+              {incident.summary}
+            </p>
+          )}
+        </div>
+        <dl className="flex min-w-60 flex-[0_1_18rem] flex-col justify-center gap-2 self-center rounded-lg border border-card-edge bg-hero-inset px-4 py-3 text-sm">
+          <div className="flex items-center justify-between gap-3">
+            <dt className="text-fg-muted">Severity</dt>
+            <dd className="flex items-center gap-2 font-semibold">
               <SeverityMark severity={incident.severity} label />
               {!incident.severityConfirmed && (
                 // A Reporter's severity, until whoever decides confirms it.
@@ -243,25 +275,29 @@ function IncidentHeader({
                   Suggested
                 </span>
               )}
-            </span>
-            <StatusMark status={incident.status} />
-            <KnownIssueMark incident={incident} />
+            </dd>
           </div>
-          {incident.summary && (
-            <p className="text-base whitespace-pre-line text-fg">
-              {incident.summary}
-            </p>
+          <div className="h-px bg-line-subtle" />
+          <div className="flex items-center justify-between gap-3">
+            <dt className="text-fg-muted">Status</dt>
+            <dd>
+              <StatusMark status={incident.status} />
+            </dd>
+          </div>
+          {incident.knownIssue && (
+            <>
+              <div className="h-px bg-line-subtle" />
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-fg-muted">Known issue</dt>
+                <dd>
+                  <KnownIssueMark incident={incident} />
+                </dd>
+              </div>
+            </>
           )}
-        </div>
-      }
-      actions={
-        <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
-          {!resolved && <LiveStatus updatedAt={live.updatedAt} failed={live.failed} />}
-          <CopyLink />
-          {canManage && !resolved && <ManageIncident incident={incident} />}
-        </div>
-      }
-    />
+        </dl>
+      </div>
+    </header>
   );
 }
 
