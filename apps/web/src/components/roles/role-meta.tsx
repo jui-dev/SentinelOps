@@ -59,7 +59,22 @@ export interface RoleMeta {
    * Its colour, as classes: text, tint, edge, and `wash` — the tint as a
    * gradient's start, for a role's header.
    */
-  tone: { text: string; subtle: string; line: string; wash: string };
+  tone: {
+    text: string;
+    subtle: string;
+    line: string;
+    wash: string;
+    /** Its page's header: the role's wash, and its edge in dark. */
+    hero: string;
+    /** That edge alone: none in light, the role's line in dark. */
+    heroLine: string;
+    /** A filled mark in its colour: the switcher's dot. */
+    dot: string;
+    /** A count on its colour: the switcher's current tab. */
+    solid: string;
+    /** The current tab's underline in its colour. */
+    underline: string;
+  };
 }
 
 export const ROLE_META: Record<Role, RoleMeta> = {
@@ -82,6 +97,11 @@ export const ROLE_META: Record<Role, RoleMeta> = {
       subtle: "bg-role-admin-subtle",
       line: "border-role-admin-line",
       wash: "from-role-admin-subtle",
+      hero: "bg-linear-to-br from-role-admin-wash-from to-role-admin-wash-to border-role-admin-hero-line",
+      heroLine: "border-role-admin-hero-line",
+      dot: "bg-role-admin-text",
+      solid: "bg-role-admin-text text-canvas",
+      underline: "shadow-[inset_0_-2px_0_var(--color-role-admin-text)]",
     },
   },
   INCIDENT_MANAGER: {
@@ -98,6 +118,11 @@ export const ROLE_META: Record<Role, RoleMeta> = {
       subtle: "bg-role-manager-subtle",
       line: "border-role-manager-line",
       wash: "from-role-manager-subtle",
+      hero: "bg-linear-to-br from-role-manager-wash-from to-role-manager-wash-to border-role-manager-hero-line",
+      heroLine: "border-role-manager-hero-line",
+      dot: "bg-role-manager-text",
+      solid: "bg-role-manager-text text-canvas",
+      underline: "shadow-[inset_0_-2px_0_var(--color-role-manager-text)]",
     },
   },
   REPORTER: {
@@ -114,6 +139,11 @@ export const ROLE_META: Record<Role, RoleMeta> = {
       subtle: "bg-role-reporter-subtle",
       line: "border-role-reporter-line",
       wash: "from-role-reporter-subtle",
+      hero: "bg-linear-to-br from-role-reporter-wash-from to-role-reporter-wash-to border-role-reporter-hero-line",
+      heroLine: "border-role-reporter-hero-line",
+      dot: "bg-role-reporter-text",
+      solid: "bg-role-reporter-text text-canvas",
+      underline: "shadow-[inset_0_-2px_0_var(--color-role-reporter-text)]",
     },
   },
   RESPONDER: {
@@ -130,6 +160,11 @@ export const ROLE_META: Record<Role, RoleMeta> = {
       subtle: "bg-role-responder-subtle",
       line: "border-role-responder-line",
       wash: "from-role-responder-subtle",
+      hero: "bg-linear-to-br from-role-responder-wash-from to-role-responder-wash-to border-role-responder-hero-line",
+      heroLine: "border-role-responder-hero-line",
+      dot: "bg-role-responder-text",
+      solid: "bg-role-responder-text text-canvas",
+      underline: "shadow-[inset_0_-2px_0_var(--color-role-responder-text)]",
     },
   },
 };

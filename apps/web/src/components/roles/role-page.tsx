@@ -28,15 +28,18 @@ import { LABEL, RoleIcon, peopleCount, useRoles } from "./roles-view";
 /** The four roles as tabs, the one shown marked as the current page. */
 function RoleTabs({ shown }: { shown: Role }) {
   const organization = useOrganization();
+  const roles = useRoles(organization.id);
+  const counts = new Map(roles.data?.map((each) => [each.role, each.memberCount]));
 
   return (
     <nav
       aria-label="Roles"
-      className="flex flex-wrap gap-1.5 self-start rounded-lg border border-line-subtle bg-sunken p-1.5"
+      className="flex flex-wrap gap-0.5 rounded-lg border border-line-subtle bg-sunken p-0.75"
     >
       {FLOW_ORDER.map((role) => {
         const meta = ROLE_META[role];
         const on = role === shown;
+        const count = counts.get(role);
 
         return (
           <Link
@@ -44,17 +47,26 @@ function RoleTabs({ shown }: { shown: Role }) {
             href={roleHref(organization.slug, role)}
             aria-current={on ? "page" : undefined}
             className={cx(
-              "inline-flex h-10 items-center gap-2 rounded-lg border px-3.5 text-sm font-medium transition-colors duration-(--duration-fast) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+              "inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm transition-colors duration-(--duration-fast) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
               on
-                ? cx(meta.tone.subtle, meta.tone.line, meta.tone.text)
-                : "border-transparent text-fg-muted hover:bg-hover hover:text-fg",
+                ? cx("bg-surface font-semibold text-fg", meta.tone.underline)
+                : "font-medium text-fg-muted hover:bg-hover hover:text-fg",
             )}
           >
-            <span
-              aria-hidden="true"
-              className={cx("size-2 rounded-full border", meta.tone.line, meta.tone.subtle)}
-            />
+            <span aria-hidden="true" className={cx("size-2 rounded-full", meta.tone.dot)} />
             {meta.label}
+            {count !== undefined && (
+              // How many hold it, at a glance; the role's page says so in words.
+              <span
+                aria-hidden="true"
+                className={cx(
+                  "numeric min-w-5 rounded-full px-1.5 text-center text-2xs leading-4 font-semibold",
+                  on ? meta.tone.solid : "bg-line-subtle text-fg-muted",
+                )}
+              >
+                {count}
+              </span>
+            )}
           </Link>
         );
       })}
@@ -74,9 +86,19 @@ function Holders({ role }: { role: Role }) {
   const others = count - shown.length;
 
   return (
-    <div className="flex w-full flex-col gap-2.5 sm:w-64">
-      <span className="text-2xs font-bold tracking-[0.08em] text-fg-subtle uppercase">
-        Who has this role
+    <div
+      className={cx(
+        "flex w-full flex-col gap-2.5 rounded-lg border bg-hero-inset p-4 shadow-[0_1px_2px_light-dark(rgb(15_29_51/0.06),transparent)] sm:w-72",
+        ROLE_META[role].tone.heroLine,
+      )}
+    >
+      <span className="flex items-center justify-between gap-3">
+        <span className="text-2xs font-bold tracking-[0.08em] text-fg-subtle uppercase">
+          Who has this role
+        </span>
+        <span className={cx("text-xs font-semibold", ROLE_META[role].tone.text)}>
+          {peopleCount(count)}
+        </span>
       </span>
       {count === 0 ? (
         <p className="rounded-lg border border-line-subtle bg-canvas px-3 py-2.5 text-sm text-fg-muted">
@@ -110,11 +132,10 @@ function Holders({ role }: { role: Role }) {
               </span>
             </li>
           ))}
-          {others > 0 && (
+          {/* The count beside the label says how many; this, how many more. */}
+          {others > 0 && shown.length > 0 && (
             <li className="px-1 text-xs text-fg-subtle">
-              {shown.length === 0
-                ? peopleCount(others)
-                : `and ${peopleCount(others)} more`}
+              and {peopleCount(others)} more
             </li>
           )}
         </ul>
@@ -154,25 +175,27 @@ export function RolePage() {
   return (
     <PageBody width="full" className="pt-8">
       <div className="flex flex-col gap-5">
-        <nav aria-label="Breadcrumb" className="text-sm text-fg-subtle">
-          <Link
-            href={rolesHref(organization.slug)}
-            className="inline-flex items-center gap-1 rounded-sm hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-          >
-            <ArrowLeft aria-hidden="true" className="size-3.5" />
-            Roles
-          </Link>
-        </nav>
-        <RoleTabs shown={role} />
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+          <nav aria-label="Breadcrumb" className="text-sm text-fg-subtle">
+            <Link
+              href={rolesHref(organization.slug)}
+              className="inline-flex items-center gap-1 rounded-sm hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+            >
+              <ArrowLeft aria-hidden="true" className="size-3.5" />
+              Roles
+            </Link>
+          </nav>
+          <span aria-hidden="true" className="h-5 w-px bg-line" />
+          <RoleTabs shown={role} />
+        </div>
         <header
           className={cx(
-            "flex flex-wrap items-start justify-between gap-x-10 gap-y-6 rounded-lg border bg-linear-to-br to-surface to-60% p-7",
-            meta.tone.wash,
-            meta.tone.line,
+            "flex flex-wrap items-start justify-between gap-x-10 gap-y-6 rounded-lg border p-7 shadow-card",
+            meta.tone.hero,
           )}
         >
           <div className="flex min-w-0 flex-[1_1_32rem] items-start gap-5">
-            <RoleIcon role={role} size="lg" />
+            <RoleIcon role={role} size="lg" raised />
             <div className="flex flex-col gap-2">
               <span className={cx("text-sm font-semibold", meta.tone.text)}>
                 {content.place}

@@ -154,6 +154,16 @@ for (const tone of ["danger", "warning", "success", "info"]) {
   each([`${tone}-text`], [`${tone}-subtle`, "canvas", "surface", "field"], TEXT);
   each(["fg", "fg-muted"], [`${tone}-subtle`], TEXT);
 }
+// A role page's header: the role's own words and the body text on its wash,
+// and the switcher's count on the role's colour.
+for (const role of ["admin", "manager", "reporter", "responder"]) {
+  each(
+    [`role-${role}-text`, "fg", "fg-muted", "fg-subtle"],
+    [`role-${role}-wash-from`, `role-${role}-wash-to`],
+    TEXT,
+  );
+  each(["canvas"], [`role-${role}-text`], TEXT);
+}
 // Roles: each role's name on its tint and on plain surfaces.
 for (const role of ["admin", "manager", "reporter", "responder"]) {
   each([`role-${role}-text`], [`role-${role}-subtle`, "canvas", "surface", "sunken"], TEXT);

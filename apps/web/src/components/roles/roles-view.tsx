@@ -43,9 +43,12 @@ export const LABEL =
 export function RoleIcon({
   role,
   size = "md",
+  raised = false,
 }: {
   role: Role;
   size?: "sm" | "md" | "lg";
+  /** On a white tile, lifted, for a header washed in the role's colour. */
+  raised?: boolean;
 }) {
   const meta = ROLE_META[role];
   const Icon = meta.icon;
@@ -54,7 +57,10 @@ export function RoleIcon({
     <span
       aria-hidden="true"
       className={cx(
-        "grid shrink-0 place-items-center border bg-sunken",
+        "grid shrink-0 place-items-center border",
+        raised
+          ? "bg-hero-inset shadow-[0_1px_3px_light-dark(rgb(15_29_51/0.10),transparent)]"
+          : "bg-sunken",
         meta.tone.line,
         meta.tone.text,
         size === "sm" && "size-8 rounded-md",
