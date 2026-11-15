@@ -1,12 +1,14 @@
 "use client";
 
-import { ArrowLeft, Check, ChevronRight } from "lucide-react";
+import { ArrowLeft, Check, ChevronRight, ListChecks, Route } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 
 import { initialsOf } from "@/components/app/shell-utilities";
 import { useMemberships } from "@/components/organizations/membership-list";
 import { useOrganization } from "@/components/organizations/organization-scope";
+import { INSTRUMENT } from "@/components/overview/analytical-view-header";
+import { OverviewPanel } from "@/components/overview/overview-panel";
 import { cx } from "@/components/ui/cx";
 import { EmptyNote } from "@/components/ui/empty-state";
 import { linkClasses } from "@/components/ui/link";
@@ -21,13 +23,7 @@ import {
   rolesHref,
 } from "./role-content";
 import { RoleBadge, ROLE_META } from "./role-meta";
-import {
-  PANEL,
-  RoleIcon,
-  SectionHeading,
-  peopleCount,
-  useRoles,
-} from "./roles-view";
+import { LABEL, RoleIcon, peopleCount, useRoles } from "./roles-view";
 
 /** The four roles as tabs, the one shown marked as the current page. */
 function RoleTabs({ shown }: { shown: Role }) {
@@ -194,166 +190,182 @@ export function RolePage() {
         </header>
       </div>
 
-      <section aria-labelledby="when-h" className={cx(PANEL, "gap-6")}>
-        <SectionHeading
-          id="when-h"
-          title={`When ${/^[AEIOU]/.test(meta.label) ? "an" : "a"} ${meta.label} acts`}
-          aside="Over one incident's life"
-        />
-        <ol
-          className={cx(
-            "grid gap-6 sm:grid-cols-2",
-            content.moments.length === 5 ? "lg:grid-cols-5" : "lg:grid-cols-4",
-          )}
-        >
-          {content.moments.map((moment, index) => (
-            <li key={moment.title} className="relative flex flex-col gap-2 pt-7">
-              <span
-                aria-hidden="true"
-                className={cx(
-                  "absolute top-0 left-0 size-3.5 rounded-full border-2 ring-4 ring-band-top",
-                  meta.tone.line,
-                  meta.tone.subtle,
-                )}
-              />
-              {index < content.moments.length - 1 && (
+      {/*
+       * Two sections in the Overview's frame, as the Roles page's are: a
+       * header with its icon, label and description, and the content on its
+       * own panel (INSTRUMENT) — the darkest ground in dark, white in light.
+       */}
+      <OverviewPanel
+        id="when"
+        title={`When ${/^[AEIOU]/.test(meta.label) ? "an" : "a"} ${meta.label} acts`}
+        icon={Route}
+        family="flow"
+        label={<span className={LABEL}>{content.moments.length} moments</span>}
+        description="Over one incident's life."
+      >
+        <div className={cx(INSTRUMENT, "p-4 sm:p-6")}>
+          <ol
+            className={cx(
+              "grid gap-6 sm:grid-cols-2",
+              content.moments.length === 5 ? "lg:grid-cols-5" : "lg:grid-cols-4",
+            )}
+          >
+            {content.moments.map((moment, index) => (
+              <li key={moment.title} className="relative flex flex-col gap-2 pt-7">
                 <span
                   aria-hidden="true"
                   className={cx(
-                    "absolute top-1.5 right-[-1.5rem] left-5 hidden h-0.5 border-t-2 lg:block",
+                    "absolute top-0 left-0 size-3.5 rounded-full border-2 ring-4 ring-ink",
                     meta.tone.line,
+                    meta.tone.subtle,
                   )}
                 />
-              )}
-              <span
-                className={cx(
-                  "text-2xs font-bold tracking-[0.08em] uppercase",
-                  meta.tone.text,
-                )}
-              >
-                {moment.when}
-              </span>
-              <span className="text-[15px] font-semibold text-fg">
-                {moment.title}
-              </span>
-              <span className="text-sm leading-relaxed text-fg-muted">
-                {moment.text}
-              </span>
-            </li>
-          ))}
-        </ol>
-      </section>
-
-      <section aria-labelledby="jobs-h" className="flex flex-col gap-6">
-        <SectionHeading
-          id="jobs-h"
-          title="Jobs"
-          aside="The same rules SentinelOps checks every time"
-        />
-        <div className="grid items-stretch gap-5 lg:grid-cols-3">
-          <div className="flex flex-col gap-4 rounded-lg border border-line-subtle bg-surface p-6">
-            <h3 className="text-2xs font-bold tracking-[0.08em] text-success-text uppercase">
-              Can
-            </h3>
-            <ul className="flex flex-col gap-3">
-              {content.can.map((text) => (
-                <li key={text} className="flex items-start gap-2.5 text-sm text-fg">
-                  <Check
-                    aria-hidden="true"
-                    strokeWidth={2.5}
-                    className="mt-0.5 size-4 shrink-0 text-success-text"
-                  />
-                  {text}
-                </li>
-              ))}
-            </ul>
-          </div>
-          <div className="flex flex-col gap-4 rounded-lg border border-line-subtle bg-surface p-6">
-            <h3 className="text-2xs font-bold tracking-[0.08em] text-fg-subtle uppercase">
-              Someone else does
-            </h3>
-            <ul className="flex flex-col gap-3">
-              {content.elsewhere.map(({ text, role: whose }) => (
-                <li
-                  key={text}
-                  className="flex flex-wrap items-center justify-between gap-2 text-sm text-fg-muted"
-                >
-                  {text}
-                  <Link
-                    href={roleHref(organization.slug, whose)}
-                    aria-label={`${text}: the ${ROLE_META[whose].label}`}
-                    className="rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-                  >
-                    <RoleBadge role={whose} />
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-          <div className="flex flex-col gap-4 rounded-lg border border-line-subtle bg-surface p-6">
-            <h3 className="text-2xs font-bold tracking-[0.08em] text-fg-subtle uppercase">
-              Where, and what they&apos;re told
-            </h3>
-            <ul className="flex flex-col gap-2">
-              {content.where(organization.slug).map((place) => {
-                const body = (
-                  <>
-                    <span className="flex flex-col gap-0.5">
-                      <span className="text-sm font-medium text-fg">
-                        {place.label}
-                      </span>
-                      <span className="text-xs text-fg-subtle">
-                        {place.detail}
-                      </span>
-                    </span>
-                    {place.href && (
-                      <ChevronRight
-                        aria-hidden="true"
-                        className="ml-auto size-4 shrink-0 text-fg-subtle"
-                      />
-                    )}
-                  </>
-                );
-
-                return (
-                  <li key={place.label}>
-                    {place.href ? (
-                      <Link
-                        href={place.href}
-                        className="flex items-center gap-3 rounded-lg border border-line-subtle bg-sunken px-3.5 py-2.5 hover:border-line-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-                      >
-                        {body}
-                      </Link>
-                    ) : (
-                      <div className="flex items-center gap-3 rounded-lg border border-line-subtle bg-sunken px-3.5 py-2.5">
-                        {body}
-                      </div>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-            <ul className="flex flex-col gap-2.5 border-t border-line-subtle pt-4">
-              {content.told.map((item) => (
-                <li key={item.title} className="flex items-start gap-2.5 text-sm">
+                {index < content.moments.length - 1 && (
                   <span
                     aria-hidden="true"
                     className={cx(
-                      "mt-1.5 size-2 shrink-0 rounded-full border",
+                      "absolute top-1.5 right-[-1.5rem] left-5 hidden h-0.5 border-t-2 lg:block",
                       meta.tone.line,
-                      meta.tone.subtle,
                     )}
                   />
-                  <span>
-                    <span className="font-semibold text-fg">{item.title}</span>
-                    <span className="text-fg-muted"> · {item.text}</span>
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
+                )}
+                <span
+                  className={cx(
+                    "text-2xs font-bold tracking-[0.08em] uppercase",
+                    meta.tone.text,
+                  )}
+                >
+                  {moment.when}
+                </span>
+                <span className="text-[15px] font-semibold text-fg">
+                  {moment.title}
+                </span>
+                <span className="text-sm leading-relaxed text-fg-muted">
+                  {moment.text}
+                </span>
+              </li>
+            ))}
+          </ol>
         </div>
-      </section>
+      </OverviewPanel>
+
+      <OverviewPanel
+        id="jobs"
+        title="Jobs"
+        icon={ListChecks}
+        family="decision"
+        label={<span className={LABEL}>{content.can.length} it can do</span>}
+        description="What this role does, what someone else does, and where it's told."
+      >
+        <div className="flex flex-col gap-3">
+          <div className={cx(INSTRUMENT, "grid items-stretch gap-5 p-4 sm:p-5 lg:grid-cols-3")}>
+            <div className="flex flex-col gap-4 rounded-lg border border-line-subtle bg-surface p-6">
+              <h3 className="text-2xs font-bold tracking-[0.08em] text-success-text uppercase">
+                Can
+              </h3>
+              <ul className="flex flex-col gap-3">
+                {content.can.map((text) => (
+                  <li key={text} className="flex items-start gap-2.5 text-sm text-fg">
+                    <Check
+                      aria-hidden="true"
+                      strokeWidth={2.5}
+                      className="mt-0.5 size-4 shrink-0 text-success-text"
+                    />
+                    {text}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="flex flex-col gap-4 rounded-lg border border-line-subtle bg-surface p-6">
+              <h3 className="text-2xs font-bold tracking-[0.08em] text-fg-subtle uppercase">
+                Someone else does
+              </h3>
+              <ul className="flex flex-col gap-3">
+                {content.elsewhere.map(({ text, role: whose }) => (
+                  <li
+                    key={text}
+                    className="flex flex-wrap items-center justify-between gap-2 text-sm text-fg-muted"
+                  >
+                    {text}
+                    <Link
+                      href={roleHref(organization.slug, whose)}
+                      aria-label={`${text}: the ${ROLE_META[whose].label}`}
+                      className="rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                    >
+                      <RoleBadge role={whose} />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="flex flex-col gap-4 rounded-lg border border-line-subtle bg-surface p-6">
+              <h3 className="text-2xs font-bold tracking-[0.08em] text-fg-subtle uppercase">
+                Where, and what they&apos;re told
+              </h3>
+              <ul className="flex flex-col gap-2">
+                {content.where(organization.slug).map((place) => {
+                  const body = (
+                    <>
+                      <span className="flex flex-col gap-0.5">
+                        <span className="text-sm font-medium text-fg">
+                          {place.label}
+                        </span>
+                        <span className="text-xs text-fg-subtle">
+                          {place.detail}
+                        </span>
+                      </span>
+                      {place.href && (
+                        <ChevronRight
+                          aria-hidden="true"
+                          className="ml-auto size-4 shrink-0 text-fg-subtle"
+                        />
+                      )}
+                    </>
+                  );
+
+                  return (
+                    <li key={place.label}>
+                      {place.href ? (
+                        <Link
+                          href={place.href}
+                          className="flex items-center gap-3 rounded-lg border border-line-subtle bg-sunken px-3.5 py-2.5 hover:border-line-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                        >
+                          {body}
+                        </Link>
+                      ) : (
+                        <div className="flex items-center gap-3 rounded-lg border border-line-subtle bg-sunken px-3.5 py-2.5">
+                          {body}
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+              <ul className="flex flex-col gap-2.5 border-t border-line-subtle pt-4">
+                {content.told.map((item) => (
+                  <li key={item.title} className="flex items-start gap-2.5 text-sm">
+                    <span
+                      aria-hidden="true"
+                      className={cx(
+                        "mt-1.5 size-2 shrink-0 rounded-full border",
+                        meta.tone.line,
+                        meta.tone.subtle,
+                      )}
+                    />
+                    <span>
+                      <span className="font-semibold text-fg">{item.title}</span>
+                      <span className="text-fg-muted"> · {item.text}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+          <p className="text-sm text-fg-muted">
+            The same rules SentinelOps checks every time.
+          </p>
+        </div>
+      </OverviewPanel>
 
       <Link
         href={rolesHref(organization.slug)}

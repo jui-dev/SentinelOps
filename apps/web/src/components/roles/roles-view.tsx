@@ -3,7 +3,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Check, ChevronRight, Grid3x3, IdCard, Network, Split, Users } from "lucide-react";
 import Link from "next/link";
-import type { ReactNode } from "react";
 
 import { initialsOf } from "@/components/app/shell-utilities";
 import { useMemberships } from "@/components/organizations/membership-list";
@@ -36,36 +35,9 @@ export const useRoles = (organizationId: string) =>
 export const peopleCount = (count: number) =>
   `${count} ${count === 1 ? "person" : "people"}`;
 
-/**
- * A section set on the deepest ground, as the rail is: what is drawn on it
- * — cards, the map's cells — stands out from the page around it.
- */
 /** A section's label pill, as each Overview section's label is. */
-const LABEL =
+export const LABEL =
   "numeric inline-flex items-center rounded-full border border-line bg-sunken px-2 py-0.5 text-xs font-medium text-fg-muted";
-
-export const PANEL =
-  "flex flex-col rounded-lg border border-line-subtle bg-linear-to-b from-band-top to-band-bottom p-5 sm:p-6";
-
-/** A section's heading, ruled beneath, with a quieter note at its end. */
-export function SectionHeading({
-  id,
-  title,
-  aside,
-}: {
-  id: string;
-  title: string;
-  aside?: ReactNode;
-}) {
-  return (
-    <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 border-b border-line-subtle pb-3">
-      <h2 id={id} className="text-lg font-semibold text-fg">
-        {title}
-      </h2>
-      {aside && <p className="text-sm text-fg-subtle">{aside}</p>}
-    </div>
-  );
-}
 
 /** A role's icon on its own tint, in its colour. */
 export function RoleIcon({
