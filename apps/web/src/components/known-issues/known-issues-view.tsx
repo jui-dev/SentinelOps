@@ -198,12 +198,12 @@ function KnownIssuesList() {
               Try another search or service, or include archived ones.
             </EmptyNote>
           ) : (
-            groups.map((issues) => (
+            // Every service's group on one shared tray, each drawn as a table is.
+            <div className="flex flex-col gap-2 rounded-lg bg-table-tray p-2">
+            {groups.map((issues) => (
               <section
                 key={issues[0].service.id}
                 aria-labelledby={`known-${issues[0].service.id}`}
-                // On the tables' tray: the group is drawn as a table is.
-                className="rounded-lg bg-table-tray p-2"
               >
                 <div className="overflow-hidden rounded-md border border-line bg-surface shadow-[0_1px_2px_light-dark(rgb(15_29_51/0.08),transparent)]">
                   <h2
@@ -236,7 +236,8 @@ function KnownIssuesList() {
                   </ul>
                 </div>
               </section>
-            ))
+            ))}
+            </div>
           )}
         </div>
       </PageBody>
