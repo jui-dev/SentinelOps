@@ -628,9 +628,8 @@ describe("teams", () => {
         screen.queryByRole("columnheader", { name: "Responsible team" }),
       ).toBeNull();
       expect(screen.queryByText(/· Platform/)).toBeNull();
-      expect(
-        screen.getAllByRole("columnheader", { name: "Service" }),
-      ).toHaveLength(2);
+      // The card is narrow: each row's service folds under its title.
+      expect(screen.queryByRole("columnheader", { name: "Service" })).toBeNull();
 
       // Incidents and members on one row, resolved and services on the next.
       expect(
