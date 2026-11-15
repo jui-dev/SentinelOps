@@ -1,5 +1,6 @@
 "use client";
 
+import { ChangeArrow } from "@/components/ui/change-arrow";
 import { FormerMember } from "@/components/organizations/former-member";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -78,7 +79,8 @@ function describe(
         <>
           changed severity{" "}
           <SeverityMark severity={entry.fromValue as IncidentSeverity} />
-          <span aria-hidden="true"> → </span>
+          {" "}
+          <ChangeArrow />{" "}
           <span className="sr-only"> to </span>
           <SeverityMark severity={entry.toValue as IncidentSeverity} />
         </>
@@ -94,7 +96,8 @@ function describe(
         <>
           confirmed severity{" "}
           <SeverityMark severity={entry.fromValue as IncidentSeverity} />
-          <span aria-hidden="true"> → </span>
+          {" "}
+          <ChangeArrow />{" "}
           <span className="sr-only"> to </span>
           <SeverityMark severity={entry.toValue as IncidentSeverity} />
           <span className="text-fg-subtle"> (suggested {entry.fromValue})</span>
@@ -155,7 +158,8 @@ function describe(
             status={entry.fromValue as RecordedStatus}
             variant="inline"
           />
-          <span aria-hidden="true"> → </span>
+          {" "}
+          <ChangeArrow />{" "}
           <span className="sr-only"> to </span>
           <StatusMark
             status={entry.toValue as RecordedStatus}

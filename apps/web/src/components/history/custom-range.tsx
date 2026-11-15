@@ -17,6 +17,7 @@ import type { KeyboardEvent, MouseEvent } from "react";
 import { DayPicker } from "react-day-picker";
 import type { ClassNames, DateRange } from "react-day-picker";
 
+import { ChangeArrow } from "@/components/ui/change-arrow";
 import { Button } from "@/components/ui/button";
 import { MODAL_BACKDROP } from "@/components/ui/modal";
 import type { IncidentPeriod } from "@/lib/api/contracts";
@@ -214,7 +215,8 @@ export function CustomRangeDialog({
             {draft ? (
               <>
                 <span className="data text-fg">
-                  {draft.from} → {draft.to}
+                  {draft.from} <ChangeArrow /> <span className="sr-only">to</span>{" "}
+                  {draft.to}
                 </span>{" "}
                 · {formatDays(days)}
                 {tooLong && (

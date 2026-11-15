@@ -1,5 +1,6 @@
 "use client";
 
+import { ChangeArrow } from "@/components/ui/change-arrow";
 import { FormerMember } from "@/components/organizations/former-member";
 import {
   ChevronsDown,
@@ -408,9 +409,7 @@ function ChangeRow({
               <span className="rounded-xs border border-line bg-sunken px-1.5 text-fg-muted">
                 {formatValue(inline.change.field, inline.change.before)}
               </span>
-              <span aria-hidden="true" className="text-fg-subtle">
-                →
-              </span>
+              <ChangeArrow />
               <span className="sr-only">to</span>
               <span className="rounded-xs border border-line-strong px-1.5 text-fg">
                 {formatValue(inline.change.field, inline.change.after)}

@@ -116,8 +116,8 @@ describe("the incident analysis workspace", () => {
 
       expect(steps.map((step) => step.textContent)).toEqual([
         "SEV3ModerateDeclared",
-        "→SEV1CriticalPeak",
-        "→SEV2MajorFinal",
+        "SEV1CriticalPeak",
+        "SEV2MajorFinal",
       ]);
     });
 
@@ -188,9 +188,9 @@ describe("the incident analysis workspace", () => {
       expect(lines).toEqual([
         "T+0 Declared at SEV3Moderate",
         "T+5m First response",
-        "T+20m Severity SEV3Moderate →  to SEV1Critical",
-        "T+30m Reassigned Payments →  to Platform",
-        "T+40m Severity SEV1Critical →  to SEV2Major",
+        "T+20m Severity SEV3Moderate   to SEV1Critical",
+        "T+30m Reassigned Payments   to Platform",
+        "T+40m Severity SEV1Critical   to SEV2Major",
         "T+55m Last response completed",
         "T+1h Resolved",
       ]);

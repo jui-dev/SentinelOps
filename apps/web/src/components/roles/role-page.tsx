@@ -357,9 +357,10 @@ export function RolePage() {
 
       <Link
         href={rolesHref(organization.slug)}
-        className={cx(linkClasses, "self-start text-sm font-medium")}
+        className={cx(linkClasses, "inline-flex items-center gap-1.5 self-start text-sm font-medium")}
       >
-        ← Compare all roles
+        <ArrowLeft aria-hidden="true" className="size-3.5" />
+        Compare all roles
       </Link>
     </PageBody>
   );

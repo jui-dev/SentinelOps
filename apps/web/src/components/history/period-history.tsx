@@ -6,6 +6,7 @@ import {
   Eye,
 } from "lucide-react";
 
+import { ChangeArrow } from "@/components/ui/change-arrow";
 import { incidentHref } from "@/components/incidents/incident-queries";
 import {
   incidentKey,
@@ -140,9 +141,7 @@ function InPeriod({
       {resolved && (
         <>
           {" "}
-          <span aria-hidden="true" className="text-fg-subtle">
-            →
-          </span>{" "}
+          <ChangeArrow />{" "}
           <span className="text-status-resolved-text">
             Resolved {resolved.text}
           </span>

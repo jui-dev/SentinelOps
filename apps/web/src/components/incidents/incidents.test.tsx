@@ -1888,8 +1888,8 @@ describe("incidents", () => {
         "Daniel Okafor completed their response",
         // The caller's own entries are theirs: "You".
         "You reassigned the incident from Payments to Platform",
-        expect.stringMatching(/^Daniel Okafor confirmed severity SEV3.*→.*SEV2.*\(suggested SEV3\)/),
-        expect.stringMatching(/^Daniel Okafor changed severity SEV2.*→.*SEV1/),
+        expect.stringMatching(/^Daniel Okafor confirmed severity SEV3.*SEV2.*\(suggested SEV3\)/),
+        expect.stringMatching(/^Daniel Okafor changed severity SEV2.*SEV1/),
         "Daniel Okafor posted an updateInvestigating elevated database latency.",
         "Daniel Okafor moved the incident to Investigating",
         "Daniel Okafor started investigating",
@@ -1916,7 +1916,7 @@ describe("incidents", () => {
       const timeline = await sectionOf(/^Timeline/);
       const [entry] = await within(timeline).findAllByRole("listitem");
 
-      expect(entry.textContent).toMatch(/changed status Identified.*→.*Monitoring.*ago$/);
+      expect(entry.textContent).toMatch(/changed status Identified.*Monitoring.*ago$/);
     });
 
     describe("live", () => {

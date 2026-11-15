@@ -1,6 +1,7 @@
 import { useId } from "react";
 import type { ReactNode } from "react";
 
+import { ChangeArrow } from "@/components/ui/change-arrow";
 import { EVENT_MARKERS } from "@/components/incidents/event-markers";
 import type { EventMarker } from "@/components/incidents/event-markers";
 import { SeverityMark } from "@/components/incidents/severity";
@@ -31,10 +32,8 @@ function Change({ from, to }: { from: ReactNode; to: ReactNode }) {
   return (
     <>
       {from}
-      <span aria-hidden="true" className="text-fg-subtle">
-        {" "}
-        →{" "}
-      </span>
+      {" "}
+      <ChangeArrow />{" "}
       <span className="sr-only"> to </span>
       {to}
     </>

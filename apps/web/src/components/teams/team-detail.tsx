@@ -353,9 +353,10 @@ function Members() {
               <Link
                 href={memberHref(organization.slug, member.membershipId)}
                 aria-label={`${member.user.name}’s profile`}
-                className={`shrink-0 text-sm ${linkClasses}`}
+                className={`inline-flex shrink-0 items-center gap-1 text-sm ${linkClasses}`}
               >
-                Profile →
+                Profile
+                <ArrowRight aria-hidden="true" className="size-3.5" />
               </Link>
             </li>
           ))}

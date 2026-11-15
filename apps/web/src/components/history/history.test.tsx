@@ -552,7 +552,7 @@ describe("incident history", () => {
     ).toBe("/orgs/acme-ops/incidents/8");
     // Declared the day before, so its declaration carries that date.
     // The date wears the reader's locale; the shape is what is checked.
-    expect(second.textContent).toMatch(/Declared \w+ 17 → Resolved 00:10/);
+    expect(second.textContent).toMatch(/Declared \w+ 17\s*Resolved 00:10/);
     expect(second.textContent).toMatch(/20m/);
 
     expect(region.textContent).toMatch(/Showing 3 of 14/);
@@ -730,7 +730,7 @@ describe("incident history", () => {
       within(calendar).getByRole("button", { name: /September 10th, 2026/ }),
     );
 
-    expect(calendar.textContent).toMatch(/2026-09-01 → 2026-09-10\s*· 10 days/);
+    expect(calendar.textContent).toMatch(/2026-09-01\s+to\s+2026-09-10\s*· 10 days/);
     expect(summaries(requests)).toHaveLength(1);
 
     await user.click(within(calendar).getByRole("button", { name: "Apply" }));
@@ -747,7 +747,7 @@ describe("incident history", () => {
 
     const reopened = screen.getByRole("dialog", { name: "Choose dates (UTC)" });
 
-    expect(reopened.textContent).toMatch(/2026-09-01 → 2026-09-10\s*· 10 days/);
+    expect(reopened.textContent).toMatch(/2026-09-01\s+to\s+2026-09-10\s*· 10 days/);
 
     await user.click(
       within(reopened).getByRole("button", { name: /September 15th, 2026/ }),

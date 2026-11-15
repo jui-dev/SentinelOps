@@ -3,7 +3,6 @@
 import { BadgeCheck, CircleCheck, Network, Siren } from "lucide-react";
 import Link from "next/link";
 
-import type { ReactNode } from "react";
 
 import { initialsOf } from "@/components/app/shell-utilities";
 import { countOf, worstOf } from "@/components/incidents/incident-figures";
@@ -26,7 +25,8 @@ import {
 } from "@/components/ui/detail-layout";
 import type { GlanceTone } from "@/components/ui/detail-layout";
 import { EmptyNote } from "@/components/ui/empty-state";
-import { linkClasses, quietLinkClasses } from "@/components/ui/link";
+import { linkClasses } from "@/components/ui/link";
+import { OnwardLink } from "@/components/ui/onward-link";
 import { PageBody, PageHeader } from "@/components/ui/page";
 import { Spinner } from "@/components/ui/spinner";
 import { IsoDate } from "@/components/ui/timestamp";
@@ -58,17 +58,6 @@ const CRITICALITY_TONES: Record<ServiceCriticality, GlanceTone> = {
 
 const viewAllHref = (orgSlug: string, service: ServiceResponse) =>
   `${incidentsHref(orgSlug)}?${new URLSearchParams({ service: service.slug })}`;
-
-function OnwardLink({ href, children }: { href: string; children: ReactNode }) {
-  return (
-    <Link
-      href={href}
-      className={`text-sm text-fg-muted ${quietLinkClasses}`}
-    >
-      {children} →
-    </Link>
-  );
-}
 
 /** The service's incidents at a glance: active now, and resolved lately. */
 function IncidentTiles({ serviceId }: { serviceId: string }) {

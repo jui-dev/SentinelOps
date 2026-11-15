@@ -1,6 +1,7 @@
 import { useId } from "react";
 import type { ReactNode } from "react";
 
+import { ChangeArrow } from "@/components/ui/change-arrow";
 import { SeverityMark } from "@/components/incidents/severity";
 import { cx } from "@/components/ui/cx";
 import { formatDuration, LocalDateTime } from "@/components/ui/timestamp";
@@ -61,9 +62,7 @@ function SeverityReading({
       {path.steps.map((step, index) => (
         <li key={step.role} className="flex items-start gap-2">
           {index > 0 && (
-            <span aria-hidden="true" className="pt-0.5 text-sm text-fg-subtle">
-              →
-            </span>
+            <ChangeArrow className="mt-1" />
           )}
           <span className="flex flex-col gap-0.5">
             <SeverityMark severity={step.severity} emphasis className="text-base" />
@@ -117,7 +116,8 @@ export function FactsStrip({
           <Reading>{formatDuration(lasted(facts))}</Reading>
           <span className="text-xs text-fg-muted">
             <LocalDateTime value={facts.declaredAt} />
-            <span aria-hidden="true"> →</span>
+            {" "}
+            <ChangeArrow />
             <span className="sr-only"> to </span>
             <span className="block">
               <LocalDateTime value={facts.resolvedAt} />
