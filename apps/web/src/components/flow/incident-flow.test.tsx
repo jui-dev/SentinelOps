@@ -150,9 +150,12 @@ const renderFlow = (scope: IncidentFlowResponse["scope"] = "teams") =>
   );
 
 /** What a figure says: its value, then its note. */
-const figure = (label: string) =>
-  within(screen.getByLabelText("Response flow figures")).getByText(label)
-    .nextElementSibling?.textContent;
+const figure = (label: string) => {
+  const term = within(screen.getByLabelText("Response flow figures")).getByText(label);
+  const value = term.nextElementSibling;
+
+  return `${value?.textContent ?? ""}${value?.nextElementSibling?.textContent ?? ""}`;
+};
 
 describe("the response flow", () => {
   beforeEach(() => {
@@ -174,21 +177,21 @@ describe("the response flow", () => {
     expect(
       within(frame)
         .getByRole("link", {
-          name: "INC-76, Card network declines spike: waiting 2h 15m",
+          name: "INC-76, Card network declines spike, Payments: waiting 2h 15m",
         })
         .getAttribute("href"),
     ).toBe("/orgs/acme-ops/incidents/76");
     expect(
       within(frame).getByRole("link", {
-        name: "INC-74, Elevated authorization latency: waited 36m · working 4h 24m",
+        name: "INC-74, Elevated authorization latency, Payments: waited 36m · working 4h 24m",
       }),
     ).toBeDefined();
     expect(
       within(frame).getByRole("link", {
-        name: "INC-65, Card authorisations failing in EU: waited 15m · worked 1h 6m",
+        name: "INC-65, Card authorisations failing in EU, Payments: waited 15m · worked 1h 6m",
       }),
     ).toBeDefined();
-    // Waiting first, then worked, then resolved: the API's order, kept.
+    // Newest first, every team's incidents in one table.
     expect(
       within(frame)
         .getAllByRole("link")
@@ -200,33 +203,39 @@ describe("the response flow", () => {
     ]);
   });
 
-  it("says the team-level figures, and what each team has on now", async () => {
+  it("says the team-level figures, and puts what waits for someone first", async () => {
     api();
     renderFlow();
 
     await screen.findByLabelText("Response flow figures");
 
-    expect(figure("Typical wait before someone starts")).toBe("26mmedian of 2 started");
-    expect(figure("Most running at once")).toMatch(/^2from /);
-    expect(figure("Waiting right now")).toBe("1nobody has started");
+    expect(figure("Typical wait")).toBe("26mmedian of 2 started");
+    expect(figure("Most at once")).toMatch(/^2from /);
+    expect(figure("Waiting now")).toBe("1nobody has started");
 
-    expect(screen.getByRole("button", { name: /Payments\s*2 active · 1 waiting/ })).toBeDefined();
-    // A team with nothing in the window is still listed.
-    expect(screen.getByRole("button", { name: /Risk\s*all clear/ })).toBeDefined();
+    // The incident nobody has started, as a card above the table.
+    const waitingCards = screen.getByRole("region", { name: "Waiting for someone · 1" });
+
+    expect(
+      within(waitingCards)
+        .getByRole("link", {
+          name: "INC-76, Card network declines spike, Payments: waiting 2h 15m, nobody has started",
+        })
+        .getAttribute("href"),
+    ).toBe("/orgs/acme-ops/incidents/76");
+    // Each row says its team, in a column of its own.
+    const frame = screen.getByRole("region", { name: "Incidents over the last 7 days" });
+
+    expect(within(frame).getByText("Team")).toBeDefined();
+    expect(within(frame).getAllByText("Payments")).toHaveLength(3);
   });
 
-  it("folds a team away, and narrows to one team", async () => {
+  it("narrows to one team", async () => {
     const user = userEvent.setup();
     api();
     renderFlow();
 
-    const payments = await screen.findByRole("button", { name: /^Payments/, expanded: true });
-
-    expect(payments.getAttribute("aria-expanded")).toBe("true");
-    await user.click(payments);
-    expect(payments.getAttribute("aria-expanded")).toBe("false");
-    expect(screen.queryByRole("link", { name: /INC-76/ })).toBeNull();
-    await user.click(payments);
+    await screen.findByRole("region", { name: "Incidents over the last 7 days" });
 
     await user.click(
       within(screen.getByRole("group", { name: "Team" })).getByRole("button", {
@@ -235,7 +244,7 @@ describe("the response flow", () => {
     );
 
     // Risk's own figures, and Risk alone, which had nothing.
-    expect(figure("Waiting right now")).toBe("0none");
+    expect(figure("Waiting now")).toBe("0none waiting");
     expect(screen.getByText("No incidents on your teams in the last 7 days.")).toBeDefined();
   });
 
@@ -260,7 +269,7 @@ describe("the response flow", () => {
     ).toEqual(["days=7", "days=14"]);
   });
 
-  it("says an incident's times when it is pointed at", async () => {
+  it("says an incident's times beside its bar when it is pointed at", async () => {
     const user = userEvent.setup();
     api();
     renderFlow();
@@ -270,13 +279,17 @@ describe("the response flow", () => {
     await user.hover(link);
 
     const said = await screen.findByText(/^INC-74 · Elevated authorization latency$/);
-    const strip = said.parentElement!;
+    const tooltip = said.parentElement!;
 
-    expect(strip.textContent).toMatch(/first started/);
-    expect(strip.textContent).toMatch(/1 of your updates/);
+    expect(tooltip.textContent).toMatch(/Waited 36m before someone started/);
+    expect(tooltip.textContent).toMatch(/Worked 4h 24m so far/);
+    expect(tooltip.textContent).toMatch(/still open/);
+
+    await user.unhover(link);
+    expect(screen.queryByText(/^INC-74 · Elevated authorization latency$/)).toBeNull();
   });
 
-  it("gives an overseer every team, with responders, the longest wait, and no one's updates", async () => {
+  it("gives an overseer every team in one table, and no one's updates", async () => {
     api((days) =>
       flow(days, "organization", [
         {
@@ -300,15 +313,18 @@ describe("the response flow", () => {
     expect(await screen.findByRole("heading", { level: 2, name: "Response flow" })).toBeDefined();
     await screen.findByLabelText("Response flow figures");
 
-    expect(figure("Longest wait")).toBe("2h 15mINC-76 · still waiting");
-    expect(screen.getByText("no one yet")).toBeDefined();
-    expect(screen.getByText("2 responders")).toBeDefined();
+    expect(figure("Waiting now")).toBe("1nobody has started");
     expect(screen.queryByText("Your update")).toBeNull();
-    // A team with nothing on now starts folded.
+
+    const frame = screen.getByRole("region", { name: "Incidents over the last 7 days" });
+
+    // Every team's incidents in the one table, each with its team.
     expect(
-      screen.getByRole("button", { name: /^Data/, expanded: false }).getAttribute("aria-expanded"),
-    ).toBe("false");
-    expect(screen.queryByRole("link", { name: /INC-65/ })).toBeNull();
+      within(frame).getByRole("link", { name: /^INC-65, Card authorisations failing in EU, Data:/ }),
+    ).toBeDefined();
+    expect(
+      within(frame).getByRole("link", { name: /^INC-74, Elevated authorization latency, Payments:/ }),
+    ).toBeDefined();
   });
 
   it("draws nothing for a member on no team", async () => {
@@ -366,7 +382,7 @@ describe("the response flow on a phone", () => {
     expect(items[2]!.textContent).toMatch(/resolved /);
     // Nothing to point with, so no strip asking to.
     expect(screen.queryByText(/Point at an incident/)).toBeNull();
-    expect(screen.getByText("Waiting for someone to start")).toBeDefined();
+    expect(screen.getByText("Waiting for someone")).toBeDefined();
   });
 
   it("folds a team away, as the timeline does", async () => {
@@ -375,9 +391,16 @@ describe("the response flow on a phone", () => {
     renderFlow();
 
     const payments = await screen.findByRole("button", { name: /^Payments/, expanded: true });
+    const list = screen.getByRole("region", { name: "Incidents over the last 7 days" });
 
     await user.click(payments);
-    expect(screen.queryByRole("link", { name: /INC-76/ })).toBeNull();
+    // Gone from the list; the card of what waits for someone still says it.
+    expect(within(list).queryByRole("link", { name: /INC-76/ })).toBeNull();
+    expect(
+      within(screen.getByRole("region", { name: "Waiting for someone · 1" })).getByRole("link", {
+        name: /^INC-76/,
+      }),
+    ).toBeDefined();
   });
 
   it("gives an overseer responders and each team's figures", async () => {

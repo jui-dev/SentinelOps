@@ -1483,16 +1483,17 @@ describe("the operations overview", () => {
       current.compareDocumentPosition(flow) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(flow.className).toMatch(/flow-organization/);
+    // In the table, with its team, and first as what waits for someone.
     expect(
       await within(flow).findByRole("link", {
-        name: "INC-42, Card payments failing: waiting 2h",
+        name: /^INC-42, Card payments failing, [^:]+: waiting 2h$/,
       }),
     ).toBeDefined();
-    expect(within(flow).getByText("no one yet")).toBeDefined();
-    // A team with nothing on now starts folded.
     expect(
-      within(flow).getByRole("button", { name: /^Data/, expanded: false }).getAttribute("aria-expanded"),
-    ).toBe("false");
+      within(
+        within(flow).getByRole("region", { name: /^Waiting for someone · / }),
+      ).getByRole("link", { name: /^INC-42, Card payments failing/ }),
+    ).toBeDefined();
     expect(requests.some((request) => request.path.endsWith("/incidents/flow?days=7"))).toBe(
       true,
     );

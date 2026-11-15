@@ -6,7 +6,6 @@ import Link from "next/link";
 import { useState, useSyncExternalStore } from "react";
 import type { CSSProperties, ReactNode } from "react";
 
-import { FilterChip } from "@/components/incidents/incident-filters";
 import {
   incidentHref,
   LIVE_POLL_MS,
@@ -169,72 +168,62 @@ const daysOf = (from: string, count: number) =>
     };
   });
 
-/** One figure above the frame, with a mark matching what it measures. */
+/** The colours of a bar's two stretches, from the flow's own tokens. */
+const WAIT = "var(--color-flow-wait)";
+const WORKED = "var(--color-flow-declared)";
+
+/** One figure as a chip: the number first, then what it counts and why. */
 function Figure({
   label,
   value,
   note,
-  mark,
-  noteTone,
+  warning = false,
 }: {
   label: string;
   value: string;
-  note?: string;
-  mark: CSSProperties;
-  noteTone?: "warning";
+  note: string;
+  warning?: boolean;
 }) {
   return (
-    // The term and its value are the group's own children, as a <dl> asks;
-    // the mark sits in the term, at the group's leading edge.
-    <div className="relative flex min-w-0 flex-col gap-0.5 py-3.5 pr-4 pl-8 sm:pr-5 sm:pl-9">
-      <dt className="text-xs text-fg-muted">
-        <span
-          aria-hidden="true"
-          className="absolute inset-y-3.5 left-4 w-1 rounded-full sm:left-5"
-          style={mark}
-        />
-        {label}
-      </dt>
-      <dd className="flex flex-wrap items-baseline gap-x-2">
-        <span className="numeric text-xl font-semibold text-fg">{value}</span>
-        {note && (
-          <span
-            className={cx(
-              "text-xs",
-              noteTone === "warning" ? "text-warning-text" : "text-fg-subtle",
-            )}
-          >
-            {note}
-          </span>
+    <div
+      className={cx(
+        "grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2.5 rounded-lg border py-1.5 pr-3.5 pl-3",
+        warning
+          ? "border-warning-line bg-warning-subtle"
+          : "border-(--flow-line) bg-(--flow-strip)",
+      )}
+    >
+      <dt className="self-end text-xs leading-4 font-medium text-fg">{label}</dt>
+      <dd
+        className={cx(
+          "numeric order-first row-span-2 text-2xl leading-8 font-semibold tracking-[-0.02em]",
+          warning ? "text-warning-text" : "text-fg",
         )}
+      >
+        {value}
+      </dd>
+      <dd
+        className={cx(
+          "self-start text-2xs leading-4",
+          warning ? "text-warning-text" : "text-fg-muted",
+        )}
+      >
+        {note}
       </dd>
     </div>
   );
 }
 
-const STRIPES: CSSProperties = {
-  backgroundImage:
-    "repeating-linear-gradient(135deg, var(--color-flow-wait) 0 3px, var(--color-flow-wait-gap) 3px 6px)",
-};
-
-const WORKED: CSSProperties = { backgroundColor: "var(--color-flow-declared)" };
-
-function Figures({
-  figures,
-  scope,
-}: {
-  figures: IncidentFlowFiguresResponse;
-  scope: IncidentFlowResponse["scope"];
-}) {
+function Figures({ figures }: { figures: IncidentFlowFiguresResponse }) {
   const most = figures.mostAtOnce;
 
   return (
     <dl
       aria-label="Response flow figures"
-      className="grid grid-cols-1 divide-y divide-(--flow-rule) border-b border-(--flow-rule) bg-(--flow-strip) sm:grid-cols-3 sm:divide-x sm:divide-y-0"
+      className="flex flex-wrap gap-2.5 border-b border-(--flow-rule) px-4 py-3.5 sm:px-5"
     >
       <Figure
-        label="Typical wait before someone starts"
+        label="Typical wait"
         value={
           figures.typicalWaitMs === null ? "—" : formatDuration(figures.typicalWaitMs)
         }
@@ -243,79 +232,60 @@ function Figures({
             ? `median of ${figures.started} started`
             : "nothing started yet"
         }
-        mark={STRIPES}
       />
       <Figure
-        label="Most running at once"
+        label="Most at once"
         value={most ? String(most.count) : "—"}
-        note={most ? `from ${MOMENT.format(new Date(most.at))}` : undefined}
-        mark={WORKED}
+        note={most ? `from ${MOMENT.format(new Date(most.at))}` : "nothing ran"}
       />
-      {scope === "teams" ? (
-        <Figure
-          label="Waiting right now"
-          value={String(figures.waitingNow)}
-          note={figures.waitingNow > 0 ? "nobody has started" : "none"}
-          noteTone={figures.waitingNow > 0 ? "warning" : undefined}
-          mark={{ backgroundColor: "var(--color-flow-wait)" }}
-        />
-      ) : (
-        <Figure
-          label="Longest wait"
-          value={figures.longestWait ? formatDuration(figures.longestWait.ms) : "—"}
-          note={
-            figures.longestWait
-              ? `${incidentKey(figures.longestWait.number)}${figures.longestWait.waiting ? " · still waiting" : ""}`
-              : undefined
-          }
-          noteTone={figures.longestWait?.waiting ? "warning" : undefined}
-          mark={{ backgroundColor: "var(--color-flow-wait)" }}
-        />
-      )}
+      <Figure
+        label="Waiting now"
+        value={String(figures.waitingNow)}
+        note={figures.waitingNow > 0 ? "nobody has started" : "none waiting"}
+        warning={figures.waitingNow > 0}
+      />
     </dl>
   );
 }
 
-/** The bar for one incident, and the words beside it. */
+/**
+ * The bar for one incident: amber while it waited, blue while it was
+ * worked — fading towards now while it still is — and a teal dot where it
+ * was resolved. No words beside it: they are in the row's name, and in the
+ * tooltip beside the bar when it is pointed at.
+ */
 function Bar({
   incident,
   start,
   end,
   asOf,
   showUpdates,
-  words = true,
 }: {
   incident: IncidentFlowItemResponse;
   start: number;
   end: number;
   asOf: number;
   showUpdates: boolean;
-  /** Whether the words go beside the bar; the list says them above it. */
-  words?: boolean;
 }) {
   const declared = Date.parse(incident.createdAt);
   const started = incident.startedAt ? Date.parse(incident.startedAt) : null;
   const resolved = incident.resolvedAt ? Date.parse(incident.resolvedAt) : null;
-  const phase = phaseOf(incident);
 
   const from = shareOf(declared, start, end);
   const waitEnd = shareOf(started ?? resolved ?? asOf, start, end);
   const workEnd = shareOf(resolved ?? asOf, start, end);
-  const finish = started ? workEnd : waitEnd;
-  // Near the right edge, the words go before the bar instead of after it.
-  const wordsFirst = finish > 0.7;
+  const finish = started !== null ? workEnd : waitEnd;
 
   return (
     <>
       <span
         aria-hidden="true"
         className={cx(
-          "absolute top-1/2 h-2.5 min-w-1.5 -translate-y-1/2 rounded-l-sm",
-          !started && "rounded-r-sm",
-          phase === "waiting" && "shadow-[0_0_0_2px_color-mix(in_srgb,var(--color-flow-wait)_18%,transparent)]",
+          "absolute top-1/2 h-2 min-w-1.5 -translate-y-1/2 rounded-l-full",
+          started === null && "rounded-r-full",
         )}
         style={{
-          ...STRIPES,
+          backgroundColor: WAIT,
           left: percent(from),
           width: percent(Math.max(0, waitEnd - from)),
         }}
@@ -324,20 +294,24 @@ function Bar({
         <span
           aria-hidden="true"
           className={cx(
-            "absolute top-1/2 h-2.5 min-w-1.5 -translate-y-1/2",
-            phase === "resolved" ? "rounded-r-sm" : "",
+            "absolute top-1/2 h-2 min-w-1.5 -translate-y-1/2",
+            resolved !== null && "rounded-r-full",
           )}
           style={{
-            ...WORKED,
             left: percent(waitEnd),
             width: percent(Math.max(0, workEnd - waitEnd)),
-            ...(phase === "resolved"
-              ? { boxShadow: "inset -3px 0 0 var(--flow-resolved)" }
-              : {
-                  backgroundImage:
-                    "linear-gradient(90deg, transparent 70%, color-mix(in srgb, var(--color-flow-declared) 30%, transparent))",
-                }),
+            background:
+              resolved !== null
+                ? WORKED
+                : `linear-gradient(90deg, ${WORKED} 70%, color-mix(in srgb, ${WORKED} 35%, transparent))`,
           }}
+        />
+      )}
+      {resolved !== null && (
+        <span
+          aria-hidden="true"
+          className="absolute top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full shadow-[0_0_0_3px_var(--flow-bottom)]"
+          style={{ left: percent(finish), backgroundColor: "var(--flow-resolved)" }}
         />
       )}
       {showUpdates &&
@@ -349,20 +323,25 @@ function Bar({
             style={{ left: percent(shareOf(Date.parse(at), start, end)) }}
           />
         ))}
-      {words && (
-        <span
-          aria-hidden="true"
-          className={cx(
-            "data absolute top-1/2 -translate-y-1/2 text-xs whitespace-nowrap",
-            phase === "waiting" ? "text-warning-text" : "text-fg-subtle",
-            wordsFirst ? "-translate-x-full pr-2" : "pl-2",
-          )}
-          style={{ left: percent(wordsFirst ? from : finish) }}
-        >
-          {describe(incident, asOf)}
-        </span>
-      )}
     </>
+  );
+}
+
+/** Where a bar ends across the window: the tooltip's anchor. */
+const finishOf = (
+  incident: IncidentFlowItemResponse,
+  start: number,
+  end: number,
+  asOf: number,
+) =>
+  shareOf(incident.resolvedAt ? Date.parse(incident.resolvedAt) : asOf, start, end);
+
+/** A team's name as a tag, beside the incidents it is responsible for. */
+function TeamTag({ name }: { name: string }) {
+  return (
+    <span className="inline-block max-w-full truncate rounded-full border border-(--flow-line) px-2 text-xs leading-5 text-fg-muted">
+      {name}
+    </span>
   );
 }
 
@@ -539,7 +518,6 @@ function FlowList({
                           end={end}
                           asOf={asOf}
                           showUpdates={flow.scope === "teams"}
-                          words={false}
                         />
                         {backdrop.now}
                       </div>
@@ -569,6 +547,126 @@ function FlowList({
   );
 }
 
+/** One incident in the table, and the team responsible for it. */
+interface FlowRow {
+  incident: IncidentFlowItemResponse;
+  team: string;
+}
+
+/**
+ * Incidents nobody has started, longest waiting first: each a card that
+ * opens it, with how long it has waited. What needs someone now, before
+ * how the week went.
+ */
+function WaitingNow({ rows }: { rows: readonly FlowRow[] }) {
+  const organization = useOrganization();
+  const shown = rows.slice(0, 3);
+
+  return (
+    <section
+      aria-labelledby="flow-waiting"
+      className="flex flex-col gap-2 border-b border-(--flow-rule) px-4 py-3.5 sm:px-5"
+    >
+      <h3 id="flow-waiting" className="label-caps text-warning-text">
+        Waiting for someone · {rows.length}
+      </h3>
+      <ul className="flex flex-col gap-2">
+        {shown.map(({ incident, team }) => {
+          const key = incidentKey(incident.number);
+
+          return (
+            <li key={incident.number}>
+              <Link
+                href={incidentHref(organization.slug, incident.number)}
+                aria-label={`${key}, ${incident.title}, ${team}: waiting ${formatDuration(incident.waitMs)}, nobody has started`}
+                className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-warning-line bg-warning-subtle px-3.5 py-2.5 transition-colors duration-(--duration-fast) hover:border-warning-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+              >
+                <span
+                  aria-hidden="true"
+                  className="w-1 self-stretch rounded-full"
+                  style={{ backgroundColor: WAIT }}
+                />
+                <SeverityMark severity={incident.severity} className="shrink-0 text-xs" />
+                <span className="data shrink-0 text-xs text-fg-subtle">{key}</span>
+                <span className="min-w-0 truncate text-sm font-medium text-fg">
+                  {incident.title}
+                </span>
+                <TeamTag name={team} />
+                <span className="ml-auto flex flex-col items-end">
+                  <span className="data text-lg leading-6 font-semibold text-warning-text">
+                    {formatDuration(incident.waitMs)}
+                  </span>
+                  <span className="text-2xs text-fg-muted">
+                    since declared · nobody has started
+                  </span>
+                </span>
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+      {rows.length > shown.length && (
+        <p className="text-xs text-fg-muted">
+          And {rows.length - shown.length} more in the list below.
+        </p>
+      )}
+    </section>
+  );
+}
+
+/** What a row's bar says, in full, beside the bar. */
+function BarTooltip({
+  incident,
+  asOf,
+  share,
+}: {
+  incident: IncidentFlowItemResponse;
+  asOf: number;
+  /** Where the bar ends, so the tooltip sits beside it. */
+  share: number;
+}) {
+  const phase = phaseOf(incident);
+  // Near the right edge, it sits before the bar's end instead of after it.
+  const before = share > 0.62;
+
+  return (
+    <div
+      aria-hidden="true"
+      className={cx(
+        "pointer-events-none absolute top-1/2 z-20 w-max -translate-y-1/2 rounded-lg border border-(--flow-line) bg-(--flow-bottom) px-3 py-2 text-xs leading-5 shadow-overlay",
+        before ? "-translate-x-full -ml-3" : "ml-3",
+      )}
+      style={{ left: percent(share) }}
+    >
+      <p className="font-semibold text-fg">
+        {incidentKey(incident.number)} · {incident.title}
+      </p>
+      <p className="flex items-center gap-2 text-fg-muted">
+        <span className="h-1.5 w-3 rounded-full" style={{ backgroundColor: WAIT }} />
+        {incident.startedAt
+          ? `Waited ${formatDuration(incident.waitMs)} before someone started`
+          : `Waiting ${formatDuration(incident.waitMs)} · nobody has started`}
+      </p>
+      {incident.startedAt && (
+        <p className="flex items-center gap-2 text-fg-muted">
+          <span className="h-1.5 w-3 rounded-full" style={{ backgroundColor: WORKED }} />
+          Worked {formatDuration(workMs(incident, asOf))}
+          {phase === "working" ? " so far" : ""}
+        </p>
+      )}
+      <p className="flex items-center gap-2 text-fg-muted">
+        <span
+          className="mx-0.5 size-2 rounded-full"
+          style={{ backgroundColor: phase === "resolved" ? "var(--flow-resolved)" : "transparent" }}
+        />
+        {incident.resolvedAt
+          ? `Resolved ${MOMENT.format(new Date(incident.resolvedAt))}`
+          : `Declared ${MOMENT.format(new Date(incident.createdAt))} · still open`}
+      </p>
+    </div>
+  );
+}
+
 /** The flow itself, once it has arrived. */
 function FlowFrame({
   flow,
@@ -580,7 +678,7 @@ function FlowFrame({
 }) {
   const organization = useOrganization();
   const wide = useWide();
-  const [pointed, setPointed] = useState<IncidentFlowItemResponse | null>(null);
+  const [pointed, setPointed] = useState<number | null>(null);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string> | null>(null);
 
   const start = Date.parse(`${flow.from}T00:00:00.000Z`);
@@ -588,9 +686,21 @@ function FlowFrame({
   const asOf = Date.parse(flow.asOf);
   const now = shareOf(asOf, start, end);
   const days = daysOf(flow.from, flow.days);
+  const today = days.findIndex((day) => day.key === flow.to);
   const teams = flow.teams.filter(({ id }) => !team || id === team);
-  // A team with nothing on now starts folded where every team is shown;
-  // a member's own teams start open.
+  // One table of every team's incidents, newest first, each with its team.
+  const rows: FlowRow[] = teams
+    .flatMap(({ name, incidents }) =>
+      incidents.map((incident) => ({ incident, team: name })),
+    )
+    .sort(
+      (a, b) => Date.parse(b.incident.createdAt) - Date.parse(a.incident.createdAt),
+    );
+  const waiting = rows
+    .filter(({ incident }) => phaseOf(incident) === "waiting")
+    .sort((a, b) => b.incident.waitMs - a.incident.waitMs);
+  // The phone's list still groups by team; a team with nothing on now
+  // starts folded where every team is shown, a member's own teams open.
   const folded =
     collapsed ??
     new Set(
@@ -607,38 +717,28 @@ function FlowFrame({
 
     setCollapsed(next);
   };
-  const columns: CSSProperties = {
-    gridTemplateColumns: `minmax(15rem, 22rem) minmax(${flow.days * 5.5}rem, 1fr)`,
-  };
   const dayLines: CSSProperties = {
     backgroundImage:
       "linear-gradient(to right, var(--flow-rule) 1px, transparent 1px)",
     backgroundSize: `${100 / flow.days}% 100%`,
   };
-  // The weekend — Friday and Saturday (lib/period/week.ts) — faintly banded
-  // behind every row. Incidents happen then like any other day and are drawn
-  // in full; the band only says when one landed outside the working week,
-  // where a long wait for a first responder is worth noticing.
-  const weekendBands = days.map(
-    (day, index) =>
-      day.weekend && (
-        <span
-          key={day.key}
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-y-0 bg-[color-mix(in_srgb,transparent_94%,var(--color-fg))]"
-          style={{ left: percent(index / flow.days), width: percent(1 / flow.days) }}
-        />
-      ),
+  // Today's column, faintly lit behind every row.
+  const todayBand = today >= 0 && (
+    <span
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-y-0 bg-[color-mix(in_srgb,transparent_93%,var(--color-accent-text))]"
+      style={{ left: percent(today / flow.days), width: percent(1 / flow.days) }}
+    />
   );
   const nowLine = (
     <span
       aria-hidden="true"
-      className="pointer-events-none absolute inset-y-0 w-0.5 -translate-x-1/2 bg-accent-text"
+      className="pointer-events-none absolute inset-y-0 w-0.5 -translate-x-1/2 bg-accent-text/60"
       style={{ left: percent(now) }}
     />
   );
 
-  if (teams.every(({ incidents }) => incidents.length === 0)) {
+  if (rows.length === 0) {
     return (
       <p className="px-4 py-10 text-center text-sm text-fg-muted sm:px-5">
         {flow.scope === "teams"
@@ -648,13 +748,12 @@ function FlowFrame({
     );
   }
 
-  const legend = (
-    <Legend scope={flow.scope} asOf={asOf} hint={wide} />
-  );
+  const waitingCards = waiting.length > 0 && <WaitingNow rows={waiting} />;
 
   if (!wide) {
     return (
       <>
+        {waitingCards}
         <FlowList
           flow={flow}
           teams={teams}
@@ -664,174 +763,133 @@ function FlowFrame({
           start={start}
           end={end}
           asOf={asOf}
-          backdrop={{ style: dayLines, bands: weekendBands, now: nowLine }}
+          backdrop={{ style: dayLines, bands: todayBand, now: nowLine }}
         />
-        {legend}
+        <Legend scope={flow.scope} asOf={asOf} hint={false} />
       </>
     );
   }
 
+  const columns: CSSProperties = {
+    gridTemplateColumns: `minmax(16rem, 24rem) 8rem minmax(${flow.days * 5.5}rem, 1fr)`,
+  };
+  const head =
+    "sticky top-0 flex h-9 items-end border-b border-(--flow-rule) bg-(--flow-head) pb-2 text-xs font-semibold text-fg-muted";
+
   return (
     <>
+      {waitingCards}
+      <div className="flex items-baseline justify-between gap-3 px-4 pt-3.5 pb-2 sm:px-5">
+        <h3 className="label-caps text-fg-subtle">
+          {flow.days === 7 ? "This week" : `Last ${flow.days} days`} ·{" "}
+          {rows.length} {rows.length === 1 ? "incident" : "incidents"}
+        </h3>
+        <span className="text-xs text-fg-subtle">newest first</span>
+      </div>
       <div
         role="region"
         aria-label={`Incidents over the last ${flow.days} days`}
         tabIndex={0}
-        className="scrollbar-thin max-h-[26rem] overflow-auto focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
+        className="scrollbar-thin max-h-[28rem] overflow-auto border-t border-(--flow-rule) focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
       >
-        <div className="grid min-w-max" style={columns}>
-          {/* The axis: pinned above, its corner pinned both ways. */}
-          <div className="sticky top-0 left-0 z-30 flex items-end border-b border-(--flow-rule) bg-(--flow-head) px-4 pb-2 text-[0.6875rem] font-semibold tracking-wider text-fg-subtle uppercase sm:px-5">
-            Incident
-          </div>
+        <div className="grid min-w-max pb-10" style={columns}>
+          <div className={cx(head, "left-0 z-30 px-4 sm:px-5")}>Incident</div>
+          <div className={cx(head, "z-20")}>Team</div>
           <div
-            className="sticky top-0 z-20 grid h-11 border-b border-(--flow-rule) bg-(--flow-head)"
+            className="sticky top-0 z-20 grid h-9 border-b border-(--flow-rule) bg-(--flow-head)"
             style={{ gridTemplateColumns: `repeat(${flow.days}, minmax(0, 1fr))` }}
           >
-            {days.map((day) => {
-              const today = day.key === flow.to;
-
-              return (
-                <span
-                  key={day.key}
-                  className={cx(
-                    "flex items-end gap-1 border-l border-(--flow-rule) px-2 pb-2",
-                    day.weekend &&
-                      "bg-[color-mix(in_srgb,transparent_94%,var(--color-fg))]",
-                  )}
-                >
-                  <span
-                    className={cx(
-                      "text-[0.6875rem] font-semibold tracking-wide uppercase",
-                      today ? "text-accent-text" : "text-fg-subtle",
-                    )}
-                  >
-                    {day.weekday}
-                  </span>
-                  <span
-                    className={cx(
-                      "numeric text-sm font-semibold",
-                      today ? "text-fg" : "text-fg-muted",
-                    )}
-                  >
-                    {day.date}
-                    {day.month && (
-                      <span className="ml-1 text-xs font-normal text-fg-subtle">
-                        {day.month}
-                      </span>
-                    )}
-                  </span>
-                </span>
-              );
-            })}
+            {days.map((day, index) => (
+              <span
+                key={day.key}
+                className={cx(
+                  "flex items-end gap-1 border-l border-(--flow-rule) px-2 pb-2 text-xs whitespace-nowrap",
+                  index === today
+                    ? "bg-[color-mix(in_srgb,transparent_93%,var(--color-accent-text))] font-semibold text-fg"
+                    : "text-fg-muted",
+                )}
+              >
+                {day.weekday} {day.date}
+                {day.month && <span className="text-fg-subtle">{day.month}</span>}
+              </span>
+            ))}
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute bottom-1.5 -translate-x-1/2 rounded-sm bg-accent-text px-1.5 text-2xs leading-4 font-bold text-(--flow-bottom)"
+              style={{ left: percent(now) }}
+            >
+              Now
+            </span>
           </div>
 
-          {teams.map((group) => {
-            const open = !folded.has(group.id);
-            const said = flow.scope === "organization" ? teamFigures(group.figures) : null;
+          {rows.map(({ incident, team: teamName }) => {
+            const key = incidentKey(incident.number);
+            const on = pointed === incident.number;
+            const cell = cx(
+              "h-9 border-b border-[color-mix(in_srgb,var(--flow-rule)_60%,transparent)]",
+              on && "bg-[color-mix(in_srgb,var(--flow-bottom)_88%,var(--color-fg))]",
+            );
 
             return (
-              <div key={group.id} className="contents">
-                <div className="sticky left-0 z-10 border-t border-(--flow-rule) bg-(--flow-bottom) px-2 pt-3 pb-1.5">
-                  <TeamToggle group={group} open={open} onToggle={() => toggle(group.id)} />
-                </div>
-                <div className="relative border-t border-(--flow-rule) pt-3 pb-1.5" style={dayLines}>
-                  {said && (
-                    <span className="block px-3 text-right text-xs text-fg-subtle">{said}</span>
+              <div
+                key={incident.number}
+                className="contents"
+                onMouseEnter={() => setPointed(incident.number)}
+                onMouseLeave={() => setPointed(null)}
+              >
+                <div
+                  className={cx(
+                    cell,
+                    "sticky left-0 z-10 flex min-w-0 items-center gap-2.5 px-4 sm:px-5",
+                    !on && "bg-(--flow-bottom)",
                   )}
-                  {weekendBands}
-                  {nowLine}
+                >
+                  <SeverityMark severity={incident.severity} className="shrink-0 text-xs" />
+                  <Link
+                    href={incidentHref(organization.slug, incident.number)}
+                    aria-label={`${key}, ${incident.title}, ${teamName}: ${describe(incident, asOf)}`}
+                    onFocus={() => setPointed(incident.number)}
+                    onBlur={() => setPointed(null)}
+                    className="flex min-w-0 items-baseline gap-2 rounded-sm underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-focus"
+                  >
+                    <span className="data shrink-0 text-xs text-fg-subtle">{key}</span>
+                    <span title={incident.title} className="truncate text-sm text-fg">
+                      {incident.title}
+                    </span>
+                  </Link>
                 </div>
-
-                {open &&
-                  group.incidents.map((incident) => {
-                    const key = incidentKey(incident.number);
-                    const words = describe(incident, asOf);
-
-                    return (
-                      <div
-                        key={incident.number}
-                        className="group/row contents"
-                        onMouseEnter={() => setPointed(incident)}
-                        onMouseLeave={() => setPointed(null)}
-                      >
-                        <div className="sticky left-0 z-10 flex h-10 min-w-0 items-center gap-2.5 bg-(--flow-bottom) px-4 group-hover/row:bg-[color-mix(in_srgb,var(--flow-bottom)_88%,var(--color-fg))] sm:px-5">
-                          <SeverityMark severity={incident.severity} className="shrink-0 text-xs" />
-                          <Link
-                            href={incidentHref(organization.slug, incident.number)}
-                            aria-label={`${key}, ${incident.title}: ${words}`}
-                            onFocus={() => setPointed(incident)}
-                            onBlur={() => setPointed(null)}
-                            className="flex min-w-0 items-baseline gap-2 rounded-sm underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-focus"
-                          >
-                            <span className="data shrink-0 text-xs text-fg-subtle">{key}</span>
-                            <span title={incident.title} className="truncate text-sm text-fg">
-                              {incident.title}
-                            </span>
-                          </Link>
-                          {flow.scope === "organization" && (
-                            <span className="ml-auto shrink-0 text-xs text-fg-subtle">
-                              {incident.responders === 0
-                                ? "no one yet"
-                                : `${incident.responders} ${incident.responders === 1 ? "responder" : "responders"}`}
-                            </span>
-                          )}
-                        </div>
-                        <div
-                          className="relative h-10 group-hover/row:bg-[color-mix(in_srgb,transparent_92%,var(--color-fg))]"
-                          style={dayLines}
-                        >
-                          {weekendBands}
-                          <Bar
-                            incident={incident}
-                            start={start}
-                            end={end}
-                            asOf={asOf}
-                            showUpdates={flow.scope === "teams"}
-                          />
-                          {nowLine}
-                        </div>
-                      </div>
-                    );
-                  })}
+                <div className={cx(cell, "flex min-w-0 items-center pr-3")}>
+                  <TeamTag name={teamName} />
+                </div>
+                <div className={cx(cell, "relative")} style={dayLines}>
+                  {todayBand}
+                  {nowLine}
+                  <Bar
+                    incident={incident}
+                    start={start}
+                    end={end}
+                    asOf={asOf}
+                    showUpdates={flow.scope === "teams"}
+                  />
+                  {on && (
+                    <BarTooltip
+                      incident={incident}
+                      asOf={asOf}
+                      share={finishOf(incident, start, end, asOf)}
+                    />
+                  )}
+                </div>
               </div>
             );
           })}
         </div>
       </div>
-      <div className="flex min-h-11 flex-wrap items-center gap-x-5 gap-y-2 border-t border-(--flow-rule) bg-(--flow-strip) px-4 py-2.5 text-xs text-fg-muted sm:px-5">
-        {pointed ? (
-          <p aria-live="polite" className="flex flex-wrap gap-x-3 gap-y-0.5">
-            <span className="font-semibold text-fg">
-              {incidentKey(pointed.number)} · {pointed.title}
-            </span>
-            <span>declared {MOMENT.format(new Date(pointed.createdAt))}</span>
-            {pointed.startedAt && (
-              <span>first started {CLOCK.format(new Date(pointed.startedAt))}</span>
-            )}
-            <span className={phaseOf(pointed) === "waiting" ? "text-warning-text" : ""}>
-              {describe(pointed, asOf)}
-            </span>
-            {pointed.resolvedAt && (
-              <span className="text-status-resolved-text">
-                resolved {MOMENT.format(new Date(pointed.resolvedAt))}
-              </span>
-            )}
-            {flow.scope === "teams" && pointed.yourUpdates.length > 0 && (
-              <span>
-                {pointed.yourUpdates.length} of your updates
-              </span>
-            )}
-          </p>
-        ) : (
-          legend
-        )}
-      </div>
+      <Legend scope={flow.scope} asOf={asOf} hint />
     </>
   );
 }
 
-/** What each mark means; on the timeline, also how to read a row's times. */
+/** What each mark means, and on the timeline how to read a row's times. */
 function Legend({
   scope,
   asOf,
@@ -841,21 +899,21 @@ function Legend({
   asOf: number;
   hint: boolean;
 }) {
-  const marks = (
-    <>
+  return (
+    <div className="flex min-h-11 flex-wrap items-center gap-x-5 gap-y-2 border-t border-(--flow-rule) bg-(--flow-strip) px-4 py-2.5 text-xs text-fg-muted sm:px-5">
       <span className="inline-flex items-center gap-1.5">
-        <span aria-hidden="true" className="h-2.5 w-5 rounded-xs" style={STRIPES} />
-        Waiting for someone to start
+        <span aria-hidden="true" className="h-2 w-4 rounded-full" style={{ backgroundColor: WAIT }} />
+        Waiting for someone
       </span>
       <span className="inline-flex items-center gap-1.5">
-        <span aria-hidden="true" className="h-2.5 w-5 rounded-xs" style={WORKED} />
+        <span aria-hidden="true" className="h-2 w-4 rounded-full" style={{ backgroundColor: WORKED }} />
         Being worked
       </span>
       <span className="inline-flex items-center gap-1.5">
         <span
           aria-hidden="true"
-          className="h-2.5 w-5 rounded-xs"
-          style={{ ...WORKED, boxShadow: "inset -3px 0 0 var(--flow-resolved)" }}
+          className="size-2.5 rounded-full"
+          style={{ backgroundColor: "var(--flow-resolved)" }}
         />
         Resolved
       </span>
@@ -869,24 +927,11 @@ function Legend({
         <span aria-hidden="true" className="h-3 w-0.5 bg-accent-text" />
         Now {CLOCK.format(new Date(asOf))} UTC
       </span>
-    </>
-  );
-
-  if (hint) {
-    return (
-      <>
-        {marks}
+      {hint && (
         <span className="ml-auto text-fg-subtle">
-          Point at an incident for its times · select it to open
+          Point at an incident for its times · click to open it
         </span>
-      </>
-    );
-  }
-
-  // The list stands alone, so its legend brings its own strip.
-  return (
-    <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-(--flow-rule) bg-(--flow-strip) px-4 py-2.5 text-xs text-fg-muted">
-      {marks}
+      )}
     </div>
   );
 }
@@ -940,18 +985,29 @@ export function IncidentFlow({
         </div>
         <div className="flex flex-wrap items-center gap-3">
           {data && data.teams.length > 1 && (
-            <div role="group" aria-label="Team" className="flex flex-wrap gap-1.5">
-              <FilterChip pressed={!shownTeam} onClick={() => setTeam(undefined)}>
-                {scope === "teams" ? "All your teams" : "All teams"}
-              </FilterChip>
-              {data.teams.map((each) => (
-                <FilterChip
-                  key={each.id}
-                  pressed={shownTeam === each.id}
-                  onClick={() => setTeam(shownTeam === each.id ? undefined : each.id)}
+            <div
+              role="group"
+              aria-label="Team"
+              className="flex flex-wrap rounded-lg border border-(--flow-line) bg-(--flow-strip) p-0.5"
+            >
+              {[
+                { id: undefined, name: scope === "teams" ? "All your teams" : "All teams" },
+                ...data.teams,
+              ].map((each) => (
+                <button
+                  key={each.id ?? "all"}
+                  type="button"
+                  aria-pressed={shownTeam === each.id}
+                  onClick={() => setTeam(each.id)}
+                  className={cx(
+                    "h-7 rounded-md px-3 text-sm transition-colors duration-(--duration-fast) focus-visible:outline-2 focus-visible:outline-focus",
+                    shownTeam === each.id
+                      ? "bg-accent text-on-accent"
+                      : "text-fg-muted hover:text-fg",
+                  )}
                 >
                   {each.name}
-                </FilterChip>
+                </button>
               ))}
             </div>
           )}
@@ -995,7 +1051,7 @@ export function IncidentFlow({
             flow.isPlaceholderData && "opacity-60",
           )}
         >
-          <Figures figures={figures} scope={data.scope} />
+          <Figures figures={figures} />
           <FlowFrame flow={data} team={shownTeam} />
         </div>
       )}
