@@ -504,6 +504,10 @@ describe("incident history", () => {
 
     expect(flow.textContent).toMatch(/Declared2/);
     expect(flow.textContent).toMatch(/Resolved1/);
+    // Read from the same days: one more declared than resolved, and the
+    // busiest day's count.
+    expect(flow.textContent).toMatch(/Net change\+1/);
+    expect(flow.textContent).toMatch(/Busiest day2/);
 
     await user.click(days[5]);
 
