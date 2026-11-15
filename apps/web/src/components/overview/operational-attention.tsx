@@ -220,15 +220,17 @@ type Tone = "accent" | "resolved";
 const TONES: Record<Tone, { dot: string; wash: string; text: string; count: string }> = {
   accent: {
     dot: "bg-accent-text",
-    wash: "bg-[color-mix(in_oklab,var(--color-surface)_95%,var(--color-accent-text))]",
+    wash: "bg-[color-mix(in_oklab,var(--color-surface)_91%,var(--color-accent-text))]",
     text: "text-accent-text",
-    count: "bg-accent-subtle text-accent-text",
+    count:
+      "bg-[color-mix(in_oklab,var(--color-surface)_78%,var(--color-accent-text))] text-accent-text",
   },
   resolved: {
     dot: "bg-status-resolved-text",
-    wash: "bg-[color-mix(in_oklab,var(--color-surface)_95%,var(--color-status-resolved-text))]",
+    wash: "bg-[color-mix(in_oklab,var(--color-surface)_91%,var(--color-status-resolved-text))]",
     text: "text-status-resolved-text",
-    count: "bg-status-resolved-subtle text-status-resolved-text",
+    count:
+      "bg-[color-mix(in_oklab,var(--color-surface)_78%,var(--color-status-resolved-text))] text-status-resolved-text",
   },
 };
 
@@ -380,7 +382,7 @@ function AttentionRow({
       {since && (
         <span
           className={cx(
-            "data shrink-0 text-right text-xs",
+            "numeric shrink-0 text-right text-xs",
             late ? "text-warning-text" : "text-fg-muted",
           )}
         >
