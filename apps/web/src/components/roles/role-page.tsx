@@ -82,8 +82,8 @@ function Holders({ role }: { role: Role }) {
   const people = memberships.data?.filter((member) => member.role === role) ?? [];
   const count =
     roles.data?.find((each) => each.role === role)?.memberCount ?? people.length;
-  const shown = people.slice(0, 3);
-  const others = count - shown.length;
+  // Holders the reader may not see by name: counted, never listed.
+  const unseen = count - people.length;
 
   return (
     <div
@@ -105,40 +105,49 @@ function Holders({ role }: { role: Role }) {
           Nobody yet.
         </p>
       ) : (
-        <ul className="flex flex-col gap-1.5">
-          {shown.map((person) => (
-            <li
-              key={person.id}
-              className="flex items-center gap-2.5 rounded-lg border border-line-subtle bg-canvas px-3 py-2"
-            >
-              <span
-                aria-hidden="true"
-                className="grid size-8 shrink-0 place-items-center rounded-full bg-hover text-xs font-semibold text-fg"
+        // A fixed height, scrolling past about three, so the card keeps its
+        // size however many hold the role.
+        <div
+          role="region"
+          aria-label={`Who has the ${ROLE_META[role].label} role`}
+          tabIndex={0}
+          className="scrollbar-thin h-44 overflow-y-auto overscroll-contain rounded-md pr-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+        >
+          <ul className="flex flex-col gap-1.5">
+            {people.map((person) => (
+              <li
+                key={person.id}
+                className="flex items-center gap-2.5 rounded-lg border border-line-subtle bg-canvas px-3 py-2"
               >
-                {initialsOf(person.user.name)}
-              </span>
-              <span className="flex min-w-0 flex-col">
-                <span className="truncate text-sm font-semibold text-fg">
-                  {person.user.name}
-                  {person.id === organization.membership.id && (
-                    <span className="font-normal text-fg-subtle"> (you)</span>
-                  )}
+                <span
+                  aria-hidden="true"
+                  className="grid size-8 shrink-0 place-items-center rounded-full bg-hover text-xs font-semibold text-fg"
+                >
+                  {initialsOf(person.user.name)}
                 </span>
-                <span className="truncate text-xs text-fg-subtle">
-                  {person.teams.length > 0
-                    ? `On ${person.teams.map(({ name }) => name).join(", ")}`
-                    : "On no team"}
+                <span className="flex min-w-0 flex-col">
+                  <span className="truncate text-sm font-semibold text-fg">
+                    {person.user.name}
+                    {person.id === organization.membership.id && (
+                      <span className="font-normal text-fg-subtle"> (you)</span>
+                    )}
+                  </span>
+                  <span className="truncate text-xs text-fg-subtle">
+                    {person.teams.length > 0
+                      ? `On ${person.teams.map(({ name }) => name).join(", ")}`
+                      : "On no team"}
+                  </span>
                 </span>
-              </span>
-            </li>
-          ))}
-          {/* The count beside the label says how many; this, how many more. */}
-          {others > 0 && shown.length > 0 && (
-            <li className="px-1 text-xs text-fg-subtle">
-              and {peopleCount(others)} more
-            </li>
-          )}
-        </ul>
+              </li>
+            ))}
+            {/* The count beside the label says how many; this, who is unseen. */}
+            {unseen > 0 && people.length > 0 && (
+              <li className="px-1 text-xs text-fg-subtle">
+                and {peopleCount(unseen)} more
+              </li>
+            )}
+          </ul>
+        </div>
       )}
     </div>
   );
