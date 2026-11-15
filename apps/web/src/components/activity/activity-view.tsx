@@ -19,9 +19,13 @@ import { roleMeta } from "@/components/roles/role-meta";
 import { ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { EmptyNote } from "@/components/ui/empty-state";
-import { Field } from "@/components/ui/field";
+import {
+  FilterBar,
+  FilterDivider,
+  FilterSearch,
+  FilterSelect,
+} from "@/components/ui/filter-bar";
 import { PageBody, PageHeader } from "@/components/ui/page";
-import { Select } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs } from "@/components/ui/tabs";
 import {
@@ -56,6 +60,7 @@ import {
 } from "./activity-meta";
 import type { PeriodValue } from "./activity-meta";
 import { useActivity } from "./activity-queries";
+import { PeriodChoice } from "./period-choice";
 import { DayHeading } from "./day-heading";
 import { AreaLabel, EntryDetails } from "./entry-details";
 import { SecurityLog } from "./security-log";
@@ -197,75 +202,52 @@ function ChangesLog({ initialSince }: { initialSince: string | undefined }) {
 
   return (
     <div className="flex flex-col gap-4">
-      {/* The filters on a sunken panel of their own, apart from the results. */}
-      <div
-        role="search"
-        aria-label="Filter the changes"
-        className="flex flex-wrap items-end gap-3 rounded-md border border-line-subtle bg-sunken px-4 py-3.5"
-      >
-        <div className="min-w-56 flex-1">
-          <Field
-            label="Search"
-            type="search"
-            placeholder="People, teams, services…"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            autoComplete="off"
-          />
-        </div>
-        <div className="w-52">
-          <Select
-            label="Done by"
-            value={actorId}
-            onChange={(event) => setActorId(event.target.value)}
-          >
-            <option value="">Anyone</option>
-            {people.map((member) => (
-              <option key={member.id} value={member.user.id}>
-                {member.user.name}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <div className="w-48">
-          <Select
-            label="Area"
-            value={area ?? ""}
-            onChange={(event) =>
-              setArea((event.target.value || undefined) as ChangeArea | undefined)
-            }
-          >
-            <option value="">
-              {total === null ? "All areas" : `All areas (${total})`}
+      <FilterBar label="Filter the changes">
+        <FilterSearch
+          label="Search"
+          value={search}
+          onChange={setSearch}
+          placeholder="People, teams, services…"
+        />
+        <FilterDivider />
+        <PeriodChoice
+          value={period}
+          onChange={(next) => {
+            setPeriod(next);
+            setSince(periodStart(next, Date.now()));
+          }}
+        />
+        <FilterSelect
+          label="Done by"
+          value={actorId}
+          onChange={(event) => setActorId(event.target.value)}
+        >
+          <option value="">Anyone</option>
+          {people.map((member) => (
+            <option key={member.id} value={member.user.id}>
+              {member.user.name}
             </option>
-            {CHANGE_AREAS.map((each) => (
-              <option key={each} value={each}>
-                {counts
-                  ? `${AREA_META[each].label} (${counts[each]})`
-                  : AREA_META[each].label}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <div className="w-44">
-          <Select
-            label="Period"
-            value={period}
-            onChange={(event) => {
-              const next = event.target.value as PeriodValue;
-
-              setPeriod(next);
-              setSince(periodStart(next, Date.now()));
-            }}
-          >
-            {PERIODS.map((each) => (
-              <option key={each.value} value={each.value}>
-                {each.label}
-              </option>
-            ))}
-          </Select>
-        </div>
-      </div>
+          ))}
+        </FilterSelect>
+        <FilterSelect
+          label="Area"
+          value={area ?? ""}
+          onChange={(event) =>
+            setArea((event.target.value || undefined) as ChangeArea | undefined)
+          }
+        >
+          <option value="">
+            {total === null ? "All areas" : `All areas (${total})`}
+          </option>
+          {CHANGE_AREAS.map((each) => (
+            <option key={each} value={each}>
+              {counts
+                ? `${AREA_META[each].label} (${counts[each]})`
+                : AREA_META[each].label}
+            </option>
+          ))}
+        </FilterSelect>
+      </FilterBar>
 
       {log.isError && <ErrorAlert error={log.error} />}
 

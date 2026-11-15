@@ -334,10 +334,13 @@ describe("activity log", () => {
       expect(queries(requests).at(-1)?.get("actorId")).toBe(members[1].user.id),
     );
 
+    await user.click(screen.getByRole("button", { name: "Open search" }));
     await user.type(screen.getByLabelText("Search"), "checkout");
     await waitFor(() => expect(queries(requests).at(-1)?.get("q")).toBe("checkout"));
 
-    await user.selectOptions(screen.getByLabelText("Period"), "All time");
+    await user.click(
+      within(screen.getByRole("group", { name: "Period" })).getByRole("button", { name: "All time" }),
+    );
     await waitFor(() => expect(queries(requests).at(-1)?.has("since")).toBe(false));
   });
 

@@ -16,8 +16,12 @@ import { ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Glance, GlanceTile } from "@/components/ui/detail-layout";
 import { cx } from "@/components/ui/cx";
-import { Field } from "@/components/ui/field";
-import { Select } from "@/components/ui/select";
+import {
+  FilterBar,
+  FilterDivider,
+  FilterSearch,
+  FilterSelect,
+} from "@/components/ui/filter-bar";
 import { Spinner } from "@/components/ui/spinner";
 import {
   Table,
@@ -47,6 +51,7 @@ import {
 } from "./activity-meta";
 import type { PeriodValue } from "./activity-meta";
 import { useActivity } from "./activity-queries";
+import { PeriodChoice } from "./period-choice";
 import { DayHeading } from "./day-heading";
 import { EntryDetails } from "./entry-details";
 import { ResultPill } from "./result-pill";
@@ -122,57 +127,34 @@ export function SecurityLog({
         />
       </Glance>
 
-      {/* The filters on a sunken panel of their own, apart from the results. */}
-      <div
-        role="search"
-        aria-label="Filter the sign-ins"
-        className="flex flex-wrap items-end gap-3 rounded-md border border-line-subtle bg-sunken px-4 py-3.5"
-      >
-        <div className="min-w-56 flex-1">
-          <Field
-            label="Search"
-            type="search"
-            placeholder="A person's name…"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            autoComplete="off"
-          />
-        </div>
-        <div className="w-48">
-          <Select
-            label="Result"
-            value={result}
-            onChange={(event) =>
-              setResult(event.target.value as SecurityAction | "")
-            }
-          >
-            <option value="">All results</option>
-            {SECURITY_RESULTS.map((each) => (
-              <option key={each.value} value={each.value}>
-                {each.label}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <div className="w-44">
-          <Select
-            label="Period"
-            value={period}
-            onChange={(event) => {
-              const next = event.target.value as PeriodValue;
-
-              setPeriod(next);
-              setSince(periodStart(next, Date.now()));
-            }}
-          >
-            {PERIODS.map((each) => (
-              <option key={each.value} value={each.value}>
-                {each.label}
-              </option>
-            ))}
-          </Select>
-        </div>
-      </div>
+      <FilterBar label="Filter the sign-ins">
+        <FilterSearch
+          label="Search"
+          value={search}
+          onChange={setSearch}
+          placeholder="A person's name…"
+        />
+        <FilterDivider />
+        <PeriodChoice
+          value={period}
+          onChange={(next) => {
+            setPeriod(next);
+            setSince(periodStart(next, Date.now()));
+          }}
+        />
+        <FilterSelect
+          label="Result"
+          value={result}
+          onChange={(event) => setResult(event.target.value as SecurityAction | "")}
+        >
+          <option value="">All results</option>
+          {SECURITY_RESULTS.map((each) => (
+            <option key={each.value} value={each.value}>
+              {each.label}
+            </option>
+          ))}
+        </FilterSelect>
+      </FilterBar>
 
       {log.isError && <ErrorAlert error={log.error} />}
 
