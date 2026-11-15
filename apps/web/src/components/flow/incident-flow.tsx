@@ -14,6 +14,7 @@ import { incidentKey, SeverityMark } from "@/components/incidents/severity";
 import { useOrganization } from "@/components/organizations/organization-scope";
 import { ErrorAlert } from "@/components/ui/alert";
 import { EmptyNote } from "@/components/ui/empty-state";
+import { FilterGroup, FilterOption } from "@/components/ui/filter-bar";
 import { cx } from "@/components/ui/cx";
 import { Spinner } from "@/components/ui/spinner";
 import { INSTRUMENT } from "@/components/overview/analytical-view-header";
@@ -936,54 +937,32 @@ export function IncidentFlow({
         </div>
         <div className="flex flex-wrap items-center gap-3">
           {data && data.teams.length > 1 && (
-            <div
-              role="group"
-              aria-label="Team"
-              className="flex flex-wrap rounded-lg border border-(--flow-line) bg-(--flow-strip) p-0.5"
-            >
+            <FilterGroup label="Team" showLabel={false}>
               {[
                 { id: undefined, name: scope === "teams" ? "All your teams" : "All teams" },
                 ...data.teams,
               ].map((each) => (
-                <button
+                <FilterOption
                   key={each.id ?? "all"}
-                  type="button"
-                  aria-pressed={shownTeam === each.id}
+                  pressed={shownTeam === each.id}
                   onClick={() => setTeam(each.id)}
-                  className={cx(
-                    "h-7 rounded-md px-3 text-sm transition-colors duration-(--duration-fast) focus-visible:outline-2 focus-visible:outline-focus",
-                    shownTeam === each.id
-                      ? "bg-accent text-on-accent"
-                      : "text-fg-muted hover:text-fg",
-                  )}
                 >
                   {each.name}
-                </button>
+                </FilterOption>
               ))}
-            </div>
+            </FilterGroup>
           )}
-          <div
-            role="group"
-            aria-label="Range"
-            className="flex rounded-lg border border-(--flow-line) bg-(--flow-strip) p-0.5"
-          >
+          <FilterGroup label="Range" showLabel={false}>
             {RANGES.map((range) => (
-              <button
+              <FilterOption
                 key={range}
-                type="button"
-                aria-pressed={days === range}
+                pressed={days === range}
                 onClick={() => setDays(range)}
-                className={cx(
-                  "h-7 rounded-md px-3 text-sm transition-colors duration-(--duration-fast) focus-visible:outline-2 focus-visible:outline-focus",
-                  days === range
-                    ? "bg-accent text-on-accent"
-                    : "text-fg-muted hover:text-fg",
-                )}
               >
                 {range} days
-              </button>
+              </FilterOption>
             ))}
-          </div>
+          </FilterGroup>
         </div>
       </div>
       {flow.isError && !data ? (

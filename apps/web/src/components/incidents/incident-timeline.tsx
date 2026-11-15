@@ -14,6 +14,7 @@ import { ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { roleMeta } from "@/components/roles/role-meta";
 import { cx } from "@/components/ui/cx";
+import { FilterGroup, FilterOption } from "@/components/ui/filter-bar";
 import { TextArea } from "@/components/ui/field";
 import { SubmitHint, useRequiredFields } from "@/components/ui/required";
 import { Spinner } from "@/components/ui/spinner";
@@ -538,29 +539,18 @@ function ShowToggle({
   counts: Record<Show, number>;
 }) {
   return (
-    <div
-      role="group"
-      aria-label="Show"
-      className="inline-flex overflow-hidden rounded-md border border-line-strong text-xs"
-    >
+    <FilterGroup label="Show" showLabel={false}>
       {(["updates", "everything"] as const).map((value) => (
-        <button
+        <FilterOption
           key={value}
-          type="button"
-          aria-pressed={show === value}
+          pressed={show === value}
           onClick={() => onChange(value)}
-          className={cx(
-            "px-2.5 py-1 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus",
-            show === value
-              ? "bg-accent font-semibold text-on-accent"
-              : "bg-surface text-fg-muted hover:text-fg",
-          )}
+          count={counts[value]}
         >
-          {value === "updates" ? "Updates" : "Everything"}{" "}
-          <span className="numeric opacity-70">{counts[value]}</span>
-        </button>
+          {value === "updates" ? "Updates" : "Everything"}
+        </FilterOption>
       ))}
-    </div>
+    </FilterGroup>
   );
 }
 

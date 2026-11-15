@@ -142,9 +142,9 @@ function StatusLine({
 }
 
 const JUMP_LINK_CLASSES: Record<SectionProgress, string> = {
-  done: "border-status-resolved-line bg-status-resolved-subtle text-fg",
-  "in-progress": "border-warning-line bg-warning-subtle text-fg",
-  "not-started": "border-line bg-surface text-fg-muted hover:text-fg",
+  done: "text-fg",
+  "in-progress": "text-fg",
+  "not-started": "text-fg-muted",
 };
 
 /** What the sections' standing means for publishing. */
@@ -204,13 +204,18 @@ function DraftProgress({
         </p>
         <p className="text-sm text-fg-muted">{progressMessage(progress)}</p>
       </div>
-      <nav aria-label="Sections" className="flex flex-wrap gap-2">
+      {/* One track of links, as every set of choices is drawn; each
+          section's mark says where it stands. */}
+      <nav
+        aria-label="Sections"
+        className="inline-flex flex-wrap gap-0.5 rounded-lg border border-line bg-sunken p-0.5"
+      >
         {ANALYSIS_SECTIONS.map((section) => (
           <a
             key={section}
             href={`#${sectionAnchor(section)}`}
             className={cx(
-              "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-sm transition-colors duration-(--duration-fast) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+              "inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-sm transition-colors duration-(--duration-fast) hover:bg-surface hover:text-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus",
               JUMP_LINK_CLASSES[progress[section]],
             )}
           >
