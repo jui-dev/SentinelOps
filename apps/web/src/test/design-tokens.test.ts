@@ -71,11 +71,18 @@ const WORKSPACE = [
   "hover",
 ];
 
-each(["fg", "fg-muted", "fg-subtle"], [...WORKSPACE, ...RAIL, "chrome"], TEXT);
-// The current rail item, and the account's initials, on its strongest fill.
+each(["fg", "fg-muted", "fg-subtle"], WORKSPACE, TEXT);
+// The rail's own text (the `rail-region` utility binds the workspace roles to
+// it there), on every stop of its gradient and on the drawer's chrome.
+each(["rail-fg", "rail-fg-muted", "rail-fg-subtle"], [...RAIL, "chrome"], TEXT);
+// The current rail item: its name and icon on its strongest fill.
+each(["rail-fg", "rail-accent"], ["rail-selected"], TEXT);
+// A count beside a rail item.
+each(["rail-badge-fg"], ["rail-badge"], TEXT);
+// An accent-tinted control's hover.
 each(["fg", "accent-text"], ["selected"], TEXT);
-// Links, and the current rail item's icon.
-each(["accent-text"], ["canvas", "surface", "field", ...RAIL], TEXT);
+// Links.
+each(["accent-text"], ["canvas", "surface", "field"], TEXT);
 // Primary buttons in every state.
 each(["on-accent"], ["accent", "accent-hover", "accent-pressed"], TEXT);
 // The primary button's edge defines it on every surface it is placed on —
@@ -133,9 +140,10 @@ each(
 );
 // Control boundaries, focus, and state marks.
 each(["line-control"], ["field", "canvas", "surface", "sunken"], UI);
-each(["focus"], [...WORKSPACE, ...RAIL, "selected"], UI);
+each(["focus"], [...WORKSPACE, "selected"], UI);
+each(["rail-focus"], [...RAIL, "rail-selected"], UI);
 // The current rail item's edge, on its fill and on the rail around it.
-each(["accent-mark"], ["selected", ...RAIL], UI);
+each(["rail-accent"], ["rail-selected", ...RAIL], UI);
 each(["danger-solid"], ["field"], UI);
 // Signal colours work as marks on every surface they are drawn on.
 each(

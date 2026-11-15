@@ -39,7 +39,8 @@
  * neutral graphite, the workspace (canvas) a neutral slate, and local
  * surfaces — tables, panels — sit on it (surface, thead). Hue separates
  * the navy rail from the neutral workspace as much as lightness does.
- * In light mode "raised" means whiter; the strip stays ink in both themes.
+ * In light mode "raised" means whiter, and the frame — rail and strip —
+ * is one deep navy around the light workspace.
  */
 @theme {
   --color-*: initial;
@@ -50,13 +51,33 @@
    * rail is the deepest layer, a navy-black ramp (rail-top → rail-mid →
    * rail-bottom) that stays below the workspace. `chrome` is the rail's top,
    * for anything on the rail without its gradient.
+   *
+   * In light the rail is the brand navy, darkest at the top where it meets
+   * the strip, so rail and strip read as one frame around the workspace.
    */
-  --color-rail-top: light-dark(#eef1f6, #04060d);
-  --color-rail-mid: light-dark(#e7ebf3, #090d17);
-  --color-rail-bottom: light-dark(#dee4ee, #101622);
-  --color-rail-hover: light-dark(#dde3ee, #151c29);
-  --color-chrome: light-dark(#eef1f6, #04060d);
+  --color-rail-top: light-dark(#12223b, #04060d);
+  --color-rail-mid: light-dark(#172a47, #090d17);
+  --color-rail-bottom: light-dark(#1b3253, #101622);
+  --color-rail-hover: light-dark(#24395a, #151c29);
+  --color-chrome: light-dark(#12223b, #04060d);
   /* The current rail item, at its strongest (its fill fades from here). */
+  --color-rail-selected: light-dark(#2c4a72, #1d3557);
+  /*
+   * What is drawn on the rail. Dark in both themes, so the workspace's own
+   * text and accent roles cannot serve it in light: the `rail-region`
+   * utility rebinds them to these. Each dark half is the workspace role's
+   * own dark value, so dark is unchanged.
+   */
+  --color-rail-fg: light-dark(#f1f5fa, #e6e8ec);
+  --color-rail-fg-muted: light-dark(#c6d2e2, #a6acb6);
+  --color-rail-fg-subtle: light-dark(#97aac3, #868d99);
+  --color-rail-accent: light-dark(#9cc2ea, #9cc2ea);
+  --color-rail-line: light-dark(#2c4366, #303540);
+  --color-rail-focus: light-dark(#9cc2ea, #9cc2ea);
+  /* A count beside an item: a quiet fill on the rail. */
+  --color-rail-badge: light-dark(#9cc2ea, #121f2e);
+  --color-rail-badge-fg: light-dark(#0f1d33, #9cc2ea);
+  /* An accent-tinted control's hover, in the workspace. */
   --color-selected: light-dark(#ccddee, #1d3557);
 
   /* The workspace, and what sits on it. */
@@ -326,18 +347,19 @@
   --color-activity-ink-personal-4: light-dark(#b9d0d1, #b9d0d1);
 
   /*
-   * Ink: a band of the darkest layer, in both themes. Two places wear it —
+   * Ink: a band of the darkest layer, in both themes — the brand navy in
+   * light, so the strip and the rail are one frame. Two places wear it —
    * the situation strip, whose colours come from its level (see
    * situation.tsx; only `neutral` exists), and the activity calendar's
    * instrument panel (activity-panes.tsx), which draws the ink ramps above
    * on it.
    */
-  --color-ink: light-dark(#151924, #0a0c11);
-  --color-ink-line: light-dark(#262c38, #1a202b);
-  --color-ink-raised: light-dark(#212631, #13161d);
-  --color-ink-hover: light-dark(#303542, #22262e);
-  --color-ink-fg: light-dark(#e8ebf1, #e1e5ec);
-  --color-ink-muted: light-dark(#98a1b2, #8a93a4);
+  --color-ink: light-dark(#0f1d33, #0a0c11);
+  --color-ink-line: light-dark(#1c2d47, #1a202b);
+  --color-ink-raised: light-dark(#1a2c47, #13161d);
+  --color-ink-hover: light-dark(#263b5c, #22262e);
+  --color-ink-fg: light-dark(#eef3f9, #e1e5ec);
+  --color-ink-muted: light-dark(#a3b3c8, #8a93a4);
   --color-ink-accent: light-dark(#9cc2ea, #9cc2ea);
 
   /*
@@ -353,9 +375,9 @@
    * and its own focus ring. The workspace's own roles are rebound to these
    * for anything drawn inside it — see the `ink-region` utility below.
    */
-  --color-ink-inset: light-dark(#002c45, #03273c);
-  --color-ink-inset-line: light-dark(#20445b, #203e52);
-  --color-ink-inset-hover: light-dark(#0a354f, #0d3046);
+  --color-ink-inset: light-dark(#053650, #03273c);
+  --color-ink-inset-line: light-dark(#2a5170, #203e52);
+  --color-ink-inset-hover: light-dark(#0c3f5d, #0d3046);
   --color-ink-inset-muted: light-dark(#9fb0c3, #9fb0c3);
   /* A link's colour on ink, at 4.5:1. */
   --color-ink-accent-text: light-dark(#9cc2ea, #9cc2ea);
@@ -651,9 +673,25 @@
   background-color: transparent;
   background-image: linear-gradient(
     in oklab 90deg,
-    var(--color-selected),
-    color-mix(in oklab, var(--color-selected) 30%, transparent)
+    var(--color-rail-selected),
+    color-mix(in oklab, var(--color-rail-selected) 30%, transparent)
   );
+}
+
+/*
+ * What sits on the rail (rail.tsx, and the drawer that holds it): the
+ * workspace's text, accent, line and focus roles, rebound to the rail's
+ * own, as `ink-region` does for the ink panels. The rail is dark in both
+ * themes; the workspace's roles are dark only in dark.
+ */
+@utility rail-region {
+  --color-fg: var(--color-rail-fg);
+  --color-fg-muted: var(--color-rail-fg-muted);
+  --color-fg-subtle: var(--color-rail-fg-subtle);
+  --color-accent-text: var(--color-rail-accent);
+  --color-accent-mark: var(--color-rail-accent);
+  --color-line: var(--color-rail-line);
+  --color-focus: var(--color-rail-focus);
 }
 
 @layer base {

@@ -86,7 +86,7 @@ function RailLink({
           {/* A count, not an alert: the accent's quiet fill, no motion. */}
           <span
             aria-hidden="true"
-            className="numeric ml-auto min-w-5 shrink-0 rounded-full bg-accent-subtle px-1.5 text-center text-xs leading-5 font-semibold text-accent-text"
+            className="numeric ml-auto min-w-5 shrink-0 rounded-full bg-rail-badge px-1.5 text-center text-xs leading-5 font-semibold text-rail-badge-fg"
           >
             {count}
           </span>
@@ -253,7 +253,7 @@ export function Rail() {
           />
         </div>
       )}
-      <div className="flex min-h-0 flex-1 flex-col gap-7 overflow-y-auto py-5 pr-3">
+      <div className="rail-region flex min-h-0 flex-1 flex-col gap-7 overflow-y-auto py-5 pr-3">
         {sections("main")}
         {!orgSlug && (
           <ul className="flex flex-col gap-0.5">
@@ -268,7 +268,7 @@ export function Rail() {
           </ul>
         )}
       </div>
-      <div className="flex flex-col gap-1 pr-3 pb-4">{sections("footer")}</div>
+      <div className="rail-region flex flex-col gap-1 pr-3 pb-4">{sections("footer")}</div>
     </nav>
   );
 }

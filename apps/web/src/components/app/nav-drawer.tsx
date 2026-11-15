@@ -66,7 +66,7 @@ export function NavDrawer({ onClose }: { onClose: () => void }) {
       className={`fixed inset-y-0 left-0 m-0 h-dvh max-h-none w-[min(18rem,85vw)] max-w-none bg-chrome p-0 text-fg shadow-overlay ${MODAL_BACKDROP}`}
     >
       <div className="flex h-full flex-col">
-        <div className="flex h-strip shrink-0 items-center justify-between pr-2 pl-4">
+        <div className="rail-region flex h-strip shrink-0 items-center justify-between pr-2 pl-4">
           <span className="label-caps text-fg-subtle">Navigation</span>
           <button
             type="button"
