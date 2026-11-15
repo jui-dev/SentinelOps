@@ -28,7 +28,7 @@ import { cx } from "@/components/ui/cx";
  */
 
 /** Tall enough for the calendar, and for a useful amount of detail. */
-const PANE = "lg:h-[19rem]";
+const PANE = "lg:h-[16rem]";
 
 /** Which material a surface is made of. */
 export type ActivityTone = "surface" | "ink" | "navy";

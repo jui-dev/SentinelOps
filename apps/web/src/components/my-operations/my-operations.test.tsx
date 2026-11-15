@@ -374,7 +374,7 @@ describe("My Operations", () => {
       await screen.findByRole("heading", { level: 2, name: "Your teams' incidents" }),
     ).toBeDefined();
     expect(
-      await screen.findByText("No incidents on your teams in the last 7 days."),
+      await screen.findByText("No incidents on your teams in the last 7 days"),
     ).toBeDefined();
     expect(requests.some((request) => request.path.endsWith("/incidents/flow?days=7"))).toBe(
       true,
@@ -514,7 +514,7 @@ describe("My Operations", () => {
 
     await screen.findByRole("table", { name: "Waiting on your team" });
     await waitFor(() => expect(tile("Active on your teams")).toBe("21 × SEV1"));
-    await screen.findByText("No incidents on your teams in the last 7 days.");
+    await screen.findByText("No incidents on your teams in the last 7 days");
     await screen.findByRole("grid", { name: "Your activity over the last six months" });
     await screen.findByRole("table", { name: "Your recent responses" });
     await screen.findByText("You, Sam Okafor");

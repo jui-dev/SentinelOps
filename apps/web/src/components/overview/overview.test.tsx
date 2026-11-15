@@ -641,6 +641,19 @@ const renderOverview = () =>
  * abandoned quickly": the assertion is that they were never sent, because the
  * sections that would send them are never mounted.
  */
+/**
+ * An attention panel once its lists have arrived: before then it is drawn,
+ * framed, around a spinner, and the loaded panel replaces it.
+ */
+const attentionPanel = async (name: string) => {
+  await screen.findByRole("region", { name });
+  await waitFor(() =>
+    expect(screen.queryByText("Loading what needs you…")).toBeNull(),
+  );
+
+  return screen.getByRole("region", { name });
+};
+
 describe("the organization landing", () => {
   beforeEach(() => {
     clearAccessToken();
@@ -1760,8 +1773,8 @@ describe("the operations overview", () => {
       expect(calendarPane).not.toBeNull();
       expect(detail).not.toBeNull();
       expect(calendarPane?.contains(detail!)).toBe(false);
-      expect(calendarPane?.className).toMatch(/lg:h-\[19rem\]/);
-      expect(detail?.className).toMatch(/lg:h-\[19rem\]/);
+      expect(calendarPane?.className).toMatch(/lg:h-\[16rem\]/);
+      expect(detail?.className).toMatch(/lg:h-\[16rem\]/);
       // The same ink as the calendar; what the day says on navy insets
       // within it, with no rule between them.
       expect(detail?.className).toContain("bg-ink");
@@ -2652,9 +2665,7 @@ describe("the operations overview", () => {
         });
         const { container } = renderOverview();
 
-        const waiting = await screen.findByRole("region", {
-          name: "Waiting on you",
-        });
+        const waiting = await attentionPanel("Waiting on you");
         const work = screen.getByRole("region", { name: "Your work" });
         const summary = await screen.findByLabelText("Operational summary");
         const current = screen.getByRole("region", {
@@ -2699,9 +2710,7 @@ describe("the operations overview", () => {
         });
         renderOverview();
 
-        const waiting = await screen.findByRole("region", {
-          name: "Waiting on you",
-        });
+        const waiting = await attentionPanel("Waiting on you");
         const work = screen.getByRole("region", { name: "Your work" });
 
         expect(waiting.getAttribute("data-tone")).toBe("action");
@@ -2741,9 +2750,7 @@ describe("the operations overview", () => {
         });
         renderOverview();
 
-        const waiting = await screen.findByRole("region", {
-          name: "Waiting on you",
-        });
+        const waiting = await attentionPanel("Waiting on you");
         const decide = within(waiting).getByRole("list", {
           name: "Needs a decision",
         });
@@ -2770,7 +2777,7 @@ describe("the operations overview", () => {
         });
         renderOverview();
 
-        const work = await screen.findByRole("region", { name: "Your work" });
+        const work = await attentionPanel("Your work");
         const lists = within(work).getAllByRole("list");
 
         expect(lists[0].getAttribute("aria-labelledby")).toBe(
@@ -2790,9 +2797,7 @@ describe("the operations overview", () => {
         });
         renderOverview();
 
-        const waiting = await screen.findByRole("region", {
-          name: "Waiting on you",
-        });
+        const waiting = await attentionPanel("Waiting on you");
 
         expect(waiting.getAttribute("data-tone")).toBe("default");
       });
@@ -2807,9 +2812,7 @@ describe("the operations overview", () => {
         });
         renderOverview();
 
-        const waiting = await screen.findByRole("region", {
-          name: "Waiting on you",
-        });
+        const waiting = await attentionPanel("Waiting on you");
         const { grid, cells } = cellsOf(waiting);
 
         expect(screen.queryByRole("region", { name: "Your work" })).toBeNull();
@@ -2832,7 +2835,7 @@ describe("the operations overview", () => {
           });
           renderOverview();
 
-          const work = await screen.findByRole("region", { name: "Your work" });
+          const work = await attentionPanel("Your work");
           const { grid, cells } = cellsOf(work);
 
           // Nothing of what only an admin decides reaches a member.
@@ -2877,7 +2880,7 @@ describe("the operations overview", () => {
         });
         const { container } = renderOverview();
 
-        await screen.findByRole("region", { name: "Your work" });
+        await attentionPanel("Your work");
         await screen.findByRole("list", { name: "Active incidents" });
         await screen.findByRole("grid", { name: /Operational activity/ });
         await expectNoAxeViolations(container);
@@ -2893,9 +2896,7 @@ describe("the operations overview", () => {
       });
       const { container } = renderOverview();
 
-      const waiting = await screen.findByRole("region", {
-        name: "Waiting on you",
-      });
+      const waiting = await attentionPanel("Waiting on you");
       const ready = within(waiting).getByRole("list", {
         name: "Ready to resolve",
       });
@@ -2930,9 +2931,7 @@ describe("the operations overview", () => {
       });
       renderOverview();
 
-      const waiting = await screen.findByRole("region", {
-        name: "Waiting on you",
-      });
+      const waiting = await attentionPanel("Waiting on you");
 
       expect(within(waiting).getByText("No decisions waiting.")).toBeDefined();
       expect(
@@ -2951,7 +2950,7 @@ describe("the operations overview", () => {
       });
       const { container } = renderOverview();
 
-      const work = await screen.findByRole("region", { name: "Your work" });
+      const work = await attentionPanel("Your work");
       const needs = within(work).getByRole("list", { name: "Needs your team" });
       const yours = within(work).getByRole("list", {
         name: "Your active responses",
@@ -2991,7 +2990,7 @@ describe("the operations overview", () => {
       });
       const { container } = renderOverview();
 
-      const work = await screen.findByRole("region", { name: "Your work" });
+      const work = await attentionPanel("Your work");
 
       expect(
         within(work).getByText("No team incidents need picking up."),
@@ -3014,7 +3013,7 @@ describe("the operations overview", () => {
       });
       const { container } = renderOverview();
 
-      const work = await screen.findByRole("region", { name: "Your work" });
+      const work = await attentionPanel("Your work");
 
       expect(
         within(work)
@@ -3038,7 +3037,7 @@ describe("the operations overview", () => {
       });
       renderOverview();
 
-      const work = await screen.findByRole("region", { name: "Your work" });
+      const work = await attentionPanel("Your work");
 
       expect(
         screen.getByRole("region", { name: "Waiting on you" }),
@@ -3061,7 +3060,7 @@ describe("the operations overview", () => {
       });
       const { queryClient } = renderOverview();
 
-      const work = await screen.findByRole("region", { name: "Your work" });
+      const work = await attentionPanel("Your work");
       const key = queryKeys.incidentAttention(organization.id);
 
       // The rail polls; the Overview only reads. No interval of its own.
@@ -3102,9 +3101,10 @@ describe("the operations overview", () => {
       expect(
         await screen.findByRole("region", { name: "Current operations" }),
       ).toBeDefined();
-      expect(
-        screen.queryByRole("region", { name: "Waiting on you" }),
-      ).toBeNull();
+      // Said inside its own panel, under its name.
+      const waiting = screen.getByRole("region", { name: "Waiting on you" });
+
+      expect(within(waiting).getByRole("alert")).toBeDefined();
     });
   });
 });

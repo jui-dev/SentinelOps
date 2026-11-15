@@ -13,6 +13,7 @@ import {
 import { incidentKey, SeverityMark } from "@/components/incidents/severity";
 import { useOrganization } from "@/components/organizations/organization-scope";
 import { ErrorAlert } from "@/components/ui/alert";
+import { EmptyNote } from "@/components/ui/empty-state";
 import { cx } from "@/components/ui/cx";
 import { Spinner } from "@/components/ui/spinner";
 import { INSTRUMENT } from "@/components/overview/analytical-view-header";
@@ -559,11 +560,14 @@ function BarTooltip({
   incident,
   asOf,
   share,
+  up = false,
 }: {
   incident: IncidentFlowItemResponse;
   asOf: number;
   /** Where the bar ends, so the tooltip sits beside it. */
   share: number;
+  /** One of the last rows: it opens upward, so nothing below is needed. */
+  up?: boolean;
 }) {
   const phase = phaseOf(incident);
   // Near the right edge, it sits before the bar's end instead of after it.
@@ -573,7 +577,8 @@ function BarTooltip({
     <div
       aria-hidden="true"
       className={cx(
-        "pointer-events-none absolute top-1/2 z-20 w-max -translate-y-1/2 rounded-lg border border-(--flow-line) bg-(--flow-bottom) px-3 py-2 text-xs leading-5 shadow-overlay",
+        "pointer-events-none absolute z-20 w-max rounded-lg border border-(--flow-line) bg-(--flow-bottom) px-3 py-2 text-xs leading-5 shadow-overlay",
+        up ? "bottom-0" : "top-1/2 -translate-y-1/2",
         before ? "-translate-x-full -ml-3" : "ml-3",
       )}
       style={{ left: percent(share) }}
@@ -677,11 +682,17 @@ function FlowFrame({
 
   if (rows.length === 0) {
     return (
-      <p className="px-4 py-10 text-center text-sm text-fg-muted sm:px-5">
-        {flow.scope === "teams"
-          ? `No incidents on your teams in the last ${flow.days} days.`
-          : `No incidents in the last ${flow.days} days.`}
-      </p>
+      <EmptyNote
+        className="bg-transparent"
+        title={
+          flow.scope === "teams"
+            ? `No incidents on your teams in the last ${flow.days} days`
+            : `No incidents in the last ${flow.days} days`
+        }
+      >
+        Each incident appears here as it is declared, with how long it waited
+        for someone to start and how long it was worked.
+      </EmptyNote>
     );
   }
 
@@ -708,7 +719,7 @@ function FlowFrame({
     gridTemplateColumns: `minmax(16rem, 24rem) 8rem minmax(${flow.days * 5.5}rem, 1fr)`,
   };
   const head =
-    "sticky top-0 flex h-9 items-end border-b border-(--flow-rule) bg-(--flow-head) pb-2 text-xs font-semibold text-fg-muted";
+    "sticky top-0 flex h-11 items-end border-b border-(--flow-rule) bg-(--flow-head) pb-2 text-xs font-semibold text-fg-muted";
 
   return (
     <>
@@ -725,11 +736,11 @@ function FlowFrame({
         tabIndex={0}
         className="scrollbar-thin max-h-[28rem] overflow-auto border-t border-(--flow-rule) focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
       >
-        <div className="grid min-w-max pb-10" style={columns}>
+        <div className="grid min-w-max" style={columns}>
           <div className={cx(head, "left-0 z-30 px-4 sm:px-5")}>Incident</div>
           <div className={cx(head, "z-20")}>Team</div>
           <div
-            className="sticky top-0 z-20 grid h-9 border-b border-(--flow-rule) bg-(--flow-head)"
+            className="sticky top-0 z-20 grid h-11 border-b border-(--flow-rule) bg-(--flow-head)"
             style={{ gridTemplateColumns: `repeat(${flow.days}, minmax(0, 1fr))` }}
           >
             {days.map((day, index) => (
@@ -748,14 +759,14 @@ function FlowFrame({
             ))}
             <span
               aria-hidden="true"
-              className="pointer-events-none absolute bottom-1.5 -translate-x-1/2 rounded-sm bg-accent-text px-1.5 text-2xs leading-4 font-bold text-(--flow-bottom)"
+              className="pointer-events-none absolute top-1.5 -translate-x-1/2 rounded-sm bg-accent-text px-1.5 text-2xs leading-4 font-bold text-(--flow-bottom)"
               style={{ left: percent(now) }}
             >
               Now
             </span>
           </div>
 
-          {rows.map(({ incident, team: teamName }) => {
+          {rows.map(({ incident, team: teamName }, index) => {
             const key = incidentKey(incident.number);
             const on = pointed === incident.number;
             const cell = cx(
@@ -809,6 +820,7 @@ function FlowFrame({
                       incident={incident}
                       asOf={asOf}
                       share={finishOf(incident, start, end, asOf)}
+                      up={rows.length > 2 && index >= rows.length - 2}
                     />
                   )}
                 </div>
@@ -904,12 +916,18 @@ export function IncidentFlow({
     >
       <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-b border-line bg-thead px-4 py-3 sm:px-5">
         <div className="flex min-w-0 flex-col gap-0.5">
-          <h2
-            id="incident-flow-title"
-            className="text-lg leading-6 font-semibold tracking-[-0.01em] text-fg"
-          >
-            {scope === "teams" ? "Your teams' incidents" : "Response flow"}
-          </h2>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <h2
+              id="incident-flow-title"
+              className="text-lg leading-6 font-semibold tracking-[-0.01em] text-fg"
+            >
+              {scope === "teams" ? "Your teams' incidents" : "Response flow"}
+            </h2>
+            {/* The time it covers, as each Overview section's label says. */}
+            <span className="numeric inline-flex items-center rounded-full border border-line bg-sunken px-2 py-0.5 text-xs font-medium text-fg-muted">
+              Last {days} days
+            </span>
+          </div>
           <p className="text-sm text-fg-muted">
             {scope === "teams"
               ? "How long each waited for someone to start, and how long it was worked."

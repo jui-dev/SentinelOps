@@ -15,7 +15,7 @@ import { useOrganization } from "@/components/organizations/organization-scope";
 import { ErrorAlert } from "@/components/ui/alert";
 import { cx } from "@/components/ui/cx";
 import { EmptyNote } from "@/components/ui/empty-state";
-import { quietLinkClasses } from "@/components/ui/link";
+import { OnwardLink } from "@/components/ui/onward-link";
 import { Spinner } from "@/components/ui/spinner";
 import { stretchedLinkClasses } from "@/components/ui/table";
 import { useMinuteClock } from "@/components/ui/timestamp";
@@ -212,15 +212,14 @@ function SelectedDay({ day }: { day: OperationalActivityDayResponse }) {
           </p>
         )}
         {/* Through to the other question: what was declared or resolved. */}
-        <Link
+        <OnwardLink
           href={incidentHistoryHref(organization.slug, {
             from: day.date,
             to: day.date,
           })}
-          className={`text-sm text-fg-muted ${quietLinkClasses}`}
         >
-          View this day in Incident history →
-        </Link>
+          View this day in Incident history
+        </OnwardLink>
       </div>
     </div>
   );

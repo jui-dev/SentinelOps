@@ -235,7 +235,7 @@ describe("the response flow", () => {
 
     // Risk's own figures, and Risk alone, which had nothing.
     expect(figure("Waiting now")).toBe("0none waiting");
-    expect(screen.getByText("No incidents on your teams in the last 7 days.")).toBeDefined();
+    expect(screen.getByText("No incidents on your teams in the last 7 days")).toBeDefined();
   });
 
   it("reads two weeks when asked, keeping the week on screen until they arrive", async () => {

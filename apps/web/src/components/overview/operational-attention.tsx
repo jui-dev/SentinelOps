@@ -8,7 +8,7 @@ import {
   useIncidentAttention,
 } from "@/components/incidents/incident-queries";
 import { incidentKey, SeverityMark } from "@/components/incidents/severity";
-import { useOrganization } from "@/components/organizations/organization-scope";
+import { useCan, useOrganization } from "@/components/organizations/organization-scope";
 import { ErrorAlert } from "@/components/ui/alert";
 import { ButtonContent, buttonClasses } from "@/components/ui/button";
 import type { ButtonIcon, ButtonVariant } from "@/components/ui/button";
@@ -16,6 +16,7 @@ import { cx } from "@/components/ui/cx";
 import { Spinner } from "@/components/ui/spinner";
 import { stretchedLinkClasses } from "@/components/ui/table";
 import { Duration, useMinuteClock } from "@/components/ui/timestamp";
+import { Permission } from "@/lib/api/contracts";
 import type { IncidentDetailResponse } from "@/lib/api/contracts";
 
 import { OverviewPanel } from "./overview-panel";
@@ -49,11 +50,35 @@ import { OverviewPanel } from "./overview-panel";
 export function OperationalAttention() {
   const organization = useOrganization();
   const attention = useIncidentAttention(organization.id);
+  const manages = useCan(Permission.INCIDENTS_MANAGE);
+  const responds = useCan(Permission.INCIDENTS_RESPOND);
 
-  if (attention.isError && !attention.data) {
-    return <ErrorAlert error={attention.error} />;
+  // Before the answer, the panel the caller's permissions say will come,
+  // already framed and about its height, so nothing below it moves when the
+  // lists arrive — and a failure is said inside it, under its name.
+  if (!attention.data) {
+    if (!manages && !responds) return null;
+
+    return (
+      <OverviewPanel
+        id={manages ? "waiting-on-you" : "your-work"}
+        title={manages ? "Waiting on you" : "Your work"}
+        description={
+          manages
+            ? "Incidents that need your decision to move forward."
+            : "What you were asked to do, what your teams need picked up, and what you are working on."
+        }
+      >
+        {attention.isError ? (
+          <ErrorAlert error={attention.error} />
+        ) : (
+          <div className="grid min-h-28 place-items-center">
+            <Spinner label="Loading what needs you…" />
+          </div>
+        )}
+      </OverviewPanel>
+    );
   }
-  if (!attention.data) return <Spinner label="Loading what needs you…" />;
 
   const { manage, respond } = attention.data;
   // Whoever also manages is shown their own work only when it holds

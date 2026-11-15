@@ -191,7 +191,7 @@ function Posture({ current }: { current: IncidentSummaryResponse["current"] }) {
  * order, the service on its own line beneath.
  */
 const COLUMNS =
-  "xl:grid-cols-[5.5rem_minmax(0,1fr)_8.5rem_5.5rem_12rem]";
+  "xl:grid-cols-[5.5rem_minmax(0,1fr)_8.5rem_11rem_12rem]";
 
 /** The rows' inset inside the table's frame. */
 const INSET = "px-4 sm:px-5";
@@ -255,13 +255,12 @@ function DurationBar({
   const usual = `a typical ${formatDuration(median)} for a ${incident.severity}`;
 
   return (
-    // Beside the duration on one line when the row is stacked; beneath it,
-    // in the duration's own column, from `xl`.
-    <span className="flex items-center gap-2 xl:flex-col xl:items-start xl:gap-0.5">
+    // Beside the duration, on the same line, so a row stays two lines tall.
+    <span className="flex items-center gap-2">
       <span
         aria-hidden="true"
         title={`Typical for a ${incident.severity}: ${formatDuration(median)}`}
-        className="relative hidden h-1.5 w-14 overflow-hidden rounded-full bg-line sm:block xl:w-full xl:max-w-20"
+        className="relative hidden h-1.5 w-12 shrink-0 overflow-hidden rounded-full bg-line sm:block"
       >
         <span
           className="absolute inset-y-0 left-0 rounded-full bg-fg-subtle"
@@ -271,7 +270,7 @@ function DurationBar({
       {past && (
         <span
           aria-hidden="true"
-          className="font-sans text-2xs leading-4 font-medium text-fg"
+          className="text-2xs leading-4 font-medium whitespace-nowrap text-fg"
         >
           Past typical
         </span>
@@ -358,14 +357,14 @@ function OperationRow({
         <div>
           <StatusMark status={incident.status} />
         </div>
-        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 xl:flex-col xl:flex-nowrap xl:items-start xl:gap-1">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 xl:flex-nowrap">
           <span
             className={cx(
-              "data whitespace-nowrap",
+              "numeric whitespace-nowrap",
               critical ? "text-fg" : "text-fg-muted",
             )}
           >
-            <span className="font-sans xl:sr-only">Open </span>
+            <span className="xl:sr-only">Open </span>
             <Duration from={incident.createdAt} />
           </span>
           <DurationBar incident={incident} typical={typical} />
@@ -403,9 +402,9 @@ function OperationRow({
 /**
  * The most urgent few active incidents, in the Incidents page's order — most
  * severe, then longest-running — each with the service it affects. The
- * table has a frame of its own inside the section, recessed a step below
- * its surface, so it reads as the section's one instrument beneath the
- * posture above it.
+ * table has a frame of its own inside the section — the same edge and
+ * surface as the other lists on the Overview — beneath the posture above
+ * it.
  *
  * Every affected service is still accounted for. The rows show at most
  * `TOP_ACTIVE` incidents, so a service whose incidents are all further down
@@ -443,7 +442,7 @@ function ActiveOperations({
   return (
     <div className="flex flex-col gap-3">
       {/* The table's own frame, inside the section. */}
-      <div className="overflow-hidden rounded-lg border border-line-subtle bg-well">
+      <div className="overflow-hidden rounded-md border border-line-subtle bg-surface">
         <ColumnHeader />
         <ul
           aria-label="Active incidents"
