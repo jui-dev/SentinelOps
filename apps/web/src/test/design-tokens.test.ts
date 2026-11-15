@@ -546,6 +546,35 @@ describe("the summary tiles' wash in light", () => {
   });
 });
 
+/**
+ * A section's icon (overview-panel.tsx, `SectionIcon`): its family on a
+ * `tint-family-tile` on the section's header band — the family mixed in, in
+ * dark; a near-white tile, in light.
+ */
+describe.each<Theme>(["light", "dark"])("the section icons in %s", (theme) => {
+  const SECTION_FAMILIES = [
+    "accent-text",
+    "signal-high",
+    "flow-declared",
+    "trend-bar",
+    "activity-operational-4",
+    "fg-muted",
+  ];
+  const disc = css.match(
+    /@utility tint-family-tile \{[^}]*var\(--family\) (\d+)%, transparent/,
+  );
+
+  it.each(SECTION_FAMILIES)("keeps a %s icon legible on its tile", (family) => {
+    const head = colour("section-head", theme);
+    const tile =
+      theme === "light"
+        ? mix("#ffffff", 0.8, head)
+        : mix(colour(family, theme), Number(disc![1]) / 100, head);
+
+    expect(contrast(colour(family, theme), tile)).toBeGreaterThanOrEqual(UI);
+  });
+});
+
 describe("design tokens", () => {
   it("parses the colour tokens", () => {
     expect(tokens.size).toBeGreaterThan(40);

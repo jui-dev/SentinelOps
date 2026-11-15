@@ -1,5 +1,6 @@
 "use client";
 
+import { CalendarDays } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useState } from "react";
@@ -328,6 +329,8 @@ export function OperationalActivity() {
     <OverviewPanel
       id="operational-activity"
       title="Operational activity"
+      icon={CalendarDays}
+      family="activity"
       label={
         <span className="numeric inline-flex items-center rounded-full border border-line bg-sunken px-2 py-0.5 text-xs font-medium text-fg-muted">
           {year}

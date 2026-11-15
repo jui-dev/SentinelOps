@@ -1,11 +1,6 @@
 "use client";
 
-import {
-  Check,
-  Plus,
-  Siren,
-  UserPlus,
-} from "lucide-react";
+import { Check, ListChecks, Plus, Siren, UserPlus } from "lucide-react";
 
 import {
   incidentsHref,
@@ -137,6 +132,8 @@ function Checklist({ facts }: { facts: SetupFacts }) {
     <OverviewPanel
       id="setup"
       title={`Set up ${organization.name}`}
+      icon={ListChecks}
+      family="setup"
       description="What to configure first, in the order each part depends on the last."
       actions={
         <p className="numeric text-sm text-fg-muted">

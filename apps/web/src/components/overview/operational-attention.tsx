@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, Check, CircleCheck, UserCheck, Users } from "lucide-react";
+import { ArrowRight, Check, CircleCheck, ClipboardList, Inbox, UserCheck, Users } from "lucide-react";
 import Link from "next/link";
 
 import {
@@ -63,6 +63,8 @@ export function OperationalAttention() {
       <OverviewPanel
         id={manages ? "waiting-on-you" : "your-work"}
         title={manages ? "Waiting on you" : "Your work"}
+        icon={manages ? Inbox : ClipboardList}
+        family="decision"
         description={
           manages
             ? "Incidents that need your decision to move forward."
@@ -163,6 +165,8 @@ export function OperationalAttention() {
         <OverviewPanel
           id="waiting-on-you"
           title="Waiting on you"
+          icon={Inbox}
+          family="decision"
           tone={waiting > 0 ? "action" : "default"}
           // How much is waiting, where the other panels say what period
           // they cover. Nothing waiting is said by the lists themselves.
@@ -229,6 +233,8 @@ export function OperationalAttention() {
         <OverviewPanel
           id="your-work"
           title="Your work"
+          icon={ClipboardList}
+          family="decision"
           // No label: each list already carries its own count.
           description="What you were asked to do, what your teams need picked up, and what you are working on."
         >

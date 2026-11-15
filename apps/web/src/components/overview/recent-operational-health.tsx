@@ -1,5 +1,6 @@
 "use client";
 
+import { ChartColumn } from "lucide-react";
 import { useOrganization } from "@/components/organizations/organization-scope";
 import { ErrorAlert } from "@/components/ui/alert";
 import { cx } from "@/components/ui/cx";
@@ -74,6 +75,8 @@ export function RecentOperationalHealth() {
     <OverviewPanel
       id="recent-operational-health"
       title="Recent operational health"
+      icon={ChartColumn}
+      family="trend"
       label={
         <span className="inline-flex items-center rounded-full border border-line bg-sunken px-2 py-0.5 text-xs font-medium text-fg-muted">
           Last 30 days

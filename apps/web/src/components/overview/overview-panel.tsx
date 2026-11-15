@@ -1,6 +1,56 @@
+import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { cx } from "@/components/ui/cx";
+
+/**
+ * The colour a section's icon tile is drawn in: the vocabulary of what the
+ * section is about, as the view headers inside it are. Whole class strings,
+ * so the stylesheet finds every one of them.
+ */
+export const SECTION_FAMILIES = {
+  /** What waits on the reader: the accent, as a decision always is. */
+  decision: "[--family:var(--color-accent-text)]",
+  /** What is wrong right now: the high signal. */
+  operations: "[--family:var(--color-signal-high)]",
+  /** Work moving: the flow's blue. */
+  flow: "[--family:var(--color-flow-declared)]",
+  /**
+   * The last thirty days, read: the trend's own colour, as the views inside
+   * it are — a reading, never a lifecycle state.
+   */
+  trend: "[--family:var(--color-trend-bar)]",
+  /** How much happened: the activity ramp's blue. */
+  activity: "[--family:var(--color-activity-operational-4)]",
+  /** Getting set up: a neutral. */
+  setup: "[--family:var(--color-fg-muted)]",
+} as const;
+
+export type SectionFamily = keyof typeof SECTION_FAMILIES;
+
+/**
+ * A section's icon, at the head of its header: the same small tile the view
+ * headers inside a section use (analytical-view-header.tsx).
+ */
+export function SectionIcon({
+  icon: Icon,
+  family,
+}: {
+  icon: LucideIcon;
+  family: SectionFamily;
+}) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cx(
+        "tint-family-tile mt-0.5 grid size-8 shrink-0 place-items-center rounded-md",
+        SECTION_FAMILIES[family],
+      )}
+    >
+      <Icon strokeWidth={1.75} className="size-4" />
+    </span>
+  );
+}
 
 /**
  * How much a section asks of the reader, drawn in its frame:
@@ -37,10 +87,15 @@ export function OverviewPanel({
   description,
   actions,
   tone = "default",
+  icon,
+  family = "setup",
   children,
 }: {
   id: string;
   title: string;
+  /** The section's icon, in a small tile of its family. */
+  icon?: LucideIcon;
+  family?: SectionFamily;
   /** What this section covers: a context, not a state. Optional. */
   label?: ReactNode;
   description: string;
@@ -66,18 +121,21 @@ export function OverviewPanel({
           frame.header,
         )}
       >
-        <div className="flex min-w-0 flex-col gap-0.5">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <h2
-              id={`${id}-title`}
-              className="text-lg leading-6 font-semibold tracking-[-0.01em] text-fg"
-            >
-              {title}
-            </h2>
-            {label}
+        <div className="flex min-w-0 items-start gap-3">
+          {icon && <SectionIcon icon={icon} family={family} />}
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <h2
+                id={`${id}-title`}
+                className="text-lg leading-6 font-semibold tracking-[-0.01em] text-fg"
+              >
+                {title}
+              </h2>
+              {label}
+            </div>
+            {/* What the section covers, directly beneath its name. */}
+            <p className="text-sm text-fg-muted">{description}</p>
           </div>
-          {/* What the section covers, directly beneath its name. */}
-          <p className="text-sm text-fg-muted">{description}</p>
         </div>
         {actions && <div className="pt-0.5">{actions}</div>}
       </div>

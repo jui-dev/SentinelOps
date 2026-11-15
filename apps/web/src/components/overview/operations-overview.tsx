@@ -1,5 +1,6 @@
 "use client";
 
+import { Activity } from "lucide-react";
 import { IncidentFlow } from "@/components/flow/incident-flow";
 import Link from "next/link";
 
@@ -528,6 +529,8 @@ function CurrentOperations({ current: state }: { current: CurrentOperationsState
     <OverviewPanel
       id="current-operations"
       title="Current operations"
+      icon={Activity}
+      family="operations"
       tone="primary"
       // Which of the two sections this is — not a claim about how fresh
       // the data is.

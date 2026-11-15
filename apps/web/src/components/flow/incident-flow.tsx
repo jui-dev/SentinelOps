@@ -1,7 +1,7 @@
 "use client";
 
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { ChevronRight } from "lucide-react";
+import { ChartNoAxesGantt, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { useState, useSyncExternalStore } from "react";
 import type { CSSProperties, ReactNode } from "react";
@@ -18,6 +18,7 @@ import { FilterGroup, FilterOption } from "@/components/ui/filter-bar";
 import { cx } from "@/components/ui/cx";
 import { Spinner } from "@/components/ui/spinner";
 import { INSTRUMENT } from "@/components/overview/analytical-view-header";
+import { SectionIcon } from "@/components/overview/overview-panel";
 import { formatDuration } from "@/components/ui/timestamp";
 import type {
   IncidentFlowFiguresResponse,
@@ -916,24 +917,27 @@ export function IncidentFlow({
       )}
     >
       <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-b border-section-line bg-section-head px-4 py-3 sm:px-5">
-        <div className="flex min-w-0 flex-col gap-0.5">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <h2
-              id="incident-flow-title"
-              className="text-lg leading-6 font-semibold tracking-[-0.01em] text-fg"
-            >
-              {scope === "teams" ? "Your teams' incidents" : "Response flow"}
-            </h2>
-            {/* The time it covers, as each Overview section's label says. */}
-            <span className="numeric inline-flex items-center rounded-full border border-line bg-sunken px-2 py-0.5 text-xs font-medium text-fg-muted">
-              Last {days} days
-            </span>
+        <div className="flex min-w-0 items-start gap-3">
+          <SectionIcon icon={ChartNoAxesGantt} family="flow" />
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <h2
+                id="incident-flow-title"
+                className="text-lg leading-6 font-semibold tracking-[-0.01em] text-fg"
+              >
+                {scope === "teams" ? "Your teams' incidents" : "Response flow"}
+              </h2>
+              {/* The time it covers, as each Overview section's label says. */}
+              <span className="numeric inline-flex items-center rounded-full border border-line bg-sunken px-2 py-0.5 text-xs font-medium text-fg-muted">
+                Last {days} days
+              </span>
+            </div>
+            <p className="text-sm text-fg-muted">
+              {scope === "teams"
+                ? "How long each waited for someone to start, and how long it was worked."
+                : "Every team's incidents: how long each waited for someone to start, how long it was worked, and when teams were stretched."}
+            </p>
           </div>
-          <p className="text-sm text-fg-muted">
-            {scope === "teams"
-              ? "How long each waited for someone to start, and how long it was worked."
-              : "Every team's incidents: how long each waited for someone to start, how long it was worked, and when teams were stretched."}
-          </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           {data && data.teams.length > 1 && (
