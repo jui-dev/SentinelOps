@@ -1,5 +1,10 @@
 "use client";
 
+import {
+  ArrowLeft,
+  Send,
+  X,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { incidentKey } from "@/components/incidents/severity";
@@ -132,10 +137,10 @@ export function PublishDialog({
           ))}
         </ul>
         <DialogActions>
-          <Button variant="secondary" onClick={onClose}>
+          <Button icon={warning ? ArrowLeft : X} variant="secondary" onClick={onClose}>
             {warning ? "Go back and finish" : "Cancel"}
           </Button>
-          <Button
+          <Button icon={Send}
             variant="complete"
             onClick={confirm}
             disabled={publish.isPending || summaryMissing}

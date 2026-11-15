@@ -1,13 +1,12 @@
 "use client";
 
 import {
-  ChevronRight,
   CircleDashed,
+  Eye,
   Network,
   Radio,
   Siren,
 } from "lucide-react";
-import Link from "next/link";
 import type { ReactNode } from "react";
 
 import {
@@ -34,7 +33,6 @@ import {
 } from "@/components/ui/detail-layout";
 import { EmptyNote } from "@/components/ui/empty-state";
 import { PageBody, PageHeader } from "@/components/ui/page";
-import { rowActionClasses } from "@/components/ui/row-action";
 import { Spinner } from "@/components/ui/spinner";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { Duration } from "@/components/ui/timestamp";
@@ -47,6 +45,7 @@ import type {
 
 import { YourActivity } from "./your-activity";
 import { YourTeams } from "./your-teams";
+import { ButtonLink } from "@/components/ui/button-link";
 
 /**
  * My Operations: where a member enters their organization.
@@ -181,14 +180,15 @@ function WorkRow({
       </TD>
       <TD kind="data">{moment}</TD>
       <TD align="end">
-        <Link
+        <ButtonLink
           href={incidentHref(organization.slug, incident.number)}
           aria-label={`View ${key}`}
-          className={rowActionClasses("accent")}
+          variant="view"
+          size="sm"
+          icon={Eye}
         >
           View
-          <ChevronRight aria-hidden="true" strokeWidth={2} className="size-3.5" />
-        </Link>
+        </ButtonLink>
       </TD>
     </TR>
   );

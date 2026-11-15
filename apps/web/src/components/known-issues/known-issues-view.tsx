@@ -1,5 +1,15 @@
 "use client";
 
+import {
+  Archive,
+  Check,
+  Merge,
+  Pencil,
+  Plus,
+  RotateCcw,
+  Save,
+  X,
+} from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import type { FormEvent } from "react";
@@ -114,7 +124,7 @@ function KnownIssuesList() {
         title="Known issues"
         meta={knownIssues.data ? inUse.length : undefined}
         description="The problems each service has had before. Declaring an incident starts from these, and their repeats are counted."
-        actions={<Button onClick={() => setDialog({ kind: "add" })}>Add known issue</Button>}
+        actions={<Button icon={Plus} onClick={() => setDialog({ kind: "add" })}>Add known issue</Button>}
       />
       <PageBody width="full">
         <div className="flex flex-col gap-4">
@@ -312,12 +322,12 @@ function KnownIssueRow({
         {issue.pendingReview && !archived ? (
           <>
             {canMerge && (
-              <Button variant="secondary" size="sm" onClick={onMerge}>
+              <Button icon={Merge} variant="edit" size="sm" onClick={onMerge}>
                 Merge…
               </Button>
             )}
-            <Button
-              variant="quiet"
+            <Button icon={Check}
+              variant="add"
               size="sm"
               disabled={busy}
               onClick={onKeep}
@@ -325,17 +335,17 @@ function KnownIssueRow({
             >
               Keep
             </Button>
-            <Button variant="quiet" size="sm" onClick={onEdit} aria-label={`Edit ${issue.name}`}>
+            <Button icon={Pencil} variant="edit" size="sm" onClick={onEdit} aria-label={`Edit ${issue.name}`}>
               Edit
             </Button>
           </>
         ) : (
           <>
-            <Button variant="quiet" size="sm" onClick={onEdit} aria-label={`Edit ${issue.name}`}>
+            <Button icon={Pencil} variant="edit" size="sm" onClick={onEdit} aria-label={`Edit ${issue.name}`}>
               Edit
             </Button>
-            <Button
-              variant="quiet"
+            <Button icon={archived ? RotateCcw : Archive}
+              variant={archived ? "restore" : "destructive"}
               size="sm"
               disabled={busy}
               onClick={() => onArchive(!archived)}
@@ -455,10 +465,10 @@ function KnownIssueDialog({
         />
         <DialogActions>
           <SubmitHint id={required.hintId} missing={required.missing} />
-          <Button variant="secondary" onClick={onClose}>
+          <Button icon={X} variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button
+          <Button icon={issue ? Save : Plus}
             type="submit"
             disabled={save.isPending || !required.ready}
             aria-describedby={required.ready ? undefined : required.hintId}
@@ -526,10 +536,10 @@ function MergeDialog({
         </Select>
         <DialogActions>
           <SubmitHint id={required.hintId} missing={required.missing} />
-          <Button variant="secondary" onClick={onClose}>
+          <Button icon={X} variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button
+          <Button icon={Merge}
             type="submit"
             disabled={merge.isPending || !required.ready}
             aria-describedby={required.ready ? undefined : required.hintId}

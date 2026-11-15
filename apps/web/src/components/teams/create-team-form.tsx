@@ -1,5 +1,9 @@
 "use client";
 
+import {
+  Plus,
+  X,
+} from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { FormEvent } from "react";
 
@@ -105,10 +109,10 @@ export function CreateTeamForm({ onClose }: { onClose: () => void }) {
       />
       <DialogActions>
         <SubmitHint id={required.hintId} missing={required.missing} />
-        <Button variant="secondary" onClick={onClose}>
+        <Button icon={X} variant="secondary" onClick={onClose}>
           Cancel
         </Button>
-        <Button
+        <Button icon={Plus}
           type="submit"
           disabled={create.isPending || !required.ready}
           aria-describedby={required.ready ? undefined : required.hintId}

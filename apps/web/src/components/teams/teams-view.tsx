@@ -1,7 +1,11 @@
 "use client";
 
-import { ChevronRight, Pencil } from "lucide-react";
-import Link from "next/link";
+import {
+  ChevronRight,
+  Eye,
+  Pencil,
+  Plus,
+} from "lucide-react";
 import { Fragment, useState } from "react";
 
 import {
@@ -14,7 +18,6 @@ import { cx } from "@/components/ui/cx";
 import { FormDialog } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageBody, PageHeader } from "@/components/ui/page";
-import { rowActionClasses } from "@/components/ui/row-action";
 import { Spinner } from "@/components/ui/spinner";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { Permission } from "@/lib/api/contracts";
@@ -24,10 +27,9 @@ import { CreateTeamForm } from "./create-team-form";
 import { EditTeamDialog } from "./edit-team-dialog";
 import { TeamPeek } from "./team-peek";
 import { teamHref, useTeams } from "./team-scope";
+import { ButtonLink } from "@/components/ui/button-link";
 
 /** View in the accent; Edit in the info tone — as calm, told apart from it. */
-const VIEW_ACTION = rowActionClasses("accent");
-const EDIT_ACTION = rowActionClasses("info");
 
 /**
  * `onCreate` and `onEdit` are absent for those who may not manage teams;
@@ -67,7 +69,7 @@ function TeamList({
         title={canManage ? "No teams yet" : "You are not on a team"}
         action={
           onCreate && (
-            <Button variant="secondary" onClick={onCreate}>
+            <Button icon={Plus} variant="add" onClick={onCreate}>
               New team
             </Button>
           )
@@ -147,24 +149,25 @@ function TeamList({
             <TD kind="actions">
               {/* One flex line, so a link and a button sit on one centre. */}
               <div className="flex items-center justify-end gap-2">
-                <Link
+                <ButtonLink
                   href={teamHref(organization.slug, team.slug)}
                   aria-label={`View ${team.name}`}
-                  className={VIEW_ACTION}
+                  variant="view"
+                  size="sm"
+                  icon={Eye}
                 >
                   View
-                  <ChevronRight aria-hidden="true" strokeWidth={2} className="size-3.5" />
-                </Link>
+                </ButtonLink>
                 {onEdit && (
-                  <button
-                    type="button"
+                  <Button
+                    variant="edit"
+                    size="sm"
+                    icon={Pencil}
                     aria-label={`Edit ${team.name}`}
                     onClick={() => onEdit(team)}
-                    className={EDIT_ACTION}
                   >
-                    <Pencil aria-hidden="true" strokeWidth={2} className="size-3.5" />
                     Edit
-                  </button>
+                  </Button>
                 )}
               </div>
             </TD>
@@ -217,7 +220,7 @@ export function TeamsView() {
             : "The teams you are on."
         }
         actions={
-          canManage && <Button onClick={openCreate}>New team</Button>
+          canManage && <Button icon={Plus} onClick={openCreate}>New team</Button>
         }
       />
       <PageBody width="full">

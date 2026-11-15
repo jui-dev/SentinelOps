@@ -624,7 +624,7 @@ describe("the notification panel", () => {
     ).toBeNull();
   });
 
-  it("offers Retry when the list cannot be read", async () => {
+  it("offers Try again when the list cannot be read", async () => {
     const api = server([incidentRow(1)]);
 
     api.state.listFails = true;
@@ -635,7 +635,7 @@ describe("the notification panel", () => {
     // A server error is retried once before it is shown.
     const retry = await within(panel()).findByRole(
       "button",
-      { name: "Retry" },
+      { name: "Try again" },
       { timeout: 4000 },
     );
 

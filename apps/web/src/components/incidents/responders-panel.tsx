@@ -1,6 +1,10 @@
 "use client";
 
-import { X } from "lucide-react";
+import {
+  UserPlus,
+  Users,
+  X,
+} from "lucide-react";
 import { useState } from "react";
 import type { ReactNode } from "react";
 
@@ -164,12 +168,12 @@ export function RespondersPanel({ incident }: { incident: IncidentDetailResponse
     </div>
   );
   const assign = (
-    <Button disabled={busy} onClick={() => setAssigning(true)}>
+    <Button icon={UserPlus} disabled={busy} onClick={() => setAssigning(true)}>
       Assign people
     </Button>
   );
   const open = (label: string, variant: "primary" | "secondary") => (
-    <Button
+    <Button icon={Users}
       variant={variant}
       disabled={busy}
       onClick={() => access.mutate({ mode: "OPEN", ...settling })}

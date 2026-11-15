@@ -2,7 +2,10 @@
 
 import { FormerMember } from "@/components/organizations/former-member";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowUp } from "lucide-react";
+import {
+  ArrowUp,
+  Send,
+} from "lucide-react";
 import { useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 
@@ -509,7 +512,7 @@ export function UpdateComposer({
           to post
         </span>
         <SubmitHint id={required.hintId} missing={required.missing} />
-        <Button
+        <Button icon={Send}
           type="submit"
           size="sm"
           disabled={blank || post.isPending}

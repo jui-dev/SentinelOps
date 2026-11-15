@@ -1,5 +1,8 @@
 "use client";
 
+import {
+  UserPlus,
+} from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
@@ -76,7 +79,7 @@ function Directory() {
         }
         actions={
           canAddMembers && (
-            <Button onClick={() => setAdding(true)}>Add member</Button>
+            <Button icon={UserPlus} onClick={() => setAdding(true)}>Add member</Button>
           )
         }
       />

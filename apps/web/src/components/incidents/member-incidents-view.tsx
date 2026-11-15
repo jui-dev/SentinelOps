@@ -1,6 +1,10 @@
 "use client";
 
-import { Search } from "lucide-react";
+import {
+  ChevronsDown,
+  Search,
+  X,
+} from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
@@ -310,7 +314,7 @@ function MemberFilterBar({
         </div>
         {active && (
           <span className="ml-auto">
-            <Button
+            <Button icon={X}
               variant="quiet"
               size="sm"
               onClick={() =>
@@ -463,7 +467,7 @@ export function MemberIncidentsView() {
                 )}
                 {list.hasNextPage && (
                   <div>
-                    <Button
+                    <Button icon={ChevronsDown}
                       variant="secondary"
                       size="sm"
                       disabled={list.isFetchingNextPage}

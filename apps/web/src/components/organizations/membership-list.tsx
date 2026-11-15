@@ -1,7 +1,14 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { ChevronRight, RotateCcw, Search, UserMinus } from "lucide-react";
+import {
+  ChevronRight,
+  RotateCcw,
+  Search,
+  Settings2,
+  UserMinus,
+  X,
+} from "lucide-react";
 import Link from "next/link";
 import { Fragment, useId, useState } from "react";
 
@@ -10,7 +17,6 @@ import { ROLE_META, ROLE_ORDER } from "@/components/roles/role-meta";
 import { ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { cx } from "@/components/ui/cx";
-import { rowActionClasses } from "@/components/ui/row-action";
 import { Spinner } from "@/components/ui/spinner";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { IsoDate } from "@/components/ui/timestamp";
@@ -422,15 +428,15 @@ function RemovedRow({
       </TD>
       <TD kind="actions">
         <div className="flex items-center justify-end gap-2">
-          <button
-            type="button"
+          <Button
+            variant="restore"
+            size="sm"
+            icon={RotateCcw}
             aria-label={`Restore ${member.user.name}`}
             onClick={onRestore}
-            className={rowActionClasses("info")}
           >
-            <RotateCcw aria-hidden="true" strokeWidth={2.25} className="size-3.5" />
             Restore
-          </button>
+          </Button>
         </div>
       </TD>
     </TR>
@@ -538,7 +544,7 @@ export function MembershipList() {
             <TR>
               <TD colSpan={columns} className="py-6 text-center text-sm text-fg-muted">
                 No members match.{" "}
-                <Button
+                <Button icon={X}
                   variant="quiet"
                   size="sm"
                   onClick={() => {
@@ -657,22 +663,19 @@ export function MembershipList() {
                 {hasActions && (
                   <TD kind="actions">
                     <div className="flex justify-end">
-                      <button
-                        type="button"
+                      <Button
+                        variant="manage"
+                        size="sm"
+                        icon={Settings2}
+                        trailingIcon={ChevronRight}
                         aria-label={`Manage ${member.user.name}`}
                         aria-haspopup="dialog"
                         onClick={() =>
                           setDialog({ kind: "manage", memberId: member.id })
                         }
-                        className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line-strong bg-surface pr-2 pl-3 text-sm font-medium text-fg shadow-control transition-colors duration-(--duration-fast) hover:border-line-control hover:bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
                       >
                         Manage
-                        <ChevronRight
-                          aria-hidden="true"
-                          strokeWidth={2}
-                          className="size-4 text-fg-subtle"
-                        />
-                      </button>
+                      </Button>
                     </div>
                   </TD>
                 )}

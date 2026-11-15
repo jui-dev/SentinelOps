@@ -1,5 +1,9 @@
 "use client";
 
+import {
+  Check,
+  Mail,
+} from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import type { FormEvent } from "react";
@@ -130,7 +134,7 @@ function IssuedInvitation({
           </p>
         )}
         <div>
-          <Button variant="secondary" size="sm" onClick={onDone}>
+          <Button icon={Check} variant="primary" size="sm" onClick={onDone}>
             Done
           </Button>
         </div>
@@ -216,7 +220,7 @@ export function InviteMemberForm() {
             </Select>
           </div>
           {/* Aligned with the controls, below their labels. */}
-          <Button
+          <Button icon={Mail}
             type="submit"
             disabled={create.isPending || !required.ready}
             aria-describedby={required.ready ? undefined : required.hintId}

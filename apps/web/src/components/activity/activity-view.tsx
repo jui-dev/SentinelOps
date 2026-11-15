@@ -1,7 +1,12 @@
 "use client";
 
 import { FormerMember } from "@/components/organizations/former-member";
-import { ListChecks, Lock, ShieldCheck } from "lucide-react";
+import {
+  ChevronsDown,
+  ListChecks,
+  Lock,
+  ShieldCheck,
+} from "lucide-react";
 import { Fragment, useMemo, useState } from "react";
 
 import { useMembershipsWithRemoved } from "@/components/organizations/membership-list";
@@ -336,7 +341,7 @@ function ChangesLog({ initialSince }: { initialSince: string | undefined }) {
               : ""}
           </span>
           {log.hasNextPage && (
-            <Button
+            <Button icon={ChevronsDown}
               variant="secondary"
               size="sm"
               disabled={log.isFetchingNextPage}

@@ -1,5 +1,9 @@
 "use client";
 
+import {
+  CheckCheck,
+  RotateCcw,
+} from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { InfiniteData } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -17,6 +21,7 @@ import {
   useNotificationList,
   useUnreadNotificationCount,
 } from "./notification-queries";
+import { Button } from "@/components/ui/button";
 
 const textButtonClasses =
   "rounded-sm text-xs font-medium text-accent-text underline-offset-2 hover:underline disabled:text-fg-disabled disabled:no-underline";
@@ -257,14 +262,15 @@ export function NotificationsPanel({
         )}
         <span className="flex-1" />
         {showMarkAll && (
-          <button
-            type="button"
+          <Button
+            variant="quiet"
+            size="sm"
+            icon={CheckCheck}
             onClick={markAll}
             disabled={readThrough.isPending}
-            className={textButtonClasses}
           >
             Mark all as read
-          </button>
+          </Button>
         )}
       </div>
       <p role="status" className="sr-only">
@@ -290,13 +296,9 @@ export function NotificationsPanel({
         list.isError ? (
           <div className="flex flex-col items-start gap-2 px-4 py-6">
             <p className="text-sm text-fg">Couldn&apos;t load notifications.</p>
-            <button
-              type="button"
-              onClick={() => load()}
-              className={textButtonClasses}
-            >
-              Retry
-            </button>
+            <Button size="sm" icon={RotateCcw} onClick={() => load()}>
+              Try again
+            </Button>
           </div>
         ) : (
           <LoadingRows />

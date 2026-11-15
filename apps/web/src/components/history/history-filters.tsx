@@ -1,6 +1,9 @@
 "use client";
 
-import { Search } from "lucide-react";
+import {
+  Search,
+  X,
+} from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
@@ -139,7 +142,7 @@ export function HistoryFilterBar({
             className="h-9 w-full rounded-md border border-line-control bg-field pr-3 pl-9 text-sm text-fg placeholder:text-fg-subtle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
           />
         </div>
-        <Button type="submit" variant="secondary">
+        <Button icon={Search} type="submit" variant="secondary">
           Search
         </Button>
       </form>
@@ -186,7 +189,7 @@ export function HistoryFilterBar({
       </div>
       {active && (
         <span className="ml-auto">
-          <Button
+          <Button icon={X}
             variant="quiet"
             size="sm"
             onClick={() =>

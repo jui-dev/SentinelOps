@@ -1,5 +1,11 @@
 "use client";
 
+import {
+  ListChecks,
+  ListX,
+  UserPlus,
+  X,
+} from "lucide-react";
 import { useId, useState } from "react";
 import type { ReactNode } from "react";
 
@@ -205,7 +211,7 @@ export function AssignPeopleDialog({
                   </span>
                 </span>
                 {free.length > 0 && (
-                  <Button variant="quiet" size="sm" onClick={toggleTeam}>
+                  <Button icon={allOfTeam ? ListX : ListChecks} variant="quiet" size="sm" onClick={toggleTeam}>
                     {allOfTeam ? "Clear team" : "Select all"}
                   </Button>
                 )}
@@ -269,10 +275,10 @@ export function AssignPeopleDialog({
               id={hintId}
               missing={count === 0 ? ["at least one person"] : []}
             />
-            <Button variant="secondary" onClick={onClose}>
+            <Button icon={X} variant="secondary" onClick={onClose}>
               Cancel
             </Button>
-            <Button
+            <Button icon={UserPlus}
               type="submit"
               disabled={assign.isPending || count === 0}
               aria-describedby={count === 0 ? hintId : undefined}

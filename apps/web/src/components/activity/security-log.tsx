@@ -1,7 +1,12 @@
 "use client";
 
 import { FormerMember } from "@/components/organizations/former-member";
-import { Ban, CircleAlert, LogIn } from "lucide-react";
+import {
+  Ban,
+  ChevronsDown,
+  CircleAlert,
+  LogIn,
+} from "lucide-react";
 import { Fragment, useMemo, useState } from "react";
 
 import { useMembershipsWithRemoved } from "@/components/organizations/membership-list";
@@ -237,7 +242,7 @@ export function SecurityLog({
 
       {log.hasNextPage && (
         <div className="flex justify-end">
-          <Button
+          <Button icon={ChevronsDown}
             variant="secondary"
             size="sm"
             disabled={log.isFetchingNextPage}

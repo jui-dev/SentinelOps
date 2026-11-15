@@ -1,5 +1,8 @@
 "use client";
 
+import {
+  Ban,
+} from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
@@ -80,7 +83,7 @@ function InvitationRow({
       </TD>
       {canManage && (
         <TD kind="actions">
-          <Button
+          <Button icon={Ban}
             variant="destructive"
             size="sm"
             disabled={revoking}

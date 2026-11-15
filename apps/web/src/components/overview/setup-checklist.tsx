@@ -1,7 +1,11 @@
 "use client";
 
-import { Check } from "lucide-react";
-import Link from "next/link";
+import {
+  Check,
+  Plus,
+  Siren,
+  UserPlus,
+} from "lucide-react";
 
 import {
   incidentsHref,
@@ -15,11 +19,13 @@ import {
 } from "@/components/organizations/organization-scope";
 import { servicesHref } from "@/components/services/service-scope";
 import { teamsHref, useTeams } from "@/components/teams/team-scope";
-import { buttonClasses } from "@/components/ui/button";
+
 import { cx } from "@/components/ui/cx";
 import { Permission } from "@/lib/api/contracts";
 
 import { OverviewPanel } from "./overview-panel";
+import { ButtonLink } from "@/components/ui/button-link";
+import type { ButtonIcon } from "@/components/ui/button";
 
 const plural = (count: number, one: string, many = `${one}s`) =>
   `${count} ${count === 1 ? one : many}`;
@@ -43,7 +49,7 @@ interface SetupStep {
   done: boolean;
   /** Why the step cannot be taken yet; absent when it can. */
   blockedBy?: string;
-  action: { label: string; href: string };
+  action: { label: string; href: string; icon: ButtonIcon };
 }
 
 /**
@@ -63,7 +69,7 @@ export const setupSteps = (facts: SetupFacts, slug: string): SetupStep[] => {
         ? plural(facts.teams, "team")
         : "Teams own services and respond to their incidents.",
       done: hasTeam,
-      action: { label: "Create a team", href: teamsHref(slug) },
+      action: { label: "Create a team", icon: Plus, href: teamsHref(slug) },
     },
     {
       id: "members",
@@ -76,7 +82,7 @@ export const setupSteps = (facts: SetupFacts, slug: string): SetupStep[] => {
             : `${plural(facts.others, "member")} added, ${plural(facts.staffedTeams, "team")} staffed.`,
       done: facts.others > 0 && facts.staffedTeams > 0,
       blockedBy: hasTeam ? undefined : "Needs a team first",
-      action: { label: "Add members", href: membersHref(slug) },
+      action: { label: "Add members", icon: UserPlus, href: membersHref(slug) },
     },
     {
       id: "service",
@@ -86,7 +92,7 @@ export const setupSteps = (facts: SetupFacts, slug: string): SetupStep[] => {
         : "Its owner team responds when it has an incident.",
       done: hasService,
       blockedBy: hasTeam ? undefined : "Needs a team first",
-      action: { label: "Register a service", href: servicesHref(slug) },
+      action: { label: "Register a service", icon: Plus, href: servicesHref(slug) },
     },
     {
       id: "incident",
@@ -96,7 +102,7 @@ export const setupSteps = (facts: SetupFacts, slug: string): SetupStep[] => {
         : "Declare one against a service; its owner team takes it from there.",
       done: facts.hasIncident,
       blockedBy: hasService ? undefined : "Needs a service first",
-      action: { label: "Declare an incident", href: incidentsHref(slug) },
+      action: { label: "Declare an incident", icon: Siren, href: incidentsHref(slug) },
     },
   ];
 };
@@ -162,14 +168,13 @@ function Checklist({ facts }: { facts: SetupFacts }) {
               (step.blockedBy ? (
                 <p className="text-sm text-fg-subtle">{step.blockedBy}</p>
               ) : (
-                <Link
+                <ButtonLink
                   href={step.action.href}
-                  className={buttonClasses({
-                    variant: step === next ? "primary" : "secondary",
-                  })}
+                  variant={step === next ? "primary" : "add"}
+                  icon={step.action.icon}
                 >
                   {step.action.label}
-                </Link>
+                </ButtonLink>
               ))}
           </li>
         ))}

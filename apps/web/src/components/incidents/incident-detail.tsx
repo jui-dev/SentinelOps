@@ -20,7 +20,6 @@ import { cx } from "@/components/ui/cx";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageBody, PageHeader } from "@/components/ui/page";
 import { useMinWidth } from "@/components/ui/use-min-width";
-import { rowActionClasses } from "@/components/ui/row-action";
 import { PageSpinner } from "@/components/ui/spinner";
 import {
   Duration,
@@ -58,6 +57,7 @@ import {
 import { LiveStatus } from "./live-status";
 import { ManageIncident } from "./manage-incident";
 import { incidentKey, SeverityMark, StatusMark } from "./severity";
+import { buttonClasses } from "@/components/ui/button";
 
 export const entityLinkClasses = `font-medium text-fg ${quietLinkClasses}`;
 
@@ -163,7 +163,7 @@ function CopyLink() {
   return (
     <button
       type="button"
-      className={rowActionClasses("accent")}
+      className={buttonClasses({ variant: "secondary", size: "sm" })}
       onClick={() => {
         void navigator.clipboard?.writeText(window.location.href).then(() => {
           setCopied(true);

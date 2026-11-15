@@ -1,3 +1,6 @@
+import {
+  Check,
+} from "lucide-react";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
@@ -27,7 +30,7 @@ import { formatIsoDate, IsoDate } from "./timestamp";
 
 describe("Button", () => {
   it("is a plain button unless told otherwise, so it never submits by accident", () => {
-    render(<Button>Save</Button>);
+    render(<Button icon={Check}>Save</Button>);
 
     expect(screen.getByRole("button", { name: "Save" }).getAttribute("type")).toBe(
       "button",

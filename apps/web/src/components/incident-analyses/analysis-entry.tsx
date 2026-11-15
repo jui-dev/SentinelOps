@@ -1,14 +1,20 @@
 "use client";
 
 import { FormerMember } from "@/components/organizations/former-member";
-import { Check, FilePenLine, FileText } from "lucide-react";
-import Link from "next/link";
+import {
+  ArrowRight,
+  BookOpen,
+  Check,
+  FilePen,
+  FilePenLine,
+  FileText,
+} from "lucide-react";
 import { useId } from "react";
 import type { ReactNode } from "react";
 
 import { useOrganization } from "@/components/organizations/organization-scope";
 import { ErrorAlert } from "@/components/ui/alert";
-import { buttonClasses } from "@/components/ui/button";
+
 import { cx } from "@/components/ui/cx";
 import { Spinner } from "@/components/ui/spinner";
 import { LocalDateTime } from "@/components/ui/timestamp";
@@ -28,6 +34,7 @@ import { AnalysisStatusMark } from "./analysis-status";
 import { savedProgress } from "./draft-state";
 import { PROGRESS_WORDS, SECTION_HINTS, SectionMark } from "./section-editor";
 import { StartAnalysis } from "./start-analysis";
+import { ButtonLink } from "@/components/ui/button-link";
 
 /** How far a draft has come, as a bar; the words beside it say the same. */
 function Progress({ done }: { done: number }) {
@@ -163,13 +170,15 @@ export function AnalysisEntry({
   }
 
   const link = (label: string, primary = true) => (
-    <Link
+    <ButtonLink
       href={href}
-      className={buttonClasses({ variant: primary ? "primary" : "secondary", size: "lg" })}
+      variant={primary ? "primary" : "view"}
+      size="lg"
+      icon={primary ? FilePen : BookOpen}
+      trailingIcon={ArrowRight}
     >
       {label}
-      <span aria-hidden="true">→</span>
-    </Link>
+    </ButtonLink>
   );
 
   const published = data?.status === "PUBLISHED";

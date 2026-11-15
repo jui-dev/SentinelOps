@@ -1,7 +1,17 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Copy, Eye, EyeOff, KeyRound, Search } from "lucide-react";
+import {
+  Check,
+  Copy,
+  Eye,
+  EyeOff,
+  KeyRound,
+  RotateCcw,
+  Search,
+  UserPlus,
+  X,
+} from "lucide-react";
 import Link from "next/link";
 import { useEffect, useId, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
@@ -438,10 +448,10 @@ function AddedMember({
           this password is shown.
         </p>
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" onClick={onDone}>
+          <Button icon={Check} size="sm" onClick={onDone}>
             Done
           </Button>
-          <Button variant="secondary" size="sm" onClick={onAnother}>
+          <Button icon={UserPlus} variant="add" size="sm" onClick={onAnother}>
             Add another
           </Button>
         </div>
@@ -567,7 +577,7 @@ function AddMemberForm({
               in with the password they already have.
             </p>
             {removed && (
-              <Button size="sm" onClick={() => onRestore(removed)}>
+              <Button variant="restore" icon={RotateCcw} size="sm" onClick={() => onRestore(removed)}>
                 Restore {removed.user.name}
               </Button>
             )}
@@ -691,10 +701,10 @@ function AddMemberForm({
 
       <DialogActions>
         <SubmitHint id={required.hintId} missing={required.missing} />
-        <Button variant="secondary" onClick={onCancel}>
+        <Button icon={X} variant="secondary" onClick={onCancel}>
           Cancel
         </Button>
-        <Button
+        <Button icon={UserPlus}
           type="submit"
           disabled={create.isPending || !required.ready}
           aria-describedby={required.ready ? undefined : required.hintId}

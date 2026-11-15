@@ -1,7 +1,16 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { CircleCheck, CircleDashed, Flame, History, Users } from "lucide-react";
+import {
+  ChevronsDown,
+  CircleCheck,
+  CircleDashed,
+  Flame,
+  History,
+  Siren,
+  Users,
+  X,
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -279,7 +288,7 @@ function DeclareIncidentForm({ onCancel }: { onCancel: () => void }) {
                 Go to Services
               </Link>
             )}
-            <Button variant="secondary" size="sm" onClick={onCancel}>
+            <Button icon={X} variant="secondary" size="sm" onClick={onCancel}>
               Cancel
             </Button>
           </div>
@@ -414,10 +423,10 @@ function DeclareIncidentForm({ onCancel }: { onCancel: () => void }) {
       )}
       <DialogActions>
         <SubmitHint id={required.hintId} missing={required.missing} />
-        <Button variant="secondary" onClick={onCancel}>
+        <Button icon={X} variant="secondary" onClick={onCancel}>
           Cancel
         </Button>
-        <Button
+        <Button icon={Siren}
           type="submit"
           disabled={declare.isPending || !required.ready}
           aria-describedby={required.ready ? undefined : required.hintId}
@@ -521,7 +530,7 @@ function IncidentList({
       )}
       {list.hasNextPage && (
         <div>
-          <Button
+          <Button icon={ChevronsDown}
             variant="secondary"
             size="sm"
             disabled={list.isFetchingNextPage}
@@ -625,7 +634,7 @@ export function DeclareIncident() {
 
   return (
     <>
-      <Button onClick={() => setDeclaring(true)}>Declare incident</Button>
+      <Button icon={Siren} onClick={() => setDeclaring(true)}>Declare incident</Button>
       {declaring && (
         <FormDialog
           title="Declare an incident"

@@ -1,10 +1,13 @@
 "use client";
 
-import { RotateCcw } from "lucide-react";
-import Link from "next/link";
+import {
+  House,
+  RotateCcw,
+} from "lucide-react";
 import { useEffect } from "react";
 
-import { Button, buttonClasses } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
+import { ButtonLink } from "@/components/ui/button-link";
 
 /**
  * What every fallback page says, wherever it is drawn — in the sign-in
@@ -29,9 +32,9 @@ export function NotFoundContent() {
       </div>
       <div>
         {/* "/" sends each person to where they work. */}
-        <Link href="/" className={buttonClasses()}>
+        <ButtonLink href="/" variant="primary" icon={House}>
           Go to your workspace
-        </Link>
+        </ButtonLink>
       </div>
     </div>
   );
@@ -81,9 +84,9 @@ export function ErrorContent({
         <Button icon={RotateCcw} onClick={() => retry()}>
           Try again
         </Button>
-        <Link href="/" className={buttonClasses({ variant: "secondary" })}>
+        <ButtonLink href="/" variant="secondary" icon={House}>
           Go to your workspace
-        </Link>
+        </ButtonLink>
       </div>
     </div>
   );

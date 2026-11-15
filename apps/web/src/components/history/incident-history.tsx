@@ -3,6 +3,7 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import {
   CalendarDays,
+  CalendarRange,
   CircleCheck,
   CircleDashed,
   Siren,
@@ -172,7 +173,7 @@ function PeriodBand({ selection }: { selection: PeriodSelection }) {
       </p>
       {/* Kept while the dialog is open: focus returns to it. */}
       {choice === "custom" && (
-        <Button variant="quiet" size="sm" onClick={selection.edit}>
+        <Button icon={CalendarRange} variant="quiet" size="sm" onClick={selection.edit}>
           Change dates
         </Button>
       )}

@@ -1,5 +1,8 @@
 "use client";
 
+import {
+  Save,
+} from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import type { FormEvent } from "react";
@@ -117,7 +120,7 @@ export function RenameOrganizationForm() {
           error={fields.name}
         />
         <div className="flex flex-wrap items-center gap-3">
-          <Button
+          <Button icon={Save}
             type="submit"
             disabled={rename.isPending || !required.ready}
             aria-describedby={required.ready ? undefined : required.hintId}

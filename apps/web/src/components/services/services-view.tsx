@@ -1,7 +1,14 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ChevronRight, Pencil, Search } from "lucide-react";
+import {
+  ChevronRight,
+  Eye,
+  Pencil,
+  Plus,
+  Search,
+  X,
+} from "lucide-react";
 import Link from "next/link";
 import { Fragment, useId, useState } from "react";
 import type { FormEvent } from "react";
@@ -17,14 +24,13 @@ import { Button } from "@/components/ui/button";
 import { cx } from "@/components/ui/cx";
 import { DialogActions, FormDialog } from "@/components/ui/dialog";
 import { FormExample } from "@/components/ui/form-example";
-import { EmptyNote, EmptyState } from "@/components/ui/empty-state";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Field } from "@/components/ui/field";
 import { PageBody, PageHeader } from "@/components/ui/page";
-import { rowActionClasses } from "@/components/ui/row-action";
 import { Select } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
-import { linkClasses, quietLinkClasses } from "@/components/ui/link";
+import { linkClasses } from "@/components/ui/link";
 import {
   RequiredNote,
   SubmitHint,
@@ -51,6 +57,7 @@ import {
   SERVICE_NAME_TAKEN_MESSAGE,
 } from "./service-form-parts";
 import { serviceHref, useServices } from "./service-scope";
+import { ButtonLink } from "@/components/ui/button-link";
 
 /**
  * Creates a service. The new service is put into the cached list, so the
@@ -148,7 +155,7 @@ function CreateServiceForm({ onClose }: { onClose: () => void }) {
                 Go to Teams
               </Link>
             )}
-            <Button variant="secondary" size="sm" onClick={onClose}>
+            <Button icon={X} variant="secondary" size="sm" onClick={onClose}>
               Cancel
             </Button>
           </div>
@@ -213,10 +220,10 @@ function CreateServiceForm({ onClose }: { onClose: () => void }) {
       />
       <DialogActions>
         <SubmitHint id={required.hintId} missing={required.missing} />
-        <Button variant="secondary" onClick={onClose}>
+        <Button icon={X} variant="secondary" onClick={onClose}>
           Cancel
         </Button>
-        <Button
+        <Button icon={Plus}
           type="submit"
           disabled={create.isPending || !required.ready}
           aria-describedby={required.ready ? undefined : required.hintId}
@@ -227,7 +234,6 @@ function CreateServiceForm({ onClose }: { onClose: () => void }) {
     </form>
   );
 }
-
 
 // ── Status ─────────────────────────────────────────────────────────────────
 
@@ -475,7 +481,7 @@ function ServiceList({
         title="No services yet"
         action={
           onCreate && (
-            <Button variant="secondary" onClick={onCreate}>
+            <Button icon={Plus} variant="add" onClick={onCreate}>
               New service
             </Button>
           )
@@ -531,7 +537,7 @@ function ServiceList({
                 {filter === "archived" && q === ""
                   ? "No service is archived."
                   : "No services match."}{" "}
-                <Button
+                <Button icon={X}
                   variant="quiet"
                   size="sm"
                   onClick={() => {
@@ -622,32 +628,25 @@ function ServiceList({
                 )}
                 <TD kind="actions">
                   <div className="flex items-center justify-end gap-2">
-                    <Link
+                    <ButtonLink
                       href={serviceHref(organization.slug, service.slug)}
                       aria-label={`View ${service.name}`}
-                      className={rowActionClasses("accent")}
+                      variant="view"
+                      size="sm"
+                      icon={Eye}
                     >
                       View
-                      <ChevronRight
-                        aria-hidden="true"
-                        strokeWidth={2}
-                        className="size-3.5"
-                      />
-                    </Link>
+                    </ButtonLink>
                     {canManage && (
-                      <button
-                        type="button"
+                      <Button
+                        variant="edit"
+                        size="sm"
+                        icon={Pencil}
                         aria-label={`Edit ${service.name}`}
                         onClick={() => setEditingId(service.id)}
-                        className={rowActionClasses("info")}
                       >
-                        <Pencil
-                          aria-hidden="true"
-                          strokeWidth={2}
-                          className="size-3.5"
-                        />
                         Edit
-                      </button>
+                      </Button>
                     )}
                   </div>
                 </TD>
@@ -704,7 +703,7 @@ export function ServicesView() {
         meta={inUse?.length}
         description="The systems this organization runs, who owns each, and whether anything is wrong with it now."
         actions={
-          canManage && <Button onClick={openCreate}>New service</Button>
+          canManage && <Button icon={Plus} onClick={openCreate}>New service</Button>
         }
       />
       <PageBody width="full">

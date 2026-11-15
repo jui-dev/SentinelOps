@@ -1,5 +1,11 @@
 "use client";
 
+import {
+  Pencil,
+  Save,
+  Send,
+  Trash2,
+} from "lucide-react";
 import { useId, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -35,11 +41,11 @@ export function ConfirmDiscard({
       onClose={onClose}
     >
       <DialogActions>
-        <Button variant="secondary" onClick={onClose}>
+        <Button icon={Pencil} variant="secondary" onClick={onClose}>
           Keep editing
         </Button>
-        <Button
-          variant="destructive"
+        <Button icon={Trash2}
+          variant="danger"
           onClick={() => {
             onDiscard();
             onClose();
@@ -126,17 +132,17 @@ export function DraftActionBar({
         )}
       </div>
       <div className="flex items-center gap-2">
-        <Button
-          variant="secondary"
+        <Button icon={Trash2}
+          variant="destructive"
           disabled={!draft.unsaved || draft.saving}
           onClick={() => setConfirming(true)}
         >
           Discard changes
         </Button>
-        <Button type="submit" disabled={!draft.canSave}>
+        <Button icon={Save} type="submit" disabled={!draft.canSave}>
           {draft.saving ? "Saving…" : draft.failure ? "Try again" : "Save draft"}
         </Button>
-        <Button
+        <Button icon={Send}
           variant="complete"
           disabled={draft.publishBlock !== null}
           aria-describedby={reason ? reasonId : undefined}

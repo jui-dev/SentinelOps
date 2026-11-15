@@ -1,7 +1,14 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CircleAlert, Info, Minus, Plus } from "lucide-react";
+import {
+  CircleAlert,
+  IdCard,
+  Info,
+  Minus,
+  Plus,
+  X,
+} from "lucide-react";
 import { useId, useState } from "react";
 import type { FormEvent } from "react";
 
@@ -279,10 +286,10 @@ export function ChangeRoleDialog({
               Choose a new role to continue.
             </p>
           )}
-          <Button variant="secondary" onClick={onClose}>
+          <Button icon={X} variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button
+          <Button icon={IdCard}
             type="submit"
             disabled={!changing || change.isPending}
             aria-describedby={changing ? undefined : hintId}

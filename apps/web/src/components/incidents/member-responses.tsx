@@ -1,6 +1,9 @@
 "use client";
 
-import { CircleCheck } from "lucide-react";
+import {
+  ChevronsDown,
+  CircleCheck,
+} from "lucide-react";
 import Link from "next/link";
 
 import { useOrganization } from "@/components/organizations/organization-scope";
@@ -182,7 +185,7 @@ export function MemberResponses({
         </Table>
       );
     footer = responses.hasNextPage && (
-      <Button
+      <Button icon={ChevronsDown}
         variant="secondary"
         size="sm"
         disabled={responses.isFetchingNextPage}

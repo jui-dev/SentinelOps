@@ -1,6 +1,10 @@
 "use client";
 
-import { Check, Copy } from "lucide-react";
+import {
+  Check,
+  Copy,
+  LogIn,
+} from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
@@ -156,20 +160,15 @@ function DemoAccounts({
                     <span className="flex-1 truncate text-xs text-fg-subtle">
                       {about(persona)}
                     </span>
-                    <button
-                      type="button"
+                    <Button
+                      size="sm"
+                      icon={LogIn}
                       disabled={disabled}
                       aria-label={`Sign in as ${persona.name}`}
                       onClick={() => onSignIn(persona.email)}
-                      className={cx(
-                        "inline-flex h-8 shrink-0 items-center rounded-md border px-2.5 text-xs font-semibold transition-[filter] duration-(--duration-fast) hover:brightness-125 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-60",
-                        meta.tone.text,
-                        meta.tone.subtle,
-                        meta.tone.line,
-                      )}
                     >
                       Sign in
-                    </button>
+                    </Button>
                   </li>
                 ))}
               </ul>
@@ -280,7 +279,7 @@ export function LoginForm() {
             required
             error={fields.password}
           />
-          <Button type="submit" size="lg" disabled={submitting}>
+          <Button icon={LogIn} type="submit" size="lg" disabled={submitting}>
             {submitting ? "Logging in…" : "Log in"}
           </Button>
           <div className="mt-1 border-t border-line-subtle pt-4 text-sm text-fg-muted">

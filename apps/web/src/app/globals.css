@@ -121,6 +121,12 @@
   --color-info-subtle: light-dark(#eaf6f9, #0b2229);
   --color-info-line: light-dark(#b5dde7, #1b4a56);
   --color-info-solid: light-dark(#0e7f9c, #3fb0cb);
+  /* Manage: a button that opens a set of choices about one thing. Its own
+     hue, so it is told apart from View, Edit and Add at a glance. */
+  --color-manage-text: light-dark(#5b3fc4, #b9a6f5);
+  --color-manage-subtle: light-dark(#f4f1fe, #1d1833);
+  --color-manage-line: light-dark(#d3c9f8, #3b3168);
+  --color-manage-solid: light-dark(#6d4fd6, #8f78e8);
 
   /*
    * Signal — operational state: incident severity, and "all clear". Never

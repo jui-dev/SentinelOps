@@ -1,7 +1,13 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, Info, X } from "lucide-react";
+import {
+  Check,
+  Info,
+  RotateCcw,
+  UserX,
+  X,
+} from "lucide-react";
 import { useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 
@@ -213,11 +219,11 @@ export function RemoveMemberDialog({
           They are not notified. The removal is written to the Activity log.
         </p>
         <DialogActions>
-          <Button variant="secondary" onClick={onClose}>
+          <Button icon={X} variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button
-            variant="destructive"
+          <Button icon={UserX}
+            variant="danger"
             disabled={remove.isPending}
             onClick={() => remove.mutate()}
           >
@@ -322,10 +328,10 @@ export function RestoreMemberDialog({
           with Add to team. Their history loses the Former member label.
         </p>
         <DialogActions>
-          <Button variant="secondary" onClick={onClose}>
+          <Button icon={X} variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" disabled={restore.isPending}>
+          <Button icon={RotateCcw} type="submit" disabled={restore.isPending}>
             {restore.isPending ? "Restoring…" : "Restore"}
           </Button>
         </DialogActions>

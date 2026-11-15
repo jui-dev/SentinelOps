@@ -1,12 +1,15 @@
 "use client";
 
 import { FormerMember } from "@/components/organizations/former-member";
-import { Lock } from "lucide-react";
-import Link from "next/link";
+import {
+  ArrowUpRight,
+  Check,
+  Lock,
+} from "lucide-react";
 import type { ReactNode } from "react";
 
 import { ErrorAlert } from "@/components/ui/alert";
-import { Button, buttonClasses } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { cx } from "@/components/ui/cx";
 import { DialogActions, FormDialog } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
@@ -34,6 +37,7 @@ import {
 } from "./activity-meta";
 import { useActivityEntry } from "./activity-queries";
 import { ResultPill } from "./result-pill";
+import { ButtonLink } from "@/components/ui/button-link";
 
 /** One labelled part of the window. */
 function Part({ title, children }: { title: string; children: ReactNode }) {
@@ -218,17 +222,14 @@ export function EntryDetails({
             Entries can&apos;t be edited or deleted.
           </p>
           {link && "href" in link && (
-            <Link
-              href={link.href}
-              className={buttonClasses({ variant: "secondary" })}
-            >
+            <ButtonLink href={link.href} variant="view" icon={ArrowUpRight}>
               {link.label}
-            </Link>
+            </ButtonLink>
           )}
           {link && "gone" in link && (
             <span className="text-xs text-fg-subtle">{link.gone}</span>
           )}
-          <Button onClick={onClose}>Done</Button>
+          <Button icon={Check} onClick={onClose}>Done</Button>
         </DialogActions>
       </div>
     </FormDialog>
@@ -355,14 +356,11 @@ function SignInDetails({
             If this wasn&apos;t them, reset their password from Members.
           </p>
           {link && "href" in link && (
-            <Link
-              href={link.href}
-              className={buttonClasses({ variant: "secondary" })}
-            >
+            <ButtonLink href={link.href} variant="view" icon={ArrowUpRight}>
               {link.label}
-            </Link>
+            </ButtonLink>
           )}
-          <Button onClick={onClose}>Done</Button>
+          <Button icon={Check} onClick={onClose}>Done</Button>
         </DialogActions>
       </div>
     </FormDialog>

@@ -1,5 +1,10 @@
 "use client";
 
+import {
+  Check,
+  History,
+  Trash2,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { Alert } from "@/components/ui/alert";
@@ -35,10 +40,10 @@ export function ConflictNotice({
         </p>
       </details>
       <div className="mt-2 flex flex-wrap gap-2">
-        <Button size="sm" variant="secondary" onClick={() => draft.keepMine(section)}>
+        <Button icon={Check} size="sm" variant="secondary" onClick={() => draft.keepMine(section)}>
           Keep my text
         </Button>
-        <Button size="sm" variant="secondary" onClick={() => draft.takeSaved(section)}>
+        <Button icon={History} size="sm" variant="secondary" onClick={() => draft.takeSaved(section)}>
           Use saved text
         </Button>
       </div>
@@ -110,7 +115,7 @@ export function UnsavedText({
               />
             ))}
             <div>
-              <Button variant="secondary" size="sm" onClick={() => setConfirming(true)}>
+              <Button icon={Trash2} variant="destructive" size="sm" onClick={() => setConfirming(true)}>
                 Discard unsaved text
               </Button>
             </div>

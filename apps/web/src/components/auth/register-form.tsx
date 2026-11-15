@@ -1,5 +1,8 @@
 "use client";
 
+import {
+  Building2,
+} from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import type { FormEvent } from "react";
@@ -141,7 +144,7 @@ export function RegisterForm() {
         error={fields.organizationSlug}
       />
       <div className="flex flex-col gap-2">
-        <Button
+        <Button icon={Building2}
           type="submit"
           size="lg"
           disabled={submitting || !required.ready}

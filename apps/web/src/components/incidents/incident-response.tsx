@@ -1,7 +1,12 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { CircleCheck, Lock } from "lucide-react";
+import {
+  CircleCheck,
+  Lock,
+  Play,
+  X,
+} from "lucide-react";
 import { useId, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 
@@ -331,7 +336,7 @@ export function YourResponse({
             : `Anyone on ${incident.team.name} can pick this up. Start when you are ready to work on it.`
         }
         action={
-          <Button size="lg" disabled={pending} onClick={() => actions.start.mutate()}>
+          <Button icon={Play} size="lg" disabled={pending} onClick={() => actions.start.mutate()}>
             {actions.start.isPending ? "Starting…" : "Start investigating"}
           </Button>
         }
@@ -525,7 +530,7 @@ function ResolveForm({
             error={fieldError}
           />
           <div className="flex flex-wrap items-center gap-2">
-            <Button
+            <Button icon={CircleCheck}
               type="submit"
               size="sm"
               disabled={update.isPending || !required.ready}
@@ -533,7 +538,7 @@ function ResolveForm({
             >
               {update.isPending ? "Resolving…" : "Resolve incident"}
             </Button>
-            <Button
+            <Button icon={X}
               variant="secondary"
               size="sm"
               disabled={update.isPending}
@@ -653,14 +658,13 @@ export function OversightPanel({
         state !== "resolved" &&
         !confirming &&
         (ready ? (
-          <Button size="lg" onClick={() => setConfirming(true)}>
+          <Button icon={CircleCheck} size="lg" onClick={() => setConfirming(true)}>
             Resolve incident
           </Button>
         ) : (
           state === "in-progress" && (
             <div className="flex flex-col items-end gap-1">
-              <Button size="lg" disabled aria-describedby={lockId}>
-                <Lock aria-hidden="true" className="size-4" />
+              <Button icon={Lock} size="lg" disabled aria-describedby={lockId}>
                 Resolve incident
               </Button>
               <span id={lockId} className="text-xs text-fg-subtle">

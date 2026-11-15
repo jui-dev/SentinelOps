@@ -1,5 +1,8 @@
 "use client";
 
+import {
+  RotateCcw,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 import { useSession } from "@/lib/auth/session-provider";
@@ -18,7 +21,7 @@ export function SessionUnavailable() {
           Check your connection and try again. You have not been signed out.
         </p>
       </Alert>
-      <Button onClick={retry}>Try again</Button>
+      <Button icon={RotateCcw} onClick={retry}>Try again</Button>
     </div>
   );
 }

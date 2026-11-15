@@ -1,6 +1,14 @@
 "use client";
 
-import { ArrowRight, Boxes, CircleCheck, Siren, Users } from "lucide-react";
+import {
+  ArrowRight,
+  Boxes,
+  ChevronDown,
+  ChevronUp,
+  CircleCheck,
+  Siren,
+  Users,
+} from "lucide-react";
 import Link from "next/link";
 import { useId, useState } from "react";
 import type { ReactNode } from "react";
@@ -35,6 +43,7 @@ import { Permission } from "@/lib/api/contracts";
 import { lastUtcDays } from "@/lib/period/period";
 
 import { teamsHref, useTeam, useTeamMembers } from "./team-scope";
+import { Button } from "@/components/ui/button";
 
 /** How many members, services, or resolved incidents a card shows at first. */
 const MEMBERS_SHOWN = 6;
@@ -144,15 +153,16 @@ function ShowAllToggle({
   controls: string;
 }) {
   return (
-    <button
-      type="button"
+    <Button
+      variant="quiet"
+      size="sm"
+      icon={expanded ? ChevronUp : ChevronDown}
       aria-expanded={expanded}
       aria-controls={controls}
       onClick={onToggle}
-      className={`text-sm ${linkClasses}`}
     >
       {expanded ? "Show fewer" : `Show all ${total}`}
-    </button>
+    </Button>
   );
 }
 

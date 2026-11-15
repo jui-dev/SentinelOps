@@ -1,6 +1,11 @@
 "use client";
 
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  X,
+} from "lucide-react";
 import {
   useEffect,
   useId,
@@ -223,10 +228,10 @@ export function CustomRangeDialog({
             )}
           </p>
           <div className="flex items-center gap-2">
-            <Button variant="secondary" size="sm" onClick={onCancel}>
+            <Button icon={X} variant="secondary" size="sm" onClick={onCancel}>
               Cancel
             </Button>
-            <Button
+            <Button icon={Check}
               size="sm"
               disabled={!draft || tooLong}
               onClick={() => draft && onApply(draft)}

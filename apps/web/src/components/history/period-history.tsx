@@ -1,8 +1,10 @@
 "use client";
 
 import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
-import { ChevronRight } from "lucide-react";
-import Link from "next/link";
+import {
+  ChevronsDown,
+  Eye,
+} from "lucide-react";
 
 import { incidentHref } from "@/components/incidents/incident-queries";
 import {
@@ -15,7 +17,6 @@ import { ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { cx } from "@/components/ui/cx";
 import { EmptyNote } from "@/components/ui/empty-state";
-import { rowActionClasses } from "@/components/ui/row-action";
 import { Spinner } from "@/components/ui/spinner";
 import { Table, TD, TH, THead, TR } from "@/components/ui/table";
 import { Duration, formatDuration } from "@/components/ui/timestamp";
@@ -26,6 +27,7 @@ import type {
 } from "@/lib/api/contracts";
 import { listIncidentHistory } from "@/lib/api/endpoints";
 import { queryKeys } from "@/lib/api/query-keys";
+import { ButtonLink } from "@/components/ui/button-link";
 
 /**
  * What happened in the period, as one chronological history.
@@ -208,14 +210,15 @@ function HistoryRow({
         )}
       </TD>
       <TD align="end">
-        <Link
+        <ButtonLink
           href={incidentHref(organization.slug, incident.number)}
           aria-label={`View ${key}`}
-          className={rowActionClasses("accent")}
+          variant="view"
+          size="sm"
+          icon={Eye}
         >
           View
-          <ChevronRight aria-hidden="true" strokeWidth={2} className="size-3.5" />
-        </Link>
+        </ButtonLink>
       </TD>
     </TR>
   );
@@ -328,7 +331,7 @@ export function PeriodHistory({
             <span className="numeric text-fg">{total}</span>
           </p>
           {history.hasNextPage && (
-            <Button
+            <Button icon={ChevronsDown}
               variant="secondary"
               size="sm"
               disabled={history.isFetchingNextPage}

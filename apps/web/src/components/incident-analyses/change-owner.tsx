@@ -1,5 +1,9 @@
 "use client";
 
+import {
+  UserCog,
+  X,
+} from "lucide-react";
 import { useState } from "react";
 import type { FormEvent } from "react";
 
@@ -109,10 +113,10 @@ function ChangeOwnerForm({
         />
       </Select>
       <DialogActions>
-        <Button variant="secondary" onClick={onClose}>
+        <Button icon={X} variant="secondary" onClick={onClose}>
           Cancel
         </Button>
-        <Button type="submit" disabled={!ownerId || reassign.isPending}>
+        <Button icon={UserCog} type="submit" disabled={!ownerId || reassign.isPending}>
           {reassign.isPending ? "Changing…" : "Change owner"}
         </Button>
       </DialogActions>
@@ -137,7 +141,7 @@ export function ChangeOwner({
 
   return (
     <>
-      <Button variant="quiet" size="sm" onClick={() => setOpen(true)}>
+      <Button icon={UserCog} variant="edit" size="sm" onClick={() => setOpen(true)}>
         Change owner
       </Button>
       {open && (

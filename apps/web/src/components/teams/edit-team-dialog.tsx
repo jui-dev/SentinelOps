@@ -1,5 +1,10 @@
 "use client";
 
+import {
+  Save,
+  Trash2,
+  X,
+} from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useState } from "react";
@@ -132,10 +137,10 @@ function EditTeamForm({
       />
       <div className="flex flex-wrap items-center justify-end gap-2">
         <SubmitHint id={required.hintId} missing={required.missing} />
-        <Button variant="secondary" onClick={onCancel}>
+        <Button icon={X} variant="secondary" onClick={onCancel}>
           Cancel
         </Button>
-        <Button
+        <Button icon={Save}
           type="submit"
           disabled={update.isPending || !required.ready}
           aria-describedby={required.ready ? undefined : required.hintId}
@@ -229,15 +234,15 @@ function DeleteTeam({
       <Alert tone="warning" title={`Delete ${team.name}?`}>
         <p>{consequence} This cannot be undone.</p>
         <div className="flex gap-2 pt-2">
-          <Button
-            variant="destructive"
+          <Button icon={Trash2}
+            variant="danger"
             size="sm"
             disabled={remove.isPending}
             onClick={() => remove.mutate()}
           >
             {remove.isPending ? "Deleting…" : "Delete team"}
           </Button>
-          <Button
+          <Button icon={X}
             variant="secondary"
             size="sm"
             disabled={remove.isPending}
@@ -251,7 +256,7 @@ function DeleteTeam({
   } else {
     body = (
       <div>
-        <Button variant="destructive" onClick={() => setConfirming(true)}>
+        <Button icon={Trash2} variant="destructive" onClick={() => setConfirming(true)}>
           Delete team…
         </Button>
       </div>

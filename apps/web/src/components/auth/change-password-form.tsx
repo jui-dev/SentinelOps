@@ -1,5 +1,11 @@
 "use client";
 
+import {
+  ArrowLeft,
+  KeyRound,
+  LogOut,
+  X,
+} from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
@@ -75,7 +81,7 @@ export function ChangePasswordForm() {
         <Alert tone="success" title="Your new password is saved.">
           <p>Every other device you were signed in on has been signed out.</p>
         </Alert>
-        <Button size="lg" onClick={() => router.replace(returnPath)}>
+        <Button icon={ArrowLeft} size="lg" onClick={() => router.replace(returnPath)}>
           Back to work
         </Button>
       </div>
@@ -160,17 +166,17 @@ export function ChangePasswordForm() {
         required
         error={mismatch ? MISMATCH : undefined}
       />
-      <Button type="submit" size="lg" disabled={submitting}>
+      <Button icon={KeyRound} type="submit" size="lg" disabled={submitting}>
         {submitting ? "Saving…" : "Save password"}
       </Button>
       <div className="pt-1">
         {required ? (
-          <Button variant="quiet" size="sm" onClick={() => void logout()}>
+          <Button icon={LogOut} variant="secondary" size="sm" onClick={() => void logout()}>
             Log out instead
           </Button>
         ) : (
-          <Button
-            variant="quiet"
+          <Button icon={X}
+            variant="secondary"
             size="sm"
             onClick={() => router.replace(returnPath)}
           >

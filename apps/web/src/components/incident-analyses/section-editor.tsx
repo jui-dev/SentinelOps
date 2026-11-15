@@ -1,4 +1,9 @@
-import { Check, Circle, Contrast } from "lucide-react";
+import {
+  Check,
+  Circle,
+  Contrast,
+  Pencil,
+} from "lucide-react";
 import { useEffect, useId, useRef } from "react";
 import type { ReactNode } from "react";
 
@@ -160,8 +165,8 @@ export function SectionEditor({
             {PROGRESS_WORDS[progress]}
           </span>
           {done && (
-            <Button
-              variant="secondary"
+            <Button icon={Pencil}
+              variant="edit"
               aria-label={`Edit ${SECTION_TITLES[section]}`}
               disabled={saving}
               onClick={() => {

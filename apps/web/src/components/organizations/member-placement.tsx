@@ -1,5 +1,10 @@
 "use client";
 
+import {
+  UserMinus,
+  UserPlus,
+  X,
+} from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useState } from "react";
@@ -240,10 +245,10 @@ export function AddToTeamDialog({
           )}
         </fieldset>
         <DialogActions>
-          <Button variant="secondary" onClick={onClose}>
+          <Button icon={X} variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" disabled={add.isPending || !selected}>
+          <Button icon={UserPlus} type="submit" disabled={add.isPending || !selected}>
             {add.isPending ? "Adding…" : `Add to ${selected?.name ?? "team"}`}
           </Button>
         </DialogActions>
@@ -343,12 +348,12 @@ export function RemoveFromTeamDialog({
             </Alert>
           )}
           <DialogActions>
-            <Button variant="secondary" onClick={onClose}>
+            <Button icon={X} variant="secondary" onClick={onClose}>
               Cancel
             </Button>
-            <Button
+            <Button icon={UserMinus}
               type="submit"
-              variant="destructive"
+              variant="danger"
               disabled={remove.isPending || !selected}
             >
               {remove.isPending

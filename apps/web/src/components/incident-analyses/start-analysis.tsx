@@ -1,5 +1,10 @@
 "use client";
 
+import {
+  Check,
+  FileText,
+  X,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { FormEvent } from "react";
@@ -63,7 +68,7 @@ function StartAnalysisForm({
           refreshed.
         </Alert>
         <DialogActions>
-          <Button onClick={onCancel}>Done</Button>
+          <Button icon={Check} onClick={onCancel}>Done</Button>
         </DialogActions>
       </div>
     );
@@ -91,10 +96,10 @@ function StartAnalysisForm({
         />
       </Select>
       <DialogActions>
-        <Button variant="secondary" onClick={onCancel}>
+        <Button icon={X} variant="secondary" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit" disabled={start.isPending}>
+        <Button icon={FileText} type="submit" disabled={start.isPending}>
           {start.isPending ? "Starting…" : "Start analysis"}
         </Button>
       </DialogActions>
@@ -116,7 +121,7 @@ export function StartAnalysis({
 
   return (
     <>
-      <Button onClick={() => setStarting(true)}>Start analysis</Button>
+      <Button icon={FileText} onClick={() => setStarting(true)}>Start analysis</Button>
       {starting && (
         <FormDialog
           title="Start analysis"

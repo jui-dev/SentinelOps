@@ -1,5 +1,12 @@
 "use client";
 
+import {
+  Archive,
+  RotateCcw,
+  Save,
+  Trash2,
+  X,
+} from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import type { FormEvent } from "react";
@@ -185,10 +192,10 @@ function DetailsForm({
       </p>
       <div className="flex flex-wrap items-center justify-end gap-2">
         <SubmitHint id={required.hintId} missing={required.missing} />
-        <Button variant="secondary" onClick={onCancel}>
+        <Button icon={X} variant="secondary" onClick={onCancel}>
           Cancel
         </Button>
-        <Button
+        <Button icon={Save}
           type="submit"
           disabled={update.isPending || !required.ready}
           aria-describedby={required.ready ? undefined : required.hintId}
@@ -229,8 +236,8 @@ function ArchiveService({ service }: { service: ServiceResponse }) {
               : "Retire it: kept with its incidents, but no new incident can be declared against it. It can be unarchived."}
           </p>
         </div>
-        <Button
-          variant="secondary"
+        <Button icon={archived ? RotateCcw : Archive}
+          variant={archived ? "restore" : "destructive"}
           disabled={update.isPending}
           onClick={() => update.mutate({ archived: !archived })}
         >
@@ -305,15 +312,15 @@ function DeleteService({
           &rsquo;s page. This cannot be undone.
         </p>
         <div className="flex gap-2 pt-2">
-          <Button
-            variant="destructive"
+          <Button icon={Trash2}
+            variant="danger"
             size="sm"
             disabled={remove.isPending}
             onClick={() => remove.mutate()}
           >
             {remove.isPending ? "Deleting…" : "Delete service"}
           </Button>
-          <Button
+          <Button icon={X}
             variant="secondary"
             size="sm"
             disabled={remove.isPending}
@@ -327,7 +334,7 @@ function DeleteService({
   } else {
     body = (
       <div>
-        <Button variant="destructive" onClick={() => setConfirming(true)}>
+        <Button icon={Trash2} variant="destructive" onClick={() => setConfirming(true)}>
           Delete service…
         </Button>
       </div>

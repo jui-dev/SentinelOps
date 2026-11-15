@@ -681,7 +681,7 @@ describe("teams", () => {
       return screen.findByRole("dialog", { name: "Edit team" });
     };
 
-    it("offers Edit beside View, in its own quiet tone, to whoever manages teams", async () => {
+    it("offers Edit beside View, each in its own kind's colour, to whoever manages teams", async () => {
       api(MANAGE);
 
       inOrganization(<TeamsView />);
@@ -691,8 +691,11 @@ describe("teams", () => {
 
       expect(edit.textContent).toBe("Edit");
       expect(edit.closest("td")).toBe(view.closest("td"));
-      expect(edit.className).toContain("bg-info-subtle");
+      // Edit is amber and View blue, as on every page; each has its icon.
+      expect(edit.className).toContain("bg-warning-subtle");
       expect(view.className).toContain("bg-accent-subtle");
+      expect(edit.querySelector("svg")).not.toBeNull();
+      expect(view.querySelector("svg")).not.toBeNull();
     });
 
     it("offers View alone without teams:manage", async () => {

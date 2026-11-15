@@ -1,6 +1,10 @@
 "use client";
 
-import { Settings2, X } from "lucide-react";
+import {
+  Save,
+  Settings2,
+  X,
+} from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import type { FormEvent, KeyboardEvent, MouseEvent } from "react";
 
@@ -121,7 +125,7 @@ function SeverityAndTeamForm({ incident }: { incident: IncidentResponse }) {
           </Select>
         )}
         <div>
-          <Button type="submit" disabled={unchanged || update.isPending}>
+          <Button icon={Save} type="submit" disabled={unchanged || update.isPending}>
             {update.isPending ? "Saving…" : "Save"}
           </Button>
         </div>
@@ -217,7 +221,7 @@ function KnownIssueForm({ incident }: { incident: IncidentResponse }) {
           </Select>
         )}
         <div>
-          <Button
+          <Button icon={Save}
             type="submit"
             disabled={chosen === current || update.isPending}
           >
@@ -289,7 +293,7 @@ function DetailsForm({ incident }: { incident: IncidentResponse }) {
           error={fields.summary}
         />
         <div className="flex flex-wrap items-center gap-3">
-          <Button
+          <Button icon={Save}
             type="submit"
             disabled={update.isPending || !required.ready}
             aria-describedby={required.ready ? undefined : required.hintId}
@@ -405,8 +409,7 @@ export function ManageIncident({ incident }: { incident: IncidentResponse }) {
 
   return (
     <>
-      <Button variant="secondary" onClick={() => setOpen(true)}>
-        <Settings2 aria-hidden="true" className="size-4" />
+      <Button icon={Settings2} variant="manage" onClick={() => setOpen(true)}>
         Manage incident
       </Button>
       {open && (

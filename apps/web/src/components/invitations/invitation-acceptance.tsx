@@ -1,5 +1,11 @@
 "use client";
 
+import {
+  LogIn,
+  LogOut,
+  RotateCcw,
+  UserPlus,
+} from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -238,7 +244,7 @@ function CreateAccount({
         error={fields.password}
       />
       <div className="flex flex-col gap-2">
-        <Button
+        <Button icon={UserPlus}
           type="submit"
           size="lg"
           disabled={submitting || !required.ready}
@@ -313,7 +319,7 @@ function SignIn({
         autoComplete="current-password"
         required
       />
-      <Button type="submit" size="lg" disabled={submitting}>
+      <Button icon={LogIn} type="submit" size="lg" disabled={submitting}>
         {submitting ? "Logging in…" : "Log in"}
       </Button>
     </form>
@@ -410,7 +416,7 @@ function Join({
   return (
     <div className="flex flex-col gap-3">
       {accept.isError && <ErrorAlert error={accept.error} />}
-      <Button
+      <Button icon={LogIn}
         size="lg"
         onClick={() => accept.mutate()}
         disabled={accept.isPending}
@@ -450,7 +456,7 @@ function WrongAccount({
         and sign in with the invited address to accept it.
       </Alert>
       <div>
-        <Button variant="secondary" onClick={onLogout} disabled={signingOut}>
+        <Button icon={LogOut} variant="secondary" onClick={onLogout} disabled={signingOut}>
           {signingOut ? "Logging out…" : "Log out"}
         </Button>
       </div>
@@ -498,7 +504,7 @@ function InvitationForToken({ token }: { token: string }) {
       <div className="flex flex-col gap-3">
         <ErrorAlert error={lookup.error} />
         <div>
-          <Button variant="secondary" onClick={retry}>
+          <Button icon={RotateCcw} variant="primary" onClick={retry}>
             Try again
           </Button>
         </div>

@@ -1,7 +1,13 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Eye, EyeOff, KeyRound } from "lucide-react";
+import {
+  Check,
+  Eye,
+  EyeOff,
+  KeyRound,
+  X,
+} from "lucide-react";
 import { useState } from "react";
 import type { FormEvent } from "react";
 
@@ -118,7 +124,7 @@ export function ResetPasswordDialog({
               is the only time this password is shown.
             </p>
             <div>
-              <Button size="sm" onClick={onClose}>
+              <Button icon={Check} size="sm" onClick={onClose}>
                 Done
               </Button>
             </div>
@@ -187,10 +193,10 @@ export function ResetPasswordDialog({
           </div>
           <DialogActions>
             <SubmitHint id={required.hintId} missing={required.missing} />
-            <Button variant="secondary" onClick={onClose}>
+            <Button icon={X} variant="secondary" onClick={onClose}>
               Cancel
             </Button>
-            <Button
+            <Button icon={KeyRound}
               type="submit"
               disabled={reset.isPending || !required.ready}
               aria-describedby={required.ready ? undefined : required.hintId}

@@ -1,6 +1,12 @@
 "use client";
 
-import { ChevronRight, CircleCheck } from "lucide-react";
+import {
+  ChevronRight,
+  CircleCheck,
+  Eye,
+  MessageSquarePlus,
+  Play,
+} from "lucide-react";
 import Link from "next/link";
 import { Fragment, useState } from "react";
 
@@ -9,7 +15,6 @@ import { PeekColumn, PeekEmpty } from "@/components/teams/team-peek";
 import { useTeamMembers } from "@/components/teams/team-scope";
 import { ErrorAlert } from "@/components/ui/alert";
 import { cx } from "@/components/ui/cx";
-import { rowActionClasses } from "@/components/ui/row-action";
 import { Spinner } from "@/components/ui/spinner";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import {
@@ -31,6 +36,8 @@ import {
 import { Avatar } from "./incident-people";
 import { ResponseAccessMark } from "./response-access";
 import { incidentKey, SeverityMark, StatusMark } from "./severity";
+import { ButtonContent, buttonClasses } from "@/components/ui/button";
+import { ButtonLink } from "@/components/ui/button-link";
 
 /** Past this long without an update, an active incident's last one is stale. */
 export const STALE_UPDATE_MS = 2 * 60 * 60_000;
@@ -285,6 +292,21 @@ function YourPart({ incident }: { incident: IncidentListItemResponse }) {
   );
 }
 
+/** A row's one action, in the colour and icon of its kind. */
+interface RowAction {
+  label: string;
+  variant: "primary" | "add" | "view";
+  icon: typeof Eye;
+}
+
+const RESPOND: RowAction = { label: "Respond", variant: "primary", icon: Play };
+const POST_UPDATE: RowAction = {
+  label: "Post update",
+  variant: "add",
+  icon: MessageSquarePlus,
+};
+const VIEW: RowAction = { label: "View", variant: "view", icon: Eye };
+
 /** What a member's row offers: to respond, to post, or to look. */
 const memberAction = (
   incident: IncidentListItemResponse,
@@ -292,11 +314,11 @@ const memberAction = (
   membershipId: string,
 ) =>
   needsYou(incident, yourTeamIds, membershipId)
-    ? { label: "Respond", tone: "primary" as const }
+    ? RESPOND
     : incident.status !== "RESOLVED" &&
         incident.yourResponse?.status === "INVESTIGATING"
-      ? { label: "Post update", tone: "accent" as const }
-      : { label: "View", tone: "accent" as const };
+      ? POST_UPDATE
+      : VIEW;
 
 /**
  * A member's list on a phone: each incident a card, whole and tappable —
@@ -329,7 +351,7 @@ export function IncidentCards({
         const key = incidentKey(incident.number);
         const action = member
           ? memberAction(incident, yourTeamIds, organization.membership.id)
-          : { label: "View", tone: "accent" as const };
+          : VIEW;
         const active = incident.status !== "RESOLVED";
         const unstarted =
           incident.status !== "RESOLVED" &&
@@ -369,9 +391,11 @@ export function IncidentCards({
               )}
               <span className="mt-1 flex items-center justify-between gap-3 text-sm">
                 <ResponseCell incident={incident} />
-                <span aria-hidden="true" className={rowActionClasses(action.tone)}>
-                  {action.label}
-                  <ChevronRight strokeWidth={2} className="size-3.5" />
+                <span
+                  aria-hidden="true"
+                  className={buttonClasses({ variant: action.variant, size: "sm" })}
+                >
+                  <ButtonContent icon={action.icon}>{action.label}</ButtonContent>
                 </span>
               </span>
             </Link>
@@ -472,7 +496,7 @@ export function IncidentBoard({
             incident.response.investigating + incident.response.completed === 0;
           const action = member
             ? memberAction(incident, yourTeamIds, organization.membership.id)
-            : { label: "View", tone: "accent" as const };
+            : VIEW;
 
           return (
             <Fragment key={incident.id}>
@@ -565,14 +589,15 @@ export function IncidentBoard({
                 </TD>
                 <TD kind="actions">
                   <div className="flex justify-end">
-                    <Link
+                    <ButtonLink
                       href={incidentHref(organization.slug, incident.number)}
                       aria-label={`${action.label} ${key}`}
-                      className={rowActionClasses(action.tone)}
+                      variant={action.variant}
+                      size="sm"
+                      icon={action.icon}
                     >
                       {action.label}
-                      <ChevronRight aria-hidden="true" strokeWidth={2} className="size-3.5" />
-                    </Link>
+                    </ButtonLink>
                   </div>
                 </TD>
               </TR>
