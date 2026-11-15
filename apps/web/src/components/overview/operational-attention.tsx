@@ -251,14 +251,15 @@ type Tone = "accent" | "resolved";
 const TONES: Record<Tone, { dot: string; wash: string; text: string; count: string }> = {
   accent: {
     dot: "bg-accent-text",
-    wash: "bg-[color-mix(in_oklab,var(--color-surface)_91%,var(--color-accent-text))]",
+    // White, ruled in its colour, in light; a faint wash in dark.
+    wash: "bg-attention-head-accent shadow-[inset_0_-2px_0_var(--color-attention-rule-accent)]",
     text: "text-accent-text",
     count:
       "bg-[color-mix(in_oklab,var(--color-surface)_78%,var(--color-accent-text))] text-accent-text",
   },
   resolved: {
     dot: "bg-status-resolved-text",
-    wash: "bg-[color-mix(in_oklab,var(--color-surface)_91%,var(--color-status-resolved-text))]",
+    wash: "bg-attention-head-resolved shadow-[inset_0_-2px_0_var(--color-attention-rule-resolved)]",
     text: "text-status-resolved-text",
     count:
       "bg-[color-mix(in_oklab,var(--color-surface)_78%,var(--color-status-resolved-text))] text-status-resolved-text",
@@ -298,7 +299,8 @@ function AttentionFrame({ groups }: { groups: GroupProps[] }) {
   return (
     <div
       className={cx(
-        "grid grid-cols-1 divide-y divide-line-subtle overflow-hidden rounded-md border border-line-subtle",
+        // A white ground of its own on the section, in light; see-through in dark.
+        "grid grid-cols-1 divide-y divide-line-subtle overflow-hidden rounded-md border border-line-subtle bg-attention-frame shadow-[0_1px_2px_light-dark(rgb(15_29_51/0.05),transparent)]",
         groups.length > 2
           ? "xl:grid-cols-3 xl:divide-x xl:divide-y-0"
           : "lg:grid-cols-2 lg:divide-x lg:divide-y-0",
@@ -383,7 +385,7 @@ function AttentionRow({
   const late = since !== undefined && now.getTime() - Date.parse(since) > LATE;
 
   return (
-    <li className="group/row relative flex h-16 items-center gap-3 px-4 transition-colors duration-(--duration-fast) hover:bg-hover has-[a:focus-visible]:outline-2 has-[a:focus-visible]:-outline-offset-2 has-[a:focus-visible]:outline-focus">
+    <li className="group/row relative flex h-16 items-center gap-3 px-4 transition-colors duration-(--duration-fast) hover:bg-row-hover hover:shadow-[inset_3px_0_0_var(--color-row-hover-edge)] has-[a:focus-visible]:outline-2 has-[a:focus-visible]:-outline-offset-2 has-[a:focus-visible]:outline-focus">
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex min-w-0 items-center gap-2.5">
           <SeverityMark severity={incident.severity} className="shrink-0 text-xs" />

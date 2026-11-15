@@ -121,6 +121,24 @@
   --color-list-head-fg: light-dark(#f1f5fa, #e6e8ec);
   --color-list-head-muted: light-dark(#b9c7da, #a6acb6);
   --color-list-hover: light-dark(#edf2f9, transparent);
+  /*
+   * The lists that wait on the reader (operational-attention.tsx): in light
+   * an all-white frame of its own on the section, each list's head white and
+   * marked only by a 2px rule of its colour — a decision's navy, resolving's
+   * teal. In dark the frame is see-through, each head its faint wash, and
+   * there is no rule, as it always was.
+   */
+  --color-attention-frame: light-dark(#ffffff, transparent);
+  --color-attention-head-accent: light-dark(
+    #ffffff,
+    color-mix(in oklab, var(--color-surface) 91%, var(--color-accent-text))
+  );
+  --color-attention-head-resolved: light-dark(
+    #ffffff,
+    color-mix(in oklab, var(--color-surface) 91%, var(--color-status-resolved-text))
+  );
+  --color-attention-rule-accent: light-dark(var(--color-accent-text), transparent);
+  --color-attention-rule-resolved: light-dark(var(--color-status-resolved-text), transparent);
 
   /*
    * A section of a page (OverviewPanel, DetailCard, the Response flow).
