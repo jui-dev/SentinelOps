@@ -249,7 +249,7 @@ export function FilterSelect({
       <label htmlFor={id} className="label-caps text-fg-subtle">
         {label}
       </label>
-      <div className={cx("relative w-44", className)}>
+      <div className={cx("relative w-36", className)}>
         <select
           id={id}
           className="h-8 w-full appearance-none rounded-md border border-line bg-sunken pr-7 pl-2.5 text-sm text-fg transition-colors duration-(--duration-fast) hover:border-line-strong focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:opacity-60"

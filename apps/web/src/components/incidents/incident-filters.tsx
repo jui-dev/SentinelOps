@@ -251,7 +251,7 @@ export function IncidentFilterBar({
           ))}
         </FilterSelect>
         <FilterSelect
-          label="Responsible team"
+          label="Team"
           value={teams.data ? (searchParams.get("team") ?? "") : ""}
           onChange={(event) => set("team", event.target.value)}
           disabled={!teams.data}

@@ -606,7 +606,7 @@ describe("incidents", () => {
           }).textContent,
         ).toMatch(/^SEV2/);
         expect((within(search).getByLabelText("Service") as HTMLSelectElement).value).toBe("payment-api");
-        expect((within(search).getByLabelText("Responsible team") as HTMLSelectElement).value).toBe(
+        expect((within(search).getByLabelText("Team") as HTMLSelectElement).value).toBe(
           payments.id,
         );
       });
@@ -2124,7 +2124,7 @@ describe("incidents", () => {
       );
       expect(screen.queryByLabelText("Incidents now")).toBeNull();
       expect(screen.queryByRole("combobox", { name: "Service" })).toBeNull();
-      expect(screen.queryByRole("combobox", { name: "Responsible team" })).toBeNull();
+      expect(screen.queryByRole("combobox", { name: "Team" })).toBeNull();
       expect(screen.queryByRole("button", { name: "Declare incident" })).toBeNull();
     });
 
