@@ -111,6 +111,16 @@
   --color-table-head-line-subtle: light-dark(#1d3557, #252a34);
   --color-row-hover: light-dark(#edf2f9, #212631);
   --color-row-hover-edge: light-dark(#1d3557, transparent);
+  /*
+   * A grouped list's heading band (a service's known issues), which heads
+   * its rows as a table's header does: the same navy in light, its name
+   * reversed out; in dark the sunken band and the text it always had. And
+   * its rows' hover, in light only — in dark those rows have never had one.
+   */
+  --color-list-head: light-dark(#1d3557, #0d1018);
+  --color-list-head-fg: light-dark(#f1f5fa, #e6e8ec);
+  --color-list-head-muted: light-dark(#b9c7da, #a6acb6);
+  --color-list-hover: light-dark(#edf2f9, transparent);
 
   /*
    * A section of a page (OverviewPanel, DetailCard, the Response flow).

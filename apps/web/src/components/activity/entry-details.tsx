@@ -122,7 +122,7 @@ export function EntryDetails({
             <div className="overflow-x-auto rounded-md border border-line-subtle">
               <table className="w-full text-sm">
                 <caption className="sr-only">What changed</caption>
-                <thead className="bg-thead text-left text-xs text-fg-muted">
+                <thead className="bg-table-head text-left text-xs text-table-head-fg">
                   <tr>
                     <th scope="col" className="px-3 py-2 font-semibold">
                       Field

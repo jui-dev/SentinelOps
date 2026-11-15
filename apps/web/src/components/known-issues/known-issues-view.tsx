@@ -206,10 +206,10 @@ function KnownIssuesList() {
               >
                 <h2
                   id={`known-${issues[0].service.id}`}
-                  className="border-b border-line-subtle bg-sunken px-4 py-2.5 text-sm font-semibold text-fg"
+                  className="border-b border-table-head-line-subtle bg-list-head px-4 py-2.5 text-sm font-semibold text-list-head-fg"
                 >
                   {issues[0].service.name}
-                  <span className="font-normal text-fg-muted">
+                  <span className="font-normal text-list-head-muted">
                     {" "}
                     · {issues[0].service.team.name} · {issues.length}{" "}
                     {issues.length === 1 ? "known issue" : "known issues"}
@@ -274,7 +274,7 @@ function KnownIssueRow({
   return (
     <li
       className={cx(
-        "flex flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3",
+        "flex flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3 transition-colors duration-(--duration-fast) hover:bg-list-hover hover:shadow-[inset_3px_0_0_var(--color-row-hover-edge)]",
         issue.pendingReview && !archived && "bg-warning-subtle/40",
       )}
     >
