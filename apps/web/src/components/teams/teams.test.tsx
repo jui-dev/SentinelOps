@@ -193,24 +193,33 @@ describe("teams", () => {
 
       inOrganization(<TeamsView />);
 
-      expect(await screen.findByText("No teams yet")).toBeDefined();
+      expect(await screen.findByText("Create your first team")).toBeDefined();
       expect(
-        screen.getByText(/Teams group the members of this organization/),
+        screen.getByText(/Teams are the people who work together/),
       ).toBeDefined();
       expect(screen.queryByText("You are not on a team")).toBeNull();
+      // Where it sits in setting the organization up: teams come first.
+      const path = screen.getByRole("list", { name: "Where this fits" });
+
+      expect(
+        within(path)
+          .getAllByRole("listitem")
+          .find((step) => step.getAttribute("aria-current") === "step")?.textContent,
+      ).toMatch(/^1Teams · you are here/);
     });
 
-    it("offers New team from the header and the empty list, and closes on Cancel without creating", async () => {
+    it("offers New team once, from the empty page itself, and closes on Cancel without creating", async () => {
       const user = userEvent.setup();
       const { requests } = api(MANAGE, { teams: [] });
 
       inOrganization(<TeamsView />);
 
-      expect(await screen.findByText("No teams yet")).toBeDefined();
+      expect(await screen.findByText("Create your first team")).toBeDefined();
       expect(screen.queryByText("You are not on a team")).toBeNull();
+      // The header's button steps aside: one place for the action.
       const buttons = screen.getAllByRole("button", { name: "New team" });
 
-      expect(buttons).toHaveLength(2);
+      expect(buttons).toHaveLength(1);
       expect(screen.queryByRole("dialog")).toBeNull();
 
       await user.click(buttons[0]);

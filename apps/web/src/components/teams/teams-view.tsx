@@ -5,6 +5,7 @@ import {
   Eye,
   Pencil,
   Plus,
+  Users,
 } from "lucide-react";
 import { Fragment, useState } from "react";
 
@@ -16,7 +17,8 @@ import { ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { cx } from "@/components/ui/cx";
 import { FormDialog } from "@/components/ui/dialog";
-import { EmptyState } from "@/components/ui/empty-state";
+import { howItWorksHref } from "@/components/app/shell-utilities";
+import { FirstRun, setupPath } from "@/components/ui/first-run";
 import { PageBody, PageHeader } from "@/components/ui/page";
 import { ListLoading } from "@/components/ui/spinner";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
@@ -65,22 +67,33 @@ function TeamList({
     // organization's own answer — there are none. To everyone else it is
     // about them: they are on none, whatever the organization has.
     return (
-      <EmptyState
-        title={canManage ? "No teams yet" : "You are not on a team"}
+      <FirstRun
+        icon={Users}
+        title={canManage ? "Create your first team" : "You are not on a team"}
         action={
           onCreate && (
-            <Button icon={Plus} variant="add" onClick={onCreate}>
+            <Button icon={Plus} onClick={onCreate}>
               New team
             </Button>
           )
         }
+        note={
+          canManage
+            ? undefined
+            : "The Admin places people on teams. Until then you see no team’s incidents."
+        }
+        learn={{
+          href: `${howItWorksHref(organization.slug)}#step-set-up`,
+          label: "How teams fit in",
+        }}
+        steps={canManage ? setupPath("teams", { teams: false, services: false }) : undefined}
       >
         <p>
           {canManage
-            ? "Teams group the members of this organization who work together."
-            : "The teams you are placed on appear here. An owner or admin can add you to one."}
+            ? "Teams are the people who work together — Payments, Platform, Risk. Each owns services, and its members respond to their incidents."
+            : "The teams you are placed on appear here, and with them the incidents you can respond to."}
         </p>
-      </EmptyState>
+      </FirstRun>
     );
   }
 
@@ -221,8 +234,14 @@ export function TeamsView() {
             ? "Groups of this organization's members. Belonging to a team grants no extra access."
             : "The teams you are on."
         }
+        // While there are none, the page's own panel offers the first: one
+        // place for the action.
         actions={
-          canManage && <Button icon={Plus} onClick={openCreate}>New team</Button>
+          canManage &&
+          teams.data !== undefined &&
+          teams.data.length > 0 && (
+            <Button icon={Plus} onClick={openCreate}>New team</Button>
+          )
         }
       />
       <PageBody width="full">

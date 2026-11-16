@@ -321,6 +321,16 @@ describe("known issues", () => {
     expect(screen.getByText("Portal slow to load")).toBeDefined();
   });
 
+  it("welcomes the first one when there are none: one Add, and nothing to filter", async () => {
+    api(ADMIN, []);
+    render();
+
+    expect(await screen.findByText("Keep your first known issue")).toBeDefined();
+    // The header's button steps aside: one place for the action.
+    expect(screen.getAllByRole("button", { name: "Add known issue" })).toHaveLength(1);
+    expect(screen.queryByRole("search", { name: "Find known issues" })).toBeNull();
+  });
+
   it("tells anyone but the Admin that the Admin keeps it, asking nothing", async () => {
     const { requests } = api(MEMBER);
 

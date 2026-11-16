@@ -2,10 +2,13 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
+  ArrowRight,
+  Boxes,
   ChevronRight,
   Eye,
   Pencil,
   Plus,
+  Users,
   X,
 } from "lucide-react";
 import Link from "next/link";
@@ -31,6 +34,8 @@ import {
 import { DialogActions, FormDialog } from "@/components/ui/dialog";
 import { FormExample } from "@/components/ui/form-example";
 import { EmptyState, NoMatches } from "@/components/ui/empty-state";
+import { FirstRun, setupPath } from "@/components/ui/first-run";
+import { howItWorksHref } from "@/components/app/shell-utilities";
 import { Field } from "@/components/ui/field";
 import { PageBody, PageHeader } from "@/components/ui/page";
 import { Select } from "@/components/ui/select";
@@ -423,6 +428,8 @@ function ServiceList({
 }) {
   const organization = useOrganization();
   const services = useServices(organization.id);
+  const teams = useTeams(organization.id);
+  const canManageTeams = useCan(Permission.TEAMS_MANAGE);
   const withStatus = useCan(Permission.INCIDENTS_READ);
   const statuses = useServiceStatuses(withStatus);
   const [query, setQuery] = useState("");
@@ -445,23 +452,68 @@ function ServiceList({
   if (!services.data) return <ListLoading label="Loading services…" />;
 
   if (services.data.length === 0) {
+    const learn = {
+      href: `${howItWorksHref(organization.slug)}#step-set-up`,
+      label: "How services fit in",
+    };
+
+    // A service is owned by a team: with none, that comes first. Only
+    // whoever sees every team can tell there are none at all.
+    if (canManageTeams && teams.data?.length === 0) {
+      return (
+        <FirstRun
+          icon={Boxes}
+          title="Services need a team first"
+          action={
+            canManageTeams && (
+              <ButtonLink
+                href={teamsHref(organization.slug)}
+                variant="primary"
+                icon={Users}
+                trailingIcon={ArrowRight}
+              >
+                Go to Teams
+              </ButtonLink>
+            )
+          }
+          note={canManageTeams ? undefined : "The Admin creates teams."}
+          learn={learn}
+          steps={setupPath("teams", { teams: false, services: false })}
+          preview={false}
+        >
+          <p>
+            Every service is owned by a team, and there are no teams yet.
+            Create one, then come back here.
+          </p>
+        </FirstRun>
+      );
+    }
+
     return (
-      <EmptyState
-        title="No services yet"
+      <FirstRun
+        icon={Boxes}
+        title={onCreate ? "Add your first service" : "No services yet"}
         action={
           onCreate && (
-            <Button icon={Plus} variant="add" onClick={onCreate}>
+            <Button icon={Plus} onClick={onCreate}>
               New service
             </Button>
           )
         }
+        note={
+          canManage
+            ? undefined
+            : "The Admin adds services. Until then there is nothing to declare an incident against."
+        }
+        learn={learn}
+        steps={setupPath("services", { teams: true, services: false })}
       >
         <p>
-          Services are the systems this organization runs, each owned by a
-          team.
-          {canManage ? "" : " An owner or admin can add one."}
+          Services are the systems {organization.name} runs — a payment API,
+          sign-in, fraud checks. Every incident is declared against one, and the
+          team that owns it responds.
         </p>
-      </EmptyState>
+      </FirstRun>
     );
   }
 
@@ -687,8 +739,14 @@ export function ServicesView() {
         title="Services"
         meta={inUse?.length}
         description="The systems this organization runs, who owns each, and whether anything is wrong with it now."
+        // While there are none, the page's own panel offers the first: one
+        // place for the action.
         actions={
-          canManage && <Button icon={Plus} onClick={openCreate}>New service</Button>
+          canManage &&
+          services.data !== undefined &&
+          services.data.length > 0 && (
+            <Button icon={Plus} onClick={openCreate}>New service</Button>
+          )
         }
       />
       <PageBody width="full">

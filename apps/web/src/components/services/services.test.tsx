@@ -293,48 +293,48 @@ describe("services", () => {
       expect(screen.getByText(/No services match/)).toBeDefined();
     });
 
-    it("offers no creation without services:manage", async () => {
+    it("offers no creation without services:manage, and says who adds them", async () => {
       api(READ, { services: [] });
 
       inOrganization(<ServicesView />);
 
       expect(await screen.findByText("No services yet")).toBeDefined();
-      expect(screen.getByText(/An owner or admin can add one/)).toBeDefined();
+      expect(screen.getByText(/The Admin adds services/)).toBeDefined();
       expect(screen.queryByRole("button", { name: "New service" })).toBeNull();
     });
 
-    it("does not tell a manager with the form open that someone else must add one", async () => {
+    it("welcomes a manager to the first service, offered once, on the page itself", async () => {
       const user = userEvent.setup();
       api(MANAGE, { services: [] });
 
       inOrganization(<ServicesView />);
 
-      await user.click(
-        (await screen.findAllByRole("button", { name: "New service" }))[0],
-      );
-      await screen.findByLabelText("Criticality");
+      expect(await screen.findByText("Add your first service")).toBeDefined();
+      expect(screen.queryByText(/The Admin adds services/)).toBeNull();
+      // The header's button steps aside: one place for the action.
+      const buttons = screen.getAllByRole("button", { name: "New service" });
 
-      expect(screen.getByText("No services yet")).toBeDefined();
-      expect(screen.queryByText(/An owner or admin can add one/)).toBeNull();
+      expect(buttons).toHaveLength(1);
+      expect(
+        screen.getByRole("link", { name: "How services fit in" }).getAttribute("href"),
+      ).toBe("/orgs/acme-ops/how-it-works#step-set-up");
+
+      await user.click(buttons[0]);
+
+      expect(await screen.findByLabelText("Criticality")).toBeDefined();
     });
 
-    it("explains that a service needs a team when there are none", async () => {
-      const user = userEvent.setup();
+    it("says a service needs a team first when there are none, and leads to Teams", async () => {
       api(MANAGE, { services: [], teams: [] });
 
       inOrganization(<ServicesView />);
 
-      await user.click(
-        (await screen.findAllByRole("button", { name: "New service" }))[0],
-      );
-
-      const form = screen.getByRole("dialog", { name: "New service" });
-
-      expect(await within(form).findByText("Create a team first")).toBeDefined();
+      expect(await screen.findByText("Services need a team first")).toBeDefined();
       expect(
-        within(form).getByRole("link", { name: "Go to Teams" }).getAttribute("href"),
+        screen.getByRole("link", { name: "Go to Teams" }).getAttribute("href"),
       ).toBe("/orgs/acme-ops/teams");
-      expect(within(form).queryByLabelText("Name")).toBeNull();
+      // Nothing to make a service with yet.
+      expect(screen.queryByRole("button", { name: "New service" })).toBeNull();
     });
 
     it("closes the dialog on Cancel without creating anything", async () => {

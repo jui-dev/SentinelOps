@@ -4,6 +4,7 @@ import {
   Archive,
   Check,
   Merge,
+  Package,
   Pencil,
   Plus,
   RotateCcw,
@@ -26,7 +27,9 @@ import { ErrorAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { cx } from "@/components/ui/cx";
 import { DialogActions, FormDialog } from "@/components/ui/dialog";
+import { howItWorksHref } from "@/components/app/shell-utilities";
 import { EmptyNote } from "@/components/ui/empty-state";
+import { FirstRun } from "@/components/ui/first-run";
 import {
   FilterBar,
   FilterDivider,
@@ -132,7 +135,15 @@ function KnownIssuesList() {
         title="Known issues"
         meta={knownIssues.data ? inUse.length : undefined}
         description="The problems each service has had before. Declaring an incident starts from these, and their repeats are counted."
-        actions={<Button icon={Plus} onClick={() => setDialog({ kind: "add" })}>Add known issue</Button>}
+        // While there are none, the page's own panel offers the first: one
+        // place for the action.
+        actions={
+          (!knownIssues.data || all.length > 0) && (
+            <Button icon={Plus} onClick={() => setDialog({ kind: "add" })}>
+              Add known issue
+            </Button>
+          )
+        }
       />
       <PageBody width="full">
         <div className="flex flex-col gap-4">
@@ -145,6 +156,8 @@ function KnownIssuesList() {
               Keep, edit or merge each one marked New.
             </p>
           )}
+          {/* Nothing to find in an empty list. */}
+          {(!knownIssues.data || all.length > 0) && (
           <FilterBar label="Find known issues">
             <FilterSearch
               label="Find a known issue"
@@ -183,16 +196,33 @@ function KnownIssuesList() {
               ))}
             </FilterSelect>
           </FilterBar>
+          )}
 
           {knownIssues.isError ? (
             <ErrorAlert error={knownIssues.error} />
           ) : !knownIssues.data ? (
             <Spinner label="Loading known issues…" />
           ) : all.length === 0 ? (
-            <EmptyNote title="No known issues yet">
-              Add the problems your services tend to have, or save one while
-              declaring something new. Next time it can simply be chosen.
-            </EmptyNote>
+            <FirstRun
+              icon={Package}
+              title="Keep your first known issue"
+              action={
+                <Button icon={Plus} onClick={() => setDialog({ kind: "add" })}>
+                  Add known issue
+                </Button>
+              }
+              learn={{
+                href: `${howItWorksHref(organization.slug)}#step-report`,
+                label: "How known issues are used",
+              }}
+            >
+              <p>
+                The problems your services tend to have — a slow database, a
+                provider timing out. Declaring an incident can then start from
+                one, and each time it comes back is counted. One saved while
+                declaring something new shows up here too.
+              </p>
+            </FirstRun>
           ) : groups.length === 0 ? (
             <EmptyNote title="No known issues match">
               Try another search or service, or include archived ones.
