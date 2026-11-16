@@ -801,7 +801,10 @@ export class OrganizationsService {
         throw lastAdmin();
       }
 
-      if (target.incidentResponses.length > 0 || target.analysesOwned.length > 0) {
+      if (
+        target.incidentResponses.length > 0 ||
+        target.analysesOwned.length > 0
+      ) {
         throw memberHasOpenWork();
       }
 
@@ -823,7 +826,11 @@ export class OrganizationsService {
         organizationId,
         action: 'MEMBER_REMOVED',
         actorId: actor.userId,
-        subject: { type: 'MEMBERSHIP', id: removed.id, name: removed.user.name },
+        subject: {
+          type: 'MEMBERSHIP',
+          id: removed.id,
+          name: removed.user.name,
+        },
         changes: [
           { field: 'role', before: target.role, after: null },
           {

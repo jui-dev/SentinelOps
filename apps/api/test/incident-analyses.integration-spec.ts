@@ -439,7 +439,11 @@ describe('incident analyses (integration)', () => {
       expect(started.body).toEqual({
         status: 'DRAFT',
         version: 1,
-        owner: { membershipId: fx.aliceInA, name: 'Alice Anders', former: false },
+        owner: {
+          membershipId: fx.aliceInA,
+          name: 'Alice Anders',
+          former: false,
+        },
         summary: null,
         impact: null,
         cause: null,

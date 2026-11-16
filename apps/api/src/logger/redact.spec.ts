@@ -65,7 +65,9 @@ describe('redact', () => {
     });
 
     it('should mask inside arrays', () => {
-      expect(redact({ users: [{ apiKey: 'hunter2' }, { name: 'ada' }] })).toEqual({
+      expect(
+        redact({ users: [{ apiKey: 'hunter2' }, { name: 'ada' }] }),
+      ).toEqual({
         users: [{ apiKey: REDACTED }, { name: 'ada' }],
       });
     });
@@ -161,7 +163,9 @@ describe('redactUrl', () => {
   });
 
   it('should tolerate a valueless parameter', () => {
-    expect(redactUrl('/x?flag&token=hunter2')).toBe(`/x?flag&token=${REDACTED}`);
+    expect(redactUrl('/x?flag&token=hunter2')).toBe(
+      `/x?flag&token=${REDACTED}`,
+    );
   });
 
   it('should tolerate a malformed escape rather than throwing', () => {

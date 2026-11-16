@@ -45,9 +45,7 @@ import type { IncidentActivityType } from './incidents.contract.js';
 
 /** Which of the three acts of responding an entry is. */
 export type MemberActivityCategory =
-  | 'responseStarted'
-  | 'update'
-  | 'responseCompleted';
+  'responseStarted' | 'update' | 'responseCompleted';
 
 /** The categories in the order a day's breakdown reads. */
 export const MEMBER_ACTIVITY_CATEGORIES: readonly MemberActivityCategory[] = [
@@ -66,8 +64,9 @@ export const MEMBER_ACTIVITY_CATEGORIES: readonly MemberActivityCategory[] = [
 export const MEMBER_LEVELS: LevelThresholds = [1, 2, 4, 6];
 
 /** One timeline entry by this member, as this module needs to read it. */
-export interface MemberActivityRow<Incident extends CalendarIncident>
-  extends CalendarEntry<Incident> {
+export interface MemberActivityRow<
+  Incident extends CalendarIncident,
+> extends CalendarEntry<Incident> {
   type: IncidentActivityType;
 }
 
@@ -93,9 +92,7 @@ export const memberCategoryOf = (row: {
 };
 
 /** The member's calendar for the period. */
-export const buildMemberActivityCalendar = <
-  Incident extends CalendarIncident,
->(
+export const buildMemberActivityCalendar = <Incident extends CalendarIncident>(
   rows: readonly MemberActivityRow<Incident>[],
   period: { from: string; to: string },
 ): Calendar<MemberActivityCategory, Incident> =>

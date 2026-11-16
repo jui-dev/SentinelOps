@@ -26,7 +26,10 @@ describe('test database guard', () => {
       ['an empty string', ''],
       ['a non-url', 'not-a-url'],
       ['a non-postgres protocol', 'mysql://u:p@localhost:3306/db'],
-      ['a url with no database', 'postgresql://postgres:password@localhost:5432'],
+      [
+        'a url with no database',
+        'postgresql://postgres:password@localhost:5432',
+      ],
     ])('should return undefined for %s', (_case, url) => {
       expect(databaseNameOf(url)).toBeUndefined();
     });
@@ -43,18 +46,24 @@ describe('test database guard', () => {
   describe('accepting a dedicated test database', () => {
     it('should return the url when every rule holds', () => {
       expect(
-        resolveTestDatabaseUrl(env({ TEST_DATABASE_URL: TEST, DATABASE_URL: DEV })),
+        resolveTestDatabaseUrl(
+          env({ TEST_DATABASE_URL: TEST, DATABASE_URL: DEV }),
+        ),
       ).toBe(TEST);
     });
 
     it('should not require DATABASE_URL to be set', () => {
-      expect(resolveTestDatabaseUrl(env({ TEST_DATABASE_URL: TEST }))).toBe(TEST);
+      expect(resolveTestDatabaseUrl(env({ TEST_DATABASE_URL: TEST }))).toBe(
+        TEST,
+      );
     });
 
     it('should accept a different host with a _test database', () => {
       const remote = 'postgresql://u:p@db.internal:5432/sentinelops_test';
 
-      expect(resolveTestDatabaseUrl(env({ TEST_DATABASE_URL: remote }))).toBe(remote);
+      expect(resolveTestDatabaseUrl(env({ TEST_DATABASE_URL: remote }))).toBe(
+        remote,
+      );
     });
   });
 
@@ -81,7 +90,8 @@ describe('test database guard', () => {
     it('should refuse when it matches the development database name', () => {
       // The pathological case rule 2 alone would wave through: the development
       // database is itself named with a _test suffix.
-      const both = 'postgresql://postgres:password@localhost:5432/sentinelops_test';
+      const both =
+        'postgresql://postgres:password@localhost:5432/sentinelops_test';
 
       expect(() =>
         resolveTestDatabaseUrl(
@@ -92,8 +102,14 @@ describe('test database guard', () => {
 
     it.each([
       ['a non-url', 'not-a-url'],
-      ['a non-postgres protocol', 'mysql://u:p@localhost:3306/sentinelops_test'],
-      ['a url with no database', 'postgresql://postgres:password@localhost:5432'],
+      [
+        'a non-postgres protocol',
+        'mysql://u:p@localhost:3306/sentinelops_test',
+      ],
+      [
+        'a url with no database',
+        'postgresql://postgres:password@localhost:5432',
+      ],
     ])('should refuse %s', (_case, url) => {
       expect(() =>
         resolveTestDatabaseUrl(env({ TEST_DATABASE_URL: url })),

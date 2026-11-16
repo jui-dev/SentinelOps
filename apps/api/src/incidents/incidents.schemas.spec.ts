@@ -254,12 +254,16 @@ describe('incident schemas', () => {
       expect(searchedIncidentNumber(q)).toBe(number);
     });
 
-    it.each(['checkout', 'INC-', 'INC 42', 'INC-042', '42 errors', '99999999999'])(
-      'should read %j as words, not a number',
-      (q) => {
-        expect(searchedIncidentNumber(q)).toBeUndefined();
-      },
-    );
+    it.each([
+      'checkout',
+      'INC-',
+      'INC 42',
+      'INC-042',
+      '42 errors',
+      '99999999999',
+    ])('should read %j as words, not a number', (q) => {
+      expect(searchedIncidentNumber(q)).toBeUndefined();
+    });
   });
 
   describe('postIncidentUpdateSchema', () => {
@@ -355,10 +359,12 @@ describe('incident schemas', () => {
     });
 
     it('should cross a year', () => {
-      expect(typicalResolutionWindow(new Date('2026-01-10T08:00:00Z'))).toEqual({
-        from: '2025-10-13',
-        to: '2026-01-10',
-      });
+      expect(typicalResolutionWindow(new Date('2026-01-10T08:00:00Z'))).toEqual(
+        {
+          from: '2025-10-13',
+          to: '2026-01-10',
+        },
+      );
     });
   });
 

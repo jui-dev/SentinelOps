@@ -59,7 +59,11 @@ describe('member removal (integration)', () => {
   };
 
   const remove = (membershipId: string, callerId = fx.alice) =>
-    call('delete', `/organizations/${fx.orgA}/memberships/${membershipId}`, callerId);
+    call(
+      'delete',
+      `/organizations/${fx.orgA}/memberships/${membershipId}`,
+      callerId,
+    );
 
   const restore = (membershipId: string, role: string, callerId = fx.alice) =>
     call(
@@ -71,7 +75,9 @@ describe('member removal (integration)', () => {
 
   let nextNumber = 1;
 
-  const incident = async (status: 'INVESTIGATING' | 'RESOLVED' = 'INVESTIGATING') =>
+  const incident = async (
+    status: 'INVESTIGATING' | 'RESOLVED' = 'INVESTIGATING',
+  ) =>
     prisma.incident.create({
       data: {
         organizationId: fx.orgA,
@@ -283,9 +289,9 @@ describe('member removal (integration)', () => {
         fx.erin,
       );
 
-      expect(forTeammate.body.map(({ id }: { id: string }) => id)).not.toContain(
-        fx.daveMembership,
-      );
+      expect(
+        forTeammate.body.map(({ id }: { id: string }) => id),
+      ).not.toContain(fx.daveMembership);
       expect(
         (
           await call(
@@ -296,7 +302,11 @@ describe('member removal (integration)', () => {
         ).status,
       ).toBe(404);
 
-      const roles = await call('get', `/organizations/${fx.orgA}/roles`, fx.alice);
+      const roles = await call(
+        'get',
+        `/organizations/${fx.orgA}/roles`,
+        fx.alice,
+      );
       const responders = roles.body.find(
         ({ role }: { role: string }) => role === 'RESPONDER',
       );
@@ -309,9 +319,9 @@ describe('member removal (integration)', () => {
         fx.alice,
       );
 
-      expect(team.body.map(({ user }: { user: { id: string } }) => user.id)).toEqual([
-        fx.erin,
-      ]);
+      expect(
+        team.body.map(({ user }: { user: { id: string } }) => user.id),
+      ).toEqual([fx.erin]);
     });
 
     it("should refuse the Admin's own membership with 409 CANNOT_REMOVE_SELF", async () => {
@@ -415,7 +425,9 @@ describe('member removal (integration)', () => {
       const responders = `/organizations/${fx.orgA}/incidents/${open.number}/responders/me`;
 
       // Dave works the incident through the API, so the timeline has him.
-      expect((await call('post', responders, fx.dave)).status).toBeLessThan(300);
+      expect((await call('post', responders, fx.dave)).status).toBeLessThan(
+        300,
+      );
       expect(
         (await call('post', `${responders}/complete`, fx.dave)).status,
       ).toBeLessThan(300);
@@ -583,9 +595,9 @@ describe('member removal (integration)', () => {
     it('should refuse anyone who does not manage members with 403', async () => {
       await remove(fx.daveMembership);
 
-      expect((await restore(fx.daveMembership, 'RESPONDER', fx.erin)).status).toBe(
-        403,
-      );
+      expect(
+        (await restore(fx.daveMembership, 'RESPONDER', fx.erin)).status,
+      ).toBe(403);
     });
   });
 

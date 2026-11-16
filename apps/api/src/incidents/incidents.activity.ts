@@ -72,8 +72,9 @@ export const ACTIVITY_CATEGORIES: readonly OperationalActivityCategory[] = [
 export const LEVELS: LevelThresholds = [1, 3, 6, 11];
 
 /** One timeline entry, as this module needs to read it. */
-export interface ActivityRow<Incident extends CalendarIncident>
-  extends CalendarEntry<Incident> {
+export interface ActivityRow<
+  Incident extends CalendarIncident,
+> extends CalendarEntry<Incident> {
   type: IncidentActivityType;
   toValue: string | null;
 }

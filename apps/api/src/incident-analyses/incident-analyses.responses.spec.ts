@@ -59,7 +59,11 @@ describe('toIncidentAnalysisResponse', () => {
     ).toStrictEqual({
       status: 'DRAFT',
       version: 3,
-      owner: { membershipId: 'membership-1', name: 'Dave Duarte', former: false },
+      owner: {
+        membershipId: 'membership-1',
+        name: 'Dave Duarte',
+        former: false,
+      },
       summary: 'Card payments failed for 2 hours.',
       impact: null,
       cause: null,

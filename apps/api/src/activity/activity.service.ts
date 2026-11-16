@@ -190,7 +190,9 @@ export class ActivityService {
       subjectNow,
       attempts,
       next:
-        next === null ? null : markFormer(toActivityEntryResponse(next), former),
+        next === null
+          ? null
+          : markFormer(toActivityEntryResponse(next), former),
       usualClient,
     };
   }

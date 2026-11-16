@@ -41,7 +41,8 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> =>
  *
  * Never mutates its input.
  */
-export const redact = (value: unknown): unknown => redactValue(value, 0, new WeakSet());
+export const redact = (value: unknown): unknown =>
+  redactValue(value, 0, new WeakSet());
 
 const redactValue = (
   value: unknown,

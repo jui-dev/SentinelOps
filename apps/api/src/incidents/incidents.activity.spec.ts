@@ -5,12 +5,16 @@ import {
 } from './incidents.activity.js';
 import type { ActivityRow } from './incidents.activity.js';
 import { CALENDAR_INCIDENT_LIMIT, levelOf } from './incidents.calendar.js';
-import type { IncidentActivityType, IncidentSeverity } from './incidents.contract.js';
+import type {
+  IncidentActivityType,
+  IncidentSeverity,
+} from './incidents.contract.js';
 
-const incident = (
-  number: number,
-  severity: IncidentSeverity = 'SEV3',
-) => ({ id: `i${number}`, number, severity });
+const incident = (number: number, severity: IncidentSeverity = 'SEV3') => ({
+  id: `i${number}`,
+  number,
+  severity,
+});
 
 const entry = (
   type: IncidentActivityType,
@@ -46,15 +50,15 @@ describe('what counts as operational activity', () => {
     ['SEVERITY_CHANGED', 'changed'],
     ['TEAM_CHANGED', 'changed'],
   ])('should count %s as %s', (type, category) => {
-    expect(categoryOf({ type: type as IncidentActivityType, toValue: null })).toBe(
-      category,
-    );
+    expect(
+      categoryOf({ type: type as IncidentActivityType, toValue: null }),
+    ).toBe(category);
   });
 
   it('should count a resolution', () => {
-    expect(
-      categoryOf({ type: 'STATUS_CHANGED', toValue: 'RESOLVED' }),
-    ).toBe('resolved');
+    expect(categoryOf({ type: 'STATUS_CHANGED', toValue: 'RESOLVED' })).toBe(
+      'resolved',
+    );
   });
 
   /**
@@ -139,7 +143,9 @@ describe('the activity calendar', () => {
         entry('UPDATE', '2026-09-16T11:00:00Z'),
         entry('SEVERITY_CHANGED', '2026-09-16T11:30:00Z'),
         entry('RESPONSE_COMPLETED', '2026-09-16T12:00:00Z'),
-        entry('STATUS_CHANGED', '2026-09-16T12:30:00Z', { toValue: 'RESOLVED' }),
+        entry('STATUS_CHANGED', '2026-09-16T12:30:00Z', {
+          toValue: 'RESOLVED',
+        }),
       ],
       period,
     );
@@ -196,7 +202,10 @@ describe('the activity calendar', () => {
     const day = calendar.days.find(({ date }) => date === '2026-09-16');
 
     expect(
-      day?.incidents.map(({ incident: { number }, events }) => [number, events]),
+      day?.incidents.map(({ incident: { number }, events }) => [
+        number,
+        events,
+      ]),
     ).toEqual([
       [7, 3],
       [9, 1],
@@ -207,11 +216,26 @@ describe('the activity calendar', () => {
   it('should order a day’s incidents by events, then severity, then most recent', () => {
     const calendar = buildActivityCalendar(
       [
-        entry('UPDATE', '2026-09-16T09:00:00Z', { number: 1, severity: 'SEV4' }),
-        entry('UPDATE', '2026-09-16T09:10:00Z', { number: 1, severity: 'SEV4' }),
-        entry('UPDATE', '2026-09-16T10:00:00Z', { number: 2, severity: 'SEV3' }),
-        entry('UPDATE', '2026-09-16T11:00:00Z', { number: 3, severity: 'SEV1' }),
-        entry('UPDATE', '2026-09-16T12:00:00Z', { number: 4, severity: 'SEV3' }),
+        entry('UPDATE', '2026-09-16T09:00:00Z', {
+          number: 1,
+          severity: 'SEV4',
+        }),
+        entry('UPDATE', '2026-09-16T09:10:00Z', {
+          number: 1,
+          severity: 'SEV4',
+        }),
+        entry('UPDATE', '2026-09-16T10:00:00Z', {
+          number: 2,
+          severity: 'SEV3',
+        }),
+        entry('UPDATE', '2026-09-16T11:00:00Z', {
+          number: 3,
+          severity: 'SEV1',
+        }),
+        entry('UPDATE', '2026-09-16T12:00:00Z', {
+          number: 4,
+          severity: 'SEV3',
+        }),
       ],
       period,
     );
@@ -225,8 +249,10 @@ describe('the activity calendar', () => {
   });
 
   it('should name only the busiest few incidents, and count the rest', () => {
-    const rows = Array.from({ length: CALENDAR_INCIDENT_LIMIT + 3 }, (_, index) =>
-      entry('UPDATE', '2026-09-16T09:00:00Z', { number: index + 1 }),
+    const rows = Array.from(
+      { length: CALENDAR_INCIDENT_LIMIT + 3 },
+      (_, index) =>
+        entry('UPDATE', '2026-09-16T09:00:00Z', { number: index + 1 }),
     );
 
     const day = buildActivityCalendar(rows, period).days.find(

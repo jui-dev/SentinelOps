@@ -197,9 +197,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const header = request?.headers?.[REQUEST_ID_HEADER];
     const value = Array.isArray(header) ? header[0] : header;
 
-    return typeof value === 'string' && value.length > 0
-      ? value
-      : randomUUID();
+    return typeof value === 'string' && value.length > 0 ? value : randomUUID();
   }
 
   /**

@@ -111,10 +111,7 @@ export interface Calendar<
 }
 
 /** What a domain brings: its categories, how it reads an entry, its bands. */
-export interface CalendarSpec<
-  Category extends string,
-  Entry,
-> {
+export interface CalendarSpec<Category extends string, Entry> {
   categories: readonly Category[];
   /** The entry's category, or undefined when it is not activity at all. */
   categoryOf: (entry: Entry) => Category | undefined;
@@ -163,8 +160,9 @@ export const buildCalendar = <
   const limit = spec.incidentLimit ?? CALENDAR_INCIDENT_LIMIT;
 
   const emptyCounts = () =>
-    Object.fromEntries(spec.categories.map((category) => [category, 0])) as
-      Record<Category, number>;
+    Object.fromEntries(
+      spec.categories.map((category) => [category, 0]),
+    ) as Record<Category, number>;
 
   const days = new Map<
     string,
@@ -197,7 +195,11 @@ export const buildCalendar = <
     const seen = day.incidents.get(entry.incident.id);
 
     if (seen) seen.events += 1;
-    else day.incidents.set(entry.incident.id, { incident: entry.incident, events: 1 });
+    else
+      day.incidents.set(entry.incident.id, {
+        incident: entry.incident,
+        events: 1,
+      });
   }
 
   let activeDays = 0;

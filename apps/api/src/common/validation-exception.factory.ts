@@ -60,10 +60,8 @@ export const validationExceptionFactory = (
 ): BadRequestException =>
   new BadRequestException({
     message: VALIDATION_FAILED_MESSAGE,
-    details: issues.map(
-      (issue): ValidationErrorDetail => ({
-        field: formatIssuePath(issue.path),
-        message: issue.message,
-      }),
-    ),
+    details: issues.map((issue): ValidationErrorDetail => ({
+      field: formatIssuePath(issue.path),
+      message: issue.message,
+    })),
   });

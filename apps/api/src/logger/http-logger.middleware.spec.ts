@@ -10,8 +10,12 @@ describe('HttpLoggerMiddleware', () => {
   let middleware: HttpLoggerMiddleware;
 
   const next = vi.fn();
-  const logLog = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
-  const warnLog = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+  const logLog = vi
+    .spyOn(Logger.prototype, 'log')
+    .mockImplementation(() => undefined);
+  const warnLog = vi
+    .spyOn(Logger.prototype, 'warn')
+    .mockImplementation(() => undefined);
   const errorLog = vi
     .spyOn(Logger.prototype, 'error')
     .mockImplementation(() => undefined);
@@ -77,7 +81,11 @@ describe('HttpLoggerMiddleware', () => {
     });
 
     it('should record the method, path, status, and duration', () => {
-      run({ method: 'POST', originalUrl: '/api/v1/incidents', statusCode: 201 });
+      run({
+        method: 'POST',
+        originalUrl: '/api/v1/incidents',
+        statusCode: 201,
+      });
 
       expect(paramsOf(logLog)).toMatchObject({
         method: 'POST',
@@ -89,7 +97,11 @@ describe('HttpLoggerMiddleware', () => {
     });
 
     it('should summarise the request in the message', () => {
-      run({ method: 'POST', originalUrl: '/api/v1/incidents', statusCode: 201 });
+      run({
+        method: 'POST',
+        originalUrl: '/api/v1/incidents',
+        statusCode: 201,
+      });
 
       expect(logLog.mock.calls[0][0] as string).toContain(
         'POST /api/v1/incidents 201',

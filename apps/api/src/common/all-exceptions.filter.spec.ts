@@ -27,12 +27,12 @@ describe('AllExceptionsFilter', () => {
   const end = vi.fn();
   const isHeadersSent = vi.fn().mockReturnValue(false);
 
-  const errorLog = vi.spyOn(Logger.prototype, 'error').mockImplementation(
-    () => undefined,
-  );
-  const debugLog = vi.spyOn(Logger.prototype, 'debug').mockImplementation(
-    () => undefined,
-  );
+  const errorLog = vi
+    .spyOn(Logger.prototype, 'error')
+    .mockImplementation(() => undefined);
+  const debugLog = vi
+    .spyOn(Logger.prototype, 'debug')
+    .mockImplementation(() => undefined);
 
   /** Drives the filter and returns the body it handed to the adapter. */
   const capture = (
@@ -200,9 +200,9 @@ describe('AllExceptionsFilter', () => {
     });
 
     it('should omit code when unset', () => {
-      expect(capture(new ConflictException('Already resolved'))).not.toHaveProperty(
-        'code',
-      );
+      expect(
+        capture(new ConflictException('Already resolved')),
+      ).not.toHaveProperty('code');
     });
   });
 

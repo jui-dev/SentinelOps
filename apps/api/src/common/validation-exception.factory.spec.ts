@@ -27,9 +27,9 @@ describe('formatIssuePath', () => {
   });
 
   it('should accept segments given as key objects', () => {
-    expect(formatIssuePath([{ key: 'items' }, { key: 0 }, { key: 'qty' }])).toBe(
-      'items.0.qty',
-    );
+    expect(
+      formatIssuePath([{ key: 'items' }, { key: 0 }, { key: 'qty' }]),
+    ).toBe('items.0.qty');
   });
 
   it('should accept a mix of raw keys and key objects', () => {
