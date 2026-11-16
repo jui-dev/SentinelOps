@@ -2,6 +2,7 @@ import {
   TestDatabaseError,
   databaseNameOf,
   resolveTestDatabaseUrl,
+  truncate,
   withDatabase,
 } from './test-database.js';
 
@@ -124,6 +125,73 @@ describe('test database guard', () => {
       expect(() =>
         resolveTestDatabaseUrl(env({ TEST_DATABASE_URL: injected })),
       ).toThrow(/not a plain identifier/);
+    });
+  });
+
+  describe('truncate', () => {
+    const RESET = 'TRUNCATE TABLE users CASCADE';
+    const deadlock = Object.assign(
+      new Error(
+        'Raw query failed. Code: `40P01`. Message: `deadlock detected`',
+      ),
+      { code: 'P2010' },
+    );
+    const noPause = () => Promise.resolve();
+
+    it('should run the statement once when it succeeds', async () => {
+      const db = { $executeRawUnsafe: vi.fn().mockResolvedValue(0) };
+
+      await truncate(db, RESET, noPause);
+
+      expect(db.$executeRawUnsafe).toHaveBeenCalledExactlyOnceWith(RESET);
+    });
+
+    it('should try again after a deadlock, and stop once it succeeds', async () => {
+      const db = {
+        $executeRawUnsafe: vi
+          .fn()
+          .mockRejectedValueOnce(deadlock)
+          .mockRejectedValueOnce(deadlock)
+          .mockResolvedValue(0),
+      };
+
+      await truncate(db, RESET, noPause);
+
+      expect(db.$executeRawUnsafe).toHaveBeenCalledTimes(3);
+    });
+
+    it('should recognise the deadlock code wherever the driver puts it', async () => {
+      for (const error of [
+        { code: '40P01' },
+        { code: 'P2010', meta: { code: '40P01' } },
+        deadlock,
+      ]) {
+        const db = {
+          $executeRawUnsafe: vi
+            .fn()
+            .mockRejectedValueOnce(error)
+            .mockResolvedValue(0),
+        };
+
+        await truncate(db, RESET, noPause);
+
+        expect(db.$executeRawUnsafe).toHaveBeenCalledTimes(2);
+      }
+    });
+
+    it('should give up after five deadlocks, throwing the last', async () => {
+      const db = { $executeRawUnsafe: vi.fn().mockRejectedValue(deadlock) };
+
+      await expect(truncate(db, RESET, noPause)).rejects.toBe(deadlock);
+      expect(db.$executeRawUnsafe).toHaveBeenCalledTimes(5);
+    });
+
+    it('should throw any other error at once', async () => {
+      const other = new Error('relation "users" does not exist');
+      const db = { $executeRawUnsafe: vi.fn().mockRejectedValue(other) };
+
+      await expect(truncate(db, RESET, noPause)).rejects.toBe(other);
+      expect(db.$executeRawUnsafe).toHaveBeenCalledOnce();
     });
   });
 });

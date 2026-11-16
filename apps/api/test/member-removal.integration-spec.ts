@@ -6,7 +6,7 @@ import { AppModule } from './../src/app.module.js';
 import { TokenService } from './../src/auth/token.service.js';
 import { PrismaService } from './../src/database/prisma.service.js';
 import { leakedKeys } from './leaks.js';
-import { resolveTestDatabaseUrl } from './test-database.js';
+import { resolveTestDatabaseUrl, truncate } from './test-database.js';
 
 /**
  * Removing someone from the organization, and restoring them, against a real
@@ -111,7 +111,8 @@ describe('member removal (integration)', () => {
 
   beforeEach(async () => {
     // Every other table refers to one of these two, and goes with them.
-    await prisma.$executeRawUnsafe(
+    await truncate(
+      prisma,
       'TRUNCATE TABLE organizations, users RESTART IDENTITY CASCADE',
     );
     nextNumber = 1;

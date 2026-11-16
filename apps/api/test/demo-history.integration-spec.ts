@@ -16,7 +16,7 @@ import {
   DemoOrganizationMismatch,
 } from './../src/dev/demo-history/demo-history.service.js';
 import { IncidentsService } from './../src/incidents/incidents.service.js';
-import { resolveTestDatabaseUrl } from './test-database.js';
+import { resolveTestDatabaseUrl, truncate } from './test-database.js';
 
 /**
  * TEMPORARY — the demo history against a real database, read back through
@@ -102,7 +102,8 @@ describe('demo history (integration)', () => {
   });
 
   beforeEach(async () => {
-    await prisma.$executeRawUnsafe(
+    await truncate(
+      prisma,
       'TRUNCATE TABLE activity_entries, incidents, services, team_memberships, teams, invitations, refresh_tokens, memberships, users, organizations RESTART IDENTITY CASCADE',
     );
     await devAccount.ensure();

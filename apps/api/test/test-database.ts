@@ -121,3 +121,60 @@ export const resolveTestDatabaseUrl = (
 
   return url;
 };
+
+/** Postgres: deadlock_detected. */
+const DEADLOCK_DETECTED = '40P01';
+
+/** How many times a reset is tried before its deadlock is let through. */
+const RESET_ATTEMPTS = 5;
+
+const isDeadlock = (error: unknown): boolean => {
+  if (typeof error !== 'object' || error === null) {
+    return false;
+  }
+
+  const { code, meta, message } = error as {
+    code?: unknown;
+    meta?: { code?: unknown };
+    message?: unknown;
+  };
+
+  // The driver adapter reports the SQLSTATE in different places depending
+  // on the path, so all three are checked.
+  return (
+    code === DEADLOCK_DETECTED ||
+    meta?.code === DEADLOCK_DETECTED ||
+    (typeof message === 'string' && message.includes(DEADLOCK_DETECTED))
+  );
+};
+
+/**
+ * Empties tables between tests: runs the given `TRUNCATE`, retrying it when
+ * Postgres reports a deadlock.
+ *
+ * `TRUNCATE … CASCADE` takes an exclusive lock on every table it reaches,
+ * one after another. On a fast CI runner it can meet the commit of the
+ * previous test's last concurrent transactions and form a cycle, which
+ * Postgres breaks by aborting one side — the reset. The other side finishes,
+ * so trying again succeeds. Any other error, or a deadlock that persists,
+ * is thrown as it is.
+ */
+export const truncate = async (
+  db: { $executeRawUnsafe(query: string): Promise<unknown> },
+  statement: string,
+  pause: (ms: number) => Promise<void> = (ms) =>
+    new Promise((resolve) => setTimeout(resolve, ms)),
+): Promise<void> => {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await db.$executeRawUnsafe(statement);
+      return;
+    } catch (error) {
+      if (!isDeadlock(error) || attempt >= RESET_ATTEMPTS) {
+        throw error;
+      }
+
+      await pause(100 * attempt);
+    }
+  }
+};

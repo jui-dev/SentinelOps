@@ -6,7 +6,7 @@ import { AppModule } from './../src/app.module.js';
 import { TokenService } from './../src/auth/token.service.js';
 import { PrismaService } from './../src/database/prisma.service.js';
 import { NotificationsWriter } from './../src/notifications/notifications.writer.js';
-import { resolveTestDatabaseUrl } from './test-database.js';
+import { resolveTestDatabaseUrl, truncate } from './test-database.js';
 
 /**
  * The notifications a team placement writes, against a real database and
@@ -95,7 +95,8 @@ describe('team notifications (integration)', () => {
   });
 
   beforeEach(async () => {
-    await prisma.$executeRawUnsafe(
+    await truncate(
+      prisma,
       'TRUNCATE TABLE incidents, services, team_memberships, teams, invitations, refresh_tokens, memberships, users, organizations RESTART IDENTITY CASCADE',
     );
 

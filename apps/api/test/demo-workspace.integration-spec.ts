@@ -11,7 +11,7 @@ import { DemoHistoryService } from './../src/dev/demo-history/demo-history.servi
 import { DemoAvailabilityController } from './../src/dev/demo-workspace/demo-availability.controller.js';
 import type { DemoWorkspaceResponse } from './../src/dev/demo-workspace/demo-workspace.contract.js';
 import { DemoWorkspaceService } from './../src/dev/demo-workspace/demo-workspace.service.js';
-import { resolveTestDatabaseUrl } from './test-database.js';
+import { resolveTestDatabaseUrl, truncate } from './test-database.js';
 
 /**
  * TEMPORARY — the demo workspace against a real database: what each part
@@ -51,7 +51,8 @@ describe('demo workspace (integration)', () => {
   });
 
   beforeEach(async () => {
-    await prisma.$executeRawUnsafe(
+    await truncate(
+      prisma,
       'TRUNCATE TABLE demo_workspaces, notifications, activity_entries, incidents, known_issues, services, team_memberships, teams, invitations, refresh_tokens, memberships, users, organizations RESTART IDENTITY CASCADE',
     );
     await devAccount.ensure();

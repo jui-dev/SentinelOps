@@ -8,7 +8,7 @@ import { PrismaService } from './../src/database/prisma.service.js';
 import type { NotificationType } from './../src/generated/prisma/enums.js';
 import { NOTIFICATION_PAGE_SIZE } from './../src/notifications/notifications.service.js';
 import { leakedKeys } from './leaks.js';
-import { resolveTestDatabaseUrl } from './test-database.js';
+import { resolveTestDatabaseUrl, truncate } from './test-database.js';
 
 /**
  * Notifications against a real database.
@@ -248,7 +248,8 @@ describe('notifications (integration)', () => {
   });
 
   beforeEach(async () => {
-    await prisma.$executeRawUnsafe(
+    await truncate(
+      prisma,
       'TRUNCATE TABLE incidents, services, team_memberships, teams, invitations, refresh_tokens, memberships, users, organizations RESTART IDENTITY CASCADE',
     );
 

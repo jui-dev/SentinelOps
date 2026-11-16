@@ -10,7 +10,7 @@ import {
   DEV_PERSONAS,
 } from './../src/dev/dev-account.js';
 import { DevAccountService } from './../src/dev/dev-account.service.js';
-import { resolveTestDatabaseUrl } from './test-database.js';
+import { resolveTestDatabaseUrl, truncate } from './test-database.js';
 
 /**
  * TEMPORARY — the development organization against a real database: set up
@@ -35,7 +35,8 @@ describe('development organization (integration)', () => {
   });
 
   beforeEach(async () => {
-    await prisma.$executeRawUnsafe(
+    await truncate(
+      prisma,
       'TRUNCATE TABLE incidents, services, team_memberships, teams, invitations, refresh_tokens, memberships, users, organizations RESTART IDENTITY CASCADE',
     );
   });

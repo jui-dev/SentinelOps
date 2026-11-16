@@ -6,7 +6,7 @@ import { AppModule } from './../src/app.module.js';
 import { TokenService } from './../src/auth/token.service.js';
 import { PrismaService } from './../src/database/prisma.service.js';
 import { leakedKeys } from './leaks.js';
-import { resolveTestDatabaseUrl } from './test-database.js';
+import { resolveTestDatabaseUrl, truncate } from './test-database.js';
 
 // Registration is off by default; this suite proves how it works when on.
 // Hoisted, so it is set before configuration is read.
@@ -89,7 +89,8 @@ describe('authentication (integration)', () => {
   });
 
   beforeEach(async () => {
-    await prisma.$executeRawUnsafe(
+    await truncate(
+      prisma,
       'TRUNCATE TABLE incidents, services, team_memberships, teams, invitations, refresh_tokens, memberships, users, organizations RESTART IDENTITY CASCADE',
     );
   });

@@ -14,7 +14,7 @@ import type {
   ActivityArea,
 } from './../src/generated/prisma/enums.js';
 import { leakedKeys } from './leaks.js';
-import { resolveTestDatabaseUrl } from './test-database.js';
+import { resolveTestDatabaseUrl, truncate } from './test-database.js';
 
 /**
  * The activity log against a real database and through the real routes.
@@ -128,7 +128,8 @@ describe('activity log (integration)', () => {
   });
 
   beforeEach(async () => {
-    await prisma.$executeRawUnsafe(
+    await truncate(
+      prisma,
       'TRUNCATE TABLE activity_entries, services, team_memberships, teams, invitations, refresh_tokens, memberships, users, organizations RESTART IDENTITY CASCADE',
     );
 

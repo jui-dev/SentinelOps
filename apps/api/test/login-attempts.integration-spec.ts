@@ -8,7 +8,7 @@ import { PasswordService } from './../src/auth/password.service.js';
 import { applyTrustProxy } from './../src/common/trust-proxy.js';
 import { TokenService } from './../src/auth/token.service.js';
 import { PrismaService } from './../src/database/prisma.service.js';
-import { resolveTestDatabaseUrl } from './test-database.js';
+import { resolveTestDatabaseUrl, truncate } from './test-database.js';
 
 /**
  * Guessing a password is limited, against a real database: five wrong
@@ -63,7 +63,8 @@ describe('login attempts (integration)', () => {
   });
 
   beforeEach(async () => {
-    await prisma.$executeRawUnsafe(
+    await truncate(
+      prisma,
       'TRUNCATE TABLE incidents, services, team_memberships, teams, invitations, refresh_tokens, memberships, users, organizations RESTART IDENTITY CASCADE',
     );
   });

@@ -11,7 +11,7 @@ import { PrismaService } from './../src/database/prisma.service.js';
 import type { Prisma } from './../src/generated/prisma/client.js';
 import { InvitationsService } from './../src/invitations/invitations.service.js';
 import { leakedKeys } from './leaks.js';
-import { resolveTestDatabaseUrl } from './test-database.js';
+import { resolveTestDatabaseUrl, truncate } from './test-database.js';
 
 // Invitations are off unless switched on, and this suite exercises them.
 // Hoisted, so the flag is set before any configuration is read.
@@ -274,7 +274,8 @@ describe('invitations (integration)', () => {
   });
 
   beforeEach(async () => {
-    await prisma.$executeRawUnsafe(
+    await truncate(
+      prisma,
       'TRUNCATE TABLE incidents, services, team_memberships, teams, invitations, refresh_tokens, memberships, users, organizations RESTART IDENTITY CASCADE',
     );
 

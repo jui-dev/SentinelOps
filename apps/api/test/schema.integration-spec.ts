@@ -1,5 +1,5 @@
 import { PrismaService } from './../src/database/prisma.service.js';
-import { resolveTestDatabaseUrl } from './test-database.js';
+import { resolveTestDatabaseUrl, truncate } from './test-database.js';
 
 /**
  * Constraints, cascades, and column types are properties of the database, not of
@@ -36,7 +36,8 @@ describe('core domain schema (integration)', () => {
   });
 
   beforeEach(async () => {
-    await prisma.$executeRawUnsafe(
+    await truncate(
+      prisma,
       'TRUNCATE TABLE incidents, services, team_memberships, teams, invitations, memberships, users, organizations RESTART IDENTITY CASCADE',
     );
   });

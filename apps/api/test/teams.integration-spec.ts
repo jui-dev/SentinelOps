@@ -10,7 +10,7 @@ import { foreignKeyViolationHint } from './../src/database/foreign-key-violation
 import { PrismaService } from './../src/database/prisma.service.js';
 import { TeamsService } from './../src/teams/teams.service.js';
 import { leakedKeys } from './leaks.js';
-import { resolveTestDatabaseUrl } from './test-database.js';
+import { resolveTestDatabaseUrl, truncate } from './test-database.js';
 
 /**
  * Teams against a real database.
@@ -175,7 +175,8 @@ describe('teams (integration)', () => {
   });
 
   beforeEach(async () => {
-    await prisma.$executeRawUnsafe(
+    await truncate(
+      prisma,
       'TRUNCATE TABLE incidents, services, team_memberships, teams, invitations, refresh_tokens, memberships, users, organizations RESTART IDENTITY CASCADE',
     );
 

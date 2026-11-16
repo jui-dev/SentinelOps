@@ -6,7 +6,7 @@ import { AppModule } from './../src/app.module.js';
 import { PasswordService } from './../src/auth/password.service.js';
 import { TokenService } from './../src/auth/token.service.js';
 import { PrismaService } from './../src/database/prisma.service.js';
-import { resolveTestDatabaseUrl } from './test-database.js';
+import { resolveTestDatabaseUrl, truncate } from './test-database.js';
 
 const PASSWORD = 'correct-horse-battery';
 const CHROME =
@@ -70,7 +70,8 @@ describe('activity log: sign-ins and passwords (integration)', () => {
   });
 
   beforeEach(async () => {
-    await prisma.$executeRawUnsafe(
+    await truncate(
+      prisma,
       'TRUNCATE TABLE activity_entries, refresh_tokens, memberships, users, organizations RESTART IDENTITY CASCADE',
     );
 

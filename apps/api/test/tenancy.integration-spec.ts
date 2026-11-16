@@ -9,7 +9,7 @@ import { getRequestOrganization } from './../src/common/request-context.js';
 import { PrismaService } from './../src/database/prisma.service.js';
 import { OrganizationsService } from './../src/organizations/organizations.service.js';
 import { leakedKeys } from './leaks.js';
-import { resolveTestDatabaseUrl } from './test-database.js';
+import { resolveTestDatabaseUrl, truncate } from './test-database.js';
 
 /**
  * Tenant isolation against a real database.
@@ -169,7 +169,8 @@ describe('tenancy (integration)', () => {
   });
 
   beforeEach(async () => {
-    await prisma.$executeRawUnsafe(
+    await truncate(
+      prisma,
       'TRUNCATE TABLE incidents, services, team_memberships, teams, invitations, refresh_tokens, memberships, users, organizations RESTART IDENTITY CASCADE',
     );
 
