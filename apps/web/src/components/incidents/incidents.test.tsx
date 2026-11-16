@@ -1531,7 +1531,7 @@ describe("incidents", () => {
         expect(await within(done).findByText(/You completed your part/)).toBeDefined();
         // Daniel is still investigating: the incident stays with him.
         expect(
-          within(done).getByText(/Daniel Okafor is still investigating; the Admin resolves once no one is\./),
+          within(done).getByText(/Daniel Okafor is still investigating; an Incident Manager resolves once no one is\./),
         ).toBeDefined();
         expect(screen.queryByLabelText("Post an update")).toBeNull();
         expect(screen.queryByRole("button", { name: "Complete my response" })).toBeNull();

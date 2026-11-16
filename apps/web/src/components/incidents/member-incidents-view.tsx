@@ -80,7 +80,7 @@ const VIEWS: readonly {
   {
     value: "completed",
     label: "You've completed",
-    note: "the Admin resolves",
+    note: "an Incident Manager resolves",
     tone: "text-status-resolved-text",
   },
   {
@@ -112,7 +112,7 @@ const EMPTY: Record<View, { title: string; body: string }> = {
   },
   completed: {
     title: "Nothing completed and still open",
-    body: "Incidents you've finished on appear here until the Admin resolves them.",
+    body: "Incidents you've finished on appear here until an Incident Manager resolves them.",
   },
   active: {
     title: "No active incidents",
@@ -129,7 +129,7 @@ const FOOTNOTE: Partial<Record<View, string>> = {
   "needs-you":
     "Incidents your teams are responsible for that you haven't joined, while someone is still needed.",
   investigating: "Post updates as you work, and complete your part when you're done.",
-  completed: "The Admin resolves an incident once no one is still investigating.",
+  completed: "An Incident Manager resolves an incident once no one is still investigating.",
 };
 
 /** "Payments", "Payments and Risk", "A, B, and C". */

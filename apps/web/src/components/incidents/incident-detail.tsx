@@ -682,9 +682,9 @@ function Lifecycle({ incident }: { incident: IncidentDetailResponse }) {
         {incident.resolvedAt ? (
           <LocalDateTime value={incident.resolvedAt} />
         ) : ready ? (
-          "the Admin resolves next"
+          "an Incident Manager resolves next"
         ) : (
-          "by the Admin, once no one is still investigating"
+          "by an Incident Manager, once no one is still investigating"
         )}
       </Step>
     </ol>
@@ -693,7 +693,7 @@ function Lifecycle({ incident }: { incident: IncidentDetailResponse }) {
 
 
 /**
- * How a resolved incident ended, said once: the Admin's note — or, resolved
+ * How a resolved incident ended, said once: the resolution note — or, resolved
  * before notes were required, that there is none — who resolved it and
  * when, the four figures the response is read by, and who responded. Where
  * the role panels stood while it was open: once resolved there is nothing

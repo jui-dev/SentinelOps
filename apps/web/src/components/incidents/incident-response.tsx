@@ -370,7 +370,7 @@ export function YourResponse({
           {[
             ["Start", "You're listed as investigating."],
             ["Post updates", "What you found, what you changed."],
-            ["Complete your part", "The Admin resolves once no one is still on it."],
+            ["Complete your part", "An Incident Manager resolves once no one is still on it."],
           ].map(([step, note], index) => (
             <li
               key={step}
@@ -468,7 +468,7 @@ export function YourResponse({
           {!active
             ? "The incident is resolved."
             : others.length > 0
-              ? `${nameList(others.map(({ name }) => name))} ${others.length === 1 ? "is" : "are"} still investigating; the Admin resolves once no one is.`
+              ? `${nameList(others.map(({ name }) => name))} ${others.length === 1 ? "is" : "are"} still investigating; an Incident Manager resolves once no one is.`
               : "Everyone is done, so it's with the Admin to resolve."}
         </>
       }
