@@ -2,7 +2,7 @@
   "name": "sentinelops",
   "version": "0.1.0",
   "private": true,
-  "description": "A real-time incident and operations management platform.",
+  "description": "Incident management for engineering teams: declare, respond, resolve, and learn.",
   "author": "jui-dev",
   "license": "MIT",
   "packageManager": "pnpm@11.25.0",
