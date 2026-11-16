@@ -12,6 +12,10 @@
   },
   "scripts": {
     "dev": "pnpm --parallel --filter @sentinelops/api --filter @sentinelops/web run dev",
+    "build": "pnpm -r --workspace-concurrency=1 run build",
+    "typecheck": "pnpm -r --workspace-concurrency=1 run typecheck",
+    "lint": "pnpm -r --workspace-concurrency=1 run lint",
+    "test": "pnpm -r --workspace-concurrency=1 run test",
     "db:up": "docker compose -f docker/docker-compose.yml --env-file .env up -d",
     "db:down": "docker compose -f docker/docker-compose.yml --env-file .env down",
     "db:logs": "docker compose -f docker/docker-compose.yml --env-file .env logs -f postgres"
