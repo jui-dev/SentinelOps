@@ -94,6 +94,27 @@ export const useIncidentList = (
   });
 
 /**
+ * Whether the organization has had any incident the caller may see, active
+ * or resolved, ever: undefined while that is asked. What tells a page with
+ * nothing yet from one whose list is merely empty now. Shares its cache
+ * entries with the Incidents page's unfiltered lists.
+ */
+export const useHasAnyIncident = (
+  organizationId: string,
+  enabled = true,
+): boolean | undefined => {
+  const active = useIncidentList(organizationId, "active", undefined, {}, enabled);
+  const resolved = useIncidentList(organizationId, "resolved", undefined, {}, enabled);
+
+  if (!active.data || !resolved.data) return undefined;
+
+  return (
+    (active.data.pages[0]?.items.length ?? 0) > 0 ||
+    (resolved.data.pages[0]?.items.length ?? 0) > 0
+  );
+};
+
+/**
  * One member's responses, a page at a time, the most recently started
  * first. `fetchNextPage` follows the API's cursor.
  */

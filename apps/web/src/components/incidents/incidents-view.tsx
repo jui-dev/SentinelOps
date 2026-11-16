@@ -2,6 +2,8 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
+  ArrowRight,
+  Boxes,
   ChevronsDown,
   CircleCheck,
   CircleDashed,
@@ -64,9 +66,14 @@ import {
 import {
   incidentHref,
   storeIncident,
+  useHasAnyIncident,
   useIncidentAttention,
   useIncidentList,
 } from "./incident-queries";
+import { howItWorksHref } from "@/components/app/shell-utilities";
+import { useTeams } from "@/components/teams/team-scope";
+import { ButtonLink } from "@/components/ui/button-link";
+import { FirstRun, setupPath } from "@/components/ui/first-run";
 import { IncidentBoard, IncidentCards } from "./incident-board";
 import { LiveStatus } from "./live-status";
 import { MemberIncidentsView } from "./member-incidents-view";
@@ -648,6 +655,77 @@ export function DeclareIncident() {
   );
 }
 
+/**
+ * The Incidents page before its first incident: the welcome to declaring
+ * one — or, with no service in use to declare it against, the way to
+ * Services first.
+ */
+function FirstIncident() {
+  const organization = useOrganization();
+  const services = useServices(organization.id);
+  const teams = useTeams(organization.id);
+  const canManageServices = useCan(Permission.SERVICES_MANAGE);
+  const canDeclare = useCan(Permission.INCIDENTS_DECLARE);
+
+  if (!services.data || !teams.data) return <Spinner label="Loading…" />;
+
+  const learn = {
+    href: `${howItWorksHref(organization.slug)}#step-report`,
+    label: "How an incident goes",
+  };
+  const hasTeams = teams.data.length > 0;
+
+  if (!services.data.some((service) => !service.archivedAt)) {
+    return (
+      <FirstRun
+        icon={Boxes}
+        title="Incidents need a service first"
+        action={
+          canManageServices && (
+            <ButtonLink
+              href={servicesHref(organization.slug)}
+              variant="primary"
+              icon={Boxes}
+              trailingIcon={ArrowRight}
+            >
+              Go to Services
+            </ButtonLink>
+          )
+        }
+        note={canManageServices ? undefined : "The Admin adds services."}
+        learn={learn}
+        steps={setupPath(hasTeams ? "services" : "teams", {
+          teams: hasTeams,
+          services: false,
+        })}
+        preview={false}
+      >
+        <p>
+          Every incident is declared against a service — the system it affects —
+          and there are none in use yet.
+        </p>
+      </FirstRun>
+    );
+  }
+
+  return (
+    <FirstRun
+      icon={Siren}
+      title="No incidents yet"
+      action={canDeclare && <DeclareIncident />}
+      note={canDeclare ? undefined : "Incidents are declared by a Reporter, an Incident Manager or the Admin."}
+      learn={learn}
+      steps={setupPath("incidents", { teams: true, services: true })}
+    >
+      <p>
+        When something goes wrong, declare it here: what is happening and the
+        service it affects. The team that owns the service hears at once, and
+        everyone can follow the response from start to finish.
+      </p>
+    </FirstRun>
+  );
+}
+
 export function IncidentsView() {
   const oversees = useCan(Permission.INCIDENTS_READ_ALL);
 
@@ -718,6 +796,11 @@ function OrganizationIncidentsView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [drop]);
 
+  // Nothing declared, ever, and nothing asked of the lists: the page
+  // welcomes the first incident, or says what must come before it.
+  const hasAny = useHasAnyIncident(organization.id, !period && !filters.active);
+  const first = !period && !filters.active && hasAny === false;
+
   // The period's Clear keeps the filters, as their Clear keeps the period.
   const withoutPeriod = new URLSearchParams(searchParams);
 
@@ -736,11 +819,15 @@ function OrganizationIncidentsView() {
               updatedAt={shown.dataUpdatedAt}
               failed={shown.isRefetchError}
             />
-            <DeclareIncident />
+            {/* While there are none, the page's own panel offers the first. */}
+            {!first && <DeclareIncident />}
           </div>
         }
       />
       <PageBody width="full">
+        {first ? (
+          <FirstIncident />
+        ) : (
         <div className="flex flex-col gap-6">
           {!period && <NowBand />}
           {period && (
@@ -788,6 +875,7 @@ function OrganizationIncidentsView() {
             />
           </Tabs>
         </div>
+        )}
       </PageBody>
     </>
   );

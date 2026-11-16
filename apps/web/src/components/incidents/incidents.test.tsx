@@ -415,6 +415,40 @@ describe("incidents", () => {
     navigation.replace.mockReset();
   });
 
+  describe("before the first incident", () => {
+    it("welcomes the first one, offering Declare once, on the page itself", async () => {
+      api(ADMIN, { active: [], resolved: [] });
+
+      inOrganization(<IncidentsView />);
+
+      expect(await screen.findByText("No incidents yet")).toBeDefined();
+      // The header's button steps aside: one place for the action.
+      expect(screen.getAllByRole("button", { name: "Declare incident" })).toHaveLength(1);
+      expect(screen.queryByRole("tablist")).toBeNull();
+    });
+
+    it("says a service must come first when there is none, and leads to Services", async () => {
+      api(ADMIN, { active: [], resolved: [], services: [] });
+
+      inOrganization(<IncidentsView />);
+
+      expect(await screen.findByText("Incidents need a service first")).toBeDefined();
+      expect(
+        screen.getByRole("link", { name: "Go to Services" }).getAttribute("href"),
+      ).toBe("/orgs/acme-ops/services");
+      expect(screen.queryByRole("button", { name: "Declare incident" })).toBeNull();
+    });
+
+    it("keeps the lists once there has been one, resolved or not", async () => {
+      api(ADMIN, { active: [], resolved: [incident({ number: 3, status: "RESOLVED" })] });
+
+      inOrganization(<IncidentsView />);
+
+      expect(await screen.findByRole("tablist")).toBeDefined();
+      expect(screen.queryByText("No incidents yet")).toBeNull();
+    });
+  });
+
   describe("the list", () => {
     it("shows what is happening: severity in words, the incident, where, who, status, and how long", async () => {
       api(OVERSIGHT, {

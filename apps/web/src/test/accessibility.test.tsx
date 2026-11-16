@@ -747,6 +747,27 @@ const signedOut = () =>
     }
   });
 
+/** An organization with nothing in it yet: no teams, services or incidents. */
+const freshOrganization = (permissions: string[]) =>
+  mockApi((request) => {
+    switch (route(request)) {
+      case "POST /auth/refresh":
+        return refreshed("token");
+      case "GET /auth/me":
+        return jsonResponse(200, currentUser);
+      case `GET ${base}`:
+        return jsonResponse(200, organizationDetail(permissions));
+      case `GET ${base}/teams`:
+      case `GET ${base}/services`:
+        return jsonResponse(200, []);
+      case `GET ${base}/incidents?state=active`:
+      case `GET ${base}/incidents?state=resolved`:
+        return jsonResponse(200, { items: [], page: { cursor: null, hasMore: false } });
+      default:
+        return apiError(404);
+    }
+  });
+
 const inWorkspace = (page: React.ReactNode) =>
   renderWithSession(
     <WorkspaceShell>
@@ -780,6 +801,22 @@ describe("accessibility", () => {
       await expectNoAxeViolations(container);
       // A year of days is ~370 squares for axe to walk, which jsdom does far
       // more slowly than a browser.
+    }, 30_000);
+
+    it("Overview, Teams, Services and Incidents before anything is set up", async () => {
+      for (const [page, title] of [
+        [<OrganizationOverview key="o" />, "Start with a team"],
+        [<TeamsView key="t" />, "Create your first team"],
+        [<ServicesView key="s" />, "Services need a team first"],
+        [<IncidentsView key="i" />, "Incidents need a service first"],
+      ] as const) {
+        freshOrganization(ADMIN);
+        const { container, unmount } = inWorkspace(page);
+
+        await screen.findByRole("heading", { level: 2, name: title });
+        await expectNoAxeViolations(container);
+        unmount();
+      }
     }, 30_000);
 
     it("Overview, with a day of the incident trend focused", async () => {
