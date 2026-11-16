@@ -10,7 +10,6 @@ import { TokenService } from './../src/auth/token.service.js';
 import { Permission } from './../src/authorization/permissions.js';
 import { RequirePermission } from './../src/authorization/require-permission.decorator.js';
 import { PrismaService } from './../src/database/prisma.service.js';
-import { Prisma } from './../src/generated/prisma/client.js';
 import type { Role } from './../src/generated/prisma/enums.js';
 import { OrganizationController } from './../src/tenancy/organization-controller.decorator.js';
 import { TenancyModule } from './../src/tenancy/tenancy.module.js';
@@ -155,6 +154,8 @@ describe('Authorization (e2e)', () => {
 
     prisma.membership.findFirst.mockResolvedValue(null);
     prisma.membership.findMany.mockResolvedValue([]);
+    // A rename locks the organization's row and reads its name under it.
+    prisma.$queryRaw.mockResolvedValue([{ name: 'Acme Operations' }]);
     prisma.organization.findFirst.mockResolvedValue({
       id: ORG_ID,
       name: 'Acme Operations',
@@ -234,17 +235,14 @@ describe('Authorization (e2e)', () => {
 
       it('should answer 404 when the organization vanished after admission', async () => {
         admitAs(role);
-        prisma.organization.update.mockRejectedValue(
-          new Prisma.PrismaClientKnownRequestError('No record', {
-            code: 'P2025',
-            clientVersion: 'test',
-          }),
-        );
+        // Soft-deleted after admission: there is no live row left to lock.
+        prisma.$queryRaw.mockResolvedValue([]);
 
         const response = await patch();
 
         expect(response.status).toBe(404);
         expect(response.body.code).toBe('ORGANIZATION_NOT_FOUND');
+        expect(prisma.organization.update).not.toHaveBeenCalled();
       });
     });
 

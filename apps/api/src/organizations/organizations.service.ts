@@ -218,11 +218,13 @@ export class OrganizationsService {
   /**
    * Renames the organization.
    *
-   * One statement: the unique `id` together with `deletedAt: null` is the
-   * update's own predicate, so there is no read to race — a soft deletion
-   * committed before this runs makes it match nothing, and the caller receives
-   * the same 404 admission would have given. The organization *is* the tenant,
-   * so its id is the whole tenant filter.
+   * The organization's row is locked first, and its current name read under
+   * that lock. Concurrent renames therefore take turns rather than interleave
+   * — without the lock they could deadlock against one another, and two of
+   * them could both log the same name as the one they replaced. A soft
+   * deletion committed before this runs leaves nothing to lock, and the
+   * caller receives the same 404 admission would have given. The
+   * organization *is* the tenant, so its id is the whole tenant filter.
    *
    * `actorId` is who renamed it, for the activity log, which records the
    * old and new name in the same transaction. Renaming to the same name
@@ -235,10 +237,15 @@ export class OrganizationsService {
   ): Promise<OrganizationResponse> {
     try {
       const organization = await this.prisma.$transaction(async (tx) => {
-        const before = await tx.organization.findFirst({
-          where: { id: organizationId, deletedAt: null },
-          select: { name: true },
-        });
+        const [before] = await tx.$queryRaw<{ name: string }[]>`
+          SELECT name FROM organizations
+          WHERE id = ${organizationId}::uuid AND deleted_at IS NULL
+          FOR UPDATE`;
+
+        if (!before) {
+          throw organizationNotFound();
+        }
+
         const updated = await tx.organization.update({
           where: { id: organizationId, deletedAt: null },
           data: { name: input.name },
@@ -253,7 +260,7 @@ export class OrganizationsService {
           changes: [
             {
               field: 'name',
-              before: before?.name ?? null,
+              before: before.name,
               after: updated.name,
             },
           ],

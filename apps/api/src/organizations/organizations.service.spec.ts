@@ -74,6 +74,8 @@ const serviceWith = () => {
     },
     team: { findMany: vi.fn() },
     teamMembership: { createMany: vi.fn() },
+    // A rename locks the organization's row and reads its name under it.
+    $queryRaw: vi.fn().mockResolvedValue([{ name: 'Acme' }]),
     $transaction: vi.fn(),
   };
   prisma.$transaction.mockImplementation((work: (tx: unknown) => unknown) =>
@@ -210,7 +212,6 @@ describe('OrganizationsService', () => {
 
     it('should record the old and new name in the activity log, in the same transaction', async () => {
       const { service, prisma } = serviceWith();
-      prisma.organization.findFirst.mockResolvedValue({ name: 'Acme' });
       prisma.organization.update.mockResolvedValue(organizationRow);
 
       await service.updateOrganization(
@@ -234,9 +235,7 @@ describe('OrganizationsService', () => {
 
     it('should record nothing when the name did not change', async () => {
       const { service, prisma } = serviceWith();
-      prisma.organization.findFirst.mockResolvedValue({
-        name: organizationRow.name,
-      });
+      prisma.$queryRaw.mockResolvedValue([{ name: organizationRow.name }]);
       prisma.organization.update.mockResolvedValue(organizationRow);
 
       await service.updateOrganization(
@@ -288,6 +287,39 @@ describe('OrganizationsService', () => {
         slug: 'acme-operations',
         createdAt: '2026-09-01T12:00:00.000Z',
       });
+    });
+
+    it('should lock the organization row before reading and renaming it', async () => {
+      const { service, prisma } = serviceWith();
+      prisma.organization.update.mockResolvedValue(organizationRow);
+
+      await service.updateOrganization(
+        ORG_A,
+        { name: 'Renamed' },
+        'user-actor',
+      );
+
+      const [strings, ...values] = prisma.$queryRaw.mock.calls[0];
+
+      expect(strings.join('?')).toMatch(/FROM organizations[\s\S]*FOR UPDATE/);
+      expect(values).toContain(ORG_A);
+      expect(prisma.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+        prisma.organization.update.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('should answer the admission 404, writing nothing, when no live organization is left to lock', async () => {
+      const { service, prisma } = serviceWith();
+      prisma.$queryRaw.mockResolvedValue([]);
+
+      const error = await errorOf(
+        service.updateOrganization(ORG_A, { name: 'Renamed' }, 'user-actor'),
+      );
+
+      expect(error).toBeInstanceOf(NotFoundException);
+      expect(error.errorCode).toBe(TenancyErrorCode.ORGANIZATION_NOT_FOUND);
+      expect(prisma.organization.update).not.toHaveBeenCalled();
+      expect(prisma.activityEntry.create).not.toHaveBeenCalled();
     });
 
     it('should answer the admission 404 when no live organization matched', async () => {
