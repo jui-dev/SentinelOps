@@ -160,6 +160,7 @@ describe('Authorization (e2e)', () => {
       name: 'Acme Operations',
       slug: 'acme-operations',
       createdAt: CREATED,
+      isDemo: false,
     });
     prisma.organization.update.mockImplementation(
       (args: { data: { name: string } }) => ({
@@ -167,6 +168,7 @@ describe('Authorization (e2e)', () => {
         name: args.data.name,
         slug: 'acme-operations',
         createdAt: CREATED,
+        isDemo: false,
       }),
     );
   });
@@ -189,11 +191,18 @@ describe('Authorization (e2e)', () => {
           name: 'Renamed Operations',
           slug: 'acme-operations',
           createdAt: '2026-09-01T12:00:00.000Z',
+          demo: false,
         });
         expect(prisma.organization.update).toHaveBeenCalledExactlyOnceWith({
           where: { id: ORG_ID, deletedAt: null },
           data: { name: 'Renamed Operations' },
-          select: { id: true, name: true, slug: true, createdAt: true },
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            createdAt: true,
+            isDemo: true,
+          },
         });
       });
 

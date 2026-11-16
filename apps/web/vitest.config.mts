@@ -16,6 +16,11 @@ export default defineConfig({
       NEXT_PUBLIC_API_URL: "http://api.test",
       NEXT_PUBLIC_INVITATIONS_ENABLED: "true",
     },
+    // Full-page suites (axe scans, calendar flows) pass in a few seconds alone
+    // but can outrun the 5s default when many files run at once on a busy
+    // machine or a CI runner; the longer limit only matters for a test that
+    // would otherwise fail on time, never one that fails on an assertion.
+    testTimeout: 20_000,
     restoreMocks: true,
     unstubGlobals: true,
   },
