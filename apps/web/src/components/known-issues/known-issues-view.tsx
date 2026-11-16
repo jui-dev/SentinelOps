@@ -224,7 +224,7 @@ function KnownIssuesList() {
               </p>
             </FirstRun>
           ) : groups.length === 0 ? (
-            <EmptyNote title="No known issues match">
+            <EmptyNote kind="noMatch" title="No known issues match">
               Try another search or service, or include archived ones.
             </EmptyNote>
           ) : (

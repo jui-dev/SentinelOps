@@ -187,7 +187,7 @@ function RecentlyResolved({ service }: { service: ServiceResponse }) {
       ) : !items ? (
         <Spinner label="Loading resolved incidents…" />
       ) : items.length === 0 ? (
-        <EmptyNote title="None resolved yet">
+        <EmptyNote title="None resolved yet" icon={History}>
           Resolved incidents appear here, most recent first.
         </EmptyNote>
       ) : (

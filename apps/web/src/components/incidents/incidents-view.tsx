@@ -481,6 +481,7 @@ function IncidentList({
   if (incidents.length === 0 && filtered) {
     return (
       <EmptyNote
+        kind="noMatch"
         title={active ? "No active incidents match" : "No resolved incidents match"}
       >
         {period

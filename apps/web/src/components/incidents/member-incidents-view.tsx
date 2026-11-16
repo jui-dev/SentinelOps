@@ -419,7 +419,7 @@ export function MemberIncidentsView() {
               <Spinner label="Loading incidents…" />
             ) : incidents.length === 0 ? (
               filtered ? (
-                <EmptyNote title="Nothing matches">
+                <EmptyNote kind="noMatch" title="Nothing matches">
                   Nothing in {chosen.label} matches the filters. Clear them to see
                   everything.
                 </EmptyNote>

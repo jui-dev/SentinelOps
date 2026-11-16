@@ -266,7 +266,7 @@ export function PeriodHistory({
     body = <Spinner label="Loading the period's incidents…" />;
   } else if (items.length === 0) {
     body = filtered ? (
-      <EmptyNote title="No incidents match">
+      <EmptyNote kind="noMatch" title="No incidents match">
         Nothing in this period matches these filters.
       </EmptyNote>
     ) : (
