@@ -1,0 +1,122 @@
+# Every check the README asks of a change, on every push to main and every pull
+# request. Two jobs run side by side: the API against a real PostgreSQL, and
+# the web app, which needs neither the API nor a database.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A newer push to the same branch or pull request supersedes the run in flight.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  api:
+    name: API
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      # Matches docker/docker-compose.yml and the placeholders in .env.example,
+      # which this job copies to .env as its configuration.
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: sentinelops
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sentinelops"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v5
+
+      # Reads the pnpm version from package.json's packageManager field.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # The API reads the workspace-root .env; the template's placeholders are
+      # valid as they stand and point at the service container above.
+      - name: Configure
+        run: cp .env.example .env
+
+      # The Prisma client is generated, not committed, and every check imports it.
+      - name: Generate Prisma client
+        run: pnpm --filter @sentinelops/api prisma:generate
+
+      - name: Typecheck
+        run: |
+          pnpm --filter @sentinelops/api typecheck
+          pnpm --filter @sentinelops/api typecheck:test
+
+      - name: Lint
+        run: pnpm --filter @sentinelops/api lint
+
+      - name: Formatting
+        run: pnpm --filter @sentinelops/api format:check
+
+      - name: Unit tests
+        run: pnpm --filter @sentinelops/api test
+
+      - name: End-to-end tests
+        run: pnpm --filter @sentinelops/api test:e2e
+
+      # Creates sentinelops_test on the service and applies the committed
+      # migrations to it before the first spec runs.
+      - name: Integration tests
+        run: pnpm --filter @sentinelops/api test:integration
+
+      - name: Build
+        run: pnpm --filter @sentinelops/api build
+
+  web:
+    name: Web
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # Next.js reads its environment from apps/web, and validates it at build.
+      - name: Configure
+        run: cp apps/web/.env.example apps/web/.env.local
+
+      - name: Typecheck
+        run: pnpm --filter @sentinelops/web typecheck
+
+      - name: Lint
+        run: pnpm --filter @sentinelops/web lint
+
+      - name: Tests
+        run: pnpm --filter @sentinelops/web test
+
+      - name: Build
+        run: pnpm --filter @sentinelops/web build
