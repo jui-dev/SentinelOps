@@ -478,19 +478,22 @@ describe('incidents (integration)', () => {
 
       expect(before.status).toBe(200);
 
+      // One at a time: each refusal is judged on its own, and none is left
+      // running unawaited while another is checked.
       for (const refused of [
-        declare(fx.orgA, fx.dave, fx.apiA),
-        call('patch', path, fx.dave, { title: 'Renamed' }),
-        call('patch', path, fx.dave, { summary: 'Rewritten' }),
-        call('patch', path, fx.dave, { severity: 'SEV3' }),
-        call('patch', path, fx.dave, { status: 'INVESTIGATING' }),
-        call('patch', path, fx.dave, {
-          status: 'RESOLVED',
-          resolution: 'Rolled back.',
-        }),
-        call('patch', path, fx.dave, { teamId: fx.platformA }),
+        () => declare(fx.orgA, fx.dave, fx.apiA),
+        () => call('patch', path, fx.dave, { title: 'Renamed' }),
+        () => call('patch', path, fx.dave, { summary: 'Rewritten' }),
+        () => call('patch', path, fx.dave, { severity: 'SEV3' }),
+        () => call('patch', path, fx.dave, { status: 'INVESTIGATING' }),
+        () =>
+          call('patch', path, fx.dave, {
+            status: 'RESOLVED',
+            resolution: 'Rolled back.',
+          }),
+        () => call('patch', path, fx.dave, { teamId: fx.platformA }),
       ]) {
-        expectCode(await refused, 403, 'PERMISSION_DENIED');
+        expectCode(await refused(), 403, 'PERMISSION_DENIED');
       }
 
       // Nothing the refusals named was written: one incident, as declared.
@@ -3565,14 +3568,15 @@ describe('incidents (integration)', () => {
       await resolve(fx.orgA, fx.alice, 1);
       const before = await prisma.incidentActivity.count();
 
+      // One at a time, as in the lifecycle test above.
       for (const refused of [
-        startAs(fx.orgA, finn, 1),
-        startAs(fx.orgA, fx.dave, 1),
-        completeAs(fx.orgA, fx.dave, 1),
-        post(fx.orgA, fx.dave, 'Late.'),
-        post(fx.orgA, fx.alice, 'Late.'),
+        () => startAs(fx.orgA, finn, 1),
+        () => startAs(fx.orgA, fx.dave, 1),
+        () => completeAs(fx.orgA, fx.dave, 1),
+        () => post(fx.orgA, fx.dave, 'Late.'),
+        () => post(fx.orgA, fx.alice, 'Late.'),
       ]) {
-        expectCode(await refused, 409, 'INCIDENT_RESOLVED');
+        expectCode(await refused(), 409, 'INCIDENT_RESOLVED');
       }
 
       expect(await prisma.incidentActivity.count()).toBe(before);
