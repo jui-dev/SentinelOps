@@ -17,6 +17,7 @@ const defaults = {
   JWT_ACCESS_TTL_SECONDS: 900,
   REFRESH_TOKEN_TTL_DAYS: 30,
   CORS_ORIGIN: 'http://localhost:3000',
+  TRUST_PROXY_HOPS: 0,
   INVITATIONS_ENABLED: false,
   REGISTRATION_ENABLED: false,
 };
@@ -298,5 +299,26 @@ describe('envSchema', () => {
         issueFor({ ...valid(), CORS_ORIGIN: '' }, 'CORS_ORIGIN'),
       ).toBeDefined();
     });
+  });
+
+  describe('TRUST_PROXY_HOPS', () => {
+    it('should default to 0, trusting no proxy', () => {
+      expect(envSchema.parse(valid()).TRUST_PROXY_HOPS).toBe(0);
+    });
+
+    it('should coerce a hop count from its string', () => {
+      expect(
+        envSchema.parse({ ...valid(), TRUST_PROXY_HOPS: '1' }).TRUST_PROXY_HOPS,
+      ).toBe(1);
+    });
+
+    it.each(['true', '-1', '1.5', '11'])(
+      'should reject %s: only a whole number of hops',
+      (value) => {
+        expect(
+          issueFor({ ...valid(), TRUST_PROXY_HOPS: value }, 'TRUST_PROXY_HOPS'),
+        ).toBeDefined();
+      },
+    );
   });
 });

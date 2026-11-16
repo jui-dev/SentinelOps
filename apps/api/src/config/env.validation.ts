@@ -67,6 +67,16 @@ export const envSchema = z.object({
   // The refresh cookie only reaches the API if the origin is listed here, so
   // this is load-bearing for the web app rather than decorative.
   CORS_ORIGIN: z.string().min(1).default('http://localhost:3000'),
+  // How many reverse proxies (load balancer, ingress, CDN) stand between the
+  // client and the API. The sign-in limits count failures per client address,
+  // and behind a proxy every request arrives from the proxy's address — so
+  // left at 0 there, all clients share one count and one guesser can lock
+  // everyone out. Set it to the number of hops, and the address is read that
+  // many entries back in X-Forwarded-For.
+  //
+  // A count rather than "trust everything": trusting the whole header would
+  // let any client name its own address and step around the limits.
+  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(10).default(0),
   // Whether the invitation routes exist. Off unless switched on: invitations
   // are kept for when email delivery arrives, and until then members are
   // added by an admin with a one-time password. While off, every invitation

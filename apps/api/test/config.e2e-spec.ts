@@ -69,6 +69,7 @@ describe('Configuration (e2e)', () => {
         port: 3001,
         environment: 'test',
         corsOrigins: ['http://localhost:3000'],
+        trustProxyHops: 0,
       });
       expect(moduleRef.get(databaseConfig.KEY)).toEqual({ url: DATABASE_URL });
       expect(moduleRef.get(authConfig.KEY)).toEqual({

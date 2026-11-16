@@ -1,6 +1,8 @@
 import { NestFactory } from '@nestjs/core';
 import type { ConfigType } from '@nestjs/config';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module.js';
+import { applyTrustProxy } from './common/trust-proxy.js';
 import { appConfig } from './config/configuration.js';
 import { AppLogger } from './logger/app.logger.js';
 
@@ -9,7 +11,9 @@ async function bootstrap() {
   // they are buffered and replayed through AppLogger once it is installed
   // below. The flush happens inside `app.init()`, which for an HTTP app runs as
   // part of `listen()` — after `useLogger`, which is what makes this work.
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bufferLogs: true,
+  });
   // The leading slash is load-bearing. Nest passes this prefix straight to
   // `app.use(prefix, notFoundHandler)`, and Express 5 never matches a path
   // without it — unmatched routes would bypass the exception filter entirely
@@ -24,9 +28,12 @@ async function bootstrap() {
   app.useLogger(app.get(AppLogger));
   // Resolved by token rather than by name: the port is already validated and
   // coerced to a number, and its default lives in the schema, not here.
-  const { port, corsOrigins } = app.get<ConfigType<typeof appConfig>>(
-    appConfig.KEY,
-  );
+  const { port, corsOrigins, trustProxyHops } = app.get<
+    ConfigType<typeof appConfig>
+  >(appConfig.KEY);
+  // Before any request is served: the sign-in limits key on the client
+  // address, which behind a proxy is only right once this is set.
+  applyTrustProxy(app, trustProxyHops);
   // `credentials` is the load-bearing half: without it the browser will not
   // send the refresh cookie, and every refresh from the web app fails. An
   // explicit origin list rather than a wildcard, because the two are mutually

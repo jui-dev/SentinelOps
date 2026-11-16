@@ -31,6 +31,7 @@ describe('configuration', () => {
         port: 3001,
         environment: 'test',
         corsOrigins: ['http://localhost:3000'],
+        trustProxyHops: 0,
       });
     });
 
@@ -48,6 +49,7 @@ describe('configuration', () => {
         port: 3001,
         environment: 'development',
         corsOrigins: ['http://localhost:3000'],
+        trustProxyHops: 0,
       });
     });
 
@@ -61,6 +63,12 @@ describe('configuration', () => {
         'http://localhost:3000',
         'https://app.example.com',
       ]);
+    });
+
+    it('should read TRUST_PROXY_HOPS as a number of hops', () => {
+      vi.stubEnv('TRUST_PROXY_HOPS', '2');
+
+      expect(appConfig().trustProxyHops).toBe(2);
     });
 
     it('should be registered under the app token', () => {

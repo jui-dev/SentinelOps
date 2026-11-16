@@ -42,6 +42,7 @@ export const appConfig = registerAs('app', () => {
     port: env.PORT,
     environment: env.NODE_ENV,
     corsOrigins: parseOrigins(env.CORS_ORIGIN),
+    trustProxyHops: env.TRUST_PROXY_HOPS,
   };
 });
 
