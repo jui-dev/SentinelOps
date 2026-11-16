@@ -98,7 +98,7 @@ describe('known issues (integration)', () => {
 
     app = moduleRef.createNestApplication();
     app.setGlobalPrefix('/api/v1');
-    await app.init();
+    await app.listen(0);
     tokens = app.get(TokenService);
   });
 

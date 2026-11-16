@@ -95,7 +95,7 @@ describe('demo history (integration)', () => {
       .compile();
 
     app = moduleRef.createNestApplication();
-    await app.init();
+    await app.listen(0);
     devAccount = app.get(DevAccountService);
     demo = app.get(DemoHistoryService);
     incidents = app.get(IncidentsService);

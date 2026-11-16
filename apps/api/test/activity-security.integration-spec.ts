@@ -64,7 +64,7 @@ describe('activity log: sign-ins and passwords (integration)', () => {
 
     app = moduleRef.createNestApplication();
     app.setGlobalPrefix('/api/v1');
-    await app.init();
+    await app.listen(0);
     tokens = app.get(TokenService);
     hash = await app.get(PasswordService).hash(PASSWORD);
   });

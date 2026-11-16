@@ -54,7 +54,7 @@ describe('invitation logging (integration)', () => {
     stdout = vi.spyOn(process.stdout, 'write').mockImplementation(capture);
     stderr = vi.spyOn(process.stderr, 'write').mockImplementation(capture);
 
-    await app.init();
+    await app.listen(0);
 
     await truncate(
       prisma,

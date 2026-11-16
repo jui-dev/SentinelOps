@@ -45,7 +45,7 @@ describe('demo workspace (integration)', () => {
       .compile();
 
     app = moduleRef.createNestApplication();
-    await app.init();
+    await app.listen(0);
     devAccount = app.get(DevAccountService);
     demo = app.get(DemoWorkspaceService);
   });
